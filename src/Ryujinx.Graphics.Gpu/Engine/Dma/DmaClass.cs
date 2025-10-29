@@ -10,7 +10,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.Arm;
-using System.Threading.Tasks;
 using System.Buffers;
 
 namespace Ryujinx.Graphics.Gpu.Engine.Dma
@@ -25,23 +24,9 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         private readonly ThreedClass _3dEngine;
         private readonly DeviceState<DmaClassState> _state;
 
-        // ARM优化配置
+        // 简化的ARM优化配置
         private static readonly bool _useNeon = AdvSimd.IsSupported;
-        private static readonly bool _useParallel = Environment.ProcessorCount >= 4;
-        private const int ParallelThreshold = 512 * 512;
-
-        /// <summary>
-        /// ARM优化模式
-        /// </summary>
-        public enum ArmOptimizationMode
-        {
-            Auto,
-            Performance,
-            Balanced,
-            Precision
-        }
-
-        private ArmOptimizationMode _optimizationMode = ArmOptimizationMode.Auto;
+        private const int MemoryPoolThreshold = 1024 * 1024; // 1MB阈值
 
         /// <summary>
         /// Copy flags passed on DMA launch.
@@ -87,20 +72,6 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         }
 
         /// <summary>
-        /// 并行处理的工作项
-        /// </summary>
-        private struct ParallelWorkItem
-        {
-            public int StartY;
-            public int EndY;
-            public byte[] DstArray;
-            public byte[] SrcArray;
-            public TextureParams DstParams;
-            public TextureParams SrcParams;
-            public int XCount;
-        }
-
-        /// <summary>
         /// Creates a new instance of the DMA copy engine class.
         /// </summary>
         public DmaClass(GpuContext context, GpuChannel channel, ThreedClass threedEngine)
@@ -112,51 +83,6 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
             {
                 { nameof(DmaClassState.LaunchDma), new RwCallback(LaunchDma, null) },
             });
-
-            DetectAndSetOptimizationMode();
-        }
-
-        /// <summary>
-        /// 检测ARM处理器并设置优化模式
-        /// </summary>
-        private void DetectAndSetOptimizationMode()
-        {
-            if (RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
-            {
-                _optimizationMode = ArmOptimizationMode.Balanced;
-                
-                if (Environment.ProcessorCount >= 8)
-                {
-                    _optimizationMode = ArmOptimizationMode.Performance;
-                }
-            }
-        }
-
-        /// <summary>
-        /// 设置ARM优化模式
-        /// </summary>
-        public void SetArmOptimizationMode(ArmOptimizationMode mode)
-        {
-            _optimizationMode = mode;
-        }
-
-        /// <summary>
-        /// 获取优化的组件大小
-        /// </summary>
-        private int GetOptimizedComponentSize(int originalSize, int pixelCount)
-        {
-            if (_optimizationMode == ArmOptimizationMode.Precision)
-                return originalSize;
-
-            if (_optimizationMode == ArmOptimizationMode.Performance)
-            {
-                if (pixelCount > 1024 * 1024)
-                {
-                    return originalSize >= 4 ? 2 : originalSize;
-                }
-            }
-
-            return originalSize;
         }
 
         /// <summary>
@@ -252,11 +178,8 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                 int srcComponents = (int)_state.State.SetRemapComponentsNumSrcComponents + 1;
                 int dstComponents = (int)_state.State.SetRemapComponentsNumDstComponents + 1;
                 
-                int pixelCount = xCount * yCount;
-                int optimizedComponentSize = GetOptimizedComponentSize(componentSize, pixelCount);
-                
-                int srcBpp = remap ? srcComponents * optimizedComponentSize : 1;
-                int dstBpp = remap ? dstComponents * optimizedComponentSize : 1;
+                int srcBpp = remap ? srcComponents * componentSize : 1;
+                int dstBpp = remap ? dstComponents * componentSize : 1;
 
                 var dst = Unsafe.As<uint, DmaTexture>(ref _state.State.SetDstBlockSize);
                 var src = Unsafe.As<uint, DmaTexture>(ref _state.State.SetSrcBlockSize);
@@ -420,64 +343,58 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                     }
                 }
 
-                // 修复：使用数组而不是Span进行内存管理
-                byte[] dstArray = ArrayPool<byte>.Shared.Rent(dstSize);
-                byte[] srcArray = null;
+                // 简化内存管理：只对大数据使用ArrayPool
+                byte[] dstArray = null;
+                Span<byte> dstSpan;
+
+                if (dstSize > MemoryPoolThreshold)
+                {
+                    dstArray = ArrayPool<byte>.Shared.Rent(dstSize);
+                    dstSpan = dstArray.AsSpan(0, dstSize);
+                }
+                else
+                {
+                    dstSpan = new byte[dstSize];
+                }
 
                 try
                 {
-                    // 如果需要并行处理，复制源数据到数组
-                    if (_useParallel && pixelCount > ParallelThreshold)
-                    {
-                        srcArray = ArrayPool<byte>.Shared.Rent(srcSize);
-                        srcSpan.CopyTo(srcArray);
-                    }
-
                     TextureParams srcParams = new(srcRegionX, srcRegionY, srcBaseOffset, srcBpp, srcLinear, srcCalculator);
                     TextureParams dstParams = new(dstRegionX, dstRegionY, dstBaseOffset, dstBpp, dstLinear, dstCalculator);
 
                     if (isIdentityRemap)
                     {
-                        // 修复：使用数组而不是Span进行并行处理
-                        if (_useParallel && pixelCount > ParallelThreshold && srcArray != null)
+                        // 简化：只保留NEON优化，移除并行处理
+                        switch (srcBpp)
                         {
-                            CopyParallel(dstArray, srcArray, dstParams, srcParams, xCount, yCount, srcBpp);
-                        }
-                        else
-                        {
-                            Span<byte> dstSpan = dstArray.AsSpan(0, dstSize);
-                            switch (srcBpp)
-                            {
-                                case 1:
-                                    Copy<byte>(dstSpan, srcSpan, dstParams, srcParams);
-                                    break;
-                                case 2:
-                                    Copy<ushort>(dstSpan, srcSpan, dstParams, srcParams);
-                                    break;
-                                case 4:
-                                    Copy<uint>(dstSpan, srcSpan, dstParams, srcParams);
-                                    break;
-                                case 8:
-                                    Copy<ulong>(dstSpan, srcSpan, dstParams, srcParams);
-                                    break;
-                                case 12:
-                                    Copy<Bpp12Pixel>(dstSpan, srcSpan, dstParams, srcParams);
-                                    break;
-                                case 16:
-                                    if (_useNeon)
-                                        CopyNeon(dstSpan, srcSpan, dstParams, srcParams);
-                                    else
-                                        Copy<Vector128<byte>>(dstSpan, srcSpan, dstParams, srcParams);
-                                    break;
-                                default:
-                                    throw new NotSupportedException($"Unable to copy ${srcBpp} bpp pixel format.");
-                            }
+                            case 1:
+                                Copy<byte>(dstSpan, srcSpan, dstParams, srcParams);
+                                break;
+                            case 2:
+                                Copy<ushort>(dstSpan, srcSpan, dstParams, srcParams);
+                                break;
+                            case 4:
+                                Copy<uint>(dstSpan, srcSpan, dstParams, srcParams);
+                                break;
+                            case 8:
+                                Copy<ulong>(dstSpan, srcSpan, dstParams, srcParams);
+                                break;
+                            case 12:
+                                Copy<Bpp12Pixel>(dstSpan, srcSpan, dstParams, srcParams);
+                                break;
+                            case 16:
+                                if (_useNeon)
+                                    CopyNeon(dstSpan, srcSpan, dstParams, srcParams);
+                                else
+                                    Copy<Vector128<byte>>(dstSpan, srcSpan, dstParams, srcParams);
+                                break;
+                            default:
+                                throw new NotSupportedException($"Unable to copy ${srcBpp} bpp pixel format.");
                         }
                     }
                     else
                     {
-                        Span<byte> dstSpan = dstArray.AsSpan(0, dstSize);
-                        switch (optimizedComponentSize)
+                        switch (componentSize)
                         {
                             case 1:
                                 CopyShuffle<byte>(dstSpan, srcSpan, dstParams, srcParams);
@@ -496,14 +413,13 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                         }
                     }
 
-                    memoryManager.Write(dstGpuVa + (ulong)dstBaseOffset, dstArray.AsSpan(0, dstSize));
+                    memoryManager.Write(dstGpuVa + (ulong)dstBaseOffset, dstSpan);
                 }
                 finally
                 {
-                    ArrayPool<byte>.Shared.Return(dstArray);
-                    if (srcArray != null)
+                    if (dstArray != null)
                     {
-                        ArrayPool<byte>.Shared.Return(srcArray);
+                        ArrayPool<byte>.Shared.Return(dstArray);
                     }
                 }
             }
@@ -572,91 +488,6 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         }
 
         /// <summary>
-        /// ARM优化：并行处理大纹理拷贝
-        /// </summary>
-        private void CopyParallel(byte[] dstArray, byte[] srcArray, TextureParams dst, TextureParams src, int xCount, int yCount, int bpp)
-        {
-            int threads = Environment.ProcessorCount;
-            var workItems = new List<ParallelWorkItem>();
-
-            // 分割工作
-            int rowsPerThread = yCount / threads;
-            for (int i = 0; i < threads; i++)
-            {
-                int startY = i * rowsPerThread;
-                int endY = (i == threads - 1) ? yCount : startY + rowsPerThread;
-
-                workItems.Add(new ParallelWorkItem
-                {
-                    StartY = startY,
-                    EndY = endY,
-                    DstArray = dstArray,
-                    SrcArray = srcArray,
-                    DstParams = dst,
-                    SrcParams = src,
-                    XCount = xCount
-                });
-            }
-
-            // 并行处理
-            Parallel.ForEach(workItems, workItem =>
-            {
-                ProcessWorkItem(workItem, bpp);
-            });
-        }
-
-        /// <summary>
-        /// 处理并行工作项
-        /// </summary>
-        private unsafe void ProcessWorkItem(ParallelWorkItem workItem, int bpp)
-        {
-            var dst = workItem.DstParams;
-            var src = workItem.SrcParams;
-
-            fixed (byte* dstPtr = workItem.DstArray, srcPtr = workItem.SrcArray)
-            {
-                byte* dstBase = dstPtr - dst.BaseOffset;
-                byte* srcBase = srcPtr - src.BaseOffset;
-
-                for (int y = workItem.StartY; y < workItem.EndY; y++)
-                {
-                    src.Calculator.SetY(src.RegionY + y);
-                    dst.Calculator.SetY(dst.RegionY + y);
-
-                    for (int x = 0; x < workItem.XCount; x++)
-                    {
-                        int srcOffset = src.Calculator.GetOffset(src.RegionX + x);
-                        int dstOffset = dst.Calculator.GetOffset(dst.RegionX + x);
-
-                        // 根据BPP进行拷贝
-                        switch (bpp)
-                        {
-                            case 1:
-                                *(byte*)(dstBase + dstOffset) = *(byte*)(srcBase + srcOffset);
-                                break;
-                            case 2:
-                                *(ushort*)(dstBase + dstOffset) = *(ushort*)(srcBase + srcOffset);
-                                break;
-                            case 4:
-                                *(uint*)(dstBase + dstOffset) = *(uint*)(srcBase + srcOffset);
-                                break;
-                            case 8:
-                                *(ulong*)(dstBase + dstOffset) = *(ulong*)(srcBase + srcOffset);
-                                break;
-                            default:
-                                // 回退到逐字节拷贝
-                                for (int i = 0; i < bpp; i++)
-                                {
-                                    *(byte*)(dstBase + dstOffset + i) = *(byte*)(srcBase + srcOffset + i);
-                                }
-                                break;
-                        }
-                    }
-                }
-            }
-        }
-
-        /// <summary>
         /// Copies data from one texture to another.
         /// </summary>
         private unsafe void Copy<T>(Span<byte> dstSpan, ReadOnlySpan<byte> srcSpan, TextureParams dst, TextureParams src) where T : unmanaged
@@ -666,6 +497,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
 
             if (src.Linear && dst.Linear && src.Bpp == dst.Bpp)
             {
+                // 线性拷贝优化
                 for (int y = 0; y < yCount; y++)
                 {
                     src.Calculator.SetY(src.RegionY + y);
@@ -691,22 +523,11 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                         src.Calculator.SetY(src.RegionY + y);
                         dst.Calculator.SetY(dst.RegionY + y);
 
-                        int x = 0;
-                        int unrolledCount = (xCount / 4) * 4;
-                        for (; x < unrolledCount; x += 4)
-                        {
-                            for (int i = 0; i < 4; i++)
-                            {
-                                int srcOffset = src.Calculator.GetOffset(src.RegionX + x + i);
-                                int dstOffset = dst.Calculator.GetOffset(dst.RegionX + x + i);
-                                *(T*)(dstBase + dstOffset) = *(T*)(srcBase + srcOffset);
-                            }
-                        }
-
-                        for (; x < xCount; x++)
+                        for (int x = 0; x < xCount; x++)
                         {
                             int srcOffset = src.Calculator.GetOffset(src.RegionX + x);
                             int dstOffset = dst.Calculator.GetOffset(dst.RegionX + x);
+
                             *(T*)(dstBase + dstOffset) = *(T*)(srcBase + srcOffset);
                         }
                     }
@@ -785,22 +606,14 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         /// </summary>
         private static void CopyGobBlockLinearToLinear(MemoryManager memoryManager, ulong srcGpuVa, ulong dstGpuVa, ulong size)
         {
+            // 简化：使用批量操作
             const int batchSize = 64;
             
             if (((srcGpuVa | dstGpuVa | size) & 0x3f) == 0)
             {
                 for (ulong offset = 0; offset < size; offset += batchSize)
                 {
-                    // 修复：使用ReadOnlySpan
                     ReadOnlySpan<byte> data = memoryManager.GetSpan(ConvertGobLinearToBlockLinearAddress(srcGpuVa + offset), batchSize, true);
-                    memoryManager.Write(dstGpuVa + offset, data);
-                }
-            }
-            else if (((srcGpuVa | dstGpuVa | size) & 0xf) == 0)
-            {
-                for (ulong offset = 0; offset < size; offset += 16)
-                {
-                    Vector128<byte> data = memoryManager.Read<Vector128<byte>>(ConvertGobLinearToBlockLinearAddress(srcGpuVa + offset), true);
                     memoryManager.Write(dstGpuVa + offset, data);
                 }
             }
@@ -825,16 +638,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
             {
                 for (ulong offset = 0; offset < size; offset += batchSize)
                 {
-                    // 修复：使用ReadOnlySpan
                     ReadOnlySpan<byte> data = memoryManager.GetSpan(srcGpuVa + offset, batchSize, true);
-                    memoryManager.Write(ConvertGobLinearToBlockLinearAddress(dstGpuVa + offset), data);
-                }
-            }
-            else if (((srcGpuVa | dstGpuVa | size) & 0xf) == 0)
-            {
-                for (ulong offset = 0; offset < size; offset += 16)
-                {
-                    Vector128<byte> data = memoryManager.Read<Vector128<byte>>(srcGpuVa + offset, true);
                     memoryManager.Write(ConvertGobLinearToBlockLinearAddress(dstGpuVa + offset), data);
                 }
             }
