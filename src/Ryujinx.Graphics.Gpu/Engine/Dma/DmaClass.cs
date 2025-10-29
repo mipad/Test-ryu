@@ -11,6 +11,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.Arm;
 using System.Buffers;
+using System.Threading.Tasks;
 
 namespace Ryujinx.Graphics.Gpu.Engine.Dma
 {
@@ -24,9 +25,24 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         private readonly ThreedClass _3dEngine;
         private readonly DeviceState<DmaClassState> _state;
 
-        // 简化的ARM优化配置
+        // ARM优化配置
         private static readonly bool _useNeon = AdvSimd.IsSupported;
+        private static readonly bool _useParallel = Environment.ProcessorCount >= 4;
         private const int MemoryPoolThreshold = 1024 * 1024; // 1MB阈值
+        private const int ParallelThreshold = 256 * 256; // 降低并行阈值
+
+        /// <summary>
+        /// 并行工作项
+        /// </summary>
+        private struct ParallelWorkItem
+        {
+            public int StartY;
+            public int EndY;
+            public TextureParams SrcParams;
+            public TextureParams DstParams;
+            public int XCount;
+            public int Bpp;
+        }
 
         /// <summary>
         /// Copy flags passed on DMA launch.
@@ -343,8 +359,9 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                     }
                 }
 
-                // 简化内存管理：只对大数据使用ArrayPool
+                // 内存管理：只对大数据使用ArrayPool
                 byte[] dstArray = null;
+                byte[] srcArray = null;
                 Span<byte> dstSpan;
 
                 if (dstSize > MemoryPoolThreshold)
@@ -357,6 +374,16 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                     dstSpan = new byte[dstSize];
                 }
 
+                // 对于并行处理，我们需要将源数据复制到数组
+                bool useParallel = _useParallel && (xCount * yCount) > ParallelThreshold && 
+                                 srcLinear && dstLinear && srcBpp == dstBpp;
+                
+                if (useParallel && srcSize > MemoryPoolThreshold)
+                {
+                    srcArray = ArrayPool<byte>.Shared.Rent(srcSize);
+                    srcSpan.CopyTo(srcArray);
+                }
+
                 try
                 {
                     TextureParams srcParams = new(srcRegionX, srcRegionY, srcBaseOffset, srcBpp, srcLinear, srcCalculator);
@@ -364,32 +391,46 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
 
                     if (isIdentityRemap)
                     {
-                        // 简化：只保留NEON优化，移除并行处理
-                        switch (srcBpp)
+                        // 优化：对线性布局的大纹理使用并行处理
+                        if (useParallel)
                         {
-                            case 1:
-                                Copy<byte>(dstSpan, srcSpan, dstParams, srcParams);
-                                break;
-                            case 2:
-                                Copy<ushort>(dstSpan, srcSpan, dstParams, srcParams);
-                                break;
-                            case 4:
-                                Copy<uint>(dstSpan, srcSpan, dstParams, srcParams);
-                                break;
-                            case 8:
-                                Copy<ulong>(dstSpan, srcSpan, dstParams, srcParams);
-                                break;
-                            case 12:
-                                Copy<Bpp12Pixel>(dstSpan, srcSpan, dstParams, srcParams);
-                                break;
-                            case 16:
-                                if (_useNeon)
-                                    CopyNeon(dstSpan, srcSpan, dstParams, srcParams);
-                                else
-                                    Copy<Vector128<byte>>(dstSpan, srcSpan, dstParams, srcParams);
-                                break;
-                            default:
-                                throw new NotSupportedException($"Unable to copy ${srcBpp} bpp pixel format.");
+                            if (srcArray != null)
+                            {
+                                CopyParallelLinear(dstArray, srcArray, dstParams, srcParams, xCount, yCount, srcBpp);
+                            }
+                            else
+                            {
+                                CopyParallelLinear(dstSpan, srcSpan, dstParams, srcParams, xCount, yCount, srcBpp);
+                            }
+                        }
+                        else
+                        {
+                            switch (srcBpp)
+                            {
+                                case 1:
+                                    Copy<byte>(dstSpan, srcSpan, dstParams, srcParams);
+                                    break;
+                                case 2:
+                                    Copy<ushort>(dstSpan, srcSpan, dstParams, srcParams);
+                                    break;
+                                case 4:
+                                    Copy<uint>(dstSpan, srcSpan, dstParams, srcParams);
+                                    break;
+                                case 8:
+                                    Copy<ulong>(dstSpan, srcSpan, dstParams, srcParams);
+                                    break;
+                                case 12:
+                                    Copy<Bpp12Pixel>(dstSpan, srcSpan, dstParams, srcParams);
+                                    break;
+                                case 16:
+                                    if (_useNeon)
+                                        CopyNeon(dstSpan, srcSpan, dstParams, srcParams);
+                                    else
+                                        Copy<Vector128<byte>>(dstSpan, srcSpan, dstParams, srcParams);
+                                    break;
+                                default:
+                                    throw new NotSupportedException($"Unable to copy ${srcBpp} bpp pixel format.");
+                            }
                         }
                     }
                     else
@@ -420,6 +461,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                     if (dstArray != null)
                     {
                         ArrayPool<byte>.Shared.Return(dstArray);
+                    }
+                    if (srcArray != null)
+                    {
+                        ArrayPool<byte>.Shared.Return(srcArray);
                     }
                 }
             }
@@ -455,6 +500,42 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// 优化的并行处理：只对线性布局使用
+        /// </summary>
+        private void CopyParallelLinear(Span<byte> dstSpan, ReadOnlySpan<byte> srcSpan, TextureParams dst, TextureParams src, int xCount, int yCount, int bpp)
+        {
+            // 对于线性布局，我们可以简单地进行行并行处理
+            int bytesPerLine = xCount * bpp;
+            
+            Parallel.For(0, yCount, y =>
+            {
+                int srcOffset = src.Calculator.GetOffset(src.RegionX) + (y * bytesPerLine) - src.BaseOffset;
+                int dstOffset = dst.Calculator.GetOffset(dst.RegionX) + (y * bytesPerLine) - dst.BaseOffset;
+                
+                var sourceLine = srcSpan.Slice(srcOffset, bytesPerLine);
+                var destLine = dstSpan.Slice(dstOffset, bytesPerLine);
+                
+                sourceLine.CopyTo(destLine);
+            });
+        }
+
+        /// <summary>
+        /// 数组版本的并行处理
+        /// </summary>
+        private void CopyParallelLinear(byte[] dstArray, byte[] srcArray, TextureParams dst, TextureParams src, int xCount, int yCount, int bpp)
+        {
+            int bytesPerLine = xCount * bpp;
+            
+            Parallel.For(0, yCount, y =>
+            {
+                int srcOffset = src.Calculator.GetOffset(src.RegionX) + (y * bytesPerLine) - src.BaseOffset;
+                int dstOffset = dst.Calculator.GetOffset(dst.RegionX) + (y * bytesPerLine) - dst.BaseOffset;
+                
+                Buffer.BlockCopy(srcArray, srcOffset, dstArray, dstOffset, bytesPerLine);
+            });
         }
 
         /// <summary>
