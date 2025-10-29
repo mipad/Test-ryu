@@ -128,15 +128,6 @@ class SettingViews {
         const val EXPANSTION_TRANSITION_DURATION = 450
         const val IMPORT_CODE = 12341
 
-        // 硬编码的表面格式列表 - 基于日志中的实际格式
-        private val HARDCODED_SURFACE_FORMATS = listOf(
-            "37:0:RGBA8 Unorm (SRGB)",
-            "43:0:RGBA8 Srgb (SRGB)", 
-            "23:0:RGB565 Unorm (SRGB)",
-            "97:0:RGBA16 Float (SRGB)",
-            "64:0:A2B10G10R10 Unorm (SRGB)"
-        )
-
         @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
         @Composable
         fun Main(settingsViewModel: SettingsViewModel, mainViewModel: MainViewModel) {
@@ -276,9 +267,9 @@ class SettingViews {
         customTimeSecond
                 )
                 
-                // 修改：直接使用硬编码的表面格式列表
-                availableSurfaceFormats.value = HARDCODED_SURFACE_FORMATS.toTypedArray()
-                android.util.Log.i("Ryujinx", "Settings: Using hardcoded surface formats: ${availableSurfaceFormats.value.size} formats")
+                // 修改：直接从MainViewModel获取已保存的表面格式列表，不重新获取
+                availableSurfaceFormats.value = mainViewModel.getSurfaceFormats()
+                android.util.Log.i("Ryujinx", "Settings: Loaded ${availableSurfaceFormats.value.size} surface formats from MainViewModel cache")
                 
                 // 检查自定义表面格式状态
                 isCustomSurfaceFormatValid.value = RyujinxNative.isCustomSurfaceFormatValid()
@@ -844,7 +835,7 @@ class SettingViews {
                                     .fillMaxWidth()
                                     .padding(8.dp)
                                     .clickable { 
-                                        // 直接显示对话框，使用硬编码列表
+                                        // 修复：直接显示对话框，从MainViewModel缓存中读取列表
                                         showSurfaceFormatDialog.value = true
                                     },
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1249,55 +1240,77 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                         )
                                     }
                                     
-                                    // 硬编码的可用表面格式列表
-                                    Text(
-                                        text = "Available Formats (${HARDCODED_SURFACE_FORMATS.size}):",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        modifier = Modifier.padding(vertical = 8.dp)
-                                    )
-                                    
-                                    LazyColumn(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .heightIn(max = 400.dp)
-                                    ) {
-                                        itemsIndexed(HARDCODED_SURFACE_FORMATS) { index, formatString ->
-                                            val formatInfo = SurfaceFormatInfo.fromString(formatString)
-                                            if (formatInfo != null) {
-                                                Row(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .clickable {
-                                                            RyujinxNative.setCustomSurfaceFormat(formatInfo.format, formatInfo.colorSpace)
-                                                            isCustomSurfaceFormatValid.value = true
-                                                            showSurfaceFormatDialog.value = false
-                                                        }
-                                                        .padding(vertical = 8.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    RadioButton(
-                                                        selected = false, // 不显示单选按钮选中状态，因为自定义格式可能有多个
-                                                        onClick = {
-                                                            RyujinxNative.setCustomSurfaceFormat(formatInfo.format, formatInfo.colorSpace)
-                                                            isCustomSurfaceFormatValid.value = true
-                                                            showSurfaceFormatDialog.value = false
-                                                        }
-                                                    )
-                                                    Column(
-                                                        modifier = Modifier.padding(start = 16.dp)
+                                    // 可用表面格式列表 - 直接从MainViewModel缓存中读取
+                                    if (availableSurfaceFormats.value.isNotEmpty()) {
+                                        Text(
+                                            text = "Available Formats (${availableSurfaceFormats.value.size}):",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier.padding(vertical = 8.dp)
+                                        )
+                                        
+                                        LazyColumn(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .heightIn(max = 400.dp)
+                                        ) {
+                                            itemsIndexed(availableSurfaceFormats.value) { index, formatString ->
+                                                val formatInfo = SurfaceFormatInfo.fromString(formatString)
+                                                if (formatInfo != null) {
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .clickable {
+                                                                RyujinxNative.setCustomSurfaceFormat(formatInfo.format, formatInfo.colorSpace)
+                                                                isCustomSurfaceFormatValid.value = true
+                                                                showSurfaceFormatDialog.value = false
+                                                            }
+                                                            .padding(vertical = 8.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
                                                     ) {
-                                                        Text(
-                                                            text = formatInfo.displayName,
-                                                            style = MaterialTheme.typography.bodyMedium
+                                                        RadioButton(
+                                                            selected = false, // 不显示单选按钮选中状态，因为自定义格式可能有多个
+                                                            onClick = {
+                                                                RyujinxNative.setCustomSurfaceFormat(formatInfo.format, formatInfo.colorSpace)
+                                                                isCustomSurfaceFormatValid.value = true
+                                                                showSurfaceFormatDialog.value = false
+                                                            }
                                                         )
-                                                        Text(
-                                                            text = "Format: ${formatInfo.format}, ColorSpace: ${formatInfo.colorSpace}",
-                                                            style = MaterialTheme.typography.bodySmall,
-                                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                                        )
+                                                        Column(
+                                                            modifier = Modifier.padding(start = 16.dp)
+                                                        ) {
+                                                            Text(
+                                                                text = formatInfo.displayName,
+                                                                style = MaterialTheme.typography.bodyMedium
+                                                            )
+                                                            Text(
+                                                                text = "Format: ${formatInfo.format}, ColorSpace: ${formatInfo.colorSpace}",
+                                                                style = MaterialTheme.typography.bodySmall,
+                                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                                            )
+                                                        }
                                                     }
                                                 }
                                             }
+                                        }
+                                    } else {
+                                        // 没有可用格式时的提示
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(16.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(
+                                                text = "No surface formats available",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                            )
+                                            Text(
+                                                text = "Run a game first to detect available formats",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                                                modifier = Modifier.padding(top = 8.dp)
+                                            )
                                         }
                                     }
                                     
@@ -2686,3 +2699,4 @@ if (showMemoryConfigDialog.value) {
         }
     }
 }
+
