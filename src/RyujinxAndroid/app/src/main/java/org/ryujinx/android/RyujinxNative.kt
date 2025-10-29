@@ -153,6 +153,9 @@ interface RyujinxNativeJna : Library {
     
     // 获取当前表面格式信息
     fun surfaceGetCurrentFormatInfo(): String
+    
+    // 新增：游戏启动时触发表面格式保存的方法
+    fun surfaceOnGameStarted()
 }
 
 class RyujinxNative {
@@ -404,6 +407,15 @@ class RyujinxNative {
         @JvmStatic
         fun getCurrentSurfaceFormatInfo(): String {
             return jnaInstance.surfaceGetCurrentFormatInfo()
+        }
+        
+        /**
+         * 游戏启动时触发表面格式保存
+         * 这个方法应该在游戏成功启动后调用，延迟保存表面格式列表到文件
+         */
+        @JvmStatic
+        fun onGameStarted() {
+            jnaInstance.surfaceOnGameStarted()
         }
     }
 }
