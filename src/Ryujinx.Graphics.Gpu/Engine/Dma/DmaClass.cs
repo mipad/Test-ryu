@@ -9,9 +9,6 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
-using System.Runtime.Intrinsics.Arm;
-using System.Buffers;
-using System.Threading.Tasks;
 
 namespace Ryujinx.Graphics.Gpu.Engine.Dma
 {
@@ -24,12 +21,6 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         private readonly GpuChannel _channel;
         private readonly ThreedClass _3dEngine;
         private readonly DeviceState<DmaClassState> _state;
-
-        // ARM优化配置
-        private static readonly bool _useNeon = AdvSimd.IsSupported;
-        private static readonly bool _useParallel = Environment.ProcessorCount >= 4;
-        private const int MemoryPoolThreshold = 1024 * 1024; // 1MB阈值
-        private const int ParallelThreshold = 256 * 256; // 降低并行阈值
 
         /// <summary>
         /// Copy flags passed on DMA launch.
@@ -48,13 +39,45 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         /// </summary>
         private readonly struct TextureParams
         {
+            /// <summary>
+            /// Copy region X coordinate.
+            /// </summary>
             public readonly int RegionX;
+
+            /// <summary>
+            /// Copy region Y coordinate.
+            /// </summary>
             public readonly int RegionY;
+
+            /// <summary>
+            /// Offset from the base pointer of the data in memory.
+            /// </summary>
             public readonly int BaseOffset;
+
+            /// <summary>
+            /// Bytes per pixel.
+            /// </summary>
             public readonly int Bpp;
+
+            /// <summary>
+            /// Whether the texture is linear. If false, the texture is block linear.
+            /// </summary>
             public readonly bool Linear;
+
+            /// <summary>
+            /// Pixel offset from XYZ coordinates calculator.
+            /// </summary>
             public readonly OffsetCalculator Calculator;
 
+            /// <summary>
+            /// Creates texture parameters.
+            /// </summary>
+            /// <param name="regionX">Copy region X coordinate</param>
+            /// <param name="regionY">Copy region Y coordinate</param>
+            /// <param name="baseOffset">Offset from the base pointer of the data in memory</param>
+            /// <param name="bpp">Bytes per pixel</param>
+            /// <param name="linear">Whether the texture is linear. If false, the texture is block linear</param>
+            /// <param name="calculator">Pixel offset from XYZ coordinates calculator</param>
             public TextureParams(int regionX, int regionY, int baseOffset, int bpp, bool linear, OffsetCalculator calculator)
             {
                 RegionX = regionX;
@@ -77,6 +100,9 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         /// <summary>
         /// Creates a new instance of the DMA copy engine class.
         /// </summary>
+        /// <param name="context">GPU context</param>
+        /// <param name="channel">GPU channel</param>
+        /// <param name="threedEngine">3D engine</param>
         public DmaClass(GpuContext context, GpuChannel channel, ThreedClass threedEngine)
         {
             _context = context;
@@ -91,20 +117,33 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         /// <summary>
         /// Reads data from the class registers.
         /// </summary>
+        /// <param name="offset">Register byte offset</param>
+        /// <returns>Data at the specified offset</returns>
         public int Read(int offset) => _state.Read(offset);
 
         /// <summary>
         /// Writes data to the class registers.
         /// </summary>
+        /// <param name="offset">Register byte offset</param>
+        /// <param name="data">Data to be written</param>
         public void Write(int offset, int data) => _state.Write(offset, data);
 
         /// <summary>
         /// Determine if a buffer-to-texture region covers the entirety of a texture.
         /// </summary>
+        /// <param name="tex">Texture to compare</param>
+        /// <param name="linear">True if the texture is linear, false if block linear</param>
+        /// <param name="bpp">Texture bytes per pixel</param>
+        /// <param name="stride">Texture stride</param>
+        /// <param name="xCount">Number of pixels to be copied</param>
+        /// <param name="yCount">Number of lines to be copied</param>
+        /// <returns></returns>
         private static bool IsTextureCopyComplete(DmaTexture tex, bool linear, int bpp, int stride, int xCount, int yCount)
         {
             if (linear)
             {
+                // If the stride is negative, the texture has to be flipped, so
+                // the fast copy is not trivial, use the slow path.
                 if (stride <= 0)
                 {
                     return false;
@@ -126,6 +165,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         /// <summary>
         /// Releases a semaphore for a given LaunchDma method call.
         /// </summary>
+        /// <param name="argument">The LaunchDma call argument</param>
         private void ReleaseSemaphore(int argument)
         {
             LaunchDmaSemaphoreType type = (LaunchDmaSemaphoreType)((argument >> 3) & 0x3);
@@ -136,7 +176,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                 {
                     _channel.MemoryManager.Write(address, _state.State.SetSemaphorePayload);
                 }
-                else
+                else /* if (type == LaunchDmaSemaphoreType.ReleaseFourWordSemaphore) */
                 {
                     _channel.MemoryManager.Write(address + 8, _context.GetTimestamp());
                     _channel.MemoryManager.Write(address, (ulong)_state.State.SetSemaphorePayload);
@@ -147,6 +187,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         /// <summary>
         /// Performs a buffer to buffer, or buffer to texture copy.
         /// </summary>
+        /// <param name="argument">The LaunchDma call argument</param>
         private void DmaCopy(int argument)
         {
             var memoryManager = _channel.MemoryManager;
@@ -177,10 +218,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
 
             if (copy2D)
             {
+                // Buffer to texture copy.
                 int componentSize = (int)_state.State.SetRemapComponentsComponentSize + 1;
                 int srcComponents = (int)_state.State.SetRemapComponentsNumSrcComponents + 1;
                 int dstComponents = (int)_state.State.SetRemapComponentsNumDstComponents + 1;
-                
                 int srcBpp = remap ? srcComponents * componentSize : 1;
                 int dstBpp = remap ? dstComponents * componentSize : 1;
 
@@ -235,6 +276,8 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                     dstBaseOffset += dstStride * (yCount - 1);
                 }
 
+                // If remapping is disabled, we always copy the components directly, in order.
+                // If it's enabled, but the mapping is just XYZW, we also copy them in order.
                 bool isIdentityRemap = !remap ||
                     (_state.State.SetRemapComponentsDstX == SetRemapComponentsDst.SrcX &&
                     (dstComponents < 2 || _state.State.SetRemapComponentsDstY == SetRemapComponentsDst.SrcY) &&
@@ -243,6 +286,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
 
                 bool completeSource = IsTextureCopyComplete(src, srcLinear, srcBpp, srcStride, xCount, yCount);
                 bool completeDest = IsTextureCopyComplete(dst, dstLinear, dstBpp, dstStride, xCount, yCount);
+
+                // Check if the source texture exists on the GPU, if it does, do a GPU side copy.
+                // Otherwise, we would need to flush the source texture which is costly.
+                // We don't expect the source to be linear in such cases, as linear source usually indicates buffer or CPU written data.
 
                 if (completeSource && completeDest && !srcLinear && isIdentityRemap)
                 {
@@ -285,6 +332,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                 }
 
                 ReadOnlySpan<byte> srcSpan = memoryManager.GetSpan(srcGpuVa + (ulong)srcBaseOffset, srcSize, true);
+
+                // Try to set the texture data directly,
+                // but only if we are doing a complete copy,
+                // and not for block linear to linear copies, since those are typically accessed from the CPU.
 
                 if (completeSource && completeDest && !(dstLinear && !srcLinear) && isIdentityRemap)
                 {
@@ -341,112 +392,73 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                     }
                     else if (srcCalculator.LayoutMatches(dstCalculator))
                     {
+                        // No layout conversion has to be performed, just copy the data entirely.
                         memoryManager.Write(dstGpuVa + (ulong)dstBaseOffset, srcSpan);
                         return;
                     }
                 }
 
-                // 内存管理：只对大数据使用ArrayPool
-                byte[] dstArray = null;
-                byte[] srcArray = null;
-                Span<byte> dstSpan;
+                // OPT: This allocates a (potentially) huge temporary array and then copies an existing
+                // region of memory into it, data that might get overwritten entirely anyways. Ideally this should
+                // all be rewritten to use pooled arrays, but that gets complicated with packed data and strides
+                Span<byte> dstSpan = memoryManager.GetSpan(dstGpuVa + (ulong)dstBaseOffset, dstSize).ToArray();
 
-                if (dstSize > MemoryPoolThreshold)
+                TextureParams srcParams = new(srcRegionX, srcRegionY, srcBaseOffset, srcBpp, srcLinear, srcCalculator);
+                TextureParams dstParams = new(dstRegionX, dstRegionY, dstBaseOffset, dstBpp, dstLinear, dstCalculator);
+
+                if (isIdentityRemap)
                 {
-                    dstArray = ArrayPool<byte>.Shared.Rent(dstSize);
-                    dstSpan = dstArray.AsSpan(0, dstSize);
+                    // The order of the components doesn't change, so we can just copy directly
+                    // (with layout conversion if necessary).
+
+                    switch (srcBpp)
+                    {
+                        case 1:
+                            Copy<byte>(dstSpan, srcSpan, dstParams, srcParams);
+                            break;
+                        case 2:
+                            Copy<ushort>(dstSpan, srcSpan, dstParams, srcParams);
+                            break;
+                        case 4:
+                            Copy<uint>(dstSpan, srcSpan, dstParams, srcParams);
+                            break;
+                        case 8:
+                            Copy<ulong>(dstSpan, srcSpan, dstParams, srcParams);
+                            break;
+                        case 12:
+                            Copy<Bpp12Pixel>(dstSpan, srcSpan, dstParams, srcParams);
+                            break;
+                        case 16:
+                            Copy<Vector128<byte>>(dstSpan, srcSpan, dstParams, srcParams);
+                            break;
+                        default:
+                            throw new NotSupportedException($"Unable to copy ${srcBpp} bpp pixel format.");
+                    }
                 }
                 else
                 {
-                    dstSpan = new byte[dstSize];
-                }
+                    // The order or value of the components might change.
 
-                // 对于并行处理，我们需要将源数据复制到数组
-                bool useParallel = _useParallel && (xCount * yCount) > ParallelThreshold && 
-                                 srcLinear && dstLinear && srcBpp == dstBpp;
-                
-                if (useParallel)
-                {
-                    srcArray = ArrayPool<byte>.Shared.Rent(srcSize);
-                    srcSpan.CopyTo(srcArray);
-                }
-
-                try
-                {
-                    TextureParams srcParams = new(srcRegionX, srcRegionY, srcBaseOffset, srcBpp, srcLinear, srcCalculator);
-                    TextureParams dstParams = new(dstRegionX, dstRegionY, dstBaseOffset, dstBpp, dstLinear, dstCalculator);
-
-                    if (isIdentityRemap)
+                    switch (componentSize)
                     {
-                        // 优化：对线性布局的大纹理使用并行处理
-                        if (useParallel && srcArray != null)
-                        {
-                            CopyParallelLinear(dstArray, srcArray, dstParams, srcParams, xCount, yCount, srcBpp);
-                        }
-                        else
-                        {
-                            switch (srcBpp)
-                            {
-                                case 1:
-                                    Copy<byte>(dstSpan, srcSpan, dstParams, srcParams);
-                                    break;
-                                case 2:
-                                    Copy<ushort>(dstSpan, srcSpan, dstParams, srcParams);
-                                    break;
-                                case 4:
-                                    Copy<uint>(dstSpan, srcSpan, dstParams, srcParams);
-                                    break;
-                                case 8:
-                                    Copy<ulong>(dstSpan, srcSpan, dstParams, srcParams);
-                                    break;
-                                case 12:
-                                    Copy<Bpp12Pixel>(dstSpan, srcSpan, dstParams, srcParams);
-                                    break;
-                                case 16:
-                                    if (_useNeon)
-                                        CopyNeon(dstSpan, srcSpan, dstParams, srcParams);
-                                    else
-                                        Copy<Vector128<byte>>(dstSpan, srcSpan, dstParams, srcParams);
-                                    break;
-                                default:
-                                    throw new NotSupportedException($"Unable to copy ${srcBpp} bpp pixel format.");
-                            }
-                        }
-                    }
-                    else
-                    {
-                        switch (componentSize)
-                        {
-                            case 1:
-                                CopyShuffle<byte>(dstSpan, srcSpan, dstParams, srcParams);
-                                break;
-                            case 2:
-                                CopyShuffle<ushort>(dstSpan, srcSpan, dstParams, srcParams);
-                                break;
-                            case 3:
-                                CopyShuffle<UInt24>(dstSpan, srcSpan, dstParams, srcParams);
-                                break;
-                            case 4:
-                                CopyShuffle<uint>(dstSpan, srcSpan, dstParams, srcParams);
-                                break;
-                            default:
-                                throw new NotSupportedException($"Unable to copy ${componentSize} component size.");
-                        }
-                    }
-
-                    memoryManager.Write(dstGpuVa + (ulong)dstBaseOffset, dstSpan);
-                }
-                finally
-                {
-                    if (dstArray != null)
-                    {
-                        ArrayPool<byte>.Shared.Return(dstArray);
-                    }
-                    if (srcArray != null)
-                    {
-                        ArrayPool<byte>.Shared.Return(srcArray);
+                        case 1:
+                            CopyShuffle<byte>(dstSpan, srcSpan, dstParams, srcParams);
+                            break;
+                        case 2:
+                            CopyShuffle<ushort>(dstSpan, srcSpan, dstParams, srcParams);
+                            break;
+                        case 3:
+                            CopyShuffle<UInt24>(dstSpan, srcSpan, dstParams, srcParams);
+                            break;
+                        case 4:
+                            CopyShuffle<uint>(dstSpan, srcSpan, dstParams, srcParams);
+                            break;
+                        default:
+                            throw new NotSupportedException($"Unable to copy ${componentSize} component size.");
                     }
                 }
+
+                memoryManager.Write(dstGpuVa + (ulong)dstBaseOffset, dstSpan);
             }
             else
             {
@@ -459,10 +471,14 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                     _state.State.SetRemapComponentsNumDstComponents == SetRemapComponentsNumComponents.One &&
                     _state.State.SetRemapComponentsComponentSize == SetRemapComponentsComponentSize.Four)
                 {
+                    // Fast path for clears when remap is enabled.
                     memoryManager.Physical.BufferCache.ClearBuffer(memoryManager, dstGpuVa, size * 4, _state.State.SetRemapConstA);
                 }
                 else
                 {
+                    // TODO: Implement remap functionality.
+                    // Buffer to buffer copy.
+
                     bool srcIsPitchKind = memoryManager.GetKind(srcGpuVa).IsPitch();
                     bool dstIsPitchKind = memoryManager.GetKind(dstGpuVa).IsPitch();
 
@@ -483,55 +499,13 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         }
 
         /// <summary>
-        /// 数组版本的并行处理 - 修复了Buffer命名冲突
+        /// Copies data from one texture to another, while performing layout conversion if necessary.
         /// </summary>
-        private void CopyParallelLinear(byte[] dstArray, byte[] srcArray, TextureParams dst, TextureParams src, int xCount, int yCount, int bpp)
-        {
-            int bytesPerLine = xCount * bpp;
-            
-            // 修复：使用完全限定的System.Buffer来避免命名冲突
-            Parallel.For(0, yCount, y =>
-            {
-                int srcOffset = src.Calculator.GetOffset(src.RegionX) + (y * bytesPerLine) - src.BaseOffset;
-                int dstOffset = dst.Calculator.GetOffset(dst.RegionX) + (y * bytesPerLine) - dst.BaseOffset;
-                
-                System.Buffer.BlockCopy(srcArray, srcOffset, dstArray, dstOffset, bytesPerLine);
-            });
-        }
-
-        /// <summary>
-        /// ARM优化：使用NEON指令加速16字节拷贝
-        /// </summary>
-        private unsafe void CopyNeon(Span<byte> dstSpan, ReadOnlySpan<byte> srcSpan, TextureParams dst, TextureParams src)
-        {
-            int xCount = (int)_state.State.LineLengthIn;
-            int yCount = (int)_state.State.LineCount;
-
-            fixed (byte* dstPtr = dstSpan, srcPtr = srcSpan)
-            {
-                byte* dstBase = dstPtr - dst.BaseOffset;
-                byte* srcBase = srcPtr - src.BaseOffset;
-
-                for (int y = 0; y < yCount; y++)
-                {
-                    src.Calculator.SetY(src.RegionY + y);
-                    dst.Calculator.SetY(dst.RegionY + y);
-
-                    for (int x = 0; x < xCount; x++)
-                    {
-                        int srcOffset = src.Calculator.GetOffset(src.RegionX + x);
-                        int dstOffset = dst.Calculator.GetOffset(dst.RegionX + x);
-
-                        Vector128<byte> data = AdvSimd.LoadVector128(srcBase + srcOffset);
-                        AdvSimd.Store(dstBase + dstOffset, data);
-                    }
-                }
-            }
-        }
-
-        /// <summary>
-        /// Copies data from one texture to another.
-        /// </summary>
+        /// <typeparam name="T">Pixel type</typeparam>
+        /// <param name="dstSpan">Destination texture memory region</param>
+        /// <param name="srcSpan">Source texture memory region</param>
+        /// <param name="dst">Destination texture parameters</param>
+        /// <param name="src">Source texture parameters</param>
         private unsafe void Copy<T>(Span<byte> dstSpan, ReadOnlySpan<byte> srcSpan, TextureParams dst, TextureParams src) where T : unmanaged
         {
             int xCount = (int)_state.State.LineLengthIn;
@@ -539,25 +513,23 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
 
             if (src.Linear && dst.Linear && src.Bpp == dst.Bpp)
             {
-                // 线性拷贝优化
+                // Optimized path for purely linear copies - we don't need to calculate every single byte offset,
+                // and we can make use of Span.CopyTo which is very very fast (even compared to pointers)
                 for (int y = 0; y < yCount; y++)
                 {
                     src.Calculator.SetY(src.RegionY + y);
                     dst.Calculator.SetY(dst.RegionY + y);
                     int srcOffset = src.Calculator.GetOffset(src.RegionX);
                     int dstOffset = dst.Calculator.GetOffset(dst.RegionX);
-                    
-                    var sourceSlice = srcSpan.Slice(srcOffset - src.BaseOffset, xCount * src.Bpp);
-                    var destSlice = dstSpan.Slice(dstOffset - dst.BaseOffset, xCount * dst.Bpp);
-                    
-                    sourceSlice.CopyTo(destSlice);
+                    srcSpan.Slice(srcOffset - src.BaseOffset, xCount * src.Bpp)
+                        .CopyTo(dstSpan.Slice(dstOffset - dst.BaseOffset, xCount * dst.Bpp));
                 }
             }
             else
             {
                 fixed (byte* dstPtr = dstSpan, srcPtr = srcSpan)
                 {
-                    byte* dstBase = dstPtr - dst.BaseOffset;
+                    byte* dstBase = dstPtr - dst.BaseOffset; // Layout offset is relative to the base, so we need to subtract the span's offset.
                     byte* srcBase = srcPtr - src.BaseOffset;
 
                     for (int y = 0; y < yCount; y++)
@@ -578,8 +550,12 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         }
 
         /// <summary>
-        /// Sets texture pixel data to a constant value.
+        /// Sets texture pixel data to a constant value, while performing layout conversion if necessary.
         /// </summary>
+        /// <typeparam name="T">Pixel type</typeparam>
+        /// <param name="dstSpan">Destination texture memory region</param>
+        /// <param name="dst">Destination texture parameters</param>
+        /// <param name="fillValue">Constant pixel value to be set</param>
         private unsafe void Fill<T>(Span<byte> dstSpan, TextureParams dst, T fillValue) where T : unmanaged
         {
             int xCount = (int)_state.State.LineLengthIn;
@@ -587,7 +563,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
 
             fixed (byte* dstPtr = dstSpan)
             {
-                byte* dstBase = dstPtr - dst.BaseOffset;
+                byte* dstBase = dstPtr - dst.BaseOffset; // Layout offset is relative to the base, so we need to subtract the span's offset.
 
                 for (int y = 0; y < yCount; y++)
                 {
@@ -596,6 +572,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                     for (int x = 0; x < xCount; x++)
                     {
                         int dstOffset = dst.Calculator.GetOffset(dst.RegionX + x);
+
                         *(T*)(dstBase + dstOffset) = fillValue;
                     }
                 }
@@ -603,8 +580,13 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         }
 
         /// <summary>
-        /// Copies data with component shuffling.
+        /// Copies data from one texture to another, while performing layout conversion and component shuffling if necessary.
         /// </summary>
+        /// <typeparam name="T">Pixel type</typeparam>
+        /// <param name="dstSpan">Destination texture memory region</param>
+        /// <param name="srcSpan">Source texture memory region</param>
+        /// <param name="dst">Destination texture parameters</param>
+        /// <param name="src">Source texture parameters</param>
         private void CopyShuffle<T>(Span<byte> dstSpan, ReadOnlySpan<byte> srcSpan, TextureParams dst, TextureParams src) where T : unmanaged
         {
             int dstComponents = (int)_state.State.SetRemapComponentsNumDstComponents + 1;
@@ -644,18 +626,19 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         }
 
         /// <summary>
-        /// Copies block linear data to linear.
+        /// Copies block linear data with block linear GOBs to a block linear destination with linear GOBs.
         /// </summary>
+        /// <param name="memoryManager">GPU memory manager</param>
+        /// <param name="srcGpuVa">Source GPU virtual address</param>
+        /// <param name="dstGpuVa">Destination GPU virtual address</param>
+        /// <param name="size">Size in bytes of the copy</param>
         private static void CopyGobBlockLinearToLinear(MemoryManager memoryManager, ulong srcGpuVa, ulong dstGpuVa, ulong size)
         {
-            // 简化：使用批量操作
-            const int batchSize = 64;
-            
-            if (((srcGpuVa | dstGpuVa | size) & 0x3f) == 0)
+            if (((srcGpuVa | dstGpuVa | size) & 0xf) == 0)
             {
-                for (ulong offset = 0; offset < size; offset += batchSize)
+                for (ulong offset = 0; offset < size; offset += 16)
                 {
-                    ReadOnlySpan<byte> data = memoryManager.GetSpan(ConvertGobLinearToBlockLinearAddress(srcGpuVa + offset), batchSize, true);
+                    Vector128<byte> data = memoryManager.Read<Vector128<byte>>(ConvertGobLinearToBlockLinearAddress(srcGpuVa + offset), true);
                     memoryManager.Write(dstGpuVa + offset, data);
                 }
             }
@@ -670,17 +653,19 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         }
 
         /// <summary>
-        /// Copies linear data to block linear.
+        /// Copies block linear data with linear GOBs to a block linear destination with block linear GOBs.
         /// </summary>
+        /// <param name="memoryManager">GPU memory manager</param>
+        /// <param name="srcGpuVa">Source GPU virtual address</param>
+        /// <param name="dstGpuVa">Destination GPU virtual address</param>
+        /// <param name="size">Size in bytes of the copy</param>
         private static void CopyGobLinearToBlockLinear(MemoryManager memoryManager, ulong srcGpuVa, ulong dstGpuVa, ulong size)
         {
-            const int batchSize = 64;
-            
-            if (((srcGpuVa | dstGpuVa | size) & 0x3f) == 0)
+            if (((srcGpuVa | dstGpuVa | size) & 0xf) == 0)
             {
-                for (ulong offset = 0; offset < size; offset += batchSize)
+                for (ulong offset = 0; offset < size; offset += 16)
                 {
-                    ReadOnlySpan<byte> data = memoryManager.GetSpan(srcGpuVa + offset, batchSize, true);
+                    Vector128<byte> data = memoryManager.Read<Vector128<byte>>(srcGpuVa + offset, true);
                     memoryManager.Write(ConvertGobLinearToBlockLinearAddress(dstGpuVa + offset), data);
                 }
             }
@@ -697,9 +682,11 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         /// <summary>
         /// Calculates the GOB block linear address from a linear address.
         /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        /// <param name="address">Linear address</param>
+        /// <returns>Block linear address</returns>
         private static ulong ConvertGobLinearToBlockLinearAddress(ulong address)
         {
+            // y2 y1 y0 x5 x4 x3 x2 x1 x0 -> x5 y2 y1 x4 y0 x3 x2 x1 x0
             return (address & ~0x1f0UL) |
                 ((address & 0x40) >> 2) |
                 ((address & 0x10) << 1) |
@@ -710,6 +697,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         /// <summary>
         /// Performs a buffer to buffer, or buffer to texture copy, then optionally releases a semaphore.
         /// </summary>
+        /// <param name="argument">Method call argument</param>
         private void LaunchDma(int argument)
         {
             DmaCopy(argument);
