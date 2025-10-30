@@ -10,7 +10,6 @@ using Ryujinx.Audio.Renderer.Server.Upsampler;
 using Ryujinx.Audio.Renderer.Server.Voice;
 using Ryujinx.Common;
 using System;
-using System.Runtime.CompilerServices;
 using CpuAddress = System.UInt64;
 
 namespace Ryujinx.Audio.Renderer.Server
@@ -100,7 +99,6 @@ namespace Ryujinx.Audio.Renderer.Server
                     break;
                 case CommandType.BiquadFilterFloatCoeff:
                     throw new NotImplementedException();
-                    break;
                 case CommandType.Mix:
                     _mixCommandPool.Release((MixCommand)command);
                     break;
@@ -160,7 +158,6 @@ namespace Ryujinx.Audio.Renderer.Server
                     break;
                 case CommandType.MultiTapBiquadFilterFloatCoeff:
                     throw new NotImplementedException();
-                    break;
                 case CommandType.CaptureBuffer:
                     _captureBufferCommandPool.Release((CaptureBufferCommand)command);
                     break;
@@ -172,25 +169,19 @@ namespace Ryujinx.Audio.Renderer.Server
                     break;
                 case CommandType.BiquadFilterAndMixFloatCoeff:
                     throw new NotImplementedException();
-                    break;
                 case CommandType.MultiTapBiquadFilterAndMix:
                     _multiTapBiquadFilterAndMixCommandPool.Release((MultiTapBiquadFilterAndMixCommand)command);
                     break;
                 case CommandType.MultiTapBiquadFilterAndMixFloatCoef:
                     throw new NotImplementedException();
-                    break;
                 case CommandType.AuxiliaryBufferGrouped:
                     throw new NotImplementedException();
-                    break;
                 case CommandType.FillMixBuffer:
                     throw new NotImplementedException();
-                    break;
                 case CommandType.BiquadFilterCrossFade:
                     throw new NotImplementedException();
-                    break;
                 case CommandType.MultiTapBiquadFilterCrossFade:
                     throw new NotImplementedException();
-                    break;
                 case CommandType.FillBuffer:
                     _fillBufferCommandPool.Release((FillBufferCommand)command);
                     break;
