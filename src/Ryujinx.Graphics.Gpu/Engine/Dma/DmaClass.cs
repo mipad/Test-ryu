@@ -448,12 +448,15 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                                     src.Width,
                                     src.Height,
                                     src.Depth,
-                                    1,
-                                    1,
-                                    1,
+                                    1,  // levels
+                                    1,  // layers
+                                    1,  // layersAll
+                                    1,  // level
+                                    1,  // layer
                                     srcBpp,
                                     src.MemoryLayout.UnpackGobBlocksInY(),
                                     src.MemoryLayout.UnpackGobBlocksInZ(),
+                                    1,  // gobBlocksInTileX
                                     new SizeInfo((int)target.Size),
                                     srcSpan);
                             }
@@ -463,12 +466,15 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                                     src.Width,
                                     src.Height,
                                     src.Depth,
-                                    1,
-                                    1,
-                                    1,
+                                    1,  // levels
+                                    1,  // layers
+                                    1,  // layersAll
+                                    1,  // level
+                                    1,  // layer
                                     srcBpp,
                                     src.MemoryLayout.UnpackGobBlocksInY(),
                                     src.MemoryLayout.UnpackGobBlocksInZ(),
+                                    1,  // gobBlocksInTileX
                                     new SizeInfo((int)target.Size),
                                     srcSpan);
                             }
@@ -641,7 +647,8 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         private static unsafe MemoryOwner<byte> ConvertBlockLinearToLinearArm(
             int width, int height, int depth,
             int levels, int layers, int layersAll,
-            int bpp, int gobBlocksInY, int gobBlocksInZ,
+            int level, int layer,
+            int bpp, int gobBlocksInY, int gobBlocksInZ, int gobBlocksInTileX,
             SizeInfo sizeInfo, ReadOnlySpan<byte> data)
         {
             // 如果支持NEON且数据大小合适，使用NEON优化
@@ -651,7 +658,8 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                 {
                     return ConvertBlockLinearToLinearNeon(
                         width, height, depth, levels, layers, layersAll,
-                        bpp, gobBlocksInY, gobBlocksInZ, sizeInfo, data);
+                        level, layer, bpp, gobBlocksInY, gobBlocksInZ, gobBlocksInTileX,
+                        sizeInfo, data);
                 }
                 catch
                 {
@@ -662,7 +670,8 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
             // 回退到原始实现
             return LayoutConverter.ConvertBlockLinearToLinear(
                 width, height, depth, levels, layers, layersAll,
-                bpp, gobBlocksInY, gobBlocksInZ, sizeInfo, data);
+                level, layer, bpp, gobBlocksInY, gobBlocksInZ, gobBlocksInTileX,
+                sizeInfo, data);
         }
 
         /// <summary>
@@ -671,7 +680,8 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         private static unsafe MemoryOwner<byte> ConvertBlockLinearToLinearNeon(
             int width, int height, int depth,
             int levels, int layers, int layersAll,
-            int bpp, int gobBlocksInY, int gobBlocksInZ,
+            int level, int layer,
+            int bpp, int gobBlocksInY, int gobBlocksInZ, int gobBlocksInTileX,
             SizeInfo sizeInfo, ReadOnlySpan<byte> data)
         {
             // 简化的NEON优化实现 - 实际实现需要完整的布局转换逻辑
