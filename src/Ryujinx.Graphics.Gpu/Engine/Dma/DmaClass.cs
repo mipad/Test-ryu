@@ -8,7 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsetics;
+using System.Runtime.Intrinsics;
 using System.Threading;
 
 namespace Ryujinx.Graphics.Gpu.Engine.Dma
