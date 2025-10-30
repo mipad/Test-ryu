@@ -55,8 +55,10 @@ namespace Ryujinx.Graphics.GAL.Multithreading
         private int _refProducerPtr;
         private int _refConsumerPtr;
 
+        public uint ProgramCount { get; set; } = 0;
+
         private Action _interruptAction;
-        private readonly object _interruptLock = new();
+        private readonly Lock _interruptLock = new();
 
         public event EventHandler<ScreenCaptureImageInfo> ScreenCaptured;
 
@@ -165,7 +167,7 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             return new TableRef<T>(this, reference);
         }
 
-        internal ref T New<T>() where T : struct
+        internal unsafe T* New<T>() where T : unmanaged, IGALCommand
         {
             while (_producerPtr == (Volatile.Read(ref _consumerPtr) + QueueCount - 1) % QueueCount)
             {
@@ -181,11 +183,12 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             _producerPtr = (_producerPtr + 1) % QueueCount;
 
             Span<byte> memory = new(_commandQueue, taken * _elementSize, _elementSize);
-            ref T result = ref Unsafe.As<byte, T>(ref MemoryMarshal.GetReference(memory));
+            T* result = (T*)Unsafe.AsPointer(ref memory.GetPinnableReference());
+            // ref T result = ref Unsafe.As<byte, T>(ref MemoryMarshal.GetReference(memory));
 
-            memory[^1] = (byte)((IGALCommand)result).CommandType;
+            memory[^1] = (byte)(result)->CommandType;
 
-            return ref result;
+            return result;
         }
 
         internal int AddTableRef(object obj)
@@ -249,12 +252,12 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             return Thread.CurrentThread == _gpuThread;
         }
 
-        public void BackgroundContextAction(Action action, bool alwaysBackground = false)
+        public unsafe void BackgroundContextAction(Action action, bool alwaysBackground = false)
         {
             if (IsGpuThread() && !alwaysBackground)
             {
                 // The action must be performed on the render thread.
-                New<ActionCommand>().Set(Ref(action));
+                New<ActionCommand>()->Set(Ref(action));
                 InvokeCommand();
             }
             else
@@ -263,85 +266,87 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             }
         }
 
-        public BufferHandle CreateBuffer(int size, BufferAccess access)
+        public unsafe BufferHandle CreateBuffer(int size, BufferAccess access)
         {
             BufferHandle handle = Buffers.CreateBufferHandle();
-            New<CreateBufferAccessCommand>().Set(handle, size, access);
+            New<CreateBufferAccessCommand>()->Set(handle, size, access);
             QueueCommand();
 
             return handle;
         }
 
-        public BufferHandle CreateBuffer(nint pointer, int size)
+        public unsafe BufferHandle CreateBuffer(nint pointer, int size)
         {
             BufferHandle handle = Buffers.CreateBufferHandle();
-            New<CreateHostBufferCommand>().Set(handle, pointer, size);
+            New<CreateHostBufferCommand>()->Set(handle, pointer, size);
             QueueCommand();
 
             return handle;
         }
 
-        public BufferHandle CreateBufferSparse(ReadOnlySpan<BufferRange> storageBuffers)
+        public unsafe BufferHandle CreateBufferSparse(ReadOnlySpan<BufferRange> storageBuffers)
         {
             BufferHandle handle = Buffers.CreateBufferHandle();
-            New<CreateBufferSparseCommand>().Set(handle, CopySpan(storageBuffers));
+            New<CreateBufferSparseCommand>()->Set(handle, CopySpan(storageBuffers));
             QueueCommand();
 
             return handle;
         }
 
-        public IImageArray CreateImageArray(int size, bool isBuffer)
+        public unsafe IImageArray CreateImageArray(int size, bool isBuffer)
         {
-            var imageArray = new ThreadedImageArray(this);
-            New<CreateImageArrayCommand>().Set(Ref(imageArray), size, isBuffer);
+            ThreadedImageArray imageArray = new(this);
+            New<CreateImageArrayCommand>()->Set(Ref(imageArray), size, isBuffer);
             QueueCommand();
 
             return imageArray;
         }
 
-        public IProgram CreateProgram(ShaderSource[] shaders, ShaderInfo info)
+        public unsafe IProgram CreateProgram(ShaderSource[] shaders, ShaderInfo info)
         {
-            var program = new ThreadedProgram(this);
+            ThreadedProgram program = new(this);
 
             SourceProgramRequest request = new(program, shaders, info);
 
             Programs.Add(request);
 
-            New<CreateProgramCommand>().Set(Ref((IProgramRequest)request));
+            ProgramCount++;
+
+            New<CreateProgramCommand>()->Set(Ref((IProgramRequest)request));
             QueueCommand();
 
             return program;
         }
 
-        public ISampler CreateSampler(SamplerCreateInfo info)
+        public unsafe ISampler CreateSampler(SamplerCreateInfo info)
         {
-            var sampler = new ThreadedSampler(this);
-            New<CreateSamplerCommand>().Set(Ref(sampler), info);
+            ThreadedSampler sampler = new(this);
+            New<CreateSamplerCommand>()->Set(Ref(sampler), info);
             QueueCommand();
 
             return sampler;
         }
 
-        public void CreateSync(ulong id, bool strict)
+        public unsafe void CreateSync(ulong id, bool strict)
         {
             Sync.CreateSyncHandle(id);
-            New<CreateSyncCommand>().Set(id, strict);
+            New<CreateSyncCommand>()->Set(id, strict);
             QueueCommand();
         }
 
-        public ITexture CreateTexture(TextureCreateInfo info)
+        public unsafe ITexture CreateTexture(TextureCreateInfo info)
         {
             if (IsGpuThread())
             {
-                var texture = new ThreadedTexture(this, info);
-                New<CreateTextureCommand>().Set(Ref(texture), info);
+                ThreadedTexture texture = new(this, info);
+                New<CreateTextureCommand>()->Set(Ref(texture), info);
                 QueueCommand();
 
                 return texture;
             }
             else
             {
-                var texture = new ThreadedTexture(this, info)
+                ThreadedTexture texture = new(this, info)
                 {
                     Base = _baseRenderer.CreateTexture(info),
                 };
@@ -349,27 +354,27 @@ namespace Ryujinx.Graphics.GAL.Multithreading
                 return texture;
             }
         }
-        public ITextureArray CreateTextureArray(int size, bool isBuffer)
+        public unsafe ITextureArray CreateTextureArray(int size, bool isBuffer)
         {
-            var textureArray = new ThreadedTextureArray(this);
-            New<CreateTextureArrayCommand>().Set(Ref(textureArray), size, isBuffer);
+            ThreadedTextureArray textureArray = new(this);
+            New<CreateTextureArrayCommand>()->Set(Ref(textureArray), size, isBuffer);
             QueueCommand();
 
             return textureArray;
         }
 
-        public void DeleteBuffer(BufferHandle buffer)
+        public unsafe void DeleteBuffer(BufferHandle buffer)
         {
-            New<BufferDisposeCommand>().Set(buffer);
+            New<BufferDisposeCommand>()->Set(buffer);
             QueueCommand();
         }
 
-        public PinnedSpan<byte> GetBufferData(BufferHandle buffer, int offset, int size)
+        public unsafe PinnedSpan<byte> GetBufferData(BufferHandle buffer, int offset, int size)
         {
             if (IsGpuThread())
             {
                 ResultBox<PinnedSpan<byte>> box = new();
-                New<BufferGetDataCommand>().Set(buffer, offset, size, Ref(box));
+                New<BufferGetDataCommand>()->Set(buffer, offset, size, Ref(box));
                 InvokeCommand();
 
                 return box.Result;
@@ -380,10 +385,10 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             }
         }
 
-        public Capabilities GetCapabilities()
+        public unsafe Capabilities GetCapabilities()
         {
             ResultBox<Capabilities> box = new();
-            New<GetCapabilitiesCommand>().Set(Ref(box));
+            New<GetCapabilitiesCommand>()->Set(Ref(box));
             InvokeCommand();
 
             return box.Result;
@@ -408,29 +413,29 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             _baseRenderer.Initialize(logLevel);
         }
 
-        public IProgram LoadProgramBinary(byte[] programBinary, bool hasFragmentShader, ShaderInfo info)
+        public unsafe IProgram LoadProgramBinary(byte[] programBinary, bool hasFragmentShader, ShaderInfo info)
         {
-            var program = new ThreadedProgram(this);
+            ThreadedProgram program = new(this);
 
             BinaryProgramRequest request = new(program, programBinary, hasFragmentShader, info);
             Programs.Add(request);
 
-            New<CreateProgramCommand>().Set(Ref((IProgramRequest)request));
+            New<CreateProgramCommand>()->Set(Ref((IProgramRequest)request));
             QueueCommand();
 
             return program;
         }
 
-        public void PreFrame()
+        public unsafe void PreFrame()
         {
             New<PreFrameCommand>();
             QueueCommand();
         }
 
-        public ICounterEvent ReportCounter(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved)
+        public unsafe ICounterEvent ReportCounter(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved)
         {
             ThreadedCounterEvent evt = new(this, type, _lastSampleCounterClear);
-            New<ReportCounterCommand>().Set(Ref(evt), type, Ref(resultHandler), divisor, hostReserved);
+            New<ReportCounterCommand>()->Set(Ref(evt), type, Ref(resultHandler), divisor, hostReserved);
             QueueCommand();
 
             if (type == CounterType.SamplesPassed)
@@ -441,9 +446,9 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             return evt;
         }
 
-        public void ResetCounter(CounterType type)
+        public unsafe void ResetCounter(CounterType type)
         {
-            New<ResetCounterCommand>().Set(type);
+            New<ResetCounterCommand>()->Set(type);
             QueueCommand();
             _lastSampleCounterClear = true;
         }
@@ -453,13 +458,13 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             _baseRenderer.Screenshot();
         }
 
-        public void SetBufferData(BufferHandle buffer, int offset, ReadOnlySpan<byte> data)
+        public unsafe void SetBufferData(BufferHandle buffer, int offset, ReadOnlySpan<byte> data)
         {
-            New<BufferSetDataCommand>().Set(buffer, offset, CopySpan(data));
+            New<BufferSetDataCommand>()->Set(buffer, offset, CopySpan(data));
             QueueCommand();
         }
 
-        public void UpdateCounters()
+        public unsafe void UpdateCounters()
         {
             New<UpdateCountersCommand>();
             QueueCommand();
