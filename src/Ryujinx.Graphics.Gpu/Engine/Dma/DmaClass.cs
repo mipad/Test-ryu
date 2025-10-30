@@ -451,12 +451,9 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                                     1,
                                     1,
                                     1,
-                                    1,
-                                    1,
                                     srcBpp,
                                     src.MemoryLayout.UnpackGobBlocksInY(),
                                     src.MemoryLayout.UnpackGobBlocksInZ(),
-                                    1,
                                     new SizeInfo((int)target.Size),
                                     srcSpan);
                             }
@@ -469,12 +466,9 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                                     1,
                                     1,
                                     1,
-                                    1,
-                                    1,
                                     srcBpp,
                                     src.MemoryLayout.UnpackGobBlocksInY(),
                                     src.MemoryLayout.UnpackGobBlocksInZ(),
-                                    1,
                                     new SizeInfo((int)target.Size),
                                     srcSpan);
                             }
@@ -645,9 +639,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         /// ARM优化的块线性到线性布局转换
         /// </summary>
         private static unsafe MemoryOwner<byte> ConvertBlockLinearToLinearArm(
-            int width, int height, int depth, int levels, int layers, int layersAll, int bpp,
-            int gobBlocksInY, int gobBlocksInZ, int gobBlocksInTileX, SizeInfo sizeInfo,
-            ReadOnlySpan<byte> data)
+            int width, int height, int depth,
+            int levels, int layers, int layersAll,
+            int bpp, int gobBlocksInY, int gobBlocksInZ,
+            SizeInfo sizeInfo, ReadOnlySpan<byte> data)
         {
             // 如果支持NEON且数据大小合适，使用NEON优化
             if (_supportsNeon && bpp % 16 == 0 && width >= 4 && height >= 4)
@@ -655,8 +650,8 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                 try
                 {
                     return ConvertBlockLinearToLinearNeon(
-                        width, height, depth, levels, layers, layersAll, bpp,
-                        gobBlocksInY, gobBlocksInZ, gobBlocksInTileX, sizeInfo, data);
+                        width, height, depth, levels, layers, layersAll,
+                        bpp, gobBlocksInY, gobBlocksInZ, sizeInfo, data);
                 }
                 catch
                 {
@@ -666,29 +661,31 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
             
             // 回退到原始实现
             return LayoutConverter.ConvertBlockLinearToLinear(
-                width, height, depth, levels, layers, layersAll, bpp,
-                gobBlocksInY, gobBlocksInZ, gobBlocksInTileX, sizeInfo, data);
+                width, height, depth, levels, layers, layersAll,
+                bpp, gobBlocksInY, gobBlocksInZ, sizeInfo, data);
         }
 
         /// <summary>
         /// 使用NEON加速的块线性到线性转换
         /// </summary>
         private static unsafe MemoryOwner<byte> ConvertBlockLinearToLinearNeon(
-            int width, int height, int depth, int levels, int layers, int layersAll, int bpp,
-            int gobBlocksInY, int gobBlocksInZ, int gobBlocksInTileX, SizeInfo sizeInfo,
-            ReadOnlySpan<byte> data)
+            int width, int height, int depth,
+            int levels, int layers, int layersAll,
+            int bpp, int gobBlocksInY, int gobBlocksInZ,
+            SizeInfo sizeInfo, ReadOnlySpan<byte> data)
         {
             // 简化的NEON优化实现 - 实际实现需要完整的布局转换逻辑
             // 这里只是示意，实际需要根据具体的块线性布局算法重写
             
             int outputSize = width * height * depth * bpp;
-            MemoryOwner<byte> result = MemoryOwner<byte>.Allocate(outputSize);
+            MemoryOwner<byte> result = MemoryOwner<byte>.Rent(outputSize);
             
-            fixed (byte* srcPtr = data, dstPtr = result.Memory.Span)
+            fixed (byte* srcPtr = data)
+            fixed (byte* dstPtr = result.Memory.Span)
             {
                 // 这里应该实现完整的NEON优化布局转换
                 // 由于算法复杂，这里只做简单的内存拷贝作为示例
-                Buffer.MemoryCopy(srcPtr, dstPtr, outputSize, Math.Min(data.Length, outputSize));
+                global::System.Buffer.MemoryCopy(srcPtr, dstPtr, outputSize, Math.Min(data.Length, outputSize));
             }
             
             return result;
@@ -801,12 +798,6 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                     src.Calculator.SetY(src.RegionY + y);
                     dst.Calculator.SetY(dst.RegionY + y);
 
-                    // ARM: 预取下一行数据
-                    if (y < yCount - 1 && _isArmPlatform)
-                    {
-                        ArmPrefetchNextLine(src, dst, srcBase, dstBase, y);
-                    }
-
                     // 使用批处理优化
                     int x = 0;
                     int batchSize = _optimalArmBatchSize;
@@ -861,12 +852,6 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                 {
                     src.Calculator.SetY(src.RegionY + y);
                     dst.Calculator.SetY(dst.RegionY + y);
-
-                    // ARM: 预取下一行数据
-                    if (y < yCount - 1 && _isArmPlatform)
-                    {
-                        ArmPrefetchNextLine(src, dst, srcBase, dstBase, y);
-                    }
 
                     int x = 0;
                     
@@ -937,27 +922,6 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                     }
                 }
             }
-        }
-
-        /// <summary>
-        /// ARM预取下一行数据
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private unsafe void ArmPrefetchNextLine(TextureParams src, TextureParams dst, byte* srcBase, byte* dstBase, int currentY)
-        {
-            // 预取下一行的源数据
-            src.Calculator.SetY(src.RegionY + currentY + 1);
-            int nextSrcOffset = src.Calculator.GetOffset(src.RegionX);
-            System.Runtime.Intrinsics.Arm.ArmBase.Prefetch(srcBase + nextSrcOffset);
-            
-            // 预取下一行的目标数据  
-            dst.Calculator.SetY(dst.RegionY + currentY + 1);
-            int nextDstOffset = dst.Calculator.GetOffset(dst.RegionX);
-            System.Runtime.Intrinsics.Arm.ArmBase.Prefetch(dstBase + nextDstOffset);
-            
-            // 恢复当前行
-            src.Calculator.SetY(src.RegionY + currentY);
-            dst.Calculator.SetY(dst.RegionY + currentY);
         }
 
         /// <summary>
