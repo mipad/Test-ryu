@@ -32,19 +32,6 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         private const int ParallelThreshold = 256 * 256; // 降低并行阈值
 
         /// <summary>
-        /// 并行工作项
-        /// </summary>
-        private struct ParallelWorkItem
-        {
-            public int StartY;
-            public int EndY;
-            public TextureParams SrcParams;
-            public TextureParams DstParams;
-            public int XCount;
-            public int Bpp;
-        }
-
-        /// <summary>
         /// Copy flags passed on DMA launch.
         /// </summary>
         [Flags]
@@ -378,7 +365,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                 bool useParallel = _useParallel && (xCount * yCount) > ParallelThreshold && 
                                  srcLinear && dstLinear && srcBpp == dstBpp;
                 
-                if (useParallel && srcSize > MemoryPoolThreshold)
+                if (useParallel)
                 {
                     srcArray = ArrayPool<byte>.Shared.Rent(srcSize);
                     srcSpan.CopyTo(srcArray);
@@ -392,16 +379,9 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                     if (isIdentityRemap)
                     {
                         // 优化：对线性布局的大纹理使用并行处理
-                        if (useParallel)
+                        if (useParallel && srcArray != null)
                         {
-                            if (srcArray != null)
-                            {
-                                CopyParallelLinear(dstArray, srcArray, dstParams, srcParams, xCount, yCount, srcBpp);
-                            }
-                            else
-                            {
-                                CopyParallelLinear(dstSpan, srcSpan, dstParams, srcParams, xCount, yCount, srcBpp);
-                            }
+                            CopyParallelLinear(dstArray, srcArray, dstParams, srcParams, xCount, yCount, srcBpp);
                         }
                         else
                         {
@@ -503,38 +483,19 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         }
 
         /// <summary>
-        /// 优化的并行处理：只对线性布局使用
-        /// </summary>
-        private void CopyParallelLinear(Span<byte> dstSpan, ReadOnlySpan<byte> srcSpan, TextureParams dst, TextureParams src, int xCount, int yCount, int bpp)
-        {
-            // 对于线性布局，我们可以简单地进行行并行处理
-            int bytesPerLine = xCount * bpp;
-            
-            Parallel.For(0, yCount, y =>
-            {
-                int srcOffset = src.Calculator.GetOffset(src.RegionX) + (y * bytesPerLine) - src.BaseOffset;
-                int dstOffset = dst.Calculator.GetOffset(dst.RegionX) + (y * bytesPerLine) - dst.BaseOffset;
-                
-                var sourceLine = srcSpan.Slice(srcOffset, bytesPerLine);
-                var destLine = dstSpan.Slice(dstOffset, bytesPerLine);
-                
-                sourceLine.CopyTo(destLine);
-            });
-        }
-
-        /// <summary>
-        /// 数组版本的并行处理
+        /// 数组版本的并行处理 - 修复了Buffer命名冲突
         /// </summary>
         private void CopyParallelLinear(byte[] dstArray, byte[] srcArray, TextureParams dst, TextureParams src, int xCount, int yCount, int bpp)
         {
             int bytesPerLine = xCount * bpp;
             
+            // 修复：使用完全限定的System.Buffer来避免命名冲突
             Parallel.For(0, yCount, y =>
             {
                 int srcOffset = src.Calculator.GetOffset(src.RegionX) + (y * bytesPerLine) - src.BaseOffset;
                 int dstOffset = dst.Calculator.GetOffset(dst.RegionX) + (y * bytesPerLine) - dst.BaseOffset;
                 
-                Buffer.BlockCopy(srcArray, srcOffset, dstArray, dstOffset, bytesPerLine);
+                System.Buffer.BlockCopy(srcArray, srcOffset, dstArray, dstOffset, bytesPerLine);
             });
         }
 
