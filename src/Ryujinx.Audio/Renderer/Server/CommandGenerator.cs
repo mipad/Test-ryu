@@ -339,7 +339,7 @@ namespace Ryujinx.Audio.Renderer.Server
 
                 bool performanceInitialized = false;
 
-                PerformanceEntryAddresses performanceEntry = new();
+                PerformanceEntryAddresses performanceEntry = null;
 
                 if (_performanceManager != null && _performanceManager.IsTargetNodeId(nodeId) && _performanceManager.GetNextEntry(out performanceEntry, dataSourceDetailType, PerformanceEntryType.Voice, nodeId))
                 {
@@ -500,7 +500,7 @@ namespace Ryujinx.Audio.Renderer.Server
                 {
                     int nodeId = sortedInfo.NodeId;
 
-                    PerformanceEntryAddresses performanceEntry = new();
+                    PerformanceEntryAddresses performanceEntry = null;
 
                     bool performanceInitialized = false;
 
@@ -786,7 +786,7 @@ namespace Ryujinx.Audio.Renderer.Server
 
             bool isFinalMix = mix.MixId == Constants.FinalMixId;
 
-            PerformanceEntryAddresses performanceEntry = new();
+            PerformanceEntryAddresses performanceEntry = null;
 
             bool performanceInitialized = false;
 
@@ -1050,7 +1050,7 @@ namespace Ryujinx.Audio.Renderer.Server
 
             GenerateEffects(ref subMix);
 
-            PerformanceEntryAddresses performanceEntry = new();
+            PerformanceEntryAddresses performanceEntry = null;
 
             int nodeId = subMix.NodeId;
 
@@ -1081,7 +1081,7 @@ namespace Ryujinx.Audio.Renderer.Server
                 {
                     int nodeId = sortedInfo.NodeId;
 
-                    PerformanceEntryAddresses performanceEntry = new();
+                    PerformanceEntryAddresses performanceEntry = null;
 
                     bool performanceInitialized = false;
 
@@ -1115,7 +1115,7 @@ namespace Ryujinx.Audio.Renderer.Server
 
             GenerateEffects(ref finalMix);
 
-            PerformanceEntryAddresses performanceEntry = new();
+            PerformanceEntryAddresses performanceEntry = null;
 
             int nodeId = finalMix.NodeId;
 
@@ -1164,7 +1164,7 @@ namespace Ryujinx.Audio.Renderer.Server
         {
             int nodeId = _mixContext.GetFinalState().NodeId;
 
-            PerformanceEntryAddresses performanceEntry = new();
+            PerformanceEntryAddresses performanceEntry = null;
 
             bool performanceInitialized = false;
 
@@ -1244,7 +1244,7 @@ namespace Ryujinx.Audio.Renderer.Server
         {
             bool performanceInitialized = false;
 
-            PerformanceEntryAddresses performanceEntry = new();
+            PerformanceEntryAddresses performanceEntry = null;
 
             if (_performanceManager != null && _performanceManager.GetNextEntry(out performanceEntry, PerformanceEntryType.Sink, sink.NodeId))
             {
