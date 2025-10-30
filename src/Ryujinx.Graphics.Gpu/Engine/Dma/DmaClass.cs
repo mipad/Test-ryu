@@ -9,7 +9,6 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
-using System.Threading;
 
 namespace Ryujinx.Graphics.Gpu.Engine.Dma
 {
@@ -22,12 +21,6 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         private readonly GpuChannel _channel;
         private readonly ThreedClass _3dEngine;
         private readonly DeviceState<DmaClassState> _state;
-
-        // ARM优化相关静态字段
-        private static readonly bool _isArmPlatform = RuntimeInformation.ProcessArchitecture == Architecture.Arm || 
-                                                     RuntimeInformation.ProcessArchitecture == Architecture.Arm64;
-        private static readonly bool _supportsNeon = Vector128.IsHardwareAccelerated && _isArmPlatform;
-        private static readonly int _optimalArmBatchSize = GetOptimalArmBatchSize();
 
         /// <summary>
         /// Copy flags passed on DMA launch.
@@ -102,60 +95,6 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
             public byte Byte0;
             public byte Byte1;
             public byte Byte2;
-        }
-
-        /// <summary>
-        /// ARM内存屏障辅助类
-        /// </summary>
-        private static class ArmMemoryBarrier
-        {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static void DataMemoryBarrier()
-            {
-                // ARM数据内存屏障
-                Thread.MemoryBarrier();
-            }
-            
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static void DataSyncMemoryBarrier()
-            {
-                // 更强的ARM内存屏障
-                Interlocked.MemoryBarrier();
-            }
-        }
-
-        /// <summary>
-        /// ARM核心感知优化
-        /// </summary>
-        private static class ArmCoreAware
-        {
-            private static readonly bool _isBigCore = DetectBigCore();
-            
-            private static bool DetectBigCore()
-            {
-                // 简单的核心检测逻辑 - 在ARM设备上，可以根据处理器数量推测
-                // 实际实现可能需要更复杂的检测逻辑
-                return Environment.ProcessorCount >= 4;
-            }
-            
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static int GetOptimalBatchSize(int baseSize)
-            {
-                // 大核心使用更大的批处理大小
-                return _isBigCore ? baseSize * 2 : baseSize;
-            }
-        }
-
-        /// <summary>
-        /// 获取ARM优化的批处理大小
-        /// </summary>
-        /// <returns>优化的批处理大小</returns>
-        private static int GetOptimalArmBatchSize()
-        {
-            if (!_isArmPlatform)
-                return 16;
-                
-            return ArmCoreAware.GetOptimalBatchSize(16);
         }
 
         /// <summary>
@@ -241,12 +180,6 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                 {
                     _channel.MemoryManager.Write(address + 8, _context.GetTimestamp());
                     _channel.MemoryManager.Write(address, (ulong)_state.State.SetSemaphorePayload);
-                }
-                
-                // ARM: 添加内存屏障确保写入对其他核心可见
-                if (_isArmPlatform)
-                {
-                    ArmMemoryBarrier.DataMemoryBarrier();
                 }
             }
         }
@@ -394,12 +327,6 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
 
                         source.HostTexture.CopyTo(target.HostTexture, 0, 0);
                         target.SignalModified();
-                        
-                        // ARM: 添加内存屏障
-                        if (_isArmPlatform)
-                        {
-                            ArmMemoryBarrier.DataMemoryBarrier();
-                        }
                         return;
                     }
                 }
@@ -441,66 +368,32 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                         }
                         else
                         {
-                            // ARM: 使用优化的布局转换
-                            if (_isArmPlatform && _supportsNeon && srcBpp % 16 == 0)
-                            {
-                                data = ConvertBlockLinearToLinearArm(
-                                    src.Width,
-                                    src.Height,
-                                    src.Depth,
-                                    1,  // levels
-                                    1,  // layers
-                                    1,  // layersAll
-                                    1,  // level
-                                    1,  // layer
-                                    srcBpp,
-                                    src.MemoryLayout.UnpackGobBlocksInY(),
-                                    src.MemoryLayout.UnpackGobBlocksInZ(),
-                                    1,  // gobBlocksInTileX
-                                    new SizeInfo((int)target.Size),
-                                    srcSpan);
-                            }
-                            else
-                            {
-                                data = LayoutConverter.ConvertBlockLinearToLinear(
-                                    src.Width,
-                                    src.Height,
-                                    src.Depth,
-                                    1,  // levels
-                                    1,  // layers
-                                    1,  // layersAll
-                                    1,  // level
-                                    1,  // layer
-                                    srcBpp,
-                                    src.MemoryLayout.UnpackGobBlocksInY(),
-                                    src.MemoryLayout.UnpackGobBlocksInZ(),
-                                    1,  // gobBlocksInTileX
-                                    new SizeInfo((int)target.Size),
-                                    srcSpan);
-                            }
+                            data = LayoutConverter.ConvertBlockLinearToLinear(
+                                src.Width,
+                                src.Height,
+                                src.Depth,
+                                1,
+                                1,
+                                1,
+                                1,
+                                1,
+                                srcBpp,
+                                src.MemoryLayout.UnpackGobBlocksInY(),
+                                src.MemoryLayout.UnpackGobBlocksInZ(),
+                                1,
+                                new SizeInfo((int)target.Size),
+                                srcSpan);
                         }
 
                         target.SynchronizeMemory();
                         target.SetData(data);
                         target.SignalModified();
-                        
-                        // ARM: 添加内存屏障
-                        if (_isArmPlatform)
-                        {
-                            ArmMemoryBarrier.DataMemoryBarrier();
-                        }
                         return;
                     }
                     else if (srcCalculator.LayoutMatches(dstCalculator))
                     {
                         // No layout conversion has to be performed, just copy the data entirely.
                         memoryManager.Write(dstGpuVa + (ulong)dstBaseOffset, srcSpan);
-                        
-                        // ARM: 添加内存屏障
-                        if (_isArmPlatform)
-                        {
-                            ArmMemoryBarrier.DataMemoryBarrier();
-                        }
                         return;
                     }
                 }
@@ -518,36 +411,28 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                     // The order of the components doesn't change, so we can just copy directly
                     // (with layout conversion if necessary).
 
-                    // ARM: 使用优化的拷贝方法
-                    if (_isArmPlatform)
+                    switch (srcBpp)
                     {
-                        CopyArmOptimized(dstSpan, srcSpan, dstParams, srcParams, srcBpp);
-                    }
-                    else
-                    {
-                        switch (srcBpp)
-                        {
-                            case 1:
-                                Copy<byte>(dstSpan, srcSpan, dstParams, srcParams);
-                                break;
-                            case 2:
-                                Copy<ushort>(dstSpan, srcSpan, dstParams, srcParams);
-                                break;
-                            case 4:
-                                Copy<uint>(dstSpan, srcSpan, dstParams, srcParams);
-                                break;
-                            case 8:
-                                Copy<ulong>(dstSpan, srcSpan, dstParams, srcParams);
-                                break;
-                            case 12:
-                                Copy<Bpp12Pixel>(dstSpan, srcSpan, dstParams, srcParams);
-                                break;
-                            case 16:
-                                Copy<Vector128<byte>>(dstSpan, srcSpan, dstParams, srcParams);
-                                break;
-                            default:
-                                throw new NotSupportedException($"Unable to copy ${srcBpp} bpp pixel format.");
-                        }
+                        case 1:
+                            Copy<byte>(dstSpan, srcSpan, dstParams, srcParams);
+                            break;
+                        case 2:
+                            Copy<ushort>(dstSpan, srcSpan, dstParams, srcParams);
+                            break;
+                        case 4:
+                            Copy<uint>(dstSpan, srcSpan, dstParams, srcParams);
+                            break;
+                        case 8:
+                            Copy<ulong>(dstSpan, srcSpan, dstParams, srcParams);
+                            break;
+                        case 12:
+                            Copy<Bpp12Pixel>(dstSpan, srcSpan, dstParams, srcParams);
+                            break;
+                        case 16:
+                            Copy<Vector128<byte>>(dstSpan, srcSpan, dstParams, srcParams);
+                            break;
+                        default:
+                            throw new NotSupportedException($"Unable to copy ${srcBpp} bpp pixel format.");
                     }
                 }
                 else
@@ -574,12 +459,6 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                 }
 
                 memoryManager.Write(dstGpuVa + (ulong)dstBaseOffset, dstSpan);
-                
-                // ARM: 添加内存屏障
-                if (_isArmPlatform)
-                {
-                    ArmMemoryBarrier.DataMemoryBarrier();
-                }
             }
             else
             {
@@ -605,100 +484,18 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
 
                     if (!srcIsPitchKind && dstIsPitchKind)
                     {
-                        // ARM: 使用优化的拷贝方法
-                        if (_isArmPlatform && _supportsNeon)
-                        {
-                            CopyGobBlockLinearToLinearArm(memoryManager, srcGpuVa, dstGpuVa, size);
-                        }
-                        else
-                        {
-                            CopyGobBlockLinearToLinear(memoryManager, srcGpuVa, dstGpuVa, size);
-                        }
+                        CopyGobBlockLinearToLinear(memoryManager, srcGpuVa, dstGpuVa, size);
                     }
                     else if (srcIsPitchKind && !dstIsPitchKind)
                     {
-                        // ARM: 使用优化的拷贝方法
-                        if (_isArmPlatform && _supportsNeon)
-                        {
-                            CopyGobLinearToBlockLinearArm(memoryManager, srcGpuVa, dstGpuVa, size);
-                        }
-                        else
-                        {
-                            CopyGobLinearToBlockLinear(memoryManager, srcGpuVa, dstGpuVa, size);
-                        }
+                        CopyGobLinearToBlockLinear(memoryManager, srcGpuVa, dstGpuVa, size);
                     }
                     else
                     {
                         memoryManager.Physical.BufferCache.CopyBuffer(memoryManager, srcGpuVa, dstGpuVa, size);
                     }
                 }
-                
-                // ARM: 添加内存屏障
-                if (_isArmPlatform)
-                {
-                    ArmMemoryBarrier.DataMemoryBarrier();
-                }
             }
-        }
-
-        /// <summary>
-        /// ARM优化的块线性到线性布局转换
-        /// </summary>
-        private static unsafe MemoryOwner<byte> ConvertBlockLinearToLinearArm(
-            int width, int height, int depth,
-            int levels, int layers, int layersAll,
-            int level, int layer,
-            int bpp, int gobBlocksInY, int gobBlocksInZ, int gobBlocksInTileX,
-            SizeInfo sizeInfo, ReadOnlySpan<byte> data)
-        {
-            // 如果支持NEON且数据大小合适，使用NEON优化
-            if (_supportsNeon && bpp % 16 == 0 && width >= 4 && height >= 4)
-            {
-                try
-                {
-                    return ConvertBlockLinearToLinearNeon(
-                        width, height, depth, levels, layers, layersAll,
-                        level, layer, bpp, gobBlocksInY, gobBlocksInZ, gobBlocksInTileX,
-                        sizeInfo, data);
-                }
-                catch
-                {
-                    // 如果NEON优化失败，回退到原始实现
-                }
-            }
-            
-            // 回退到原始实现
-            return LayoutConverter.ConvertBlockLinearToLinear(
-                width, height, depth, levels, layers, layersAll,
-                level, layer, bpp, gobBlocksInY, gobBlocksInZ, gobBlocksInTileX,
-                sizeInfo, data);
-        }
-
-        /// <summary>
-        /// 使用NEON加速的块线性到线性转换
-        /// </summary>
-        private static unsafe MemoryOwner<byte> ConvertBlockLinearToLinearNeon(
-            int width, int height, int depth,
-            int levels, int layers, int layersAll,
-            int level, int layer,
-            int bpp, int gobBlocksInY, int gobBlocksInZ, int gobBlocksInTileX,
-            SizeInfo sizeInfo, ReadOnlySpan<byte> data)
-        {
-            // 简化的NEON优化实现 - 实际实现需要完整的布局转换逻辑
-            // 这里只是示意，实际需要根据具体的块线性布局算法重写
-            
-            int outputSize = width * height * depth * bpp;
-            MemoryOwner<byte> result = MemoryOwner<byte>.Rent(outputSize);
-            
-            fixed (byte* srcPtr = data)
-            fixed (byte* dstPtr = result.Memory.Span)
-            {
-                // 这里应该实现完整的NEON优化布局转换
-                // 由于算法复杂，这里只做简单的内存拷贝作为示例
-                global::System.Buffer.MemoryCopy(srcPtr, dstPtr, outputSize, Math.Min(data.Length, outputSize));
-            }
-            
-            return result;
         }
 
         /// <summary>
@@ -709,7 +506,6 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         /// <param name="srcSpan">Source texture memory region</param>
         /// <param name="dst">Destination texture parameters</param>
         /// <param name="src">Source texture parameters</param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         private unsafe void Copy<T>(Span<byte> dstSpan, ReadOnlySpan<byte> srcSpan, TextureParams dst, TextureParams src) where T : unmanaged
         {
             int xCount = (int)_state.State.LineLengthIn;
@@ -748,187 +544,6 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
 
                             *(T*)(dstBase + dstOffset) = *(T*)(srcBase + srcOffset);
                         }
-                    }
-                }
-            }
-        }
-
-        /// <summary>
-        /// ARM优化的拷贝方法
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-        private unsafe void CopyArmOptimized(Span<byte> dstSpan, ReadOnlySpan<byte> srcSpan, 
-            TextureParams dst, TextureParams src, int bpp)
-        {
-            int xCount = (int)_state.State.LineLengthIn;
-            int yCount = (int)_state.State.LineCount;
-            
-            // 根据BPP选择最优的数据类型和批处理大小
-            switch (bpp)
-            {
-                case 1:
-                    CopyArmOptimized<byte>(dstSpan, srcSpan, dst, src, xCount, yCount);
-                    break;
-                case 2:
-                    CopyArmOptimized<ushort>(dstSpan, srcSpan, dst, src, xCount, yCount);
-                    break;
-                case 4:
-                    CopyArmOptimized<uint>(dstSpan, srcSpan, dst, src, xCount, yCount);
-                    break;
-                case 8:
-                    CopyArmOptimized<ulong>(dstSpan, srcSpan, dst, src, xCount, yCount);
-                    break;
-                case 12:
-                    CopyArmOptimized<Bpp12Pixel>(dstSpan, srcSpan, dst, src, xCount, yCount);
-                    break;
-                case 16:
-                    CopyArmOptimized<Vector128<byte>>(dstSpan, srcSpan, dst, src, xCount, yCount);
-                    break;
-                default:
-                    // 回退到通用实现
-                    CopyArmOptimizedGeneric(dstSpan, srcSpan, dst, src, xCount, yCount, bpp);
-                    break;
-            }
-        }
-
-        /// <summary>
-        /// ARM优化的通用拷贝实现
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private unsafe void CopyArmOptimizedGeneric(Span<byte> dstSpan, ReadOnlySpan<byte> srcSpan,
-            TextureParams dst, TextureParams src, int xCount, int yCount, int bpp)
-        {
-            fixed (byte* dstPtr = dstSpan, srcPtr = srcSpan)
-            {
-                byte* dstBase = dstPtr - dst.BaseOffset;
-                byte* srcBase = srcPtr - src.BaseOffset;
-
-                for (int y = 0; y < yCount; y++)
-                {
-                    src.Calculator.SetY(src.RegionY + y);
-                    dst.Calculator.SetY(dst.RegionY + y);
-
-                    // 使用批处理优化
-                    int x = 0;
-                    int batchSize = _optimalArmBatchSize;
-                    
-                    // 批量处理
-                    for (; x <= xCount - batchSize; x += batchSize)
-                    {
-                        for (int bx = 0; bx < batchSize; bx++)
-                        {
-                            int currentX = x + bx;
-                            int srcOffset = src.Calculator.GetOffset(src.RegionX + currentX);
-                            int dstOffset = dst.Calculator.GetOffset(dst.RegionX + currentX);
-                            
-                            // 逐字节拷贝
-                            for (int byteOffset = 0; byteOffset < bpp; byteOffset++)
-                            {
-                                *(dstBase + dstOffset + byteOffset) = *(srcBase + srcOffset + byteOffset);
-                            }
-                        }
-                    }
-                    
-                    // 处理剩余元素
-                    for (; x < xCount; x++)
-                    {
-                        int srcOffset = src.Calculator.GetOffset(src.RegionX + x);
-                        int dstOffset = dst.Calculator.GetOffset(dst.RegionX + x);
-                        
-                        for (int byteOffset = 0; byteOffset < bpp; byteOffset++)
-                        {
-                            *(dstBase + dstOffset + byteOffset) = *(srcBase + srcOffset + byteOffset);
-                        }
-                    }
-                }
-            }
-        }
-
-        /// <summary>
-        /// ARM优化的类型化拷贝实现
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private unsafe void CopyArmOptimized<T>(Span<byte> dstSpan, ReadOnlySpan<byte> srcSpan,
-            TextureParams dst, TextureParams src, int xCount, int yCount) where T : unmanaged
-        {
-            int elementSize = Unsafe.SizeOf<T>();
-            
-            fixed (byte* dstPtr = dstSpan, srcPtr = srcSpan)
-            {
-                byte* dstBase = dstPtr - dst.BaseOffset;
-                byte* srcBase = srcPtr - src.BaseOffset;
-
-                for (int y = 0; y < yCount; y++)
-                {
-                    src.Calculator.SetY(src.RegionY + y);
-                    dst.Calculator.SetY(dst.RegionY + y);
-
-                    int x = 0;
-                    
-                    // 对于支持SIMD的类型，使用向量化优化
-                    if (_supportsNeon && elementSize == 16 && xCount >= 4)
-                    {
-                        for (; x <= xCount - 4; x += 4)
-                        {
-                            int srcOffset0 = src.Calculator.GetOffset(src.RegionX + x);
-                            int srcOffset1 = src.Calculator.GetOffset(src.RegionX + x + 1);
-                            int srcOffset2 = src.Calculator.GetOffset(src.RegionX + x + 2);
-                            int srcOffset3 = src.Calculator.GetOffset(src.RegionX + x + 3);
-                            
-                            int dstOffset0 = dst.Calculator.GetOffset(dst.RegionX + x);
-                            int dstOffset1 = dst.Calculator.GetOffset(dst.RegionX + x + 1);
-                            int dstOffset2 = dst.Calculator.GetOffset(dst.RegionX + x + 2);
-                            int dstOffset3 = dst.Calculator.GetOffset(dst.RegionX + x + 3);
-                            
-                            // 批量拷贝，减少函数调用开销
-                            Vector128<byte> data0 = *(Vector128<byte>*)(srcBase + srcOffset0);
-                            Vector128<byte> data1 = *(Vector128<byte>*)(srcBase + srcOffset1);
-                            Vector128<byte> data2 = *(Vector128<byte>*)(srcBase + srcOffset2);
-                            Vector128<byte> data3 = *(Vector128<byte>*)(srcBase + srcOffset3);
-                            
-                            *(Vector128<byte>*)(dstBase + dstOffset0) = data0;
-                            *(Vector128<byte>*)(dstBase + dstOffset1) = data1;
-                            *(Vector128<byte>*)(dstBase + dstOffset2) = data2;
-                            *(Vector128<byte>*)(dstBase + dstOffset3) = data3;
-                        }
-                    }
-                    else if (_supportsNeon && elementSize == 8 && xCount >= 8)
-                    {
-                        // 对8字节类型进行批处理优化
-                        int batchSize = Math.Min(_optimalArmBatchSize, 8);
-                        for (; x <= xCount - batchSize; x += batchSize)
-                        {
-                            for (int bx = 0; bx < batchSize; bx++)
-                            {
-                                int currentX = x + bx;
-                                int srcOffset = src.Calculator.GetOffset(src.RegionX + currentX);
-                                int dstOffset = dst.Calculator.GetOffset(dst.RegionX + currentX);
-                                *(ulong*)(dstBase + dstOffset) = *(ulong*)(srcBase + srcOffset);
-                            }
-                        }
-                    }
-                    else if (elementSize == 4 && xCount >= 16)
-                    {
-                        // 对4字节类型进行批处理优化
-                        int batchSize = Math.Min(_optimalArmBatchSize, 16);
-                        for (; x <= xCount - batchSize; x += batchSize)
-                        {
-                            for (int bx = 0; bx < batchSize; bx++)
-                            {
-                                int currentX = x + bx;
-                                int srcOffset = src.Calculator.GetOffset(src.RegionX + currentX);
-                                int dstOffset = dst.Calculator.GetOffset(dst.RegionX + currentX);
-                                *(uint*)(dstBase + dstOffset) = *(uint*)(srcBase + srcOffset);
-                            }
-                        }
-                    }
-                    
-                    // 处理剩余元素
-                    for (; x < xCount; x++)
-                    {
-                        int srcOffset = src.Calculator.GetOffset(src.RegionX + x);
-                        int dstOffset = dst.Calculator.GetOffset(dst.RegionX + x);
-                        *(T*)(dstBase + dstOffset) = *(T*)(srcBase + srcOffset);
                     }
                 }
             }
@@ -1038,47 +653,6 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         }
 
         /// <summary>
-        /// ARM优化的块线性到线性拷贝
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void CopyGobBlockLinearToLinearArm(MemoryManager memoryManager, ulong srcGpuVa, ulong dstGpuVa, ulong size)
-        {
-            // ARM NEON支持未对齐访问，可以放宽对齐要求
-            if (size >= 16)
-            {
-                // 使用NEON进行批量拷贝，即使地址未对齐
-                ulong offset = 0;
-                ulong vectorSize = size & ~0xFu;
-                
-                for (; offset < vectorSize; offset += 16)
-                {
-                    // 使用未对齐的NEON加载/存储
-                    var data = memoryManager.Read<Vector128<byte>>(
-                        ConvertGobLinearToBlockLinearAddress(srcGpuVa + offset), true);
-                    memoryManager.Write(dstGpuVa + offset, data);
-                }
-                
-                // 处理剩余字节
-                for (; offset < size; offset++)
-                {
-                    byte data = memoryManager.Read<byte>(
-                        ConvertGobLinearToBlockLinearAddress(srcGpuVa + offset), true);
-                    memoryManager.Write(dstGpuVa + offset, data);
-                }
-            }
-            else
-            {
-                // 小尺寸使用逐字节拷贝
-                for (ulong offset = 0; offset < size; offset++)
-                {
-                    byte data = memoryManager.Read<byte>(
-                        ConvertGobLinearToBlockLinearAddress(srcGpuVa + offset), true);
-                    memoryManager.Write(dstGpuVa + offset, data);
-                }
-            }
-        }
-
-        /// <summary>
         /// Copies block linear data with linear GOBs to a block linear destination with block linear GOBs.
         /// </summary>
         /// <param name="memoryManager">GPU memory manager</param>
@@ -1097,44 +671,6 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
             }
             else
             {
-                for (ulong offset = 0; offset < size; offset++)
-                {
-                    byte data = memoryManager.Read<byte>(srcGpuVa + offset, true);
-                    memoryManager.Write(ConvertGobLinearToBlockLinearAddress(dstGpuVa + offset), data);
-                }
-            }
-        }
-
-        /// <summary>
-        /// ARM优化的线性到块线性拷贝
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void CopyGobLinearToBlockLinearArm(MemoryManager memoryManager, ulong srcGpuVa, ulong dstGpuVa, ulong size)
-        {
-            // ARM NEON支持未对齐访问，可以放宽对齐要求
-            if (size >= 16)
-            {
-                // 使用NEON进行批量拷贝，即使地址未对齐
-                ulong offset = 0;
-                ulong vectorSize = size & ~0xFu;
-                
-                for (; offset < vectorSize; offset += 16)
-                {
-                    // 使用未对齐的NEON加载/存储
-                    var data = memoryManager.Read<Vector128<byte>>(srcGpuVa + offset, true);
-                    memoryManager.Write(ConvertGobLinearToBlockLinearAddress(dstGpuVa + offset), data);
-                }
-                
-                // 处理剩余字节
-                for (; offset < size; offset++)
-                {
-                    byte data = memoryManager.Read<byte>(srcGpuVa + offset, true);
-                    memoryManager.Write(ConvertGobLinearToBlockLinearAddress(dstGpuVa + offset), data);
-                }
-            }
-            else
-            {
-                // 小尺寸使用逐字节拷贝
                 for (ulong offset = 0; offset < size; offset++)
                 {
                     byte data = memoryManager.Read<byte>(srcGpuVa + offset, true);
