@@ -10,22 +10,28 @@ namespace Ryujinx.Audio.Renderer.Dsp.Command
     {
         public bool Enabled { get; set; }
 
-        public int NodeId { get; }
+        public int NodeId { get; private set; }
 
         public CommandType CommandType => CommandType.LimiterVersion1;
 
         public uint EstimatedProcessingTime { get; set; }
 
         public LimiterParameter Parameter => _parameter;
-        public Memory<LimiterState> State { get; }
-        public ulong WorkBuffer { get; }
+        public Memory<LimiterState> State { get; private set; }
+        public ulong WorkBuffer { get; private set; }
         public ushort[] OutputBufferIndices { get; }
         public ushort[] InputBufferIndices { get; }
-        public bool IsEffectEnabled { get; }
+        public bool IsEffectEnabled { get; private set; }
 
         private LimiterParameter _parameter;
 
-        public LimiterCommandVersion1(uint bufferOffset, LimiterParameter parameter, Memory<LimiterState> state, bool isEnabled, ulong workBuffer, int nodeId)
+        public LimiterCommandVersion1()
+        {
+            InputBufferIndices = new ushort[Constants.VoiceChannelCountMax];
+            OutputBufferIndices = new ushort[Constants.VoiceChannelCountMax];
+        }
+        
+        public LimiterCommandVersion1 Initialize(uint bufferOffset, LimiterParameter parameter, Memory<LimiterState> state, bool isEnabled, ulong workBuffer, int nodeId)
         {
             Enabled = true;
             NodeId = nodeId;
@@ -35,14 +41,16 @@ namespace Ryujinx.Audio.Renderer.Dsp.Command
 
             IsEffectEnabled = isEnabled;
 
-            InputBufferIndices = new ushort[Constants.VoiceChannelCountMax];
-            OutputBufferIndices = new ushort[Constants.VoiceChannelCountMax];
+            Span<byte> inputSpan = _parameter.Input.AsSpan();
+            Span<byte> outputSpan = _parameter.Output.AsSpan();
 
             for (int i = 0; i < _parameter.ChannelCount; i++)
             {
-                InputBufferIndices[i] = (ushort)(bufferOffset + _parameter.Input[i]);
-                OutputBufferIndices[i] = (ushort)(bufferOffset + _parameter.Output[i]);
+                InputBufferIndices[i] = (ushort)(bufferOffset + inputSpan[i]);
+                OutputBufferIndices[i] = (ushort)(bufferOffset + outputSpan[i]);
             }
+
+            return this;
         }
 
         public void Process(CommandList context)
@@ -70,8 +78,8 @@ namespace Ryujinx.Audio.Renderer.Dsp.Command
 
             if (IsEffectEnabled && _parameter.IsChannelCountValid())
             {
-                Span<IntPtr> inputBuffers = stackalloc IntPtr[_parameter.ChannelCount];
-                Span<IntPtr> outputBuffers = stackalloc IntPtr[_parameter.ChannelCount];
+                Span<nint> inputBuffers = stackalloc nint[_parameter.ChannelCount];
+                Span<nint> outputBuffers = stackalloc nint[_parameter.ChannelCount];
 
                 for (int i = 0; i < _parameter.ChannelCount; i++)
                 {

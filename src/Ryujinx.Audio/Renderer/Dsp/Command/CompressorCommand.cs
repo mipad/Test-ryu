@@ -15,22 +15,28 @@ namespace Ryujinx.Audio.Renderer.Dsp.Command
 
         public bool Enabled { get; set; }
 
-        public int NodeId { get; }
+        public int NodeId { get; private set; }
 
         public CommandType CommandType => CommandType.Compressor;
 
         public uint EstimatedProcessingTime { get; set; }
 
         public CompressorParameter Parameter => _parameter;
-        public Memory<CompressorState> State { get; }
-        public Memory<EffectResultState> ResultState { get; }
+        public Memory<CompressorState> State { get; private set; }
+        public Memory<EffectResultState> ResultState { get; private set; }
         public ushort[] OutputBufferIndices { get; }
         public ushort[] InputBufferIndices { get; }
-        public bool IsEffectEnabled { get; }
+        public bool IsEffectEnabled { get; private set; }
 
         private CompressorParameter _parameter;
 
-        public CompressorCommand(uint bufferOffset, CompressorParameter parameter, Memory<CompressorState> state, Memory<EffectResultState> resultState, bool isEnabled, int nodeId)
+        public CompressorCommand()
+        {
+            InputBufferIndices = new ushort[Constants.VoiceChannelCountMax];
+            OutputBufferIndices = new ushort[Constants.VoiceChannelCountMax];
+        }
+
+        public CompressorCommand Initialize(uint bufferOffset, CompressorParameter parameter, Memory<CompressorState> state, Memory<EffectResultState> resultState, bool isEnabled, int nodeId)
         {
             Enabled = true;
             NodeId = nodeId;
@@ -39,15 +45,17 @@ namespace Ryujinx.Audio.Renderer.Dsp.Command
             ResultState = resultState;
 
             IsEffectEnabled = isEnabled;
-
-            InputBufferIndices = new ushort[Constants.VoiceChannelCountMax];
-            OutputBufferIndices = new ushort[Constants.VoiceChannelCountMax];
+            
+            Span<byte> inputSpan = _parameter.Input.AsSpan();
+            Span<byte> outputSpan = _parameter.Output.AsSpan();
 
             for (int i = 0; i < _parameter.ChannelCount; i++)
             {
-                InputBufferIndices[i] = (ushort)(bufferOffset + _parameter.Input[i]);
-                OutputBufferIndices[i] = (ushort)(bufferOffset + _parameter.Output[i]);
+                InputBufferIndices[i] = (ushort)(bufferOffset + inputSpan[i]);
+                OutputBufferIndices[i] = (ushort)(bufferOffset + outputSpan[i]);
             }
+
+            return this;
         }
 
         public void Process(CommandList context)
@@ -82,8 +90,8 @@ namespace Ryujinx.Audio.Renderer.Dsp.Command
                     statistics.Reset(_parameter.ChannelCount);
                 }
 
-                Span<IntPtr> inputBuffers = stackalloc IntPtr[_parameter.ChannelCount];
-                Span<IntPtr> outputBuffers = stackalloc IntPtr[_parameter.ChannelCount];
+                Span<nint> inputBuffers = stackalloc nint[_parameter.ChannelCount];
+                Span<nint> outputBuffers = stackalloc nint[_parameter.ChannelCount];
                 Span<float> channelInput = stackalloc float[_parameter.ChannelCount];
                 ExponentialMovingAverage inputMovingAverage = state.InputMovingAverage;
                 float unknown4 = state.Unknown4;
@@ -171,10 +179,12 @@ namespace Ryujinx.Audio.Renderer.Dsp.Command
 
                         statistics.MinimumGain = MathF.Min(statistics.MinimumGain, compressionGain * state.OutputGain);
                         statistics.MaximumMean = MathF.Max(statistics.MaximumMean, mean);
+                        
+                        Span<float> lastSamplesSpan = statistics.LastSamples.AsSpan();
 
                         for (int channelIndex = 0; channelIndex < _parameter.ChannelCount; channelIndex++)
                         {
-                            statistics.LastSamples[channelIndex] = MathF.Abs(channelInput[channelIndex] * (1f / 32768f));
+                            lastSamplesSpan[channelIndex] = MathF.Abs(channelInput[channelIndex] * (1f / 32768f));
                         }
                     }
                 }

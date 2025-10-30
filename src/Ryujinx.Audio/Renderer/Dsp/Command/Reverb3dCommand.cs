@@ -9,44 +9,58 @@ namespace Ryujinx.Audio.Renderer.Dsp.Command
 {
     public class Reverb3dCommand : ICommand
     {
-        private static readonly int[] _outputEarlyIndicesTableMono = new int[20] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-        private static readonly int[] _targetEarlyDelayLineIndicesTableMono = new int[20] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 };
-        private static readonly int[] _targetOutputFeedbackIndicesTableMono = new int[1] { 0 };
+        private static readonly int[] _outputEarlyIndicesTableMono = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ];
+        private static readonly int[] _targetEarlyDelayLineIndicesTableMono = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19
+        ];
+        private static readonly int[] _targetOutputFeedbackIndicesTableMono = [0];
 
-        private static readonly int[] _outputEarlyIndicesTableStereo = new int[20] { 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1 };
-        private static readonly int[] _targetEarlyDelayLineIndicesTableStereo = new int[20] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 };
-        private static readonly int[] _targetOutputFeedbackIndicesTableStereo = new int[2] { 0, 1 };
+        private static readonly int[] _outputEarlyIndicesTableStereo = [0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1
+        ];
+        private static readonly int[] _targetEarlyDelayLineIndicesTableStereo = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19
+        ];
+        private static readonly int[] _targetOutputFeedbackIndicesTableStereo = [0, 1];
 
-        private static readonly int[] _outputEarlyIndicesTableQuadraphonic = new int[20] { 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 1, 1, 1, 0, 0, 0, 0, 3, 3, 3 };
-        private static readonly int[] _targetEarlyDelayLineIndicesTableQuadraphonic = new int[20] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 };
-        private static readonly int[] _targetOutputFeedbackIndicesTableQuadraphonic = new int[4] { 0, 1, 2, 3 };
+        private static readonly int[] _outputEarlyIndicesTableQuadraphonic = [0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 1, 1, 1, 0, 0, 0, 0, 3, 3, 3
+        ];
+        private static readonly int[] _targetEarlyDelayLineIndicesTableQuadraphonic = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19
+        ];
+        private static readonly int[] _targetOutputFeedbackIndicesTableQuadraphonic = [0, 1, 2, 3];
 
-        private static readonly int[] _outputEarlyIndicesTableSurround = new int[40] { 4, 5, 0, 5, 0, 5, 1, 5, 1, 5, 1, 5, 1, 5, 2, 5, 2, 5, 2, 5, 1, 5, 1, 5, 1, 5, 0, 5, 0, 5, 0, 5, 0, 5, 3, 5, 3, 5, 3, 5 };
-        private static readonly int[] _targetEarlyDelayLineIndicesTableSurround = new int[40] { 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15, 15, 16, 16, 17, 17, 18, 18, 19, 19 };
-        private static readonly int[] _targetOutputFeedbackIndicesTableSurround = new int[6] { 0, 1, 2, 3, -1, 3 };
+        private static readonly int[] _outputEarlyIndicesTableSurround = [4, 5, 0, 5, 0, 5, 1, 5, 1, 5, 1, 5, 1, 5, 2, 5, 2, 5, 2, 5, 1, 5, 1, 5, 1, 5, 0, 5, 0, 5, 0, 5, 0, 5, 3, 5, 3, 5, 3, 5
+        ];
+        private static readonly int[] _targetEarlyDelayLineIndicesTableSurround = [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15, 15, 16, 16, 17, 17, 18, 18, 19, 19
+        ];
+        private static readonly int[] _targetOutputFeedbackIndicesTableSurround = [0, 1, 2, 3, -1, 3];
 
         public bool Enabled { get; set; }
 
-        public int NodeId { get; }
+        public int NodeId { get; private set; }
 
         public CommandType CommandType => CommandType.Reverb3d;
 
         public uint EstimatedProcessingTime { get; set; }
 
-        public ushort InputBufferIndex { get; }
-        public ushort OutputBufferIndex { get; }
+        public ushort InputBufferIndex { get; private set; }
+        public ushort OutputBufferIndex { get; private set; }
 
         public Reverb3dParameter Parameter => _parameter;
-        public Memory<Reverb3dState> State { get; }
-        public ulong WorkBuffer { get; }
+        public Memory<Reverb3dState> State { get; private set; }
+        public ulong WorkBuffer { get; private set; }
         public ushort[] OutputBufferIndices { get; }
         public ushort[] InputBufferIndices { get; }
 
-        public bool IsEffectEnabled { get; }
+        public bool IsEffectEnabled { get; private set; }
 
         private Reverb3dParameter _parameter;
 
-        public Reverb3dCommand(uint bufferOffset, Reverb3dParameter parameter, Memory<Reverb3dState> state, bool isEnabled, ulong workBuffer, int nodeId, bool newEffectChannelMappingSupported)
+        public Reverb3dCommand()
+        {
+            InputBufferIndices = new ushort[Constants.VoiceChannelCountMax];
+            OutputBufferIndices = new ushort[Constants.VoiceChannelCountMax];
+        }
+
+        public Reverb3dCommand Initialize(uint bufferOffset, Reverb3dParameter parameter, Memory<Reverb3dState> state, bool isEnabled, ulong workBuffer, int nodeId, bool newEffectChannelMappingSupported)
         {
             Enabled = true;
             IsEffectEnabled = isEnabled;
@@ -54,47 +68,49 @@ namespace Ryujinx.Audio.Renderer.Dsp.Command
             _parameter = parameter;
             State = state;
             WorkBuffer = workBuffer;
-
-            InputBufferIndices = new ushort[Constants.VoiceChannelCountMax];
-            OutputBufferIndices = new ushort[Constants.VoiceChannelCountMax];
+            
+            Span<byte> inputSpan = Parameter.Input.AsSpan();
+            Span<byte> outputSpan = Parameter.Output.AsSpan();
 
             for (int i = 0; i < Parameter.ChannelCount; i++)
             {
-                InputBufferIndices[i] = (ushort)(bufferOffset + Parameter.Input[i]);
-                OutputBufferIndices[i] = (ushort)(bufferOffset + Parameter.Output[i]);
+                InputBufferIndices[i] = (ushort)(bufferOffset + inputSpan[i]);
+                OutputBufferIndices[i] = (ushort)(bufferOffset + outputSpan[i]);
             }
 
             // NOTE: We do the opposite as Nintendo here for now to restore previous behaviour
             // TODO: Update reverb 3d processing and remove this to use RemapLegacyChannelEffectMappingToChannelResourceMapping.
             DataSourceHelper.RemapChannelResourceMappingToLegacy(newEffectChannelMappingSupported, InputBufferIndices, Parameter.ChannelCount);
             DataSourceHelper.RemapChannelResourceMappingToLegacy(newEffectChannelMappingSupported, OutputBufferIndices, Parameter.ChannelCount);
+
+            return this;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void ProcessReverb3dMono(ref Reverb3dState state, ReadOnlySpan<IntPtr> outputBuffers, ReadOnlySpan<IntPtr> inputBuffers, uint sampleCount)
+        private void ProcessReverb3dMono(ref Reverb3dState state, ReadOnlySpan<nint> outputBuffers, ReadOnlySpan<nint> inputBuffers, uint sampleCount)
         {
             ProcessReverb3dGeneric(ref state, outputBuffers, inputBuffers, sampleCount, _outputEarlyIndicesTableMono, _targetEarlyDelayLineIndicesTableMono, _targetOutputFeedbackIndicesTableMono);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void ProcessReverb3dStereo(ref Reverb3dState state, ReadOnlySpan<IntPtr> outputBuffers, ReadOnlySpan<IntPtr> inputBuffers, uint sampleCount)
+        private void ProcessReverb3dStereo(ref Reverb3dState state, ReadOnlySpan<nint> outputBuffers, ReadOnlySpan<nint> inputBuffers, uint sampleCount)
         {
             ProcessReverb3dGeneric(ref state, outputBuffers, inputBuffers, sampleCount, _outputEarlyIndicesTableStereo, _targetEarlyDelayLineIndicesTableStereo, _targetOutputFeedbackIndicesTableStereo);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void ProcessReverb3dQuadraphonic(ref Reverb3dState state, ReadOnlySpan<IntPtr> outputBuffers, ReadOnlySpan<IntPtr> inputBuffers, uint sampleCount)
+        private void ProcessReverb3dQuadraphonic(ref Reverb3dState state, ReadOnlySpan<nint> outputBuffers, ReadOnlySpan<nint> inputBuffers, uint sampleCount)
         {
             ProcessReverb3dGeneric(ref state, outputBuffers, inputBuffers, sampleCount, _outputEarlyIndicesTableQuadraphonic, _targetEarlyDelayLineIndicesTableQuadraphonic, _targetOutputFeedbackIndicesTableQuadraphonic);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void ProcessReverb3dSurround(ref Reverb3dState state, ReadOnlySpan<IntPtr> outputBuffers, ReadOnlySpan<IntPtr> inputBuffers, uint sampleCount)
+        private void ProcessReverb3dSurround(ref Reverb3dState state, ReadOnlySpan<nint> outputBuffers, ReadOnlySpan<nint> inputBuffers, uint sampleCount)
         {
             ProcessReverb3dGeneric(ref state, outputBuffers, inputBuffers, sampleCount, _outputEarlyIndicesTableSurround, _targetEarlyDelayLineIndicesTableSurround, _targetOutputFeedbackIndicesTableSurround);
         }
 
-        private unsafe void ProcessReverb3dGeneric(ref Reverb3dState state, ReadOnlySpan<IntPtr> outputBuffers, ReadOnlySpan<IntPtr> inputBuffers, uint sampleCount, ReadOnlySpan<int> outputEarlyIndicesTable, ReadOnlySpan<int> targetEarlyDelayLineIndicesTable, ReadOnlySpan<int> targetOutputFeedbackIndicesTable)
+        private unsafe void ProcessReverb3dGeneric(ref Reverb3dState state, ReadOnlySpan<nint> outputBuffers, ReadOnlySpan<nint> inputBuffers, uint sampleCount, ReadOnlySpan<int> outputEarlyIndicesTable, ReadOnlySpan<int> targetEarlyDelayLineIndicesTable, ReadOnlySpan<int> targetOutputFeedbackIndicesTable)
         {
             const int DelayLineSampleIndexOffset = 1;
 
@@ -193,8 +209,8 @@ namespace Ryujinx.Audio.Renderer.Dsp.Command
 
             if (IsEffectEnabled && Parameter.IsChannelCountValid())
             {
-                Span<IntPtr> inputBuffers = stackalloc IntPtr[Parameter.ChannelCount];
-                Span<IntPtr> outputBuffers = stackalloc IntPtr[Parameter.ChannelCount];
+                Span<nint> inputBuffers = stackalloc nint[Parameter.ChannelCount];
+                Span<nint> outputBuffers = stackalloc nint[Parameter.ChannelCount];
 
                 for (int i = 0; i < Parameter.ChannelCount; i++)
                 {
