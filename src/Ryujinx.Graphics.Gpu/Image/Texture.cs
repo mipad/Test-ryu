@@ -256,6 +256,8 @@ namespace Ryujinx.Graphics.Gpu.Image
             _sizeInfo = sizeInfo;
             Range = range;
 
+            Logger.Debug?.Print(LogClass.Gpu, $"初始化纹理: {info.FormatInfo.Format}, {info.Width}x{info.Height}, 目标: {info.Target}, 层级: {info.Levels}");
+
             SetInfo(info);
 
             _viewStorage = this;
@@ -272,6 +274,8 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="withData">True if the texture is to be initialized with data</param>
         public void InitializeData(bool isView, bool withData = false)
         {
+            Logger.Debug?.Print(LogClass.Gpu, $"初始化纹理数据: 视图={isView}, 带数据={withData}, 格式={Info.FormatInfo.Format}");
+
             withData |= Group != null && Group.FlushIncompatibleOverlapsIfNeeded();
 
             if (withData)
@@ -279,11 +283,13 @@ namespace Ryujinx.Graphics.Gpu.Image
                 Debug.Assert(!isView);
 
                 TextureCreateInfo createInfo = TextureCache.GetCreateInfo(Info, _context.Capabilities, ScaleFactor);
+                Logger.Debug?.Print(LogClass.Gpu, $"创建主机纹理: {createInfo.Width}x{createInfo.Height}, 格式: {createInfo.Format}, 目标: {createInfo.Target}");
                 HostTexture = _context.Renderer.CreateTexture(createInfo);
 
                 SynchronizeMemory(); // Load the data.
                 if (ScaleMode == TextureScaleMode.Scaled)
                 {
+                    Logger.Debug?.Print(LogClass.Gpu, "纹理缩放模式为Scaled，开始缩放数据");
                     SetScale(GraphicsConfig.ResScale); // Scale the data up.
                 }
             }
@@ -298,11 +304,13 @@ namespace Ryujinx.Graphics.Gpu.Image
 
                     if (ScaleMode == TextureScaleMode.Scaled)
                     {
+                        Logger.Debug?.Print(LogClass.Gpu, "纹理缩放模式为Scaled，直接设置目标缩放比例");
                         // Don't need to start at 1x as there is no data to scale, just go straight to the target scale.
                         ScaleFactor = GraphicsConfig.ResScale;
                     }
 
                     TextureCreateInfo createInfo = TextureCache.GetCreateInfo(Info, _context.Capabilities, ScaleFactor);
+                    Logger.Debug?.Print(LogClass.Gpu, $"创建空主机纹理: {createInfo.Width}x{createInfo.Height}, 格式: {createInfo.Format}");
                     HostTexture = _context.Renderer.CreateTexture(createInfo);
                 }
             }
@@ -316,6 +324,8 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="incompatibleOverlaps">Groups that overlap with this one but are incompatible</param>
         public void InitializeGroup(bool hasLayerViews, bool hasMipViews, List<TextureIncompatibleOverlap> incompatibleOverlaps)
         {
+            Logger.Debug?.Print(LogClass.Gpu, $"初始化纹理组: 图层视图={hasLayerViews}, Mip视图={hasMipViews}, 不兼容重叠数={incompatibleOverlaps?.Count ?? 0}");
+
             Group = new TextureGroup(_context, _physicalMemory, this, incompatibleOverlaps);
 
             Group.Initialize(ref _sizeInfo, hasLayerViews, hasMipViews);
@@ -335,6 +345,8 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <returns>The child texture</returns>
         public Texture CreateView(TextureInfo info, SizeInfo sizeInfo, MultiRange range, int firstLayer, int firstLevel)
         {
+            Logger.Debug?.Print(LogClass.Gpu, $"创建纹理视图: {info.FormatInfo.Format}, {info.Width}x{info.Height}, 起始层={firstLayer}, 起始级={firstLevel}");
+
             Texture texture = new(
                 _context,
                 _physicalMemory,
@@ -372,6 +384,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             {
                 if (texture.Group.Storage == texture)
                 {
+                    Logger.Debug?.Print(LogClass.Gpu, "纹理组不再使用，继承组数据");
                     // This texture's group is no longer used.
                     Group.Inherit(texture.Group);
 
@@ -403,6 +416,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="range">New physical memory range backing the texture</param>
         public void ReplaceRange(MultiRange range)
         {
+            Logger.Debug?.Print(LogClass.Gpu, "替换纹理物理内存范围");
             Range = range;
 
             Group.RangeChanged();
@@ -420,6 +434,8 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="copyTo">True if this texture is first copied to the given one, false for the opposite direction</param>
         public void CreateCopyDependency(Texture contained, int layer, int level, bool copyTo)
         {
+            Logger.Debug?.Print(LogClass.Gpu, $"创建拷贝依赖: {contained.Info.FormatInfo.Format}, 层={layer}, 级={level}, 拷贝方向={(copyTo ? "本纹理->目标" : "目标->本纹理")}");
+
             if (contained.Group == Group)
             {
                 return;
@@ -437,8 +453,11 @@ namespace Ryujinx.Graphics.Gpu.Image
         {
             _scaledSetScore += ScaledSetWeight;
 
+            Logger.Debug?.Print(LogClass.Gpu, $"缩放设置数据评分: {_scaledSetScore}/{ScaledSetThreshold}");
+
             if (_scaledSetScore >= ScaledSetThreshold)
             {
+                Logger.Warning?.Print(LogClass.Gpu, "纹理缩放设置数据次数过多，加入黑名单");
                 BlacklistScale();
 
                 return false;
@@ -452,6 +471,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// </summary>
         public void BlacklistScale()
         {
+            Logger.Debug?.Print(LogClass.Gpu, $"纹理缩放黑名单: {Info.FormatInfo.Format}, {Width}x{Height}");
             ScaleMode = TextureScaleMode.Blacklisted;
             SetScale(1f);
         }
@@ -463,8 +483,11 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="other">The other texture</param>
         public void PropagateScale(Texture other)
         {
+            Logger.Debug?.Print(LogClass.Gpu, $"传播缩放: 本纹理模式={ScaleMode}, 目标纹理模式={other.ScaleMode}");
+
             if (other.ScaleMode == TextureScaleMode.Blacklisted || ScaleMode == TextureScaleMode.Blacklisted)
             {
+                Logger.Debug?.Print(LogClass.Gpu, "其中一个纹理在黑名单中，两者都加入黑名单");
                 BlacklistScale();
                 other.BlacklistScale();
             }
@@ -474,6 +497,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                 float targetScale = GraphicsConfig.ResScale;
                 float sharedScale = (ScaleFactor == targetScale || other.ScaleFactor == targetScale) ? targetScale : Math.Max(ScaleFactor, other.ScaleFactor);
 
+                Logger.Debug?.Print(LogClass.Gpu, $"设置共享缩放: {sharedScale}");
                 SetScale(sharedScale);
                 other.SetScale(sharedScale);
             }
@@ -491,11 +515,13 @@ namespace Ryujinx.Graphics.Gpu.Image
             if (storage == null)
             {
                 TextureCreateInfo createInfo = TextureCache.GetCreateInfo(Info, _context.Capabilities, scale);
+                Logger.Debug?.Print(LogClass.Gpu, $"创建缩放纹理: {createInfo.Width}x{createInfo.Height}, 缩放={scale}");
                 storage = _context.Renderer.CreateTexture(createInfo);
             }
 
             if (copy)
             {
+                Logger.Debug?.Print(LogClass.Gpu, $"拷贝纹理数据: {HostTexture.Width}x{HostTexture.Height} -> {storage.Width}x{storage.Height}");
                 HostTexture.CopyTo(storage, new Extents2D(0, 0, HostTexture.Width, HostTexture.Height), new Extents2D(0, 0, storage.Width, storage.Height), true);
             }
 
@@ -517,6 +543,7 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             if (_viewStorage != this)
             {
+                Logger.Debug?.Print(LogClass.Gpu, "设置视图纹理的缩放，委托给存储纹理");
                 _viewStorage.ScaleMode = newScaleMode;
                 _viewStorage.SetScale(scale);
                 return;
@@ -524,19 +551,13 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             if (ScaleFactor != scale)
             {
-                Logger.Debug?.Print(LogClass.Gpu, $"Rescaling {Info.Width}x{Info.Height} {Info.FormatInfo.Format} to ({ScaleFactor} to {scale}). ");
+                Logger.Debug?.Print(LogClass.Gpu, $"缩放纹理: {Info.Width}x{Info.Height} {Info.FormatInfo.Format} 从 {ScaleFactor} 到 {scale}");
 
                 ScaleFactor = scale;
 
                 ITexture newStorage = GetScaledHostTexture(ScaleFactor, true);
-if (newStorage == null)
-{
-    Logger.Error?.Print(LogClass.Gpu, "Failed to create scaled texture. Fallback to original scale.");
-    ScaleFactor = 1f; // 回滚缩放
-    return;
-}
 
-                Logger.Debug?.Print(LogClass.Gpu, $"  Copy performed: {HostTexture.Width}x{HostTexture.Height} to {newStorage.Width}x{newStorage.Height}");
+                Logger.Debug?.Print(LogClass.Gpu, $"缩放拷贝完成: {HostTexture.Width}x{HostTexture.Height} 到 {newStorage.Width}x{newStorage.Height}");
 
                 ReplaceStorage(newStorage);
 
@@ -544,7 +565,7 @@ if (newStorage == null)
 
                 foreach (var view in _views)
                 {
-                    Logger.Debug?.Print(LogClass.Gpu, $"  Recreating view {Info.Width}x{Info.Height} {Info.FormatInfo.Format}.");
+                    Logger.Debug?.Print(LogClass.Gpu, $"重新创建视图: {view.Info.Width}x{view.Info.Height} {view.Info.FormatInfo.Format}");
                     view.ScaleFactor = scale;
 
                     TextureCreateInfo viewCreateInfo = TextureCache.GetCreateInfo(view.Info, _context.Capabilities, scale);
@@ -557,6 +578,7 @@ if (newStorage == null)
 
             if (ScaleMode != newScaleMode)
             {
+                Logger.Debug?.Print(LogClass.Gpu, $"更新缩放模式: {ScaleMode} -> {newScaleMode}");
                 ScaleMode = newScaleMode;
 
                 foreach (var view in _views)
@@ -574,7 +596,12 @@ if (newStorage == null)
         /// <returns>True if the texture was modified, false otherwise.</returns>
         public bool CheckModified(bool consume)
         {
-            return Group.CheckDirty(this, consume);
+            bool modified = Group.CheckDirty(this, consume);
+            if (modified)
+            {
+                Logger.Debug?.Print(LogClass.Gpu, $"纹理已修改: {Info.FormatInfo.Format}, {Width}x{Height}, 消耗={consume}");
+            }
+            return modified;
         }
 
         /// <summary>
@@ -584,6 +611,7 @@ if (newStorage == null)
         /// </summary>
         public void DiscardData()
         {
+            Logger.Debug?.Print(LogClass.Gpu, "丢弃纹理数据");
             Group.DiscardData(this);
 
             _dirty = false;
@@ -608,6 +636,8 @@ if (newStorage == null)
                 return;
             }
 
+            Logger.Debug?.Print(LogClass.Gpu, $"同步纹理内存: {Info.FormatInfo.Format}, {Width}x{Height}, 层级={_layers}");
+
             _dirty = false;
 
             if (_hasData)
@@ -626,6 +656,7 @@ if (newStorage == null)
         /// </summary>
         public void SignalGroupDirty()
         {
+            Logger.Debug?.Print(LogClass.Gpu, "标记纹理组为脏");
             _dirty = true;
         }
 
@@ -634,6 +665,7 @@ if (newStorage == null)
         /// </summary>
         public void SignalModifiedDirty()
         {
+            Logger.Debug?.Print(LogClass.Gpu, "标记修改状态为脏");
             _modifiedStale = true;
         }
 
@@ -642,60 +674,57 @@ if (newStorage == null)
         /// This will replace the entire texture with the data present in guest memory.
         /// </summary>
         public void SynchronizeFull()
-{
-    ReadOnlySpan<byte> data = _physicalMemory.GetSpan(Range);
+        {
+            Logger.Debug?.Print(LogClass.Gpu, $"完全同步纹理: {Info.FormatInfo.Format}, {Width}x{Height}, 范围大小={Range.GetSize()}");
 
-    // 如果主机不支持 ASTC 压缩，需要解压
-    if (Info.FormatInfo.Format.IsAstc() && !_context.Capabilities.SupportsAstcCompression)
-    {
-        if (_updateCount < ByteComparisonSwitchThreshold)
-        {
-            _updateCount++;
-        }
-        else
-        {
-            bool dataMatches = _currentData != null && data.SequenceEqual(_currentData);
-            if (dataMatches)
+            ReadOnlySpan<byte> data = _physicalMemory.GetSpan(Range);
+
+            // If the host does not support ASTC compression, we need to do the decompression.
+            // The decompression is slow, so we want to avoid it as much as possible.
+            // This does a byte-by-byte check and skips the update if the data is equal in this case.
+            // This improves the speed on applications that overwrites ASTC data without changing anything.
+            if (Info.FormatInfo.Format.IsAstc() && !_context.Capabilities.SupportsAstcCompression)
             {
-                return;
+                Logger.Debug?.Print(LogClass.Gpu, "ASTC格式需要软件解压，检查数据变化");
+                if (_updateCount < ByteComparisonSwitchThreshold)
+                {
+                    _updateCount++;
+                    Logger.Debug?.Print(LogClass.Gpu, $"ASTC更新计数: {_updateCount}/{ByteComparisonSwitchThreshold}");
+                }
+                else
+                {
+                    bool dataMatches = _currentData != null && data.SequenceEqual(_currentData);
+                    if (dataMatches)
+                    {
+                        Logger.Debug?.Print(LogClass.Gpu, "ASTC数据未变化，跳过更新");
+                        return;
+                    }
+
+                    _currentData = data.ToArray();
+                    Logger.Debug?.Print(LogClass.Gpu, "ASTC数据已变化，更新当前数据");
+                }
             }
 
-            _currentData = data.ToArray();
+            MemoryOwner<byte> result = ConvertToHostCompatibleFormat(data);
+
+            if (ScaleFactor != 1f && AllowScaledSetData())
+            {
+                Logger.Debug?.Print(LogClass.Gpu, "缩放纹理设置数据");
+                // If needed, create a texture to load from 1x scale.
+                ITexture texture = _setHostTexture = GetScaledHostTexture(1f, false, _setHostTexture);
+
+                texture.SetData(result);
+
+                texture.CopyTo(HostTexture, new Extents2D(0, 0, texture.Width, texture.Height), new Extents2D(0, 0, HostTexture.Width, HostTexture.Height), true);
+            }
+            else
+            {
+                Logger.Debug?.Print(LogClass.Gpu, "直接设置纹理数据");
+                HostTexture.SetData(result);
+            }
+
+            _hasData = true;
         }
-    }
-
-    // 转换数据为宿主兼容格式
-    MemoryOwner<byte> result = ConvertToHostCompatibleFormat(data);
-
-    // ---- 新增空数据检查 ----
-    if (result == null || result.Length == 0)
-    {
-        Logger.Error?.Print(LogClass.Gpu, "Failed to convert texture data. Skipping upload.");
-        result?.Dispose(); // 释放无效数据
-        return; // 直接返回，避免后续操作
-    }
-
-    // 缩放逻辑
-    if (ScaleFactor != 1f && AllowScaledSetData())
-    {
-        ITexture texture = _setHostTexture = GetScaledHostTexture(1f, false, _setHostTexture);
-        texture.SetData(result);
-
-        texture.CopyTo(
-            HostTexture,
-            new Extents2D(0, 0, texture.Width, texture.Height),
-            new Extents2D(0, 0, HostTexture.Width, HostTexture.Height),
-            true
-        );
-    }
-    else
-    {
-        HostTexture.SetData(result);
-    }
-
-
-    _hasData = true;
-}
 
         /// <summary>
         /// Uploads new texture data to the host GPU.
@@ -703,6 +732,8 @@ if (newStorage == null)
         /// <param name="data">New data</param>
         public void SetData(MemoryOwner<byte> data)
         {
+            Logger.Debug?.Print(LogClass.Gpu, $"设置纹理数据: {Info.FormatInfo.Format}, {Width}x{Height}, 数据大小={data.Memory.Length}");
+
             BlacklistScale();
 
             Group.CheckDirty(this, true);
@@ -722,6 +753,8 @@ if (newStorage == null)
         /// <param name="level">Target level</param>
         public void SetData(MemoryOwner<byte> data, int layer, int level)
         {
+            Logger.Debug?.Print(LogClass.Gpu, $"设置纹理切片数据: 层={layer}, 级={level}, 大小={data.Memory.Length}");
+
             BlacklistScale();
 
             HostTexture.SetData(data, layer, level);
@@ -740,6 +773,8 @@ if (newStorage == null)
         /// <param name="region">Target sub-region of the texture to update</param>
         public void SetData(MemoryOwner<byte> data, int layer, int level, Rectangle<int> region)
         {
+            Logger.Debug?.Print(LogClass.Gpu, $"设置纹理区域数据: 层={layer}, 级={level}, 区域={region}, 大小={data.Memory.Length}");
+
             BlacklistScale();
 
             HostTexture.SetData(data, layer, level, region);
@@ -771,10 +806,15 @@ if (newStorage == null)
 
             int sliceDepth = single ? 1 : depth;
 
+            Logger.Debug?.Print(LogClass.Gpu, 
+                $"转换到主机兼容格式: {Info.FormatInfo.Format}, 大小={width}x{height}, " +
+                $"层级={levels}, 层数={layers}, 单切片={single}");
+
             MemoryOwner<byte> linear;
 
             if (Info.IsLinear)
             {
+                Logger.Debug?.Print(LogClass.Gpu, "转换线性步长布局到线性布局");
                 linear = LayoutConverter.ConvertLinearStridedToLinear(
                     width,
                     height,
@@ -787,6 +827,7 @@ if (newStorage == null)
             }
             else
             {
+                Logger.Debug?.Print(LogClass.Gpu, "转换块线性布局到线性布局");
                 linear = LayoutConverter.ConvertBlockLinearToLinear(
                     width,
                     height,
@@ -811,124 +852,137 @@ if (newStorage == null)
             // - BC4/BC5 is not supported on 3D textures.
             if (!_context.Capabilities.SupportsAstcCompression && Format.IsAstc())
             {
+                Logger.Debug?.Print(LogClass.Gpu, "主机不支持ASTC，进行软件解压");
                 using (result)
                 {
                     if (!AstcDecoder.TryDecodeToRgba8P(
-    result.Memory,
-    Info.FormatInfo.BlockWidth,
-    Info.FormatInfo.BlockHeight,
-    width,
-    height,
-    sliceDepth,
-    levels,
-    layers,
-    out MemoryOwner<byte> decoded))
-{
-    string texInfo = $"{Info.Target} {Info.FormatInfo.Format} {Info.Width}x{Info.Height}x{Info.DepthOrLayers} levels {Info.Levels}";
-    Logger.Debug?.Print(LogClass.Gpu, $"Invalid ASTC texture at 0x{Info.GpuAddress:X} ({texInfo}).");
-    
-    result.Dispose(); // 释放原始数据
-    int pixelCount = width * height * sliceDepth * layers * levels;
-    MemoryOwner<byte> fallback = MemoryOwner<byte>.Rent(pixelCount * 4); // RGBA8 格式
-    fallback.Memory.Span.Fill(0); // 填充为黑色
-    return fallback;
-}
+                        result.Memory,
+                        Info.FormatInfo.BlockWidth,
+                        Info.FormatInfo.BlockHeight,
+                        width,
+                        height,
+                        sliceDepth,
+                        levels,
+                        layers,
+                        out MemoryOwner<byte> decoded))
+                    {
+                        string texInfo = $"{Info.Target} {Info.FormatInfo.Format} {Info.Width}x{Info.Height}x{Info.DepthOrLayers} levels {Info.Levels}";
+
+                        Logger.Warning?.Print(LogClass.Gpu, $"无效的ASTC纹理: 地址=0x{Info.GpuAddress:X}, 信息=({texInfo})");
+                    }
 
                     if (GraphicsConfig.EnableTextureRecompression)
                     {
+                        Logger.Debug?.Print(LogClass.Gpu, "启用纹理重压缩，编码为BC7格式");
                         using (decoded)
                         {
                             return BCnEncoder.EncodeBC7(decoded.Memory, width, height, sliceDepth, levels, layers);
                         }
                     }
 
+                    Logger.Debug?.Print(LogClass.Gpu, "ASTC解压完成");
                     return decoded;
                 }
             }
             else if (!_context.Capabilities.SupportsEtc2Compression && Format.IsEtc2())
             {
+                Logger.Debug?.Print(LogClass.Gpu, "主机不支持ETC2，进行软件解压");
                 switch (Format)
                 {
                     case Format.Etc2RgbaSrgb:
                     case Format.Etc2RgbaUnorm:
                         using (result)
                         {
+                            Logger.Debug?.Print(LogClass.Gpu, "解码ETC2 RGBA格式");
                             return ETC2Decoder.DecodeRgba(result.Span, width, height, sliceDepth, levels, layers);
                         }
                     case Format.Etc2RgbPtaSrgb:
                     case Format.Etc2RgbPtaUnorm:
                         using (result)
                         {
+                            Logger.Debug?.Print(LogClass.Gpu, "解码ETC2 RGB PTA格式");
                             return ETC2Decoder.DecodePta(result.Span, width, height, sliceDepth, levels, layers);
                         }
                     case Format.Etc2RgbSrgb:
                     case Format.Etc2RgbUnorm:
                         using (result)
                         {
+                            Logger.Debug?.Print(LogClass.Gpu, "解码ETC2 RGB格式");
                             return ETC2Decoder.DecodeRgb(result.Span, width, height, sliceDepth, levels, layers);
                         }
                 }
             }
             else if (!TextureCompatibility.HostSupportsBcFormat(Format, Target, _context.Capabilities))
             {
+                Logger.Debug?.Print(LogClass.Gpu, "主机不支持BC格式，进行软件解压");
                 switch (Format)
                 {
                     case Format.Bc1RgbaSrgb:
                     case Format.Bc1RgbaUnorm:
                         using (result)
                         {
+                            Logger.Debug?.Print(LogClass.Gpu, "解码BC1格式");
                             return BCnDecoder.DecodeBC1(result.Span, width, height, sliceDepth, levels, layers);
                         }
                     case Format.Bc2Srgb:
                     case Format.Bc2Unorm:
                         using (result)
                         {
+                            Logger.Debug?.Print(LogClass.Gpu, "解码BC2格式");
                             return BCnDecoder.DecodeBC2(result.Span, width, height, sliceDepth, levels, layers);
                         }
                     case Format.Bc3Srgb:
                     case Format.Bc3Unorm:
                         using (result)
                         {
+                            Logger.Debug?.Print(LogClass.Gpu, "解码BC3格式");
                             return BCnDecoder.DecodeBC3(result.Span, width, height, sliceDepth, levels, layers);
                         }
                     case Format.Bc4Snorm:
                     case Format.Bc4Unorm:
                         using (result)
                         {
+                            Logger.Debug?.Print(LogClass.Gpu, "解码BC4格式");
                             return BCnDecoder.DecodeBC4(result.Span, width, height, sliceDepth, levels, layers, Format == Format.Bc4Snorm);
                         }
                     case Format.Bc5Snorm:
                     case Format.Bc5Unorm:
                         using (result)
                         {
+                            Logger.Debug?.Print(LogClass.Gpu, "解码BC5格式");
                             return BCnDecoder.DecodeBC5(result.Span, width, height, sliceDepth, levels, layers, Format == Format.Bc5Snorm);
                         }
                     case Format.Bc6HSfloat:
                     case Format.Bc6HUfloat:
                         using (result)
                         {
+                            Logger.Debug?.Print(LogClass.Gpu, "解码BC6格式");
                             return BCnDecoder.DecodeBC6(result.Span, width, height, sliceDepth, levels, layers, Format == Format.Bc6HSfloat);
                         }
                     case Format.Bc7Srgb:
                     case Format.Bc7Unorm:
                         using (result)
                         {
+                            Logger.Debug?.Print(LogClass.Gpu, "解码BC7格式");
                             return BCnDecoder.DecodeBC7(result.Span, width, height, sliceDepth, levels, layers);
                         }
                 }
             }
             else if (!_context.Capabilities.SupportsR4G4Format && Format == Format.R4G4Unorm)
             {
+                Logger.Debug?.Print(LogClass.Gpu, "主机不支持R4G4格式，进行转换");
                 using (result)
                 {
                     var converted = PixelConverter.ConvertR4G4ToR4G4B4A4(result.Span, width);
 
                     if (_context.Capabilities.SupportsR4G4B4A4Format)
                     {
+                        Logger.Debug?.Print(LogClass.Gpu, "转换为R4G4B4A4格式");
                         return converted;
                     }
                     else
                     {
+                        Logger.Debug?.Print(LogClass.Gpu, "转换为R8G8B8A8格式");
                         using (converted)
                         {
                             return PixelConverter.ConvertR4G4B4A4ToR8G8B8A8(converted.Span, width);
@@ -940,6 +994,7 @@ if (newStorage == null)
             {
                 if (!_context.Capabilities.SupportsR4G4B4A4Format)
                 {
+                    Logger.Debug?.Print(LogClass.Gpu, "主机不支持R4G4B4A4格式，转换为R8G8B8A8");
                     using (result)
                     {
                         return PixelConverter.ConvertR4G4B4A4ToR8G8B8A8(result.Span, width);
@@ -948,12 +1003,14 @@ if (newStorage == null)
             }
             else if (!_context.Capabilities.Supports5BitComponentFormat && Format.Is16BitPacked())
             {
+                Logger.Debug?.Print(LogClass.Gpu, "主机不支持5位分量格式，转换为RGBA8");
                 switch (Format)
                 {
                     case Format.B5G6R5Unorm:
                     case Format.R5G6B5Unorm:
                         using (result)
                         {
+                            Logger.Debug?.Print(LogClass.Gpu, "转换R5G6B5到R8G8B8A8");
                             return PixelConverter.ConvertR5G6B5ToR8G8B8A8(result.Span, width);
                         }
                     case Format.B5G5R5A1Unorm:
@@ -961,21 +1018,25 @@ if (newStorage == null)
                     case Format.R5G5B5A1Unorm:
                         using (result)
                         {
+                            Logger.Debug?.Print(LogClass.Gpu, "转换R5G5B5到R8G8B8A8");
                             return PixelConverter.ConvertR5G5B5ToR8G8B8A8(result.Span, width, Format == Format.R5G5B5X1Unorm);
                         }
                     case Format.A1B5G5R5Unorm:
                         using (result)
                         {
+                            Logger.Debug?.Print(LogClass.Gpu, "转换A1B5G5R5到R8G8B8A8");
                             return PixelConverter.ConvertA1B5G5R5ToR8G8B8A8(result.Span, width);
                         }
                     case Format.R4G4B4A4Unorm:
                         using (result)
                         {
+                            Logger.Debug?.Print(LogClass.Gpu, "转换R4G4B4A4到R8G8B8A8");
                             return PixelConverter.ConvertR4G4B4A4ToR8G8B8A8(result.Span, width);
                         }
                 }
             }
 
+            Logger.Debug?.Print(LogClass.Gpu, "格式转换完成，使用原始数据");
             return result;
         }
 
@@ -989,6 +1050,10 @@ if (newStorage == null)
         /// <returns>Converted data</returns>
         public ReadOnlySpan<byte> ConvertFromHostCompatibleFormat(Span<byte> output, ReadOnlySpan<byte> data, int level = 0, bool single = false)
         {
+            Logger.Debug?.Print(LogClass.Gpu, 
+                $"从主机兼容格式转换: {Info.FormatInfo.Format}, 大小={Info.Width}x{Info.Height}, " +
+                $"层级={level}, 单切片={single}");
+
             if (Target != Target.TextureBuffer)
             {
                 int width = Info.Width;
@@ -1004,6 +1069,7 @@ if (newStorage == null)
 
                 if (Info.IsLinear)
                 {
+                    Logger.Debug?.Print(LogClass.Gpu, "转换线性布局到线性步长布局");
                     data = LayoutConverter.ConvertLinearToLinearStrided(
                         output,
                         Info.Width,
@@ -1016,6 +1082,7 @@ if (newStorage == null)
                 }
                 else
                 {
+                    Logger.Debug?.Print(LogClass.Gpu, "转换线性布局到块线性布局");
                     data = LayoutConverter.ConvertLinearToBlockLinear(
                         output,
                         width,
@@ -1035,6 +1102,7 @@ if (newStorage == null)
                 }
             }
 
+            Logger.Debug?.Print(LogClass.Gpu, "主机到客机格式转换完成");
             return data;
         }
 
@@ -1050,6 +1118,7 @@ if (newStorage == null)
         /// <returns>True if data was flushed, false otherwise</returns>
         public bool FlushModified(bool tracked = true)
         {
+            Logger.Debug?.Print(LogClass.Gpu, $"刷新修改的纹理数据: {Info.FormatInfo.Format}, 跟踪={tracked}");
             return TextureCompatibility.CanTextureFlush(Info, _context.Capabilities) && Group.FlushModified(this, tracked);
         }
 
@@ -1064,9 +1133,14 @@ if (newStorage == null)
         /// <param name="tracked">Whether or not the flush triggers write tracking. If it doesn't, the texture will not be blacklisted for scaling either.</param>
         public void Flush(bool tracked)
         {
+            Logger.Debug?.Print(LogClass.Gpu, $"刷新纹理: {Info.FormatInfo.Format}, 跟踪={tracked}");
             if (TextureCompatibility.CanTextureFlush(Info, _context.Capabilities))
             {
                 FlushTextureDataToGuest(tracked);
+            }
+            else
+            {
+                Logger.Debug?.Print(LogClass.Gpu, "纹理无法刷新: 格式不兼容或目标不支持");
             }
         }
 
@@ -1080,6 +1154,7 @@ if (newStorage == null)
             ITexture texture = HostTexture;
             if (ScaleFactor != 1f)
             {
+                Logger.Debug?.Print(LogClass.Gpu, "创建1x缩放纹理用于刷新");
                 // If needed, create a texture to flush back to host at 1x scale.
                 texture = _flushHostTexture = GetScaledHostTexture(1f, true, _flushHostTexture);
             }
@@ -1099,6 +1174,8 @@ if (newStorage == null)
         /// <param name="texture">The specific host texture to flush. Defaults to this texture</param>
         public void FlushTextureDataToGuest(bool tracked, ITexture texture = null)
         {
+            Logger.Debug?.Print(LogClass.Gpu, $"刷新纹理数据到客机: {Info.FormatInfo.Format}, 跟踪={tracked}");
+
             using WritableRegion region = _physicalMemory.GetWritableRegion(Range, tracked);
 
             GetTextureDataFromGpu(region.Memory.Span, tracked, texture);
@@ -1116,21 +1193,26 @@ if (newStorage == null)
         /// <param name="texture">The specific host texture to flush. Defaults to this texture</param>
         private void GetTextureDataFromGpu(Span<byte> output, bool blacklist, ITexture texture = null)
         {
+            Logger.Debug?.Print(LogClass.Gpu, $"从GPU获取纹理数据: {Info.FormatInfo.Format}, 黑名单={blacklist}");
+
             PinnedSpan<byte> data;
 
             if (texture != null)
             {
+                Logger.Debug?.Print(LogClass.Gpu, "使用指定纹理获取数据");
                 data = texture.GetData();
             }
             else
             {
                 if (blacklist)
                 {
+                    Logger.Debug?.Print(LogClass.Gpu, "黑名单纹理，直接获取数据");
                     BlacklistScale();
                     data = HostTexture.GetData();
                 }
                 else if (ScaleFactor != 1f)
                 {
+                    Logger.Debug?.Print(LogClass.Gpu, "缩放纹理，临时设置1x缩放获取数据");
                     float scale = ScaleFactor;
                     SetScale(1f);
                     data = HostTexture.GetData();
@@ -1138,6 +1220,7 @@ if (newStorage == null)
                 }
                 else
                 {
+                    Logger.Debug?.Print(LogClass.Gpu, "直接获取纹理数据");
                     data = HostTexture.GetData();
                 }
             }
@@ -1145,6 +1228,7 @@ if (newStorage == null)
             ConvertFromHostCompatibleFormat(output, data.Get());
 
             data.Dispose();
+            Logger.Debug?.Print(LogClass.Gpu, "GPU纹理数据获取完成");
         }
 
         /// <summary>
@@ -1161,6 +1245,8 @@ if (newStorage == null)
         /// <param name="texture">The specific host texture to flush. Defaults to this texture</param>
         public void GetTextureDataSliceFromGpu(Span<byte> output, int layer, int level, bool blacklist, ITexture texture = null)
         {
+            Logger.Debug?.Print(LogClass.Gpu, $"从GPU获取纹理切片数据: 层={layer}, 级={level}, 黑名单={blacklist}");
+
             PinnedSpan<byte> data;
 
             if (texture != null)
@@ -1190,6 +1276,7 @@ if (newStorage == null)
             ConvertFromHostCompatibleFormat(output, data.Get(), level, true);
 
             data.Dispose();
+            Logger.Debug?.Print(LogClass.Gpu, "GPU纹理切片数据获取完成");
         }
 
         /// <summary>
@@ -1202,20 +1289,27 @@ if (newStorage == null)
         {
             bool forSampler = (flags & TextureSearchFlags.ForSampler) != 0;
 
+            Logger.Debug?.Print(LogClass.Gpu, 
+                $"精确匹配检查: {Info.FormatInfo.Format} vs {info.FormatInfo.Format}, " +
+                $"标志={flags}, 采样器={forSampler}");
+
             TextureMatchQuality matchQuality = TextureCompatibility.FormatMatches(Info, info, forSampler, (flags & TextureSearchFlags.DepthAlias) != 0);
 
             if (matchQuality == TextureMatchQuality.NoMatch)
             {
+                Logger.Debug?.Print(LogClass.Gpu, "格式不匹配");
                 return matchQuality;
             }
 
             if (!TextureCompatibility.LayoutMatches(Info, info))
             {
+                Logger.Debug?.Print(LogClass.Gpu, "布局不匹配");
                 return TextureMatchQuality.NoMatch;
             }
 
             if (!TextureCompatibility.SizeMatches(Info, info, forSampler))
             {
+                Logger.Debug?.Print(LogClass.Gpu, "尺寸不匹配");
                 return TextureMatchQuality.NoMatch;
             }
 
@@ -1223,6 +1317,7 @@ if (newStorage == null)
             {
                 if (!TextureCompatibility.SamplerParamsMatches(Info, info))
                 {
+                    Logger.Debug?.Print(LogClass.Gpu, "采样器参数不匹配");
                     return TextureMatchQuality.NoMatch;
                 }
             }
@@ -1233,15 +1328,23 @@ if (newStorage == null)
 
                 if (!msTargetCompatible && !TextureCompatibility.TargetAndSamplesCompatible(Info, info))
                 {
+                    Logger.Debug?.Print(LogClass.Gpu, "目标和采样数不匹配");
                     return TextureMatchQuality.NoMatch;
                 }
             }
             else if (!TextureCompatibility.TargetAndSamplesCompatible(Info, info))
             {
+                Logger.Debug?.Print(LogClass.Gpu, "目标和采样数不匹配");
                 return TextureMatchQuality.NoMatch;
             }
 
-            return Info.Levels == info.Levels ? matchQuality : TextureMatchQuality.NoMatch;
+            bool levelsMatch = Info.Levels == info.Levels;
+            if (!levelsMatch)
+            {
+                Logger.Debug?.Print(LogClass.Gpu, $"Mip层级不匹配: {Info.Levels} != {info.Levels}");
+            }
+
+            return levelsMatch ? matchQuality : TextureMatchQuality.NoMatch;
         }
 
         /// <summary>
@@ -1266,6 +1369,10 @@ if (newStorage == null)
             out int firstLevel,
             TextureSearchFlags flags = TextureSearchFlags.None)
         {
+            Logger.Debug?.Print(LogClass.Gpu, 
+                $"视图兼容性检查: {Info.FormatInfo.Format} -> {info.FormatInfo.Format}, " +
+                $"精确尺寸={exactSize}, 标志={flags}");
+
             TextureViewCompatibility result = TextureViewCompatibility.Full;
 
             result = TextureCompatibility.PropagateViewCompatibility(result, TextureCompatibility.ViewFormatCompatible(Info, info, caps, flags));
@@ -1276,11 +1383,13 @@ if (newStorage == null)
                 bool bothMs = Info.Target.IsMultisample() && info.Target.IsMultisample();
                 if (bothMs && (Info.SamplesInX != info.SamplesInX || Info.SamplesInY != info.SamplesInY))
                 {
+                    Logger.Debug?.Print(LogClass.Gpu, "多重采样数不匹配");
                     result = TextureViewCompatibility.Incompatible;
                 }
 
                 if (result == TextureViewCompatibility.Full && Info.FormatInfo.Format != info.FormatInfo.Format && !_context.Capabilities.SupportsMismatchingViewFormat)
                 {
+                    Logger.Debug?.Print(LogClass.Gpu, "视图格式不匹配且主机不支持不匹配视图格式，降级为仅拷贝");
                     // AMD and Intel have a bug where the view format is always ignored;
                     // they use the parent format instead.
                     // Create a copy dependency to avoid this issue.
@@ -1294,6 +1403,7 @@ if (newStorage == null)
 
             if (result == TextureViewCompatibility.Incompatible)
             {
+                Logger.Debug?.Print(LogClass.Gpu, "视图不兼容");
                 return TextureViewCompatibility.Incompatible;
             }
 
@@ -1301,22 +1411,26 @@ if (newStorage == null)
 
             if (offset < 0 || !_sizeInfo.FindView(offset, out firstLayer, out firstLevel))
             {
+                Logger.Debug?.Print(LogClass.Gpu, $"无法找到视图偏移: {offset}");
                 return TextureViewCompatibility.LayoutIncompatible;
             }
 
             if (!TextureCompatibility.ViewLayoutCompatible(Info, info, firstLevel))
             {
+                Logger.Debug?.Print(LogClass.Gpu, "视图布局不兼容");
                 return TextureViewCompatibility.LayoutIncompatible;
             }
 
             if (info.GetSlices() > 1 && LayerSize != layerSize)
             {
+                Logger.Debug?.Print(LogClass.Gpu, "层大小不匹配");
                 return TextureViewCompatibility.LayoutIncompatible;
             }
 
             result = TextureCompatibility.PropagateViewCompatibility(result, TextureCompatibility.ViewSizeMatches(Info, info, exactSize, firstLevel));
             result = TextureCompatibility.PropagateViewCompatibility(result, TextureCompatibility.ViewSubImagesInBounds(Info, info, firstLayer, firstLevel));
 
+            Logger.Debug?.Print(LogClass.Gpu, $"视图兼容性结果: {result}, 起始层={firstLayer}, 起始级={firstLevel}");
             return result;
         }
 
@@ -1329,6 +1443,8 @@ if (newStorage == null)
         /// <returns>A view of this texture with the requested target, or null if the target is invalid for this texture</returns>
         public ITexture GetTargetTexture(Target target)
         {
+            Logger.Debug?.Print(LogClass.Gpu, $"获取目标纹理: {Target} -> {target}");
+
             if (target == Target)
             {
                 return HostTexture;
@@ -1355,6 +1471,7 @@ if (newStorage == null)
                     Info.SwizzleB,
                     Info.SwizzleA);
 
+                Logger.Debug?.Print(LogClass.Gpu, $"创建数组视图纹理: {createInfo.Width}x{createInfo.Height}, 格式: {createInfo.Format}");
                 ITexture viewTexture = HostTexture.CreateView(createInfo, 0, 0);
 
                 _arrayViewTexture = viewTexture;
@@ -1364,9 +1481,11 @@ if (newStorage == null)
             }
             else if (_arrayViewTarget == target)
             {
+                Logger.Debug?.Print(LogClass.Gpu, "返回缓存的数组视图纹理");
                 return _arrayViewTexture;
             }
 
+            Logger.Debug?.Print(LogClass.Gpu, "无法创建目标纹理");
             return null;
         }
 
@@ -1385,7 +1504,14 @@ if (newStorage == null)
             int maxSize = Math.Max(Info.Width, Info.Height);
             int maxLevels = BitOperations.Log2((uint)maxSize) + 1;
 
-            return Info.Levels >= Math.Min(MinLevelsForForceAnisotropy, maxLevels);
+            bool canForce = Info.Levels >= Math.Min(MinLevelsForForceAnisotropy, maxLevels);
+            
+            if (canForce)
+            {
+                Logger.Debug?.Print(LogClass.Gpu, $"纹理可强制各向异性过滤: 层级={Info.Levels}, 最小要求={Math.Min(MinLevelsForForceAnisotropy, maxLevels)}");
+            }
+            
+            return canForce;
         }
 
         /// <summary>
@@ -1397,25 +1523,33 @@ if (newStorage == null)
         /// <returns>True if both targets have the same number of dimensions, false otherwise</returns>
         private bool IsSameDimensionsTarget(Target target)
         {
+            bool sameDimensions = false;
+            
             switch (Info.Target)
             {
                 case Target.Texture1D:
                 case Target.Texture1DArray:
-                    return target == Target.Texture1D || target == Target.Texture1DArray;
+                    sameDimensions = target == Target.Texture1D || target == Target.Texture1DArray;
+                    break;
                 case Target.Texture2D:
                 case Target.Texture2DArray:
-                    return target == Target.Texture2D || target == Target.Texture2DArray;
+                    sameDimensions = target == Target.Texture2D || target == Target.Texture2DArray;
+                    break;
                 case Target.Cubemap:
                 case Target.CubemapArray:
-                    return target == Target.Cubemap || target == Target.CubemapArray;
+                    sameDimensions = target == Target.Cubemap || target == Target.CubemapArray;
+                    break;
                 case Target.Texture2DMultisample:
                 case Target.Texture2DMultisampleArray:
-                    return target == Target.Texture2DMultisample || target == Target.Texture2DMultisampleArray;
+                    sameDimensions = target == Target.Texture2DMultisample || target == Target.Texture2DMultisampleArray;
+                    break;
                 case Target.Texture3D:
-                    return target == Target.Texture3D;
-                default:
-                    return false;
+                    sameDimensions = target == Target.Texture3D;
+                    break;
             }
+
+            Logger.Debug?.Print(LogClass.Gpu, $"相同维度目标检查: {Info.Target} -> {target} = {sameDimensions}");
+            return sameDimensions;
         }
 
         /// <summary>
@@ -1429,12 +1563,15 @@ if (newStorage == null)
         /// <param name="firstLevel">The first level of the view</param>
         public void ReplaceView(Texture parent, TextureInfo info, ITexture hostTexture, int firstLayer, int firstLevel)
         {
+            Logger.Debug?.Print(LogClass.Gpu, $"替换视图: {Info.FormatInfo.Format} -> {info.FormatInfo.Format}, 层={firstLayer}, 级={firstLevel}");
+
             IncrementReferenceCount();
             parent._viewStorage.SynchronizeMemory();
 
             // If this texture has views, they must be given to the new parent.
             if (_views.Count > 0)
             {
+                Logger.Debug?.Print(LogClass.Gpu, $"视图有 {_views.Count} 个子视图，需要重新创建");
                 Texture[] viewCopy = _views.ToArray();
 
                 foreach (Texture view in viewCopy)
@@ -1476,6 +1613,10 @@ if (newStorage == null)
 
             _depth = info.GetDepth();
             _layers = info.GetLayers();
+
+            Logger.Debug?.Print(LogClass.Gpu, 
+                $"设置纹理信息: {info.FormatInfo.Format}, {Width}x{Height}, " +
+                $"深度={_depth}, 层数={_layers}, 强制各向异性={CanForceAnisotropy}");
         }
 
         /// <summary>
@@ -1501,6 +1642,8 @@ if (newStorage == null)
         /// <param name="bound">True if the texture has been bound, false if it has been unbound</param>
         public void SignalModifying(bool bound)
         {
+            Logger.Debug?.Print(LogClass.Gpu, $"信号修改: 绑定={bound}");
+
             if (bound)
             {
                 _scaledSetScore = Math.Max(0, _scaledSetScore - 1);
@@ -1530,6 +1673,7 @@ if (newStorage == null)
         /// <param name="hostTexture">The new host texture</param>
         private void ReplaceStorage(ITexture hostTexture)
         {
+            Logger.Debug?.Print(LogClass.Gpu, "替换纹理存储");
             DisposeTextures();
 
             HostTexture = hostTexture;
@@ -1543,15 +1687,20 @@ if (newStorage == null)
         /// <returns>True if any slice of the textures overlap, false otherwise</returns>
         public bool DataOverlaps(Texture texture, TextureViewCompatibility compatibility)
         {
+            Logger.Debug?.Print(LogClass.Gpu, $"检查数据重叠: {Info.FormatInfo.Format} vs {texture.Info.FormatInfo.Format}, 兼容性={compatibility}");
+
             if (compatibility == TextureViewCompatibility.LayoutIncompatible && Info.GobBlocksInZ > 1 && Info.GobBlocksInZ == texture.Info.GobBlocksInZ)
             {
                 // Allow overlapping slices of layout compatible 3D textures with matching GobBlocksInZ, as they are interleaved.
+                Logger.Debug?.Print(LogClass.Gpu, "3D纹理GOB块匹配，允许重叠");
                 return false;
             }
 
             if (texture._sizeInfo.AllOffsets.Length == 1 && _sizeInfo.AllOffsets.Length == 1)
             {
-                return Range.OverlapsWith(texture.Range);
+                bool overlaps = Range.OverlapsWith(texture.Range);
+                Logger.Debug?.Print(LogClass.Gpu, $"单区域重叠检查: {overlaps}");
+                return overlaps;
             }
 
             MultiRange otherRange = texture.Range;
@@ -1565,11 +1714,13 @@ if (newStorage == null)
                 {
                     if (region.OverlapsWith(otherRegion))
                     {
+                        Logger.Debug?.Print(LogClass.Gpu, "检测到区域重叠");
                         return true;
                     }
                 }
             }
 
+            Logger.Debug?.Print(LogClass.Gpu, "无区域重叠");
             return false;
         }
 
@@ -1579,6 +1730,7 @@ if (newStorage == null)
         public void IncrementReferenceCount()
         {
             _referenceCount++;
+            Logger.Debug?.Print(LogClass.Gpu, $"增加引用计数: {_referenceCount}");
         }
 
         /// <summary>
@@ -1598,6 +1750,8 @@ if (newStorage == null)
 
             _referenceCount++;
 
+            Logger.Debug?.Print(LogClass.Gpu, $"增加池引用计数: {_referenceCount}, 池ID={id}, GPU VA=0x{gpuVa:X}");
+
             if (ShortCacheEntry != null)
             {
                 _physicalMemory.TextureCache.RemoveShortCache(this);
@@ -1610,7 +1764,12 @@ if (newStorage == null)
         /// <returns>True if there is one reference remaining, false otherwise</returns>
         public bool HasOneReference()
         {
-            return _referenceCount == 1;
+            bool hasOne = _referenceCount == 1;
+            if (hasOne)
+            {
+                Logger.Debug?.Print(LogClass.Gpu, "纹理只剩一个引用");
+            }
+            return hasOne;
         }
 
         /// <summary>
@@ -1621,6 +1780,8 @@ if (newStorage == null)
         public bool DecrementReferenceCount()
         {
             int newRefCount = --_referenceCount;
+
+            Logger.Debug?.Print(LogClass.Gpu, $"减少引用计数: {newRefCount}");
 
             if (newRefCount == 0)
             {
@@ -1648,6 +1809,8 @@ if (newStorage == null)
         /// <returns>True if the texture is now referenceless, false otherwise</returns>
         public bool DecrementReferenceCount(TexturePool pool, int id = -1)
         {
+            Logger.Debug?.Print(LogClass.Gpu, $"减少池引用计数: 池={pool}, ID={id}");
+
             lock (_poolOwners)
             {
                 int references = _poolOwners.RemoveAll(entry => entry.Pool == pool && entry.ID == id || id == -1);
@@ -1655,6 +1818,7 @@ if (newStorage == null)
                 if (references == 0)
                 {
                     // This reference has already been removed.
+                    Logger.Debug?.Print(LogClass.Gpu, "引用已移除");
                     return _referenceCount <= 0;
                 }
 
@@ -1670,6 +1834,8 @@ if (newStorage == null)
         /// <param name="deferred">Indicates if the removal is being done from another thread.</param>
         public void RemoveFromPools(bool deferred)
         {
+            Logger.Debug?.Print(LogClass.Gpu, $"从池中强制移除: 延迟={deferred}");
+
             lock (_poolOwners)
             {
                 foreach (var owner in _poolOwners)
@@ -1696,6 +1862,8 @@ if (newStorage == null)
         /// </summary>
         public void UpdatePoolMappings()
         {
+            Logger.Debug?.Print(LogClass.Gpu, "更新池映射");
+
             ChangedMapping = true;
 
             lock (_poolOwners)
@@ -1736,7 +1904,12 @@ if (newStorage == null)
             // already deleted (views count is 0).
             if (_referenceCount == 0 && _views.Count == 0)
             {
+                Logger.Debug?.Print(LogClass.Gpu, "纹理不再使用，进行处置");
                 Dispose();
+            }
+            else
+            {
+                Logger.Debug?.Print(LogClass.Gpu, $"纹理仍在使用: 引用={_referenceCount}, 视图={_views.Count}");
             }
         }
 
@@ -1745,6 +1918,8 @@ if (newStorage == null)
         /// </summary>
         private void DisposeTextures()
         {
+            Logger.Debug?.Print(LogClass.Gpu, "处置纹理资源");
+
             InvalidatedSequence++;
 
             _currentData = null;
@@ -1767,6 +1942,8 @@ if (newStorage == null)
         /// <param name="unmapRange">The range of memory being unmapped</param>
         public void Unmapped(MultiRange unmapRange)
         {
+            Logger.Debug?.Print(LogClass.Gpu, $"纹理内存取消映射: 范围大小={unmapRange.GetSize()}");
+
             ChangedMapping = true;
 
             if (Group.Storage == this)
@@ -1781,6 +1958,8 @@ if (newStorage == null)
         /// </summary>
         public void Dispose()
         {
+            Logger.Debug?.Print(LogClass.Gpu, "处置纹理");
+
             DisposeTextures();
 
             if (Group.Storage == this)
