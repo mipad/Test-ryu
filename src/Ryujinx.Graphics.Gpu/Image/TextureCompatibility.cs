@@ -4,6 +4,7 @@ using Ryujinx.Graphics.Texture;
 using System;
 using System.Diagnostics;
 using System.Numerics;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Gpu.Image
 {
