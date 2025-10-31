@@ -87,13 +87,14 @@ namespace Ryujinx.Graphics.Gpu.Image
                 $"检查纹理格式兼容性: 格式={originalFormat}, 大小={info.Width}x{info.Height}, " +
                 $"目标={info.Target}, 线性={info.IsLinear}");
 
-            // 高精度格式降级处理 - 防止设备丢失
+            // 强制高精度格式降级处理 - 防止设备丢失
+            // 在ARM安卓设备上，所有高精度格式都强制降级
             if (IsHighPrecisionFormat(originalFormat))
             {
-                FormatInfo downgradedFormat = DowngradeHighPrecisionFormat(originalFormat);
+                FormatInfo downgradedFormat = ForceDowngradeHighPrecisionFormat(originalFormat);
                 Ryujinx.Common.Logging.Logger.Warning?.Print(LogClass.Gpu, 
-                    $"高精度格式降级处理: {originalFormat} -> {downgradedFormat.Format}, " +
-                    $"防止设备丢失");
+                    $"强制高精度格式降级: {originalFormat} -> {downgradedFormat.Format}, " +
+                    $"防止ARM安卓设备丢失");
                 return downgradedFormat;
             }
 
@@ -148,7 +149,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                         return new FormatInfo(Format.R8G8Snorm, 1, 1, 2, 2);
                     case Format.Bc6HSfloat:
                     case Format.Bc6HUfloat:
-                        return DowngradeHighPrecisionFormat(Format.Bc6HSfloat); // 降级处理BC6高精度格式
+                        return ForceDowngradeHighPrecisionFormat(Format.Bc6HSfloat); // 强制降级处理BC6高精度格式
                 }
             }
 
@@ -237,6 +238,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                 case Format.R32Float:
                 case Format.R32Uint:
                 case Format.R32Sint:
+                case Format.R11G11B10Float:
                 case Format.Bc6HSfloat:
                 case Format.Bc6HUfloat:
                     return true;
@@ -246,15 +248,15 @@ namespace Ryujinx.Graphics.Gpu.Image
         }
 
         /// <summary>
-        /// 降级高精度格式到低精度格式
+        /// 强制降级高精度格式到低精度格式 - 不进行能力检测
         /// </summary>
         /// <param name="originalFormat">原始格式</param>
         /// <returns>降级后的格式</returns>
-        private static FormatInfo DowngradeHighPrecisionFormat(Format originalFormat)
+        private static FormatInfo ForceDowngradeHighPrecisionFormat(Format originalFormat)
         {
             switch (originalFormat)
             {
-                // 16位浮点/整型降级到8位
+                // 16位浮点/整型强制降级到8位
                 case Format.R16G16B16A16Float:
                 case Format.R16G16B16A16Unorm:
                 case Format.R16G16B16A16Snorm:
@@ -262,7 +264,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                 case Format.R16G16B16A16Sint:
                     return new FormatInfo(Format.R8G8B8A8Unorm, 1, 1, 4, 4);
 
-                // 32位高精度格式降级到16位或8位
+                // 32位高精度格式强制降级到16位或8位
                 case Format.R32G32B32A32Float:
                 case Format.R32G32B32A32Uint:
                 case Format.R32G32B32A32Sint:
@@ -287,13 +289,17 @@ namespace Ryujinx.Graphics.Gpu.Image
                 case Format.R32Sint:
                     return new FormatInfo(Format.R16Float, 1, 1, 2, 1);
 
+                // R11G11B10特殊浮点格式
+                case Format.R11G11B10Float:
+                    return new FormatInfo(Format.R8G8B8A8Unorm, 1, 1, 4, 4);
+
                 // BC6高精度压缩格式
                 case Format.Bc6HSfloat:
                 case Format.Bc6HUfloat:
                     return new FormatInfo(Format.R8G8B8A8Unorm, 1, 1, 4, 4);
 
                 default:
-                    // 默认降级到RGBA8
+                    // 默认强制降级到RGBA8
                     return new FormatInfo(Format.R8G8B8A8Unorm, 1, 1, 4, 4);
             }
         }
@@ -946,8 +952,8 @@ namespace Ryujinx.Graphics.Gpu.Image
                 if (!gobMatch)
                 {
                     Ryujinx.Common.Logging.Logger.Debug?.Print(LogClass.Gpu, 
-                        $"块线性纹理视图GOB不匹配: Y={lhsGobBlocksInY}!={rhsGobBlocksInY}, " +
-                        $"Z={lhsGobBlocksInZ}!={rhsGobBlocksInZ}, 层级 {lhsLevel}->{rhsLevel}");
+                        $"块线性纹理视图GOB不匹配: Y={lhsGobBlocksInY}!={rhs.GobBlocksInY}, " +
+                        $"Z={lhsGobBlocksInZ}!={rhs.GobBlocksInZ}, 层级 {lhsLevel}->{rhsLevel}");
                 }
                 return gobMatch;
             }
@@ -966,37 +972,15 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <returns>The view compatibility level of the texture formats</returns>
         public static TextureViewCompatibility ViewFormatCompatible(TextureInfo lhs, TextureInfo rhs, Capabilities caps, TextureSearchFlags flags)
         {
-            FormatInfo lhsFormat = lhs.FormatInfo;
-            FormatInfo rhsFormat = rhs.FormatInfo;
+            // 强制使用降级后的格式进行兼容性检查
+            FormatInfo lhsFormat = ToHostCompatibleFormat(lhs, caps);
+            FormatInfo rhsFormat = ToHostCompatibleFormat(rhs, caps);
 
             Ryujinx.Common.Logging.Logger.Debug?.Print(LogClass.Gpu, 
-                $"检查视图格式兼容性: {lhsFormat.Format} -> {rhsFormat.Format}, " +
-                $"标志={flags}, 主机能力=[ASTC={caps.SupportsAstcCompression}, " +
-                $"BC123={caps.SupportsBc123Compression}, ETC2={caps.SupportsEtc2Compression}]");
+                $"检查视图格式兼容性(降级后): {lhs.FormatInfo.Format}->{lhsFormat.Format} -> {rhs.FormatInfo.Format}->{rhsFormat.Format}, " +
+                $"标志={flags}");
 
-            // 高精度格式检查 - 如果任一方是高精度格式，强制降级检查
-            if (IsHighPrecisionFormat(lhsFormat.Format) || IsHighPrecisionFormat(rhsFormat.Format))
-            {
-                Ryujinx.Common.Logging.Logger.Warning?.Print(LogClass.Gpu, 
-                    $"高精度格式视图兼容性检查: {lhsFormat.Format} -> {rhsFormat.Format}, " +
-                    $"强制使用降级后的格式进行比较");
-                
-                FormatInfo downgradedLhs = IsHighPrecisionFormat(lhsFormat.Format) ? 
-                    DowngradeHighPrecisionFormat(lhsFormat.Format) : lhsFormat;
-                FormatInfo downgradedRhs = IsHighPrecisionFormat(rhsFormat.Format) ? 
-                    DowngradeHighPrecisionFormat(rhsFormat.Format) : rhsFormat;
-                    
-                if (downgradedLhs.Format == downgradedRhs.Format)
-                {
-                    return TextureViewCompatibility.Full;
-                }
-                else
-                {
-                    return TextureViewCompatibility.Incompatible;
-                }
-            }
-
-            if (lhsFormat.Format.IsDepthOrStencil() || rhsFormat.Format.IsDepthOrStencil())
+            if (lhs.FormatInfo.Format.IsDepthOrStencil() || rhs.FormatInfo.Format.IsDepthOrStencil())
             {
                 bool forSampler = flags.HasFlag(TextureSearchFlags.ForSampler);
                 bool depthAlias = flags.HasFlag(TextureSearchFlags.DepthAlias);
@@ -1015,7 +999,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                         "深度/模板格式别名匹配");
                     return TextureViewCompatibility.FormatAlias;
                 }
-                else if (IsValidColorAsDepthAlias(lhsFormat.Format, rhsFormat.Format) || IsValidDepthAsColorAlias(lhsFormat.Format, rhsFormat.Format))
+                else if (IsValidColorAsDepthAlias(lhs.FormatInfo.Format, rhs.FormatInfo.Format) || IsValidDepthAsColorAlias(lhs.FormatInfo.Format, rhs.FormatInfo.Format))
                 {
                     Ryujinx.Common.Logging.Logger.Debug?.Print(LogClass.Gpu, 
                         "颜色/深度格式别名, 降级为仅拷贝");
@@ -1029,12 +1013,12 @@ namespace Ryujinx.Graphics.Gpu.Image
                 }
             }
 
-            if (IsFormatHostIncompatible(lhs, caps) || IsFormatHostIncompatible(rhs, caps))
+            // 使用降级后的格式进行比较
+            if (lhsFormat.Format != rhsFormat.Format)
             {
-                bool formatMatch = lhsFormat.Format == rhsFormat.Format;
                 Ryujinx.Common.Logging.Logger.Debug?.Print(LogClass.Gpu, 
-                    $"主机不兼容格式检查: 格式匹配={formatMatch}");
-                return formatMatch ? TextureViewCompatibility.Full : TextureViewCompatibility.Incompatible;
+                    $"降级后格式不匹配: {lhsFormat.Format} != {rhsFormat.Format}");
+                return TextureViewCompatibility.Incompatible;
             }
 
             if (lhsFormat.IsCompressed && rhsFormat.IsCompressed)
@@ -1049,7 +1033,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             }
             else if (lhsFormat.BytesPerPixel == rhsFormat.BytesPerPixel)
             {
-                bool bothCompressed = lhs.FormatInfo.IsCompressed == rhs.FormatInfo.IsCompressed;
+                bool bothCompressed = lhsFormat.IsCompressed == rhsFormat.IsCompressed;
                 Ryujinx.Common.Logging.Logger.Debug?.Print(LogClass.Gpu, 
                     $"相同BPP检查: BPP={lhsFormat.BytesPerPixel}, 压缩一致={bothCompressed}");
                 return bothCompressed
