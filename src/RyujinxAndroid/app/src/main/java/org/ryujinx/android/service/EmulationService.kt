@@ -13,7 +13,7 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import org.ryujinx.android.MainActivity
 import org.ryujinx.android.R
-import org.ryujinx.android.KenjinxNative
+import org.ryujinx.android.RyujinxNative
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
@@ -47,7 +47,7 @@ class EmulationService : Service() {
     override fun onCreate() {
         super.onCreate()
         executor = Executors.newSingleThreadExecutor { r ->
-            Thread(r, "Kenjinx-Emu").apply {
+            Thread(r, "Ryujinx-Emu").apply {
                 isDaemon = false
                 priority = Thread.NORM_PRIORITY + 2
             }
@@ -128,8 +128,8 @@ class EmulationService : Service() {
     // ---- Native Cleanup nur wenn jemals gestartet ----
     private fun hardCloseNativeIfStarted(reason: String) {
         if (!startedOnce.get()) return
-        try { KenjinxNative.detachWindow() } catch (_: Throwable) {}
-        try { KenjinxNative.deviceCloseEmulation() } catch (_: Throwable) {}
+        try { RyujinxNative.detachWindow() } catch (_: Throwable) {}
+        try { RyujinxNative.deviceCloseEmulation() } catch (_: Throwable) {}
         // KEIN graphicsSetPresentEnabled(false) hier – führt bei kaltem Start zu NRE in VulkanRenderer.ReleaseSurface()
         // android.util.Log.d("EmuService", "hardCloseNativeIfStarted: $reason")
     }
@@ -168,3 +168,4 @@ class EmulationService : Service() {
         }
     }
 }
+
