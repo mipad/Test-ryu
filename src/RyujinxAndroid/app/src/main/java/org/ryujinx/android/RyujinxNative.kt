@@ -178,11 +178,6 @@ class RyujinxNative {
         {
             MainActivity.frameEnded()
         }
-        
-        @JvmStatic
-    fun test() {
-        // no-op
-    }
 
         @JvmStatic
         fun getSurfacePtr() : Long
