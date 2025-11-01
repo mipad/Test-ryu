@@ -156,6 +156,11 @@ interface RyujinxNativeJna : Library {
     
     // 新增：游戏启动时触发表面格式保存的方法
     fun surfaceOnGameStarted()
+
+    // ==================== 表面管理相关方法（使用现有的方法） ====================
+    fun graphicsSetPresentEnabled(enabled: Boolean)
+    fun ReleaseRendererSurface()
+    fun TryReattachSurface(): Boolean
 }
 
 class RyujinxNative {
@@ -168,15 +173,14 @@ class RyujinxNative {
         )
 
         @JvmStatic
-        fun test()
-        {
-            val i = 0
-        }
-
-        @JvmStatic
         fun frameEnded()
         {
             MainActivity.frameEnded()
+        }
+
+        @JvmStatic
+        fun test() {
+            // no-op
         }
 
         @JvmStatic
@@ -199,24 +203,24 @@ class RyujinxNative {
         }
 
         @JvmStatic
-    fun detachWindow() {
-        try { graphicsSetPresentEnabled(false) } catch (_: Throwable) {}
-        try { deviceWaitForGpuDone(100) } catch (_: Throwable) {}
-        try { deviceSetWindowHandle(0) } catch (_: Throwable) {}
-    }
-
-    @JvmStatic
-    fun reattachWindowIfReady(): Boolean {
-        return try {
-            val handle = getWindowHandle()
-            if (handle <= 0) return false
-            deviceSetWindowHandle(handle)  // Window wieder setzen
-            deviceRecreateSwapchain()      // Swapchain sauber neu anlegen
-            true
-        } catch (_: Throwable) {
-            false
+        fun detachWindow() {
+            try { 
+                graphicsSetPresentEnabled(false) 
+                ReleaseRendererSurface()
+            } catch (_: Throwable) {}
         }
-    }
+
+        @JvmStatic
+        fun reattachWindowIfReady(): Boolean {
+            return try {
+                val handle = getWindowHandle()
+                if (handle <= 0) return false
+                TryReattachSurface()
+                true
+            } catch (_: Throwable) {
+                false
+            }
+        }
 
         @JvmStatic
         fun updateUiHandler(
@@ -436,6 +440,31 @@ class RyujinxNative {
         @JvmStatic
         fun onGameStarted() {
             jnaInstance.surfaceOnGameStarted()
+        }
+
+        // ==================== 表面管理相关静态方法 ====================
+        
+        @JvmStatic
+        fun graphicsSetPresentEnabled(enabled: Boolean) {
+            try {
+                jnaInstance.graphicsSetPresentEnabled(enabled)
+            } catch (_: Throwable) {}
+        }
+
+        @JvmStatic
+        fun ReleaseRendererSurface() {
+            try {
+                jnaInstance.ReleaseRendererSurface()
+            } catch (_: Throwable) {}
+        }
+
+        @JvmStatic
+        fun TryReattachSurface(): Boolean {
+            return try {
+                jnaInstance.TryReattachSurface()
+            } catch (_: Throwable) {
+                false
+            }
         }
     }
 }
