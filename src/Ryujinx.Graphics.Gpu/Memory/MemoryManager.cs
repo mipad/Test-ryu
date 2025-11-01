@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics.Arm;
+using System.Threading;
 
 namespace Ryujinx.Graphics.Gpu.Memory
 {
@@ -219,6 +220,8 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="tracked">True to enable write tracking on read, false otherwise</param>
         private void ReadImpl(ulong va, Span<byte> data, bool tracked)
         {
+            Interlocked.Increment(ref _totalReads);
+            
             if (data.Length == 0)
             {
                 return;
