@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics.Arm;
 
 namespace Ryujinx.Graphics.Gpu.Memory
 {
@@ -34,6 +35,11 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
         private readonly PageMemoryManager _pageManager;
         private readonly ulong[][] _pageTable;
+
+        // 性能计数器
+        private long _unmappedReads;
+        private long _totalReads;
+        private long _neonOptimizedFills;
 
         public event EventHandler<UnmapEventArgs> MemoryUnmapped;
 
@@ -218,6 +224,13 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 return;
             }
 
+            // 预检查整个范围的有效性
+            if (!ValidateRange(va, data.Length))
+            {
+                FillZeroOptimized(data);
+                return;
+            }
+
             int offset = 0, size;
 
             if ((va & PageMask) != 0)
@@ -228,7 +241,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                 if (pa == PteUnmapped)
                 {
-                    data.Slice(0, size).Fill(0);
+                    FillZeroOptimized(data.Slice(0, size));
                 }
                 else
                 {
@@ -246,13 +259,92 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                 if (pa == PteUnmapped)
                 {
-                    data.Slice(offset, size).Fill(0);
+                    FillZeroOptimized(data.Slice(offset, size));
                 }
                 else
                 {
                     Physical.GetSpan(pa, size, tracked).CopyTo(data.Slice(offset, size));
                 }
             }
+        }
+
+        /// <summary>
+        /// 使用 ARM NEON 指令优化零填充
+        /// </summary>
+        /// <param name="span">要填充零的内存区域</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void FillZeroOptimized(Span<byte> span)
+        {
+            Interlocked.Increment(ref _unmappedReads);
+            
+            if (span.Length == 0)
+                return;
+
+            // 使用 ARM NEON 指令进行优化的零填充
+            if (AdvSimd.IsSupported && span.Length >= 16)
+            {
+                Interlocked.Increment(ref _neonOptimizedFills);
+                FillZeroNeon(span);
+            }
+            else
+            {
+                // 回退到标准的 Clear 方法
+                span.Clear();
+            }
+        }
+
+        /// <summary>
+        /// 使用 ARM NEON 指令进行高效零填充
+        /// </summary>
+        /// <param name="span">要填充零的内存区域</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe void FillZeroNeon(Span<byte> span)
+        {
+            fixed (byte* ptr = span)
+            {
+                byte* current = ptr;
+                byte* end = ptr + span.Length;
+
+                // 使用 NEON 寄存器一次清零 16 字节
+                var zeroVector = AdvSimd.LoadVector128((byte*)null); // 加载零向量
+
+                // 对齐处理：先处理未对齐的前缀
+                int misalignment = (int)((ulong)current & 0xF);
+                if (misalignment != 0)
+                {
+                    int prefixLength = Math.Min(16 - misalignment, (int)(end - current));
+                    for (int i = 0; i < prefixLength; i++)
+                    {
+                        current[i] = 0;
+                    }
+                    current += prefixLength;
+                }
+
+                // 使用 NEON 批量清零
+                while (current + 16 <= end)
+                {
+                    AdvSimd.Store(current, zeroVector);
+                    current += 16;
+                }
+
+                // 处理剩余字节
+                while (current < end)
+                {
+                    *current++ = 0;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 验证地址范围是否有效
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool ValidateRange(ulong va, int size)
+        {
+            if (size == 0)
+                return true;
+
+            return ValidateAddress(va) && ValidateAddress(va + (ulong)size - 1);
         }
 
         /// <summary>
@@ -318,8 +410,6 @@ namespace Ryujinx.Graphics.Gpu.Memory
         {
             WriteImpl(va, data, _writeUntracked);
         }
-
-        
 
         /// <summary>
         /// Writes data to possibly non-contiguous GPU mapped memory.
@@ -571,6 +661,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// </summary>
         /// <param name="va">Address to validate</param>
         /// <returns>True if the address is valid, false otherwise</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ValidateAddress(ulong va)
         {
             return va < (1UL << AddressSpaceBits);
@@ -767,6 +858,26 @@ namespace Ryujinx.Graphics.Gpu.Memory
         private static ulong UnpackPaFromPte(ulong pte)
         {
             return pte & 0xffffffffffffffUL;
+        }
+
+        /// <summary>
+        /// 获取性能统计信息（用于调试和优化）
+        /// </summary>
+        public (long TotalReads, long UnmappedReads, long NeonOptimizedFills) GetPerformanceStats()
+        {
+            return (Interlocked.Read(ref _totalReads), 
+                    Interlocked.Read(ref _unmappedReads), 
+                    Interlocked.Read(ref _neonOptimizedFills));
+        }
+
+        /// <summary>
+        /// 重置性能统计计数器
+        /// </summary>
+        public void ResetPerformanceStats()
+        {
+            Interlocked.Exchange(ref _totalReads, 0);
+            Interlocked.Exchange(ref _unmappedReads, 0);
+            Interlocked.Exchange(ref _neonOptimizedFills, 0);
         }
     }
 }
