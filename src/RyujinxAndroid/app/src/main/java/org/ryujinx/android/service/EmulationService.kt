@@ -41,7 +41,7 @@ class EmulationService : Service() {
     private lateinit var executor: ExecutorService
     private var future: Future<*>? = null
     private val running = AtomicBoolean(false)
-    // Nur wenn eine Emulation wirklich lief, dürfen wir nativ „hard close“ machen
+    // Nur wenn eine Emulation wirklich lief, dürfen wir nativ „hard close" machen
     private val startedOnce = AtomicBoolean(false)
 
     override fun onCreate() {
@@ -168,4 +168,3 @@ class EmulationService : Service() {
         }
     }
 }
-
