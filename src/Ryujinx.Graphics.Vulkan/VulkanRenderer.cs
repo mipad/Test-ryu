@@ -28,6 +28,11 @@ namespace Ryujinx.Graphics.Vulkan
         private CommandBufferPool _computeCommandPool;
         private bool _initialized;
 
+        // JNI/Lifecycle-Flag
+        internal volatile bool PresentAllowed = true;
+
+        public uint ProgramCount { get; set; } = 0;
+
         internal KhrTimelineSemaphore TimelineSemaphoreApi { get; private set; }
         internal FormatCapabilities FormatCapabilities { get; private set; }
         internal HardwareCapabilities Capabilities;
@@ -50,6 +55,9 @@ namespace Ryujinx.Graphics.Vulkan
         internal Queue BackgroundQueue { get; private set; }
         internal object BackgroundQueueLock { get; private set; }
         internal object QueueLock { get; private set; }
+
+        // NEU: SurfaceLock, um Create/Destroy/Queries zu serialisieren
+        internal object SurfaceLock { get; private set; }
 
         internal MemoryAllocator MemoryAllocator { get; private set; }
         internal HostMemoryAllocator HostMemoryAllocator { get; private set; }
@@ -95,6 +103,7 @@ namespace Ryujinx.Graphics.Vulkan
         internal bool IsAmdWindows { get; private set; }
         internal bool IsIntelWindows { get; private set; }
         internal bool IsAmdGcn { get; private set; }
+        internal bool IsAmdRdna3 { get; private set; }
         internal bool IsNvidiaPreTuring { get; private set; }
         internal bool IsIntelArc { get; private set; }
         internal bool IsQualcommProprietary { get; private set; }
@@ -402,6 +411,10 @@ namespace Ryujinx.Graphics.Vulkan
 
             IsAmdGcn = !IsMoltenVk && Vendor == Vendor.Amd && VendorUtils.AmdGcnRegex().IsMatch(GpuRenderer);
 
+            IsAmdRdna3 = Vendor == Vendor.Amd && (VendorUtils.AmdRdna3Regex().IsMatch(GpuRenderer)
+                                                  // ROG Ally (X) Device IDs
+                                                  || properties.DeviceID is 0x15BF or 0x15C8);
+
             if (Vendor == Vendor.Nvidia)
             {
                 var match = VendorUtils.NvidiaConsumerClassRegex().Match(GpuRenderer);
@@ -554,6 +567,15 @@ namespace Ryujinx.Graphics.Vulkan
             Queue = queue;
             QueueLock = new object();
 
+            // Init Locks
+            SurfaceLock = new object();
+            if (maxQueueCount >= 2)
+            {
+                Api.GetDeviceQueue(_device, queueFamilyIndex, 1, out var backgroundQueue);
+                BackgroundQueue = backgroundQueue;
+                BackgroundQueueLock = new object();
+            }
+
             LoadFeatures(maxQueueCount, queueFamilyIndex);
 
             QueueFamilyIndex = queueFamilyIndex;
@@ -602,6 +624,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         public IProgram CreateProgram(ShaderSource[] sources, ShaderInfo info)
         {
+            ProgramCount++;
+
             bool isCompute = sources.Length == 1 && sources[0].Stage == ShaderStage.Compute;
 
             if (info.State.HasValue || isCompute)
@@ -1048,11 +1072,100 @@ namespace Ryujinx.Graphics.Vulkan
             return !(IsMoltenVk || IsQualcommProprietary);
         }
 
-        internal unsafe void RecreateSurface()
+        // ===== Surface/Present Lifecycle helpers =====
+
+        public unsafe bool RecreateSurface()
         {
-            SurfaceApi.DestroySurface(_instance.Instance, _surface, null);
-            _surface = _getSurface(_instance.Instance, Api);
-            (_window as Window)?.SetSurface(_surface);
+            if (!PresentAllowed)
+            {
+                return false;
+            }
+
+            lock (SurfaceLock)
+            {
+                try
+                {
+                    if (_surface.Handle != 0)
+                    {
+                        SurfaceApi.DestroySurface(_instance.Instance, _surface, null);
+                        _surface = new SurfaceKHR(0);
+                    }
+
+                    _surface = _getSurface(_instance.Instance, Api);
+                    if (_surface.Handle == 0)
+                    {
+                        return false;
+                    }
+
+                    ( _window as Window )?.SetSurface(_surface);
+                    ( _window as Window )?.SetSurfaceQueryAllowed(true);
+                    return true;
+                }
+                catch
+                {
+                    // retry später
+                    return false;
+                }
+            }
+        }
+
+        public unsafe void ReleaseSurface()
+        {
+            lock (SurfaceLock)
+            {
+                try
+                {
+                    ( _window as Window )?.SetSurfaceQueryAllowed(false);
+
+                    if (_surface.Handle != 0)
+                    {
+                        SurfaceApi.DestroySurface(_instance.Instance, _surface, null);
+                        _surface = new SurfaceKHR(0);
+                    }
+                }
+                catch
+                {
+                    // still
+                }
+
+                ( _window as Window )?.OnSurfaceLost();
+            }
+        }
+
+        public void SetPresentEnabled(bool enabled)
+        {
+            PresentAllowed = enabled;
+
+            if (!enabled)
+            {
+                ( _window as Window )?.SetSurfaceQueryAllowed(false);
+                ReleaseSurface();
+            }
+            else
+            {
+                _ = RecreateSurface();
+            }
+        }
+
+        public void SetPresentAllowed(bool allowed)
+        {
+            PresentAllowed = allowed;
+            Logger.Trace?.Print(LogClass.Gpu, $"PresentAllowed={allowed}");
+
+            if (allowed)
+            {
+                try
+                {
+                    ( _window as Window )?.SetSurfaceQueryAllowed(true);
+                    _window?.SetSize(0, 0);
+                    _ = RecreateSurface();
+                }
+                catch { }
+            }
+            else
+            {
+                ( _window as Window )?.SetSurfaceQueryAllowed(false);
+            }
         }
 
         public unsafe void Dispose()
@@ -1062,37 +1175,34 @@ namespace Ryujinx.Graphics.Vulkan
                 return;
             }
 
-            CommandBufferPool.Dispose();
-            BackgroundResources.Dispose();
-            _counters.Dispose();
-            _window.Dispose();
-            HelperShader.Dispose();
-            _pipeline.Dispose();
-            BufferManager.Dispose();
-            PipelineLayoutCache.Dispose();
-            Barriers.Dispose();
+            CommandBufferPool?.Dispose();
+            _computeCommandPool?.Dispose();
+            BackgroundResources?.Dispose();
+            _counters?.Dispose();
+            _window?.Dispose();
+            HelperShader?.Dispose();
+            _pipeline?.Dispose();
+            BufferManager?.Dispose();
+            PipelineLayoutCache?.Dispose();
+            Barriers?.Dispose();
 
-            MemoryAllocator.Dispose();
+            MemoryAllocator?.Dispose();
 
-            foreach (var shader in Shaders)
+            foreach (var shader in Shaders) shader.Dispose();
+            foreach (var texture in Textures) texture.Release();
+            foreach (var sampler in Samplers) sampler.Dispose();
+
+            if (_surface.Handle != 0)
             {
-                shader.Dispose();
+                SurfaceApi.DestroySurface(_instance.Instance, _surface, null);
             }
 
-            foreach (var texture in Textures)
-            {
-                texture.Release();
-            }
-
-            foreach (var sampler in Samplers)
-            {
-                sampler.Dispose();
-            }
-
-            SurfaceApi.DestroySurface(_instance.Instance, _surface, null);
             Api.DestroyDevice(_device, null);
-            _debugMessenger.Dispose();
-            _instance.Dispose();
+
+            _debugMessenger?.Dispose();
+
+            // Last step destroy the instance
+            _instance?.Dispose();
         }
 
         public bool PrepareHostMapping(nint address, ulong size)
