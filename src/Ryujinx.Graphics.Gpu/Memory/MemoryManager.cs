@@ -228,7 +228,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                 if (pa == PteUnmapped)
                 {
-                    data.Slice(0, size).Fill(0);
+                    data.Slice(offset, size).Fill(0);
                 }
                 else
                 {
