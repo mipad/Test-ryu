@@ -255,6 +255,22 @@ class RyujinxNative {
             }
         }
         
+        // ==================== 设备管理相关静态方法 ====================
+        
+        @JvmStatic
+        fun deviceCloseEmulation() {
+            try {
+                jnaInstance.deviceCloseEmulation()
+            } catch (_: Throwable) {}
+        }
+
+        @JvmStatic
+        fun deviceSignalEmulationClose() {
+            try {
+                jnaInstance.deviceSignalEmulationClose()
+            } catch (_: Throwable) {}
+        }
+        
         // 添加设置抗锯齿的静态方法
         @JvmStatic
         fun setAntiAliasing(mode: Int) {
