@@ -218,6 +218,13 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 return;
             }
 
+            // 检查是否为明显的无效地址
+            if (va == ulong.MaxValue || !ValidateAddress(va))
+            {
+                data.Fill(0);
+                return;
+            }
+
             int offset = 0, size;
 
             if ((va & PageMask) != 0)
@@ -226,20 +233,58 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                 size = Math.Min(data.Length, (int)PageSize - (int)(va & PageMask));
 
-                // 原始代码 - 回退到不检查未映射内存
-                Physical.GetSpan(pa, size, tracked).CopyTo(data[..size]);
+                // 只在确实遇到未映射页面时才填充0
+                if (pa == PteUnmapped)
+                {
+                    data.Slice(0, size).Fill(0);
+                }
+                else
+                {
+                    try
+                    {
+                        Physical.GetSpan(pa, size, tracked).CopyTo(data[..size]);
+                    }
+                    catch
+                    {
+                        // 如果物理内存访问失败，回退到零填充
+                        data.Slice(0, size).Fill(0);
+                    }
+                }
 
                 offset += size;
             }
 
             for (; offset < data.Length; offset += size)
             {
-                ulong pa = Translate(va + (ulong)offset);
+                ulong currentVa = va + (ulong)offset;
+                
+                // 检查每个地址的有效性
+                if (!ValidateAddress(currentVa))
+                {
+                    data.Slice(offset, Math.Min(data.Length - offset, (int)PageSize)).Fill(0);
+                    continue;
+                }
+
+                ulong pa = Translate(currentVa);
 
                 size = Math.Min(data.Length - offset, (int)PageSize);
 
-                // 原始代码 - 回退到不检查未映射内存
-                Physical.GetSpan(pa, size, tracked).CopyTo(data.Slice(offset, size));
+                if (pa == PteUnmapped)
+                {
+                    data.Slice(offset, size).Fill(0);
+                }
+                else
+                {
+                    try
+                    {
+                        Physical.GetSpan(pa, size, tracked).CopyTo(data.Slice(offset, size));
+                    }
+                    catch
+                    {
+                        // 如果物理内存访问失败，回退到零填充
+                        data.Slice(offset, size).Fill(0);
+                    }
+                }
             }
         }
 
