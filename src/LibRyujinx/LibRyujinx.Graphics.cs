@@ -65,7 +65,16 @@ namespace LibRyujinx
             }
             else if (graphicsBackend == GraphicsBackend.Vulkan)
             {
-                Renderer = new VulkanRenderer(Vk.GetApi(), (instance, vk) => new SurfaceKHR(createSurfaceFunc == null ? null : (ulong?)createSurfaceFunc(instance.Handle)),
+                // Prefer the platform-provided Vulkan loader (if present), fall back to default.
+                var api = VulkanLoader?.GetApi() ?? Vk.GetApi();
+
+                Renderer = new VulkanRenderer(
+                    api,
+                    (instance, _) =>
+                    {
+                        // use provided CreateSurface delegate (Android path will create ANativeWindow surface)
+                        return new SurfaceKHR(createSurfaceFunc == null ? null : (ulong?)createSurfaceFunc(instance.Handle));
+                    },
                     () => requiredExtensions,
                     null);
             }
@@ -285,6 +294,25 @@ namespace LibRyujinx
         public static void SetSwapBuffersCallback(SwapBuffersCallback swapBuffersCallback)
         {
             _swapBuffersCallback = swapBuffersCallback;
+        }
+        // ===== Convenience-Wrapper für Vulkan re-attach (von JNI nutzbar) =====
+        public static bool TryReattachSurface()
+        {
+            if (Renderer is VulkanRenderer vr)
+            {
+                return vr.RecreateSurface();
+            }
+            return false;
+        }
+
+        public static void ReleaseRendererSurface()
+        {
+            (Renderer as VulkanRenderer)?.ReleaseSurface();
+        }
+
+        public static void SetPresentEnabled(bool enabled)
+        {
+            (Renderer as VulkanRenderer)?.SetPresentEnabled(enabled);
         }
     }
 
