@@ -228,11 +228,11 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                 if (pa == PteUnmapped)
                 {
-                    data.Slice(offset, size).Fill(0);
+                    data.Slice(0, size).Fill(0);
                 }
                 else
                 {
-                    Physical.GetSpan(pa, size, tracked).CopyTo(data.Slice(offset, size));
+                    Physical.GetSpan(pa, size, tracked).CopyTo(data[..size]);
                 }
 
                 offset += size;
