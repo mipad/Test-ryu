@@ -209,6 +209,13 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
             ulong srcGpuVa = ((ulong)_state.State.OffsetInUpperUpper << 32) | _state.State.OffsetInLower;
             ulong dstGpuVa = ((ulong)_state.State.OffsetOutUpperUpper << 32) | _state.State.OffsetOutLower;
 
+            // 检查地址有效性 - 新增的检查
+            if (srcGpuVa == ulong.MaxValue || dstGpuVa == ulong.MaxValue)
+            {
+                // 如果源或目标地址无效，跳过DMA操作
+                return;
+            }
+
             int xCount = (int)_state.State.LineLengthIn;
             int yCount = (int)_state.State.LineCount;
 
@@ -274,6 +281,13 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                 if (dstLinear && dstStride < 0)
                 {
                     dstBaseOffset += dstStride * (yCount - 1);
+                }
+
+                // 检查源和目标地址范围的有效性 - 新增的检查
+                if (!memoryManager.ValidateAddress(srcGpuVa + (ulong)srcBaseOffset) || 
+                    !memoryManager.ValidateAddress(dstGpuVa + (ulong)dstBaseOffset))
+                {
+                    return;
                 }
 
                 // If remapping is disabled, we always copy the components directly, in order.
@@ -634,20 +648,44 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         /// <param name="size">Size in bytes of the copy</param>
         private static void CopyGobBlockLinearToLinear(MemoryManager memoryManager, ulong srcGpuVa, ulong dstGpuVa, ulong size)
         {
+            // 检查地址有效性 - 新增的检查
+            if (srcGpuVa == ulong.MaxValue || dstGpuVa == ulong.MaxValue)
+            {
+                return;
+            }
+
             if (((srcGpuVa | dstGpuVa | size) & 0xf) == 0)
             {
                 for (ulong offset = 0; offset < size; offset += 16)
                 {
-                    Vector128<byte> data = memoryManager.Read<Vector128<byte>>(ConvertGobLinearToBlockLinearAddress(srcGpuVa + offset), true);
-                    memoryManager.Write(dstGpuVa + offset, data);
+                    ulong currentSrcVa = ConvertGobLinearToBlockLinearAddress(srcGpuVa + offset);
+                    ulong currentDstVa = dstGpuVa + offset;
+                    
+                    // 检查每个地址的有效性 - 新增的检查
+                    if (currentSrcVa == ulong.MaxValue || currentDstVa == ulong.MaxValue)
+                    {
+                        continue;
+                    }
+
+                    Vector128<byte> data = memoryManager.Read<Vector128<byte>>(currentSrcVa, true);
+                    memoryManager.Write(currentDstVa, data);
                 }
             }
             else
             {
                 for (ulong offset = 0; offset < size; offset++)
                 {
-                    byte data = memoryManager.Read<byte>(ConvertGobLinearToBlockLinearAddress(srcGpuVa + offset), true);
-                    memoryManager.Write(dstGpuVa + offset, data);
+                    ulong currentSrcVa = ConvertGobLinearToBlockLinearAddress(srcGpuVa + offset);
+                    ulong currentDstVa = dstGpuVa + offset;
+                    
+                    // 检查每个地址的有效性 - 新增的检查
+                    if (currentSrcVa == ulong.MaxValue || currentDstVa == ulong.MaxValue)
+                    {
+                        continue;
+                    }
+
+                    byte data = memoryManager.Read<byte>(currentSrcVa, true);
+                    memoryManager.Write(currentDstVa, data);
                 }
             }
         }
@@ -661,20 +699,44 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         /// <param name="size">Size in bytes of the copy</param>
         private static void CopyGobLinearToBlockLinear(MemoryManager memoryManager, ulong srcGpuVa, ulong dstGpuVa, ulong size)
         {
+            // 检查地址有效性 - 新增的检查
+            if (srcGpuVa == ulong.MaxValue || dstGpuVa == ulong.MaxValue)
+            {
+                return;
+            }
+
             if (((srcGpuVa | dstGpuVa | size) & 0xf) == 0)
             {
                 for (ulong offset = 0; offset < size; offset += 16)
                 {
-                    Vector128<byte> data = memoryManager.Read<Vector128<byte>>(srcGpuVa + offset, true);
-                    memoryManager.Write(ConvertGobLinearToBlockLinearAddress(dstGpuVa + offset), data);
+                    ulong currentSrcVa = srcGpuVa + offset;
+                    ulong currentDstVa = ConvertGobLinearToBlockLinearAddress(dstGpuVa + offset);
+                    
+                    // 检查每个地址的有效性 - 新增的检查
+                    if (currentSrcVa == ulong.MaxValue || currentDstVa == ulong.MaxValue)
+                    {
+                        continue;
+                    }
+
+                    Vector128<byte> data = memoryManager.Read<Vector128<byte>>(currentSrcVa, true);
+                    memoryManager.Write(currentDstVa, data);
                 }
             }
             else
             {
                 for (ulong offset = 0; offset < size; offset++)
                 {
-                    byte data = memoryManager.Read<byte>(srcGpuVa + offset, true);
-                    memoryManager.Write(ConvertGobLinearToBlockLinearAddress(dstGpuVa + offset), data);
+                    ulong currentSrcVa = srcGpuVa + offset;
+                    ulong currentDstVa = ConvertGobLinearToBlockLinearAddress(dstGpuVa + offset);
+                    
+                    // 检查每个地址的有效性 - 新增的检查
+                    if (currentSrcVa == ulong.MaxValue || currentDstVa == ulong.MaxValue)
+                    {
+                        continue;
+                    }
+
+                    byte data = memoryManager.Read<byte>(currentSrcVa, true);
+                    memoryManager.Write(currentDstVa, data);
                 }
             }
         }
