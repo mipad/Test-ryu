@@ -206,90 +206,43 @@ namespace Ryujinx.Graphics.Gpu.Memory
         }
 
         /// <summary>
-/// Reads data from a possibly non-contiguous region of GPU mapped memory.
-/// </summary>
-/// <param name="va">GPU virtual address of the data</param>
-/// <param name="data">Span to write the read data into</param>
-/// <param name="tracked">True to enable write tracking on read, false otherwise</param>
-private void ReadImpl(ulong va, Span<byte> data, bool tracked)
-{
-    if (data.Length == 0)
-    {
-        return;
-    }
-
-    // 检查是否为明显的无效地址
-    if (va == ulong.MaxValue || !ValidateAddress(va))
-    {
-        data.Fill(0);
-        return;
-    }
-
-    int offset = 0, size;
-
-    if ((va & PageMask) != 0)
-    {
-        ulong pa = Translate(va);
-
-        size = Math.Min(data.Length, (int)PageSize - (int)(va & PageMask));
-
-        // 只在确实遇到未映射页面时才填充0
-        if (pa == PteUnmapped)
+        /// Reads data from a possibly non-contiguous region of GPU mapped memory.
+        /// </summary>
+        /// <param name="va">GPU virtual address of the data</param>
+        /// <param name="data">Span to write the read data into</param>
+        /// <param name="tracked">True to enable write tracking on read, false otherwise</param>
+        private void ReadImpl(ulong va, Span<byte> data, bool tracked)
         {
-            data.Slice(0, size).Fill(0);
-        }
-        else
-        {
-            try
+            if (data.Length == 0)
             {
+                return;
+            }
+
+            int offset = 0, size;
+
+            if ((va & PageMask) != 0)
+            {
+                ulong pa = Translate(va);
+
+                size = Math.Min(data.Length, (int)PageSize - (int)(va & PageMask));
+
+                // 原始代码 - 不检查未映射内存
                 Physical.GetSpan(pa, size, tracked).CopyTo(data[..size]);
+
+                offset += size;
             }
-            catch
+
+            for (; offset < data.Length; offset += size)
             {
-                // 如果物理内存访问失败，回退到零填充
-                data.Slice(0, size).Fill(0);
-            }
-        }
+                ulong pa = Translate(va + (ulong)offset);
 
-        offset += size;
-    }
+                size = Math.Min(data.Length - offset, (int)PageSize);
 
-    for (; offset < data.Length; offset += size)
-    {
-        ulong currentVa = va + (ulong)offset;
-        
-        // 检查每个地址的有效性
-        if (!ValidateAddress(currentVa))
-        {
-            // 在这里计算size，避免使用未赋值的变量
-            int currentSize = Math.Min(data.Length - offset, (int)PageSize);
-            data.Slice(offset, currentSize).Fill(0);
-            size = currentSize; // 确保size被赋值
-            continue;
-        }
-
-        ulong pa = Translate(currentVa);
-
-        size = Math.Min(data.Length - offset, (int)PageSize);
-
-        if (pa == PteUnmapped)
-        {
-            data.Slice(offset, size).Fill(0);
-        }
-        else
-        {
-            try
-            {
+                // 原始代码 - 不检查未映射内存
                 Physical.GetSpan(pa, size, tracked).CopyTo(data.Slice(offset, size));
             }
-            catch
-            {
-                // 如果物理内存访问失败，回退到零填充
-                data.Slice(offset, size).Fill(0);
-            }
         }
-    }
-}
+
         /// <summary>
         /// Gets a writable region from GPU mapped memory.
         /// </summary>
@@ -628,6 +581,12 @@ private void ReadImpl(ulong va, Span<byte> data, bool tracked)
         /// <returns>CPU virtual address, or <see cref="PteUnmapped"/> if unmapped</returns>
         public ulong Translate(ulong va)
         {
+            // 特殊处理：如果地址是 0xFFFFFFFFFFFFFFFF，直接返回未映射
+            if (va == ulong.MaxValue)
+            {
+                return PteUnmapped;
+            }
+
             if (!ValidateAddress(va))
             {
                 return PteUnmapped;
@@ -805,4 +764,3 @@ private void ReadImpl(ulong va, Span<byte> data, bool tracked)
         }
     }
 }
-
