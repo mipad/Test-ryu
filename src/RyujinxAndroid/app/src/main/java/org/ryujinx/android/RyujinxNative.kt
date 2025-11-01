@@ -178,6 +178,11 @@ class RyujinxNative {
         {
             MainActivity.frameEnded()
         }
+        
+        @JvmStatic
+    fun test() {
+        // no-op
+    }
 
         @JvmStatic
         fun getSurfacePtr() : Long
@@ -197,6 +202,26 @@ class RyujinxNative {
             val info = NativeHelpers.instance.getStringJava(infoPtr);
             MainActivity.mainViewModel?.gameHost?.setProgress(info, progress)
         }
+
+        @JvmStatic
+    fun detachWindow() {
+        try { graphicsSetPresentEnabled(false) } catch (_: Throwable) {}
+        try { deviceWaitForGpuDone(100) } catch (_: Throwable) {}
+        try { deviceSetWindowHandle(0) } catch (_: Throwable) {}
+    }
+
+    @JvmStatic
+    fun reattachWindowIfReady(): Boolean {
+        return try {
+            val handle = getWindowHandle()
+            if (handle <= 0) return false
+            deviceSetWindowHandle(handle)  // Window wieder setzen
+            deviceRecreateSwapchain()      // Swapchain sauber neu anlegen
+            true
+        } catch (_: Throwable) {
+            false
+        }
+    }
 
         @JvmStatic
         fun updateUiHandler(

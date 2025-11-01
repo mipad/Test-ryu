@@ -21,17 +21,55 @@ import org.ryujinx.android.ui.theme.RyujinxAndroidTheme
 import org.ryujinx.android.viewmodels.MainViewModel
 import org.ryujinx.android.viewmodels.QuickSettings
 import org.ryujinx.android.views.MainView
-
+import android.os.Handler
+import android.os.Looper
+import androidx.lifecycle.Lifecycle
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
+import android.content.Context
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
+import androidx.activity.result.contract.ActivityResultContracts
 
 class MainActivity : BaseActivity() {
     private var physicalControllerManager: PhysicalControllerManager =
         PhysicalControllerManager(this)
     private lateinit var motionSensorManager: MotionSensorManager
     private var _isInit: Boolean = false
+    
+    // 后台稳定性相关变量
+    private val handler = Handler(Looper.getMainLooper())
+    private val ENABLE_PRESENT_DELAY_MS = 400L
+    private val REATTACH_DELAY_MS = 300L
+    private var wantPresentEnabled = false
+    private val TAG_FG = "FgPresent"
+    
+    // 僵尸进程检测
+    private val PREFS = "emu_core"
+    private val KEY_EMU_RUNNING = "emu_running"
+    
     var isGameRunning = false
     var isActive = false
     var storageHelper: SimpleStorageHelper? = null
     lateinit var uiHandler: UiHandler
+
+    // 服务停止接收器
+    private val serviceStopReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == EmulationService.ACTION_STOPPED) {
+                handler.removeCallbacks(reattachWindowWhenReady)
+                handler.removeCallbacks(enablePresentWhenReady)
+                clearEmuRunningFlag()
+                hardColdReset("service stopped broadcast")
+            }
+        }
+    }
+
+    // 通知权限请求
+    private val requestNotifPerm = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* optional: Log/Toast */ }
 
     companion object {
         var mainViewModel: MainViewModel? = null
@@ -58,6 +96,50 @@ class MainActivity : BaseActivity() {
     }
 
     private external fun initVm()
+
+    // 渲染控制方法
+    private fun setPresentEnabled(enabled: Boolean, reason: String) {
+        wantPresentEnabled = enabled
+        try {
+            RyujinxNative.jnaInstance.graphicsSetPresentEnabled(enabled)
+            Log.d(TAG_FG, "present=${if (enabled) "ENABLED" else "DISABLED"} ($reason)")
+        } catch (_: Throwable) {
+            Log.d(TAG_FG, "native toggle not available ($reason)")
+        }
+    }
+
+    private val enablePresentWhenReady = object : Runnable {
+        override fun run() {
+            val isReallyResumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && isActive
+            val hasFocusNow = hasWindowFocus()
+            val rendererReady = MainActivity.mainViewModel?.rendererReady == true
+
+            if (!isReallyResumed || !hasFocusNow || !rendererReady) {
+                handler.postDelayed(this, ENABLE_PRESENT_DELAY_MS)
+                return
+            }
+            setPresentEnabled(true, "focus regained + delay")
+        }
+    }
+
+    private val reattachWindowWhenReady = object : Runnable {
+        override fun run() {
+            val isReallyResumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && isActive
+            val hasFocusNow = hasWindowFocus()
+            if (!isReallyResumed || !hasFocusNow) {
+                handler.postDelayed(this, REATTACH_DELAY_MS)
+                return
+            }
+
+            try { mainViewModel?.gameHost?.rebindNativeWindow(force = true) } catch (_: Throwable) {}
+
+            if (!RyujinxNative.jnaInstance.reattachWindowIfReady()) {
+                handler.postDelayed(this, REATTACH_DELAY_MS)
+                return
+            }
+            Log.d(TAG_FG, "window reattached")
+        }
+    }
 
     private fun initialize() {
         if (_isInit)
@@ -95,10 +177,6 @@ class MainActivity : BaseActivity() {
             LogLevel.Guest.ordinal,
             quickSettings.enableGuestLogs
         )
-        RyujinxNative.jnaInstance.loggingSetEnabled(
-            LogLevel.Trace.ordinal,
-            quickSettings.enableTraceLogs
-        )
         RyujinxNative.jnaInstance.loggingEnabledGraphicsLog(
             quickSettings.enableTraceLogs
         )
@@ -111,9 +189,15 @@ class MainActivity : BaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // 确保通知权限
+        ensureNotificationPermission()
 
         motionSensorManager = MotionSensorManager(this)
         Thread.setDefaultUncaughtExceptionHandler(crashHandler)
+
+        // 僵尸进程检测
+        coldResetIfZombie("onCreate")
 
         if (
             !Environment.isExternalStorageManager()
@@ -128,6 +212,8 @@ class MainActivity : BaseActivity() {
         window.attributes.layoutInDisplayCutoutMode =
             WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        // 保持屏幕常亮
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         mainViewModel = MainViewModel(this)
         mainViewModel!!.physicalControllerManager = physicalControllerManager
@@ -138,7 +224,6 @@ class MainActivity : BaseActivity() {
         mainViewModel?.apply {
             setContent {
                 RyujinxAndroidTheme {
-                    // A surface container using the 'background' color from the theme
                     Surface(
                         modifier = Modifier.fillMaxSize(),
                         color = MaterialTheme.colorScheme.background
@@ -158,6 +243,136 @@ class MainActivity : BaseActivity() {
     override fun onRestoreInstanceState(savedInstanceState: Bundle) {
         super.onRestoreInstanceState(savedInstanceState)
         storageHelper?.onRestoreInstanceState(savedInstanceState)
+    }
+
+    // 增强的生命周期管理
+    override fun onStart() {
+        super.onStart()
+        coldResetIfZombie("onStart")
+
+        if (isGameRunning && MainActivity.mainViewModel?.rendererReady == true) {
+            try {
+                RyujinxNative.jnaInstance.graphicsSetPresentEnabled(true)
+                Log.d(TAG_FG, "present=ENABLED (onStart)")
+            } catch (_: Throwable) {}
+        } else {
+            Log.d(TAG_FG, "skip enable present (onStart) — rendererReady=${MainActivity.mainViewModel?.rendererReady}")
+            setPresentEnabled(false, "cold reset: onStart (no game)")
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (isGameRunning) {
+            handler.removeCallbacks(reattachWindowWhenReady)
+            handler.removeCallbacks(enablePresentWhenReady)
+            setPresentEnabled(false, "onStop")
+            try { RyujinxNative.jnaInstance.detachWindow() } catch (_: Throwable) {}
+        }
+        // 重要：绑定安全解除（防止泄漏）
+        try { mainViewModel?.gameHost?.shutdownBinding() } catch (_: Throwable) {}
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN && isGameRunning) {
+            if (MainActivity.mainViewModel?.rendererReady == true) {
+                try {
+                    RyujinxNative.jnaInstance.graphicsSetPresentEnabled(false)
+                    Log.d(TAG_FG, "present=DISABLED (onTrimMemory:$level)")
+                } catch (_: Throwable) {}
+            } else {
+                Log.d(TAG_FG, "skip disable present (onTrimMemory) — rendererReady=${MainActivity.mainViewModel?.rendererReady}")
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        isActive = true
+
+        coldResetIfZombie("onResume")
+
+        // 注册服务停止接收器
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(
+                    serviceStopReceiver,
+                    IntentFilter(EmulationService.ACTION_STOPPED),
+                    Context.RECEIVER_EXPORTED
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                registerReceiver(serviceStopReceiver, IntentFilter(EmulationService.ACTION_STOPPED))
+            }
+        } catch (_: Throwable) {}
+
+        handler.removeCallbacks(reattachWindowWhenReady)
+        handler.removeCallbacks(enablePresentWhenReady)
+
+        try { mainViewModel?.gameHost?.rebindNativeWindow(force = true) } catch (_: Throwable) {}
+
+        if (isGameRunning) {
+            setFullScreen(true)
+            if (QuickSettings(this).enableMotion)
+                motionSensorManager.register()
+            
+            handler.postDelayed(reattachWindowWhenReady, REATTACH_DELAY_MS)
+            if (hasWindowFocus()) {
+                handler.postDelayed(enablePresentWhenReady, ENABLE_PRESENT_DELAY_MS)
+            }
+        } else {
+            setPresentEnabled(false, "cold reset: onResume (no game)")
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (!isGameRunning) return
+
+        handler.removeCallbacks(reattachWindowWhenReady)
+        handler.removeCallbacks(enablePresentWhenReady)
+
+        if (hasFocus && isActive) {
+            // 首先确保绑定存在
+            try { mainViewModel?.gameHost?.ensureServiceStartedAndBound() } catch (_: Throwable) {}
+
+            setPresentEnabled(false, "focus gained → pre-rebind")
+            try { mainViewModel?.gameHost?.rebindNativeWindow(force = true) } catch (_: Throwable) {}
+            handler.postDelayed(reattachWindowWhenReady, 150L)
+            handler.postDelayed(enablePresentWhenReady, 450L)
+        } else {
+            setPresentEnabled(false, "focus lost")
+            try { RyujinxNative.jnaInstance.detachWindow() } catch (_: Throwable) {}
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        isActive = false
+
+        handler.removeCallbacks(reattachWindowWhenReady)
+        handler.removeCallbacks(enablePresentWhenReady)
+
+        if (isGameRunning) {
+            setPresentEnabled(false, "onPause")
+            try { RyujinxNative.jnaInstance.detachWindow() } catch (_: Throwable) {}
+            mainViewModel?.performanceManager?.setTurboMode(false)
+            motionSensorManager.unregister()
+        }
+
+        try { unregisterReceiver(serviceStopReceiver) } catch (_: Throwable) {}
+
+        // 绑定清理（防止任务滑动时的泄漏）
+        try { mainViewModel?.gameHost?.shutdownBinding() } catch (_: Throwable) {}
+    }
+
+    override fun onDestroy() {
+        handler.removeCallbacks(enablePresentWhenReady)
+        handler.removeCallbacks(reattachWindowWhenReady)
+        // 如果Activity死亡 → 保证解除绑定
+        try { mainViewModel?.gameHost?.shutdownBinding() } catch (_: Throwable) {}
+        super.onDestroy()
     }
 
     fun setFullScreen(fullscreen: Boolean) {
@@ -195,34 +410,53 @@ class MainActivity : BaseActivity() {
         return super.dispatchGenericMotionEvent(ev)
     }
 
-    override fun onStop() {
-        super.onStop()
-        isActive = false
-
-        if (isGameRunning) {
-            mainViewModel?.performanceManager?.setTurboMode(false)
+    // 辅助方法
+    private fun ensureNotificationPermission() {
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            val granted = ContextCompat.checkSelfPermission(
+                this, Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                requestNotifPerm.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
     }
 
-    override fun onResume() {
-        super.onResume()
-        isActive = true
-
-        if (isGameRunning) {
-            setFullScreen(true)
-            if (QuickSettings(this).enableMotion)
-                motionSensorManager.register()
-        }
+    private fun setEmuRunningFlag(value: Boolean) {
+        try {
+            getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_EMU_RUNNING, value)
+                .apply()
+        } catch (_: Throwable) { }
     }
 
-    override fun onPause() {
-        super.onPause()
-        isActive = true
+    private fun clearEmuRunningFlag() = setEmuRunningFlag(false)
 
-        if (isGameRunning) {
-            mainViewModel?.performanceManager?.setTurboMode(false)
-        }
+    private fun hardColdReset(reason: String) {
+        Log.d(TAG_FG, "Cold graphics reset ($reason)")
+        isGameRunning = false
+        mainViewModel?.rendererReady = false
 
-        motionSensorManager.unregister()
+        try { setPresentEnabled(false, "cold reset: $reason") } catch (_: Throwable) {}
+        try { RyujinxNative.jnaInstance.detachWindow() } catch (_: Throwable) {}
+
+        try { stopService(Intent(this, EmulationService::class.java)) } catch (_: Throwable) {}
+
+        try { mainViewModel?.loadGameModel?.value = null } catch (_: Throwable) {}
+        try { mainViewModel?.bootPath?.value = "" } catch (_: Throwable) {}
+        try { mainViewModel?.forceNceAndPptc?.value = false } catch (_: Throwable) {}
+    }
+
+    private fun coldResetIfZombie(phase: String) {
+        try {
+            val zombie = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getBoolean(KEY_EMU_RUNNING, false)
+            if (zombie) {
+                clearEmuRunningFlag()
+                setPresentEnabled(false, "kill stray: $phase")
+                hardColdReset("kill stray: $phase")
+            }
+        } catch (_: Throwable) { }
     }
 }
