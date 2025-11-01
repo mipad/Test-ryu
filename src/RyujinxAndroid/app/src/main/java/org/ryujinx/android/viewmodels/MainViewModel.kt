@@ -84,7 +84,8 @@ class MainViewModel(val activity: MainActivity) {
     private var progressValue: MutableState<Float>? = null
     private var showLoading: MutableState<Boolean>? = null
     private var refreshUser: MutableState<Boolean>? = null
-
+    @Volatile var rendererReady: Boolean = false
+    
     // 新增：表面格式相关字段
     private var surfaceFormatsCache: Array<String>? = null
     private var lastSurfaceFormatsUpdate: Long = 0
@@ -389,6 +390,7 @@ class MainViewModel(val activity: MainActivity) {
         motionSensorManager?.unregister()
         physicalControllerManager?.disconnect()
         motionSensorManager?.setControllerId(-1)
+        rendererReady = false
     }
 
     fun refreshFirmwareVersion() {
@@ -474,6 +476,7 @@ class MainViewModel(val activity: MainActivity) {
             extensions.size,
             driverHandle
         )
+        rendererReady = success
         if (!success)
             return 0
 
@@ -596,6 +599,7 @@ class MainViewModel(val activity: MainActivity) {
             extensions.size,
             driverHandle
         )
+        rendererReady = success
         if (!success)
             return false
 
@@ -794,3 +798,4 @@ class MainViewModel(val activity: MainActivity) {
         gameHost?.setProgressStates(showLoading, progressValue, progress)
     }
 }
+
