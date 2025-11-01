@@ -232,7 +232,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 }
                 else
                 {
-                    Physical.GetSpan(pa, size, tracked).CopyTo(data[..size]);
+                    Physical.GetSpan(pa, size, tracked).CopyTo(data.Slice(offset, size));
                 }
 
                 offset += size;
