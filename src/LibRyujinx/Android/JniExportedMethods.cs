@@ -23,6 +23,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Ryujinx.HLE; 
+using Ryujinx.Graphics.Vulkan;
 
 namespace LibRyujinx
 {
