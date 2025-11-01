@@ -161,6 +161,11 @@ interface RyujinxNativeJna : Library {
     fun graphicsSetPresentEnabled(enabled: Boolean)
     fun ReleaseRendererSurface()
     fun TryReattachSurface(): Boolean
+
+    // ==================== 窗口管理相关方法 ====================
+    fun deviceSetWindowHandle(handle: Long)
+    fun deviceRecreateSwapchain()
+    fun deviceWaitForGpuDone(timeoutMs: Int)
 }
 
 class RyujinxNative {
@@ -206,7 +211,9 @@ class RyujinxNative {
         fun detachWindow() {
             try { 
                 graphicsSetPresentEnabled(false) 
+                deviceWaitForGpuDone(100)
                 ReleaseRendererSurface()
+                deviceSetWindowHandle(0)
             } catch (_: Throwable) {}
         }
 
@@ -215,7 +222,8 @@ class RyujinxNative {
             return try {
                 val handle = getWindowHandle()
                 if (handle <= 0) return false
-                TryReattachSurface()
+                deviceSetWindowHandle(handle)
+                deviceRecreateSwapchain()
                 true
             } catch (_: Throwable) {
                 false
@@ -268,6 +276,27 @@ class RyujinxNative {
         fun deviceSignalEmulationClose() {
             try {
                 jnaInstance.deviceSignalEmulationClose()
+            } catch (_: Throwable) {}
+        }
+
+        @JvmStatic
+        fun deviceSetWindowHandle(handle: Long) {
+            try {
+                jnaInstance.deviceSetWindowHandle(handle)
+            } catch (_: Throwable) {}
+        }
+
+        @JvmStatic
+        fun deviceRecreateSwapchain() {
+            try {
+                jnaInstance.deviceRecreateSwapchain()
+            } catch (_: Throwable) {}
+        }
+
+        @JvmStatic
+        fun deviceWaitForGpuDone(timeoutMs: Int) {
+            try {
+                jnaInstance.deviceWaitForGpuDone(timeoutMs)
             } catch (_: Throwable) {}
         }
         
