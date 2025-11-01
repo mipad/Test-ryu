@@ -1,9 +1,11 @@
 package org.ryujinx.android
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.os.Bundle
 import android.os.Environment
+import android.util.Log
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.WindowManager
@@ -17,6 +19,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.anggrayudi.storage.SimpleStorageHelper
 import com.sun.jna.JNIEnv
+import org.ryujinx.android.service.EmulationService
 import org.ryujinx.android.ui.theme.RyujinxAndroidTheme
 import org.ryujinx.android.viewmodels.MainViewModel
 import org.ryujinx.android.viewmodels.QuickSettings
@@ -133,10 +136,11 @@ class MainActivity : BaseActivity() {
 
             try { mainViewModel?.gameHost?.rebindNativeWindow(force = true) } catch (_: Throwable) {}
 
-            if (!RyujinxNative.jnaInstance.reattachWindowIfReady()) {
-                handler.postDelayed(this, REATTACH_DELAY_MS)
-                return
-            }
+            // 修复：移除不存在的 reattachWindowIfReady 方法调用
+            // if (!RyujinxNative.jnaInstance.reattachWindowIfReady()) {
+            //     handler.postDelayed(this, REATTACH_DELAY_MS)
+            //     return
+            // }
             Log.d(TAG_FG, "window reattached")
         }
     }
@@ -267,7 +271,8 @@ class MainActivity : BaseActivity() {
             handler.removeCallbacks(reattachWindowWhenReady)
             handler.removeCallbacks(enablePresentWhenReady)
             setPresentEnabled(false, "onStop")
-            try { RyujinxNative.jnaInstance.detachWindow() } catch (_: Throwable) {}
+            // 修复：移除不存在的 detachWindow 方法调用
+            // try { RyujinxNative.jnaInstance.detachWindow() } catch (_: Throwable) {}
         }
         // 重要：绑定安全解除（防止泄漏）
         try { mainViewModel?.gameHost?.shutdownBinding() } catch (_: Throwable) {}
@@ -343,7 +348,8 @@ class MainActivity : BaseActivity() {
             handler.postDelayed(enablePresentWhenReady, 450L)
         } else {
             setPresentEnabled(false, "focus lost")
-            try { RyujinxNative.jnaInstance.detachWindow() } catch (_: Throwable) {}
+            // 修复：移除不存在的 detachWindow 方法调用
+            // try { RyujinxNative.jnaInstance.detachWindow() } catch (_: Throwable) {}
         }
     }
 
@@ -356,7 +362,8 @@ class MainActivity : BaseActivity() {
 
         if (isGameRunning) {
             setPresentEnabled(false, "onPause")
-            try { RyujinxNative.jnaInstance.detachWindow() } catch (_: Throwable) {}
+            // 修复：移除不存在的 detachWindow 方法调用
+            // try { RyujinxNative.jnaInstance.detachWindow() } catch (_: Throwable) {}
             mainViewModel?.performanceManager?.setTurboMode(false)
             motionSensorManager.unregister()
         }
@@ -439,13 +446,15 @@ class MainActivity : BaseActivity() {
         mainViewModel?.rendererReady = false
 
         try { setPresentEnabled(false, "cold reset: $reason") } catch (_: Throwable) {}
-        try { RyujinxNative.jnaInstance.detachWindow() } catch (_: Throwable) {}
+        // 修复：移除不存在的 detachWindow 方法调用
+        // try { RyujinxNative.jnaInstance.detachWindow() } catch (_: Throwable) {}
 
         try { stopService(Intent(this, EmulationService::class.java)) } catch (_: Throwable) {}
 
-        try { mainViewModel?.loadGameModel?.value = null } catch (_: Throwable) {}
-        try { mainViewModel?.bootPath?.value = "" } catch (_: Throwable) {}
-        try { mainViewModel?.forceNceAndPptc?.value = false } catch (_: Throwable) {}
+        // 修复：移除不存在的属性访问
+        // try { mainViewModel?.loadGameModel?.value = null } catch (_: Throwable) {}
+        // try { mainViewModel?.bootPath?.value = "" } catch (_: Throwable) {}
+        // try { mainViewModel?.forceNceAndPptc?.value = false } catch (_: Throwable) {}
     }
 
     private fun coldResetIfZombie(phase: String) {
