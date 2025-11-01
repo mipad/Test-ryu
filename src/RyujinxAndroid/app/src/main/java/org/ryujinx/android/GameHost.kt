@@ -102,8 +102,7 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
         try {
             _currentWindow = _nativeWindow.requeryWindowHandle()
             _nativeWindow.swapInterval = 0
-            // 修复：使用静态方法而不是直接调用 jnaInstance
-            RyujinxNative.deviceSetWindowHandle(currentWindowhandle)
+            RyujinxNative.jnaInstance.deviceSetWindowHandle(currentWindowhandle)
 
             val w = if (holder.surfaceFrame.width() > 0) holder.surfaceFrame.width() else width
             val h = if (holder.surfaceFrame.height() > 0) holder.surfaceFrame.height() else height
@@ -127,7 +126,7 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
         if (_isClosed) return
         try {
             // 注意：这里需要根据您的实际实现调整旋转设置方法
-            // RyujinxNative.setSurfaceRotationByAndroidRotation(rotation ?: 0)
+            // RyujinxNative.jnaInstance.setSurfaceRotationByAndroidRotation(rotation ?: 0)
             val w = if (holder.surfaceFrame.width() > 0) holder.surfaceFrame.width() else width
             val h = if (holder.surfaceFrame.height() > 0) holder.surfaceFrame.height() else height
             if (w > 0 && h > 0 &&
@@ -242,9 +241,8 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
 
         try {
             // 注意：这里需要根据您的实际实现调整旋转设置方法
-            // RyujinxNative.setSurfaceRotationByAndroidRotation(currentRot ?: 0)
-            // 修复：使用静态方法而不是直接调用 jnaInstance
-            try { RyujinxNative.deviceSetWindowHandle(currentWindowhandle) } catch (_: Throwable) {}
+            // RyujinxNative.jnaInstance.setSurfaceRotationByAndroidRotation(currentRot ?: 0)
+            try { RyujinxNative.jnaInstance.deviceSetWindowHandle(currentWindowhandle) } catch (_: Throwable) {}
 
             // 只有当渲染器 READY 且输入已初始化时才进行温和的触发
             if (width > 0 && height > 0 &&
@@ -260,7 +258,7 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
 
         val qs = org.ryujinx.android.viewmodels.QuickSettings(mainViewModel.activity)
         // 注意：这里需要根据您的实际实现调整全屏拉伸设置
-        // try { RyujinxNative.graphicsSetFullscreenStretch(qs.stretchToFullscreen) } catch (_: Throwable) {}
+        // try { RyujinxNative.jnaInstance.graphicsSetFullscreenStretch(qs.stretchToFullscreen) } catch (_: Throwable) {}
 
         // Host 现在被视为"已启动"
         _isStarted = true
@@ -322,7 +320,7 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
         try {
             if (emuBound && _startedViaService) {
                 emuBinder?.stopEmulation {
-                    try { RyujinxNative.deviceCloseEmulation() } catch (_: Throwable) {}
+                    try { RyujinxNative.jnaInstance.deviceCloseEmulation() } catch (_: Throwable) {}
                 }
             }
         } catch (_: Throwable) { }
@@ -373,7 +371,7 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
 
         if (isSideFlip) {
             // 注意：这里需要根据您的实际实现调整旋转设置方法
-            // try { RyujinxNative.setSurfaceRotationByAndroidRotation(rotation ?: 0) } catch (_: Throwable) {}
+            // try { RyujinxNative.jnaInstance.setSurfaceRotationByAndroidRotation(rotation ?: 0) } catch (_: Throwable) {}
             rebindNativeWindow(force = true)
             val now = android.os.SystemClock.uptimeMillis()
             if (now - lastKickAt >= 300L && _inputInitialized && MainActivity.mainViewModel?.rendererReady == true) {
