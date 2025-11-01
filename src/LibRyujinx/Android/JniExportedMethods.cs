@@ -326,7 +326,7 @@ namespace LibRyujinx
                         Window = (nint*)_surfacePtr,
                     };
 
-                    var result = surfaceExtension.CreateAndroidSurface(new Instance(instance), createInfo, null, out var surface);
+                    var result = surfaceExtension.CreateAndroidSurface(new Instance(instance), in createInfo, null, out var surface);
 
                     return (nint)surface.Handle;
                 }
@@ -654,6 +654,79 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
+            }
+        }
+
+[UnmanagedCallersOnly(EntryPoint = "graphicsRendererSetPresent")]
+        public static void JniGraphicsRendererSetPresent(bool enabled)
+        {
+            try
+            {
+                if (Renderer is VulkanRenderer vr)
+                {
+                    vr.SetPresentEnabled(enabled);
+                    Logger.Trace?.Print(LogClass.Application, $"[JNI] PresentEnabled = {enabled}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Application, $"graphicsRendererSetPresent failed: {ex}");
+            }
+        }
+
+        // neuer Name: passt zu KenjinxNative.graphicsSetPresentEnabled(...)
+        [UnmanagedCallersOnly(EntryPoint = "graphicsSetPresentEnabled")]
+        public static void JniGraphicsSetPresentEnabled(bool enabled)
+        {
+            try
+            {
+                (Renderer as VulkanRenderer)?.SetPresentEnabled(enabled);
+                Logger.Trace?.Print(LogClass.Application, $"[JNI] graphicsSetPresentEnabled({enabled})");
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Application, $"graphicsSetPresentEnabled failed: {ex}");
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "graphicsRendererRecreateSurface")]
+        public static void JniGraphicsRendererRecreateSurface()
+        {
+            try
+            {
+                _ = (Renderer as VulkanRenderer)?.RecreateSurface();
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Application, $"graphicsRendererRecreateSurface failed: {ex}");
+            }
+        }
+
+        // von MainActivity/GameHost benutzt
+        [UnmanagedCallersOnly(EntryPoint = "reattachWindowIfReady")]
+        public static bool JniReattachWindowIfReady()
+        {
+            try
+            {
+                return (Renderer as VulkanRenderer)?.RecreateSurface() ?? false;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Application, $"reattachWindowIfReady failed: {ex}");
+                return false;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "detachWindow")]
+        public static void JniDetachWindow()
+        {
+            try
+            {
+                (Renderer as VulkanRenderer)?.ReleaseSurface();
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Application, $"detachWindow failed: {ex}");
             }
         }
 
