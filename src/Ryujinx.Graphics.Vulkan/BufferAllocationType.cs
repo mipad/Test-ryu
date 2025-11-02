@@ -9,5 +9,6 @@ namespace Ryujinx.Graphics.Vulkan
         DeviceLocal,
         DeviceLocalMapped,
         Sparse,
+        VirtualMemory, // 添加虚拟内存类型
     }
 }
