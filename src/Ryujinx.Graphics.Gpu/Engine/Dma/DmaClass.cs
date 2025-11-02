@@ -191,15 +191,48 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         /// <returns>True if the address is valid, false otherwise</returns>
         private static bool ValidateAddress(ulong va)
         {
-            // 检查是否为明显的无效地址
+            // 允许 ulong.MaxValue，它可能是特殊标记值或占位符
             if (va == ulong.MaxValue)
+            {
+                return true; // 改为返回true
+            }
+
+            // 检查地址是否为零（通常也是无效的）
+            if (va == 0)
             {
                 return false;
             }
 
-            // 检查地址是否在合理的范围内（40位地址空间）
-            const ulong maxValidAddress = (1UL << 40) - 1;
-            return va <= maxValidAddress;
+            // 使用更宽松的地址空间检查（52位地址空间）
+            const ulong maxValidAddress = (1UL << 52) - 1;
+            
+            // 检查地址是否在合理的范围内
+            if (va > maxValidAddress)
+            {
+                // 记录警告但不阻止操作
+                Ryujinx.Common.Logging.Logger.Warning?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"可疑的DMA地址: 0x{va:X16}");
+                return true; // 仍然返回true，让操作继续
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// 检查地址是否可能是有效的（宽松检查）
+        /// </summary>
+        private static bool IsProbablyValidAddress(ulong va)
+        {
+            // 允许所有非零地址，包括 ulong.MaxValue
+            return va != 0;
+        }
+
+        /// <summary>
+        /// 检查地址是否明显无效（严格检查，用于决定是否跳过内存访问）
+        /// </summary>
+        private static bool IsDefinitelyInvalidAddress(ulong va)
+        {
+            // 只有明显错误的地址才跳过内存访问
+            return va == 0 || (va >= 0xFFFF000000000000UL && va != ulong.MaxValue);
         }
 
         /// <summary>
@@ -227,11 +260,17 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
             ulong srcGpuVa = ((ulong)_state.State.OffsetInUpperUpper << 32) | _state.State.OffsetInLower;
             ulong dstGpuVa = ((ulong)_state.State.OffsetOutUpperUpper << 32) | _state.State.OffsetOutLower;
 
-            // 检查地址有效性 - 新增的检查
-            if (!ValidateAddress(srcGpuVa) || !ValidateAddress(dstGpuVa))
+            // 宽松的地址检查 - 只记录警告但不阻止操作
+            if (!IsProbablyValidAddress(srcGpuVa))
             {
-                // 如果源或目标地址无效，跳过DMA操作
-                return;
+                Ryujinx.Common.Logging.Logger.Warning?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"可疑的DMA源地址: 0x{srcGpuVa:X16}, 大小: 0x{size:X}");
+                // 不返回，继续执行
+            }
+
+            if (!IsProbablyValidAddress(dstGpuVa))
+            {
+                Ryujinx.Common.Logging.Logger.Warning?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"可疑的DMA目标地址: 0x{dstGpuVa:X16}, 大小: 0x{size:X}");
+                // 不返回，继续执行
             }
 
             int xCount = (int)_state.State.LineLengthIn;
@@ -240,6 +279,14 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
             _channel.TextureManager.RefreshModifiedTextures();
             _3dEngine.CreatePendingSyncs();
             _3dEngine.FlushUboDirty();
+
+            // 如果地址明显无效，跳过实际的内存访问但继续执行其他逻辑
+            if (IsDefinitelyInvalidAddress(srcGpuVa) || IsDefinitelyInvalidAddress(dstGpuVa))
+            {
+                Ryujinx.Common.Logging.Logger.Warning?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"跳过DMA内存访问，但继续执行其他逻辑");
+                // 跳过实际的内存复制，但继续执行信号量释放等操作
+                return;
+            }
 
             if (copy2D)
             {
@@ -837,12 +884,21 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         {
             try
             {
+                Ryujinx.Common.Logging.Logger.Debug?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"开始DMA操作, 参数: 0x{argument:X}");
+                
                 DmaCopy(argument);
+                
+                Ryujinx.Common.Logging.Logger.Debug?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "DMA复制完成，释放信号量");
+                
                 ReleaseSemaphore(argument);
+                
+                Ryujinx.Common.Logging.Logger.Debug?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "DMA操作完成");
             }
-            catch
+            catch (Exception ex)
             {
-                // 如果DMA操作失败，静默失败而不是崩溃
+                // 记录异常但不崩溃
+                Ryujinx.Common.Logging.Logger.Warning?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"DMA操作异常: {ex.Message}");
+                Ryujinx.Common.Logging.Logger.Debug?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"异常堆栈: {ex.StackTrace}");
             }
         }
     }
