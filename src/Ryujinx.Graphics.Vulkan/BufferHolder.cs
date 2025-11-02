@@ -486,8 +486,11 @@ namespace Ryujinx.Graphics.Vulkan
             // 虚拟内存缓冲区直接返回虚拟内存数据
             if (_isVirtualMemoryBuffer)
             {
-                var virtualResult = new Span<byte>((void*)(_virtualMemory + offset), Math.Min(size, _virtualMemorySize - offset));
-                return PinnedSpan<byte>.UnsafeFromSpan(virtualResult);
+                unsafe
+                {
+                    var virtualResult = new Span<byte>((void*)(_virtualMemory + offset), Math.Min(size, _virtualMemorySize - offset));
+                    return PinnedSpan<byte>.UnsafeFromSpan(virtualResult);
+                }
             }
 
             _flushLock.EnterReadLock();
@@ -586,7 +589,10 @@ namespace Ryujinx.Graphics.Vulkan
             // 虚拟内存缓冲区直接写入虚拟内存
             if (_isVirtualMemoryBuffer)
             {
-                dataSlice.CopyTo(new Span<byte>((void*)(_virtualMemory + offset), dataSize));
+                unsafe
+                {
+                    dataSlice.CopyTo(new Span<byte>((void*)(_virtualMemory + offset), dataSize));
+                }
                 return;
             }
 
@@ -604,7 +610,10 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     WaitForFences(offset, dataSize);
 
-                    dataSlice.CopyTo(new Span<byte>((void*)(_map + offset), dataSize));
+                    unsafe
+                    {
+                        dataSlice.CopyTo(new Span<byte>((void*)(_map + offset), dataSize));
+                    }
 
                     if (_pendingData != null)
                     {
@@ -710,13 +719,19 @@ namespace Ryujinx.Graphics.Vulkan
             // 虚拟内存缓冲区直接写入虚拟内存
             if (_isVirtualMemoryBuffer)
             {
-                data[..dataSize].CopyTo(new Span<byte>((void*)(_virtualMemory + offset), dataSize));
+                unsafe
+                {
+                    data[..dataSize].CopyTo(new Span<byte>((void*)(_virtualMemory + offset), dataSize));
+                }
                 return;
             }
 
             if (_map != IntPtr.Zero)
             {
-                data[..dataSize].CopyTo(new Span<byte>((void*)(_map + offset), dataSize));
+                unsafe
+                {
+                    data[..dataSize].CopyTo(new Span<byte>((void*)(_map + offset), dataSize));
+                }
             }
             else
             {
@@ -746,7 +761,10 @@ namespace Ryujinx.Graphics.Vulkan
             // 虚拟内存缓冲区直接写入虚拟内存
             if (_isVirtualMemoryBuffer)
             {
-                data[..dataSize].CopyTo(new Span<byte>((void*)(_virtualMemory + dstOffset), dataSize));
+                unsafe
+                {
+                    data[..dataSize].CopyTo(new Span<byte>((void*)(_virtualMemory + dstOffset), dataSize));
+                }
                 return;
             }
 
