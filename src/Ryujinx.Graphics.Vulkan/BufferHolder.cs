@@ -552,17 +552,18 @@ namespace Ryujinx.Graphics.Vulkan
         {
             int mappingSize = Math.Min(size, Size - offset);
 
+            // 将指针检查和使用都放在unsafe上下文中
             unsafe
             {
                 if (_isMemoryMappedBuffer && _memoryMappedPointer != null)
                 {
                     return new Span<byte>(_memoryMappedPointer + offset, mappingSize);
                 }
-            }
 
-            if (_map != IntPtr.Zero)
-            {
-                return new Span<byte>((void*)(_map + offset), mappingSize);
+                if (_map != IntPtr.Zero)
+                {
+                    return new Span<byte>((void*)(_map + offset), mappingSize);
+                }
             }
 
             throw new InvalidOperationException("The buffer is not host mapped.");
