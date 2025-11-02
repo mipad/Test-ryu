@@ -218,7 +218,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         }
 
         /// <summary>
-        /// 使用暂存缓冲区安全的DMA复制操作
+        /// 使用安全的DMA复制操作，支持虚拟缓冲区
         /// </summary>
         /// <param name="memoryManager">内存管理器</param>
         /// <param name="srcGpuVa">源GPU虚拟地址</param>
@@ -237,8 +237,8 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
 
             try
             {
-                // 使用暂存缓冲区进行安全的复制
-                const int maxChunkSize = 16 * 1024 * 1024; // 16MB chunks - 减少块大小以避免内存压力
+                // 使用安全的块复制方法
+                const int maxChunkSize = 16 * 1024 * 1024; // 16MB chunks
                 ulong offset = 0;
 
                 while (offset < size)
