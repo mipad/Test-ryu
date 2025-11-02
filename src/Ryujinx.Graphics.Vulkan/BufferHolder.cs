@@ -82,9 +82,9 @@ namespace Ryujinx.Graphics.Vulkan
             _flushLock = new ReaderWriterLockSlim();
             _useMirrors = gd.IsTBDR;
 
-            // 初始化缓存
+            // 初始化缓存 - 使用默认构造函数
             _cachedConvertedBuffers = new CacheByRange<BufferHolder>();
-            _pendingDataRanges = new BufferMirrorRangeList(size);
+            _pendingDataRanges = new BufferMirrorRangeList();
         }
 
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, Auto<MemoryAllocation> allocation, int size, BufferAllocationType type, BufferAllocationType currentType, int offset)
@@ -105,9 +105,9 @@ namespace Ryujinx.Graphics.Vulkan
 
             _flushLock = new ReaderWriterLockSlim();
 
-            // 初始化缓存
+            // 初始化缓存 - 使用默认构造函数
             _cachedConvertedBuffers = new CacheByRange<BufferHolder>();
-            _pendingDataRanges = new BufferMirrorRangeList(size);
+            _pendingDataRanges = new BufferMirrorRangeList();
         }
 
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, int size, Auto<MemoryAllocation>[] storageAllocations)
@@ -124,9 +124,9 @@ namespace Ryujinx.Graphics.Vulkan
 
             _flushLock = new ReaderWriterLockSlim();
 
-            // 初始化缓存
+            // 初始化缓存 - 使用默认构造函数
             _cachedConvertedBuffers = new CacheByRange<BufferHolder>();
-            _pendingDataRanges = new BufferMirrorRangeList(size);
+            _pendingDataRanges = new BufferMirrorRangeList();
         }
 
         /// <summary>
@@ -222,7 +222,6 @@ namespace Ryujinx.Graphics.Vulkan
             size = Math.Min(size, Size - offset);
 
             // Does this binding need to be mirrored?
-
             if (_pendingDataRanges == null || !_pendingDataRanges.OverlapsWith(offset, size))
             {
                 buffer = null;
@@ -365,7 +364,7 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 bool hadMirrors = _mirrors != null && _mirrors.Count > 0 && RemoveOverlappingMirrors(offset, size);
 
-                if (_pendingDataRanges.Count() != 0)
+                if (_pendingDataRanges != null && _pendingDataRanges.Count() != 0)
                 {
                     UploadPendingData(cbs, offset, size);
                 }
@@ -384,6 +383,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         private void UploadPendingData(CommandBufferScoped cbs, int offset, int size)
         {
+            if (_pendingDataRanges == null) return;
+
             var ranges = _pendingDataRanges.FindOverlaps(offset, size);
 
             if (ranges != null)
@@ -643,7 +644,7 @@ namespace Ryujinx.Graphics.Vulkan
 
                     if (_pendingData != null)
                     {
-                        bool removed = _pendingDataRanges.Remove(offset, dataSize);
+                        bool removed = _pendingDataRanges != null && _pendingDataRanges.Remove(offset, dataSize);
                         if (RemoveOverlappingMirrors(offset, dataSize) || removed)
                         {
                             // If any mirrors were removed, rebind the buffer range.
@@ -667,7 +668,10 @@ namespace Ryujinx.Graphics.Vulkan
                 }
 
                 dataSlice.CopyTo(_pendingData.AsSpan(offset, dataSize));
-                _pendingDataRanges.Add(offset, dataSize);
+                if (_pendingDataRanges != null)
+                {
+                    _pendingDataRanges.Add(offset, dataSize);
+                }
 
                 // Remove any overlapping mirrors.
                 RemoveOverlappingMirrors(offset, dataSize);
@@ -678,7 +682,7 @@ namespace Ryujinx.Graphics.Vulkan
                 return;
             }
 
-            if (_pendingData != null)
+            if (_pendingData != null && _pendingDataRanges != null)
             {
                 _pendingDataRanges.Remove(offset, dataSize);
             }
