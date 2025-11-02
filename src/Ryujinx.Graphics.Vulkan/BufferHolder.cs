@@ -772,7 +772,7 @@ namespace Ryujinx.Graphics.Vulkan
             SetDataUnchecked(offset, MemoryMarshal.AsBytes(data));
         }
 
-        public void SetDataInline(CommandBufferScoped cbs, Action endRenderPass, int dstOffset, ReadOnlySpan<byte> data)
+        public unsafe void SetDataInline(CommandBufferScoped cbs, Action endRenderPass, int dstOffset, ReadOnlySpan<byte> data)
         {
             // 为内联更新添加边界检查
             if (dstOffset < 0 || dstOffset >= Size)
@@ -1126,10 +1126,13 @@ namespace Ryujinx.Graphics.Vulkan
             // 如果是内存映射文件缓冲区，释放内存映射文件资源
             if (_isMemoryMappedBuffer)
             {
-                if (_memoryMappedPointer != null)
+                unsafe
                 {
-                    _memoryMappedAccessor.SafeMemoryMappedViewHandle.ReleasePointer();
-                    _memoryMappedPointer = null;
+                    if (_memoryMappedPointer != null)
+                    {
+                        _memoryMappedAccessor.SafeMemoryMappedViewHandle.ReleasePointer();
+                        _memoryMappedPointer = null;
+                    }
                 }
                 _memoryMappedAccessor?.Dispose();
                 _memoryMappedFile?.Dispose();
