@@ -2,8 +2,6 @@ using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.GAL;
 using Silk.NET.Vulkan;
 using System;
-using System.Collections.Generic;
-using System.IO.MemoryMappedFiles;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using VkBuffer = Silk.NET.Vulkan.Buffer;
@@ -312,9 +310,9 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
 
-            // 最后尝试分块内存方案
-            Logger.Warning?.Print(LogClass.Gpu, $"所有GPU内存分配失败，使用分块内存方案: 大小=0x{size:X} ({size / 1024 / 1024}MB)");
-            holder = CreateChunkedMemoryBuffer(gd, size);
+            // 最后尝试虚拟内存回退
+            Logger.Warning?.Print(LogClass.Gpu, $"所有GPU内存分配失败，使用虚拟内存回退: 大小=0x{size:X} ({size / 1024 / 1024}MB)");
+            holder = CreateVirtualMemoryBuffer(gd, size);
             if (holder != null)
             {
                 BufferCount++;
@@ -358,126 +356,58 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         /// <summary>
-        /// 创建基于分块内存的缓冲区作为回退方案
+        /// 创建基于系统虚拟内存的缓冲区作为回退方案
         /// </summary>
-        private BufferHolder CreateChunkedMemoryBuffer(VulkanRenderer gd, int size)
+        private BufferHolder CreateVirtualMemoryBuffer(VulkanRenderer gd, int size)
         {
-            Logger.Warning?.Print(LogClass.Gpu, $"创建分块内存缓冲区: 大小=0x{size:X} ({size / 1024 / 1024}MB)");
+            Logger.Warning?.Print(LogClass.Gpu, $"创建虚拟内存缓冲区: 大小=0x{size:X} ({size / 1024 / 1024}MB)");
+
+            IntPtr virtualMemory = IntPtr.Zero;
+            BufferHolder holder = null;
+            bool success = false;
 
             try
             {
-                // 对于大缓冲区，我们使用分块策略
-                const int chunkSize = 64 * 1024 * 1024; // 64MB chunks
-                
-                if (size <= chunkSize)
+                // 分配系统虚拟内存
+                virtualMemory = Marshal.AllocHGlobal(size);
+                if (virtualMemory == IntPtr.Zero)
                 {
-                    // 如果缓冲区小于等于chunkSize，尝试一次性创建
-                    return CreateSingleChunkBuffer(gd, size);
+                    Logger.Error?.Print(LogClass.Gpu, $"系统虚拟内存分配失败: 大小=0x{size:X}");
+                    return null;
                 }
-                else
+
+                Logger.Warning?.Print(LogClass.Gpu, $"系统虚拟内存分配成功: 地址=0x{virtualMemory:X}, 大小=0x{size:X}");
+
+                // 清零初始化内存
+                unsafe
                 {
-                    // 对于大缓冲区，使用内存映射文件
-                    return CreateMemoryMappedBuffer(gd, size);
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.Print(LogClass.Gpu, $"创建分块内存缓冲区时发生异常: {ex.Message}");
-                return null;
-            }
-        }
-
-        /// <summary>
-        /// 创建单块缓冲区
-        /// </summary>
-        private BufferHolder CreateSingleChunkBuffer(VulkanRenderer gd, int size)
-        {
-            Logger.Warning?.Print(LogClass.Gpu, $"尝试创建单块缓冲区: 大小=0x{size:X}");
-
-            // 尝试使用最小的可能内存类型创建缓冲区
-            BufferAllocationType[] memoryTypes = new[]
-            {
-                BufferAllocationType.HostMapped,
-                BufferAllocationType.HostMappedNoCache,
-                BufferAllocationType.DeviceLocalMapped
-            };
-
-            foreach (var memoryType in memoryTypes)
-            {
-                try
-                {
-                    var holder = Create(gd, size, forConditionalRendering: false, sparseCompatible: false, memoryType);
-                    if (holder != null)
+                    byte* ptr = (byte*)virtualMemory;
+                    for (int i = 0; i < size; i++)
                     {
-                        Logger.Warning?.Print(LogClass.Gpu, $"单块缓冲区创建成功: 类型={memoryType}, 大小=0x{size:X}");
-                        return holder;
+                        ptr[i] = 0;
                     }
                 }
-                catch (Exception ex)
-                {
-                    Logger.Warning?.Print(LogClass.Gpu, $"单块缓冲区创建失败 {memoryType}: {ex.Message}");
-                }
-            }
 
-            return null;
-        }
+                // 创建一个特殊的BufferHolder，它使用虚拟内存而不是Vulkan缓冲区
+                holder = new BufferHolder(gd, _device, virtualMemory, size);
 
-        /// <summary>
-        /// 创建基于内存映射文件的缓冲区
-        /// </summary>
-        private unsafe BufferHolder CreateMemoryMappedBuffer(VulkanRenderer gd, int size)
-        {
-            Logger.Warning?.Print(LogClass.Gpu, $"创建内存映射文件缓冲区: 大小=0x{size:X}");
-
-            MemoryMappedFile mmf = null;
-            MemoryMappedViewAccessor accessor = null;
-
-            try
-            {
-                // 创建内存映射文件
-                mmf = MemoryMappedFile.CreateNew(null, size, MemoryMappedFileAccess.ReadWrite);
-                accessor = mmf.CreateViewAccessor();
-
-                // 获取内存映射文件的指针
-                byte* ptr = null;
-                accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
-
-                if (ptr == null)
-                {
-                    Logger.Error?.Print(LogClass.Gpu, "无法获取内存映射文件指针");
-                    return null;
-                }
-
-                // 使用内存映射文件创建主机导入的缓冲区
-                var handle = CreateHostImported(gd, (IntPtr)ptr, size);
+                success = true;
                 
-                if (handle == BufferHandle.Null)
-                {
-                    Logger.Error?.Print(LogClass.Gpu, "无法创建主机导入缓冲区");
-                    return null;
-                }
-
-                if (!TryGetBuffer(handle, out var holder))
-                {
-                    Logger.Error?.Print(LogClass.Gpu, "无法获取缓冲区持有者");
-                    return null;
-                }
-
-                // 标记这个缓冲区使用内存映射文件
-                holder.SetMemoryMappedFile(mmf, accessor, ptr, size);
-                
-                Logger.Warning?.Print(LogClass.Gpu, $"内存映射文件缓冲区创建成功: 大小=0x{size:X}");
+                Logger.Warning?.Print(LogClass.Gpu, $"虚拟内存缓冲区创建成功: 大小=0x{size:X}");
                 return holder;
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Gpu, $"创建内存映射文件缓冲区失败: {ex.Message}");
-                
-                // 清理资源
-                accessor?.Dispose();
-                mmf?.Dispose();
-                
+                Logger.Error?.Print(LogClass.Gpu, $"创建虚拟内存缓冲区时发生异常: {ex.Message}");
                 return null;
+            }
+            finally
+            {
+                if (!success && virtualMemory != IntPtr.Zero)
+                {
+                    Marshal.FreeHGlobal(virtualMemory);
+                    Logger.Warning?.Print(LogClass.Gpu, $"已释放虚拟内存: 地址=0x{virtualMemory:X}");
+                }
             }
         }
 
