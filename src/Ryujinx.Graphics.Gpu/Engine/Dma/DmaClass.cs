@@ -194,7 +194,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
             // 允许 ulong.MaxValue，它可能是特殊标记值
             if (va == ulong.MaxValue)
             {
-                return true; // 改为返回true，因为可能是合法的特殊值
+                return true;
             }
 
             // 检查地址是否为零（通常也是无效的）
@@ -211,7 +211,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
             {
                 // 记录警告但不阻止操作
                 Ryujinx.Common.Logging.Logger.Warning?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"可疑的DMA地址: 0x{va:X16}");
-                return true; // 仍然返回true，让操作继续
+                return true;
             }
 
             return true;
@@ -238,30 +238,16 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
             try
             {
                 // 使用暂存缓冲区进行安全的复制
-                const int maxChunkSize = 64 * 1024 * 1024; // 64MB chunks
+                const int maxChunkSize = 16 * 1024 * 1024; // 16MB chunks - 减少块大小以避免内存压力
                 ulong offset = 0;
 
                 while (offset < size)
                 {
                     ulong chunkSize = Math.Min((ulong)maxChunkSize, size - offset);
                     
-                    // 读取源数据到暂存缓冲区
-                    byte[] stagingBuffer = new byte[chunkSize];
-                    try
-                    {
-                        // 从源地址读取数据
-                        var sourceSpan = memoryManager.GetSpan(srcGpuVa + offset, (int)chunkSize, true);
-                        sourceSpan.CopyTo(stagingBuffer);
-                        
-                        // 写入目标地址
-                        memoryManager.Write(dstGpuVa + offset, stagingBuffer);
-                    }
-                    catch (Exception ex)
-                    {
-                        Ryujinx.Common.Logging.Logger.Warning?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"DMA复制块失败: {ex.Message}");
-                        // 继续下一个块而不是完全失败
-                    }
-
+                    // 使用MemoryManager的内置方法进行安全的复制
+                    memoryManager.Physical.BufferCache.CopyBuffer(memoryManager, srcGpuVa + offset, dstGpuVa + offset, chunkSize);
+                    
                     offset += chunkSize;
                 }
             }
@@ -447,20 +433,17 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                     }
                 }
 
-                // 使用安全的暂存缓冲区方法读取源数据
-                byte[] srcStagingBuffer = new byte[srcSize];
+                ReadOnlySpan<byte> srcSpan;
+
                 try
                 {
-                    var sourceSpan = memoryManager.GetSpan(srcGpuVa + (ulong)srcBaseOffset, srcSize, true);
-                    sourceSpan.CopyTo(srcStagingBuffer);
+                    srcSpan = memoryManager.GetSpan(srcGpuVa + (ulong)srcBaseOffset, srcSize, true);
                 }
                 catch (Exception ex)
                 {
                     Ryujinx.Common.Logging.Logger.Warning?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"读取源数据失败: {ex.Message}");
                     return;
                 }
-
-                ReadOnlySpan<byte> srcSpan = srcStagingBuffer;
 
                 // Try to set the texture data directly,
                 // but only if we are doing a complete copy,
@@ -527,68 +510,66 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                     }
                 }
 
-                // 使用暂存缓冲区进行目标数据操作
-                byte[] dstStagingBuffer = new byte[dstSize];
-                Span<byte> dstSpan = dstStagingBuffer;
-
-                TextureParams srcParams = new(srcRegionX, srcRegionY, srcBaseOffset, srcBpp, srcLinear, srcCalculator);
-                TextureParams dstParams = new(dstRegionX, dstRegionY, dstBaseOffset, dstBpp, dstLinear, dstCalculator);
-
-                if (isIdentityRemap)
-                {
-                    // The order of the components doesn't change, so we can just copy directly
-                    // (with layout conversion if necessary).
-
-                    switch (srcBpp)
-                    {
-                        case 1:
-                            Copy<byte>(dstSpan, srcSpan, dstParams, srcParams);
-                            break;
-                        case 2:
-                            Copy<ushort>(dstSpan, srcSpan, dstParams, srcParams);
-                            break;
-                        case 4:
-                            Copy<uint>(dstSpan, srcSpan, dstParams, srcParams);
-                            break;
-                        case 8:
-                            Copy<ulong>(dstSpan, srcSpan, dstParams, srcParams);
-                            break;
-                        case 12:
-                            Copy<Bpp12Pixel>(dstSpan, srcSpan, dstParams, srcParams);
-                            break;
-                        case 16:
-                            Copy<Vector128<byte>>(dstSpan, srcSpan, dstParams, srcParams);
-                            break;
-                        default:
-                            throw new NotSupportedException($"Unable to copy ${srcBpp} bpp pixel format.");
-                    }
-                }
-                else
-                {
-                    // The order or value of the components might change.
-
-                    switch (componentSize)
-                    {
-                        case 1:
-                            CopyShuffle<byte>(dstSpan, srcSpan, dstParams, srcParams);
-                            break;
-                        case 2:
-                            CopyShuffle<ushort>(dstSpan, srcSpan, dstParams, srcParams);
-                            break;
-                        case 3:
-                            CopyShuffle<UInt24>(dstSpan, srcSpan, dstParams, srcParams);
-                            break;
-                        case 4:
-                            CopyShuffle<uint>(dstSpan, srcSpan, dstParams, srcParams);
-                            break;
-                        default:
-                            throw new NotSupportedException($"Unable to copy ${componentSize} component size.");
-                    }
-                }
-
                 // 使用安全的写入方法
                 try
                 {
+                    Span<byte> dstSpan = memoryManager.GetSpan(dstGpuVa + (ulong)dstBaseOffset, dstSize).ToArray();
+
+                    TextureParams srcParams = new(srcRegionX, srcRegionY, srcBaseOffset, srcBpp, srcLinear, srcCalculator);
+                    TextureParams dstParams = new(dstRegionX, dstRegionY, dstBaseOffset, dstBpp, dstLinear, dstCalculator);
+
+                    if (isIdentityRemap)
+                    {
+                        // The order of the components doesn't change, so we can just copy directly
+                        // (with layout conversion if necessary).
+
+                        switch (srcBpp)
+                        {
+                            case 1:
+                                Copy<byte>(dstSpan, srcSpan, dstParams, srcParams);
+                                break;
+                            case 2:
+                                Copy<ushort>(dstSpan, srcSpan, dstParams, srcParams);
+                                break;
+                            case 4:
+                                Copy<uint>(dstSpan, srcSpan, dstParams, srcParams);
+                                break;
+                            case 8:
+                                Copy<ulong>(dstSpan, srcSpan, dstParams, srcParams);
+                                break;
+                            case 12:
+                                Copy<Bpp12Pixel>(dstSpan, srcSpan, dstParams, srcParams);
+                                break;
+                            case 16:
+                                Copy<Vector128<byte>>(dstSpan, srcSpan, dstParams, srcParams);
+                                break;
+                            default:
+                                throw new NotSupportedException($"Unable to copy ${srcBpp} bpp pixel format.");
+                        }
+                    }
+                    else
+                    {
+                        // The order or value of the components might change.
+
+                        switch (componentSize)
+                        {
+                            case 1:
+                                CopyShuffle<byte>(dstSpan, srcSpan, dstParams, srcParams);
+                                break;
+                            case 2:
+                                CopyShuffle<ushort>(dstSpan, srcSpan, dstParams, srcParams);
+                                break;
+                            case 3:
+                                CopyShuffle<UInt24>(dstSpan, srcSpan, dstParams, srcParams);
+                                break;
+                            case 4:
+                                CopyShuffle<uint>(dstSpan, srcSpan, dstParams, srcParams);
+                                break;
+                            default:
+                                throw new NotSupportedException($"Unable to copy ${componentSize} component size.");
+                        }
+                    }
+
                     memoryManager.Write(dstGpuVa + (ulong)dstBaseOffset, dstSpan);
                 }
                 catch (Exception ex)
