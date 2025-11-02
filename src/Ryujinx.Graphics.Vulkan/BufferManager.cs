@@ -251,22 +251,109 @@ namespace Ryujinx.Graphics.Vulkan
             BufferAllocationType baseType = BufferAllocationType.HostMapped,
             bool forceMirrors = false)
         {
-            holder = Create(gd, size, forConditionalRendering: false, sparseCompatible, baseType);
-            if (holder == null)
+            // 新增：如果缓冲区大小超过阈值，尝试使用虚拟内存回退方案
+            const int LargeBufferThreshold = 512 * 1024 * 1024; // 512MB
+            if (size >= LargeBufferThreshold)
             {
+                Logger.Warning?.Print(LogClass.Gpu, $"尝试创建大缓冲区: 大小=0x{size:X}, 类型={baseType}");
+                
+                // 首先尝试正常创建
+                holder = Create(gd, size, forConditionalRendering: false, sparseCompatible, baseType);
+                if (holder != null)
+                {
+                    BufferCount++;
+                    ulong handle64 = (uint)_buffers.Add(holder);
+                    return Unsafe.As<ulong, BufferHandle>(ref handle64);
+                }
+
+                // 如果正常创建失败，尝试所有可能的类型
+                foreach (BufferAllocationType fallbackType in Enum.GetValues(typeof(BufferAllocationType)))
+                {
+                    if (fallbackType == BufferAllocationType.Auto || fallbackType == baseType) continue;
+                    
+                    Logger.Warning?.Print(LogClass.Gpu, $"尝试回退类型: {fallbackType}");
+                    holder = Create(gd, size, forConditionalRendering: false, sparseCompatible, fallbackType);
+                    if (holder != null)
+                    {
+                        BufferCount++;
+                        ulong handle64 = (uint)_buffers.Add(holder);
+                        return Unsafe.As<ulong, BufferHandle>(ref handle64);
+                    }
+                }
+
+                // 如果所有类型都失败，使用虚拟内存回退
+                Logger.Warning?.Print(LogClass.Gpu, $"所有GPU内存分配失败，使用系统虚拟内存回退: 大小=0x{size:X}");
+                holder = CreateVirtualMemoryBuffer(gd, size);
+                if (holder != null)
+                {
+                    BufferCount++;
+                    ulong handle64 = (uint)_buffers.Add(holder);
+                    return Unsafe.As<ulong, BufferHandle>(ref handle64);
+                }
+
+                Logger.Error?.Print(LogClass.Gpu, $"无法创建缓冲区: 大小=0x{size:X}");
                 return BufferHandle.Null;
             }
-
-            if (forceMirrors)
+            else
             {
-                holder.UseMirrors();
+                // 小缓冲区的正常创建流程
+                holder = Create(gd, size, forConditionalRendering: false, sparseCompatible, baseType);
+                if (holder == null)
+                {
+                    return BufferHandle.Null;
+                }
+
+                if (forceMirrors)
+                {
+                    holder.UseMirrors();
+                }
+
+                BufferCount++;
+
+                ulong handle64 = (uint)_buffers.Add(holder);
+
+                return Unsafe.As<ulong, BufferHandle>(ref handle64);
             }
+        }
 
-            BufferCount++;
+        /// <summary>
+        /// 创建基于系统虚拟内存的缓冲区作为回退方案
+        /// </summary>
+        private BufferHolder CreateVirtualMemoryBuffer(VulkanRenderer gd, int size)
+        {
+            try
+            {
+                // 分配系统虚拟内存
+                var virtualMemory = Marshal.AllocHGlobal(size);
+                if (virtualMemory == IntPtr.Zero)
+                {
+                    Logger.Error?.Print(LogClass.Gpu, $"系统虚拟内存分配失败: 大小=0x{size:X}");
+                    return null;
+                }
 
-            ulong handle64 = (uint)_buffers.Add(holder);
+                // 创建主机导入的缓冲区
+                var handle = CreateHostImported(gd, virtualMemory, size);
+                if (handle == BufferHandle.Null)
+                {
+                    Marshal.FreeHGlobal(virtualMemory);
+                    return null;
+                }
 
-            return Unsafe.As<ulong, BufferHandle>(ref handle64);
+                if (TryGetBuffer(handle, out var holder))
+                {
+                    // 标记这个缓冲区使用的是虚拟内存
+                    holder.SetVirtualMemoryMarker(virtualMemory, size);
+                    return holder;
+                }
+
+                Marshal.FreeHGlobal(virtualMemory);
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Gpu, $"创建虚拟内存缓冲区时发生异常: {ex.Message}");
+                return null;
+            }
         }
 
         public ScopedTemporaryBuffer ReserveOrCreate(VulkanRenderer gd, CommandBufferScoped cbs, int size)
