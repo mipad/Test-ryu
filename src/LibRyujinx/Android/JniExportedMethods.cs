@@ -658,6 +658,30 @@ namespace LibRyujinx
             }
         }
 
+        // 新增：暂停模拟器的JNI方法
+        [UnmanagedCallersOnly(EntryPoint = "devicePauseEmulation")]
+        public static void JnaPauseEmulation()
+        {
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: PauseEmulation");
+            PauseEmulation();
+        }
+
+        // 新增：恢复模拟器的JNI方法
+        [UnmanagedCallersOnly(EntryPoint = "deviceResumeEmulation")]
+        public static void JnaResumeEmulation()
+        {
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: ResumeEmulation");
+            ResumeEmulation();
+        }
+
+        // 新增：获取暂停状态的JNI方法
+        [UnmanagedCallersOnly(EntryPoint = "deviceIsEmulationPaused")]
+        public static bool JnaIsEmulationPaused()
+        {
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: IsEmulationPaused");
+            return IsEmulationPaused();
+        }
+
 [UnmanagedCallersOnly(EntryPoint = "graphicsRendererSetPresent")]
         public static void JniGraphicsRendererSetPresent(bool enabled)
         {
