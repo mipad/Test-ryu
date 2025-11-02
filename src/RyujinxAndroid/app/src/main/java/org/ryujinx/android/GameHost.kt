@@ -88,10 +88,10 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
         mainViewModel.gameHost = this
     }
 
-    private fun ghLog(msg: String) {
-        val enabled = BuildConfig.DEBUG && org.ryujinx.android.viewmodels.QuickSettings(mainViewModel.activity).enableDebugLogs
-        if (enabled) Log.d("GameHost", msg)
-    }
+    //private fun ghLog(msg: String) {
+       // val enabled = BuildConfig.DEBUG && org.ryujinx.android.viewmodels.QuickSettings(mainViewModel.activity).enableDebugLogs
+       // if (enabled) Log.d("GameHost", msg)
+   // }
 
     /**
      * (重新)绑定当前 ANativeWindow 到渲染器
