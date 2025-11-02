@@ -52,6 +52,9 @@ class MainActivity : BaseActivity() {
     private val PREFS = "emu_core"
     private val KEY_EMU_RUNNING = "emu_running"
     
+    // 后台暂停相关变量
+    private var autoPaused = false
+    
     var isGameRunning = false
     var isActive = false
     var storageHelper: SimpleStorageHelper? = null
@@ -326,6 +329,12 @@ class MainActivity : BaseActivity() {
             if (hasWindowFocus()) {
                 handler.postDelayed(enablePresentWhenReady, ENABLE_PRESENT_DELAY_MS)
             }
+            
+            // 恢复模拟器（如果是自动暂停的）
+            if (autoPaused) {
+                RyujinxNative.resumeEmulation()
+                autoPaused = false
+            }
         } else {
             setPresentEnabled(false, "cold reset: onResume (no game)")
         }
@@ -366,6 +375,12 @@ class MainActivity : BaseActivity() {
             // try { RyujinxNative.jnaInstance.detachWindow() } catch (_: Throwable) {}
             mainViewModel?.performanceManager?.setTurboMode(false)
             motionSensorManager.unregister()
+            
+            // 暂停模拟器（如果不是已经暂停的）
+            if (!autoPaused && !RyujinxNative.isEmulationPaused()) {
+                RyujinxNative.pauseEmulation()
+                autoPaused = true
+            }
         }
 
         try { unregisterReceiver(serviceStopReceiver) } catch (_: Throwable) {}
@@ -444,6 +459,7 @@ class MainActivity : BaseActivity() {
         Log.d(TAG_FG, "Cold graphics reset ($reason)")
         isGameRunning = false
         mainViewModel?.rendererReady = false
+        autoPaused = false
 
         try { setPresentEnabled(false, "cold reset: $reason") } catch (_: Throwable) {}
         // 修复：移除不存在的 detachWindow 方法调用
