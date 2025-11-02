@@ -871,7 +871,8 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (dst == null)
             {
-                throw new ArgumentNullException(nameof(dst), "Destination buffer is null.");
+                Logger.Warning?.Print(LogClass.Gpu, $"复制操作跳过: 目标缓冲区为null, 大小=0x{size:X}, 源偏移=0x{srcOffset:X}, 目标偏移=0x{dstOffset:X}");
+                return;
             }
 
             if (srcOffset < 0)
@@ -901,12 +902,14 @@ namespace Ryujinx.Graphics.Vulkan
                 // 验证缓冲区句柄
                 if (srcBuffer.Handle == 0)
                 {
-                    throw new InvalidOperationException("Invalid source buffer handle (VkBuffer is null).");
+                    Logger.Warning?.Print(LogClass.Gpu, $"复制操作跳过: 源缓冲区句柄无效, 大小=0x{size:X}");
+                    return;
                 }
 
                 if (dstBuffer.Handle == 0)
                 {
-                    throw new InvalidOperationException("Invalid destination buffer handle (VkBuffer is null).");
+                    Logger.Warning?.Print(LogClass.Gpu, $"复制操作跳过: 目标缓冲区句柄无效, 大小=0x{size:X}");
+                    return;
                 }
 
                 // 设置目标缓冲区屏障 (准备写入)
@@ -945,6 +948,12 @@ namespace Ryujinx.Graphics.Vulkan
             catch (NullReferenceException)
             {
                 // 整合：处理设备/表面重置后的空引用异常
+                Logger.Warning?.Print(LogClass.Gpu, $"复制操作跳过: 空引用异常, 大小=0x{size:X}");
+                return;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, $"复制操作异常: {ex.Message}, 大小=0x{size:X}");
                 return;
             }
         }
