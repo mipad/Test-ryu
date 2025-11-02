@@ -1,6 +1,5 @@
 using Ryujinx.Common;
 using Ryujinx.Common.Memory;
-using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Device;
 using Ryujinx.Graphics.Gpu.Engine.Threed;
 using Ryujinx.Graphics.Gpu.Memory;
@@ -308,34 +307,27 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
 
                     if (source != null && source.Height == yCount)
                     {
-                        // HACK: Exclude RGBA16Float texture format for fast DMA copy on all devices.
-                        // Fixes compatibility issues when VK_EXT_external_memory_host is not available.
-                        bool skipDma = source.Info.FormatInfo.Format == Format.R16G16B16A16Float;
+                        source.SynchronizeMemory();
 
-                        if (!skipDma)
+                        var target = memoryManager.Physical.TextureCache.FindOrCreateTexture(
+                            memoryManager,
+                            source.Info.FormatInfo,
+                            dstGpuVa,
+                            xCount,
+                            yCount,
+                            dstStride,
+                            dstLinear,
+                            dst.MemoryLayout.UnpackGobBlocksInY(),
+                            dst.MemoryLayout.UnpackGobBlocksInZ());
+
+                        if (source.ScaleFactor != target.ScaleFactor)
                         {
-                            source.SynchronizeMemory();
-
-                            var target = memoryManager.Physical.TextureCache.FindOrCreateTexture(
-                                memoryManager,
-                                source.Info.FormatInfo,
-                                dstGpuVa,
-                                xCount,
-                                yCount,
-                                dstStride,
-                                dstLinear,
-                                dst.MemoryLayout.UnpackGobBlocksInY(),
-                                dst.MemoryLayout.UnpackGobBlocksInZ());
-
-                            if (source.ScaleFactor != target.ScaleFactor)
-                            {
-                                target.PropagateScale(source);
-                            }
-
-                            source.HostTexture.CopyTo(target.HostTexture, 0, 0);
-                            target.SignalModified();
-                            return;
+                            target.PropagateScale(source);
                         }
+
+                        source.HostTexture.CopyTo(target.HostTexture, 0, 0);
+                        target.SignalModified();
+                        return;
                     }
                 }
 
