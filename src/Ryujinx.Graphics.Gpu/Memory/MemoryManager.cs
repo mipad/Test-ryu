@@ -226,8 +226,14 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                 size = Math.Min(data.Length, (int)PageSize - (int)(va & PageMask));
 
-                // 原始代码 - 不检查未映射内存
-                Physical.GetSpan(pa, size, tracked).CopyTo(data[..size]);
+                if (pa == PteUnmapped)
+                {
+                    data.Slice(0, size).Fill(0);
+                }
+                else
+                {
+                    Physical.GetSpan(pa, size, tracked).CopyTo(data[..size]);
+                }
 
                 offset += size;
             }
@@ -238,8 +244,14 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                 size = Math.Min(data.Length - offset, (int)PageSize);
 
-                // 原始代码 - 不检查未映射内存
-                Physical.GetSpan(pa, size, tracked).CopyTo(data.Slice(offset, size));
+                if (pa == PteUnmapped)
+                {
+                    data.Slice(offset, size).Fill(0);
+                }
+                else
+                {
+                    Physical.GetSpan(pa, size, tracked).CopyTo(data.Slice(offset, size));
+                }
             }
         }
 
@@ -581,12 +593,6 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <returns>CPU virtual address, or <see cref="PteUnmapped"/> if unmapped</returns>
         public ulong Translate(ulong va)
         {
-            // 特殊处理：如果地址是 0xFFFFFFFFFFFFFFFF，直接返回未映射
-            if (va == ulong.MaxValue)
-            {
-                return PteUnmapped;
-            }
-
             if (!ValidateAddress(va))
             {
                 return PteUnmapped;
