@@ -59,11 +59,6 @@ namespace Ryujinx.Graphics.Vulkan
         private Dictionary<ulong, StagingBufferReserved> _mirrors;
         private bool _useMirrors;
 
-        // 新增：虚拟内存相关字段
-        private IntPtr _virtualMemory;
-        private int _virtualMemorySize;
-        private bool _isVirtualMemoryBuffer;
-
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, MemoryAllocation allocation, int size, BufferAllocationType type, BufferAllocationType currentType)
         {
             _gd = gd;
@@ -129,26 +124,8 @@ namespace Ryujinx.Graphics.Vulkan
             _pendingDataRanges = new BufferMirrorRangeList();
         }
 
-        /// <summary>
-        /// 设置虚拟内存标记
-        /// </summary>
-        public void SetVirtualMemoryMarker(IntPtr virtualMemory, int size)
-        {
-            _virtualMemory = virtualMemory;
-            _virtualMemorySize = size;
-            _isVirtualMemoryBuffer = true;
-            Logger.Warning?.Print(LogClass.Gpu, $"缓冲区使用系统虚拟内存: 大小=0x{size:X}, 地址=0x{virtualMemory:X}");
-        }
-
         public unsafe Auto<DisposableBufferView> CreateView(VkFormat format, int offset, int size, Action invalidateView)
         {
-            // 虚拟内存缓冲区不支持创建视图
-            if (_isVirtualMemoryBuffer)
-            {
-                Logger.Warning?.Print(LogClass.Gpu, "虚拟内存缓冲区不支持创建视图");
-                return null;
-            }
-
             var bufferViewCreateInfo = new BufferViewCreateInfo
             {
                 SType = StructureType.BufferViewCreateInfo,
@@ -165,9 +142,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe void InsertBarrier(CommandBuffer commandBuffer, bool isWrite)
         {
-            // 虚拟内存缓冲区不需要屏障
-            if (_isVirtualMemoryBuffer) return;
-
             // If the last access is write, we always need a barrier to be sure we will read or modify
             // the correct data.
             // If the last access is read, and current one is a write, we need to wait until the
@@ -190,7 +164,7 @@ namespace Ryujinx.Graphics.Vulkan
                     commandBuffer,
                     PipelineStageFlags.AllCommandsBit,
                     PipelineStageFlags.AllCommandsBit,
-                    0,                  // 使用0而不是DependencyFlags.DeviceGroupBit
+                    0,
                     1,
                     in memoryBarrier,
                     0,
@@ -212,13 +186,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         private unsafe bool TryGetMirror(CommandBufferScoped cbs, ref int offset, int size, out Auto<DisposableBuffer> buffer)
         {
-            // 虚拟内存缓冲区不支持镜像
-            if (_isVirtualMemoryBuffer)
-            {
-                buffer = null;
-                return false;
-            }
-
             size = Math.Min(size, Size - offset);
 
             // Does this binding need to be mirrored?
@@ -314,14 +281,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetMirrorable(CommandBufferScoped cbs, ref int offset, int size, out bool mirrored)
         {
-            // 虚拟内存缓冲区不支持镜像
-            if (_isVirtualMemoryBuffer)
-            {
-                mirrored = false;
-                return _buffer;
-            }
-
-            // 添加_useMirrors检查
             if (_useMirrors && _pendingData != null && TryGetMirror(cbs, ref offset, size, out Auto<DisposableBuffer> result))
             {
                 mirrored = true;
@@ -341,9 +300,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void ClearMirrors()
         {
-            // 虚拟内存缓冲区不支持镜像
-            if (_isVirtualMemoryBuffer) return;
-
             // Clear mirrors without forcing a flush. This happens when the command buffer is switched,
             // as all reserved areas on the staging buffer are released.
 
@@ -355,9 +311,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void ClearMirrors(CommandBufferScoped cbs, int offset, int size)
         {
-            // 虚拟内存缓冲区不支持镜像
-            if (_isVirtualMemoryBuffer) return;
-
             // Clear mirrors in the given range, and submit overlapping pending data.
 
             if (_pendingData != null)
@@ -436,12 +389,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public IntPtr Map(int offset, int mappingSize)
         {
-            // 如果是虚拟内存缓冲区，返回虚拟内存地址
-            if (_isVirtualMemoryBuffer)
-            {
-                return _virtualMemory + offset;
-            }
-
             return _map;
         }
 
@@ -499,16 +446,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe PinnedSpan<byte> GetData(int offset, int size)
         {
-            // 虚拟内存缓冲区直接返回虚拟内存数据
-            if (_isVirtualMemoryBuffer)
-            {
-                unsafe
-                {
-                    var virtualResult = new Span<byte>((void*)(_virtualMemory + offset), Math.Min(size, _virtualMemorySize - offset));
-                    return PinnedSpan<byte>.UnsafeFromSpan(virtualResult);
-                }
-            }
-
             _flushLock.EnterReadLock();
 
             WaitForFlushFence();
@@ -550,11 +487,6 @@ namespace Ryujinx.Graphics.Vulkan
         {
             int mappingSize = Math.Min(size, Size - offset);
 
-            if (_isVirtualMemoryBuffer && _virtualMemory != IntPtr.Zero)
-            {
-                return new Span<byte>((void*)(_virtualMemory + offset), mappingSize);
-            }
-
             if (_map != IntPtr.Zero)
             {
                 return new Span<byte>((void*)(_map + offset), mappingSize);
@@ -573,7 +505,7 @@ namespace Ryujinx.Graphics.Vulkan
                 (int keyOffset, int keySize) = FromMirrorKey(key);
                 if (!(offset + size <= keyOffset || offset >= keyOffset + keySize))
                 {
-                    toRemove ??= new List<ulong>(); // 保持原语法
+                    toRemove ??= new List<ulong>();
 
                     toRemove.Add(key);
                 }
@@ -608,16 +540,6 @@ namespace Ryujinx.Graphics.Vulkan
 
             // 从这里开始使用裁剪后的数据切片
             ReadOnlySpan<byte> dataSlice = data[..dataSize];
-
-            // 虚拟内存缓冲区直接写入虚拟内存
-            if (_isVirtualMemoryBuffer)
-            {
-                unsafe
-                {
-                    dataSlice.CopyTo(new Span<byte>((void*)(_virtualMemory + offset), dataSize));
-                }
-                return;
-            }
 
             bool allowMirror = _useMirrors && allowCbsWait && cbs != null && _activeType <= BufferAllocationType.HostMapped;
 
@@ -739,16 +661,6 @@ namespace Ryujinx.Graphics.Vulkan
                 return;
             }
 
-            // 虚拟内存缓冲区直接写入虚拟内存
-            if (_isVirtualMemoryBuffer)
-            {
-                unsafe
-                {
-                    data[..dataSize].CopyTo(new Span<byte>((void*)(_virtualMemory + offset), dataSize));
-                }
-                return;
-            }
-
             if (_map != IntPtr.Zero)
             {
                 unsafe
@@ -758,7 +670,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else
             {
-                _gd.BufferManager.StagingBuffer.PushData(_gd.CommandBufferPool, null, null, this, offset, data[..dataSize]); // 使用裁剪后的数据
+                _gd.BufferManager.StagingBuffer.PushData(_gd.CommandBufferPool, null, null, this, offset, data[..dataSize]);
             }
         }
 
@@ -778,16 +690,6 @@ namespace Ryujinx.Graphics.Vulkan
             int dataSize = Math.Min(data.Length, Size - dstOffset);
             if (dataSize <= 0)
             {
-                return;
-            }
-
-            // 虚拟内存缓冲区直接写入虚拟内存
-            if (_isVirtualMemoryBuffer)
-            {
-                unsafe
-                {
-                    data[..dataSize].CopyTo(new Span<byte>((void*)(_virtualMemory + dstOffset), dataSize));
-                }
                 return;
             }
 
@@ -1118,14 +1020,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void Dispose()
         {
-            // 如果是虚拟内存缓冲区，释放虚拟内存
-            if (_isVirtualMemoryBuffer && _virtualMemory != IntPtr.Zero)
-            {
-                Marshal.FreeHGlobal(_virtualMemory);
-                _virtualMemory = IntPtr.Zero;
-                Logger.Warning?.Print(LogClass.Gpu, $"释放虚拟内存缓冲区: 大小=0x{_virtualMemorySize:X}");
-            }
-
             _gd.PipelineInternal?.FlushCommandsIfWeightExceeding(_buffer, (ulong)Size);
 
             _buffer.Dispose();
