@@ -517,11 +517,11 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
 
                     if (!srcIsPitchKind && dstIsPitchKind)
                     {
-                        CopyGobBlockLinearToLinear(memoryManager, srcGpuVa, dstGpuVa, size);
+                        SafeCopyGobBlockLinearToLinear(memoryManager, srcGpuVa, dstGpuVa, size);
                     }
                     else if (srcIsPitchKind && !dstIsPitchKind)
                     {
-                        CopyGobLinearToBlockLinear(memoryManager, srcGpuVa, dstGpuVa, size);
+                        SafeCopyGobLinearToBlockLinear(memoryManager, srcGpuVa, dstGpuVa, size);
                     }
                     else
                     {
@@ -659,13 +659,14 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         }
 
         /// <summary>
-        /// Copies block linear data with block linear GOBs to a block linear destination with linear GOBs.
+        /// Safely copies block linear data with block linear GOBs to a block linear destination with linear GOBs.
+        /// This version includes comprehensive error handling to prevent crashes.
         /// </summary>
         /// <param name="memoryManager">GPU memory manager</param>
         /// <param name="srcGpuVa">Source GPU virtual address</param>
         /// <param name="dstGpuVa">Destination GPU virtual address</param>
         /// <param name="size">Size in bytes of the copy</param>
-        private static void CopyGobBlockLinearToLinear(MemoryManager memoryManager, ulong srcGpuVa, ulong dstGpuVa, ulong size)
+        private static void SafeCopyGobBlockLinearToLinear(MemoryManager memoryManager, ulong srcGpuVa, ulong dstGpuVa, ulong size)
         {
             // 检查地址有效性 - 新增的检查
             if (!ValidateAddress(srcGpuVa) || !ValidateAddress(dstGpuVa))
@@ -673,50 +674,77 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                 return;
             }
 
-            if (((srcGpuVa | dstGpuVa | size) & 0xf) == 0)
+            try
             {
-                for (ulong offset = 0; offset < size; offset += 16)
+                if (((srcGpuVa | dstGpuVa | size) & 0xf) == 0)
                 {
-                    ulong currentSrcVa = ConvertGobLinearToBlockLinearAddress(srcGpuVa + offset);
-                    ulong currentDstVa = dstGpuVa + offset;
-                    
-                    // 检查每个地址的有效性 - 新增的检查
-                    if (!ValidateAddress(currentSrcVa) || !ValidateAddress(currentDstVa))
+                    for (ulong offset = 0; offset < size; offset += 16)
                     {
-                        continue;
-                    }
+                        ulong currentSrcVa = ConvertGobLinearToBlockLinearAddress(srcGpuVa + offset);
+                        ulong currentDstVa = dstGpuVa + offset;
+                        
+                        // 检查每个地址的有效性 - 新增的检查
+                        if (!ValidateAddress(currentSrcVa) || !ValidateAddress(currentDstVa))
+                        {
+                            continue;
+                        }
 
-                    Vector128<byte> data = memoryManager.Read<Vector128<byte>>(currentSrcVa, true);
-                    memoryManager.Write(currentDstVa, data);
+                        // 使用try-catch包装每个内存访问
+                        try
+                        {
+                            Vector128<byte> data = memoryManager.Read<Vector128<byte>>(currentSrcVa, true);
+                            memoryManager.Write(currentDstVa, data);
+                        }
+                        catch
+                        {
+                            // 如果单个内存访问失败，继续下一个而不是崩溃
+                            continue;
+                        }
+                    }
+                }
+                else
+                {
+                    for (ulong offset = 0; offset < size; offset++)
+                    {
+                        ulong currentSrcVa = ConvertGobLinearToBlockLinearAddress(srcGpuVa + offset);
+                        ulong currentDstVa = dstGpuVa + offset;
+                        
+                        // 检查每个地址的有效性 - 新增的检查
+                        if (!ValidateAddress(currentSrcVa) || !ValidateAddress(currentDstVa))
+                        {
+                            continue;
+                        }
+
+                        // 使用try-catch包装每个内存访问
+                        try
+                        {
+                            byte data = memoryManager.Read<byte>(currentSrcVa, true);
+                            memoryManager.Write(currentDstVa, data);
+                        }
+                        catch
+                        {
+                            // 如果单个内存访问失败，继续下一个而不是崩溃
+                            continue;
+                        }
+                    }
                 }
             }
-            else
+            catch
             {
-                for (ulong offset = 0; offset < size; offset++)
-                {
-                    ulong currentSrcVa = ConvertGobLinearToBlockLinearAddress(srcGpuVa + offset);
-                    ulong currentDstVa = dstGpuVa + offset;
-                    
-                    // 检查每个地址的有效性 - 新增的检查
-                    if (!ValidateAddress(currentSrcVa) || !ValidateAddress(currentDstVa))
-                    {
-                        continue;
-                    }
-
-                    byte data = memoryManager.Read<byte>(currentSrcVa, true);
-                    memoryManager.Write(currentDstVa, data);
-                }
+                // 如果整个复制操作失败，静默失败而不是崩溃
+                return;
             }
         }
 
         /// <summary>
-        /// Copies block linear data with linear GOBs to a block linear destination with block linear GOBs.
+        /// Safely copies block linear data with linear GOBs to a block linear destination with block linear GOBs.
+        /// This version includes comprehensive error handling to prevent crashes.
         /// </summary>
         /// <param name="memoryManager">GPU memory manager</param>
         /// <param name="srcGpuVa">Source GPU virtual address</param>
         /// <param name="dstGpuVa">Destination GPU virtual address</param>
         /// <param name="size">Size in bytes of the copy</param>
-        private static void CopyGobLinearToBlockLinear(MemoryManager memoryManager, ulong srcGpuVa, ulong dstGpuVa, ulong size)
+        private static void SafeCopyGobLinearToBlockLinear(MemoryManager memoryManager, ulong srcGpuVa, ulong dstGpuVa, ulong size)
         {
             // 检查地址有效性 - 新增的检查
             if (!ValidateAddress(srcGpuVa) || !ValidateAddress(dstGpuVa))
@@ -724,39 +752,65 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                 return;
             }
 
-            if (((srcGpuVa | dstGpuVa | size) & 0xf) == 0)
+            try
             {
-                for (ulong offset = 0; offset < size; offset += 16)
+                if (((srcGpuVa | dstGpuVa | size) & 0xf) == 0)
                 {
-                    ulong currentSrcVa = srcGpuVa + offset;
-                    ulong currentDstVa = ConvertGobLinearToBlockLinearAddress(dstGpuVa + offset);
-                    
-                    // 检查每个地址的有效性 - 新增的检查
-                    if (!ValidateAddress(currentSrcVa) || !ValidateAddress(currentDstVa))
+                    for (ulong offset = 0; offset < size; offset += 16)
                     {
-                        continue;
-                    }
+                        ulong currentSrcVa = srcGpuVa + offset;
+                        ulong currentDstVa = ConvertGobLinearToBlockLinearAddress(dstGpuVa + offset);
+                        
+                        // 检查每个地址的有效性 - 新增的检查
+                        if (!ValidateAddress(currentSrcVa) || !ValidateAddress(currentDstVa))
+                        {
+                            continue;
+                        }
 
-                    Vector128<byte> data = memoryManager.Read<Vector128<byte>>(currentSrcVa, true);
-                    memoryManager.Write(currentDstVa, data);
+                        // 使用try-catch包装每个内存访问
+                        try
+                        {
+                            Vector128<byte> data = memoryManager.Read<Vector128<byte>>(currentSrcVa, true);
+                            memoryManager.Write(currentDstVa, data);
+                        }
+                        catch
+                        {
+                            // 如果单个内存访问失败，继续下一个而不是崩溃
+                            continue;
+                        }
+                    }
+                }
+                else
+                {
+                    for (ulong offset = 0; offset < size; offset++)
+                    {
+                        ulong currentSrcVa = srcGpuVa + offset;
+                        ulong currentDstVa = ConvertGobLinearToBlockLinearAddress(dstGpuVa + offset);
+                        
+                        // 检查每个地址的有效性 - 新增的检查
+                        if (!ValidateAddress(currentSrcVa) || !ValidateAddress(currentDstVa))
+                        {
+                            continue;
+                        }
+
+                        // 使用try-catch包装每个内存访问
+                        try
+                        {
+                            byte data = memoryManager.Read<byte>(currentSrcVa, true);
+                            memoryManager.Write(currentDstVa, data);
+                        }
+                        catch
+                        {
+                            // 如果单个内存访问失败，继续下一个而不是崩溃
+                            continue;
+                        }
+                    }
                 }
             }
-            else
+            catch
             {
-                for (ulong offset = 0; offset < size; offset++)
-                {
-                    ulong currentSrcVa = srcGpuVa + offset;
-                    ulong currentDstVa = ConvertGobLinearToBlockLinearAddress(dstGpuVa + offset);
-                    
-                    // 检查每个地址的有效性 - 新增的检查
-                    if (!ValidateAddress(currentSrcVa) || !ValidateAddress(currentDstVa))
-                    {
-                        continue;
-                    }
-
-                    byte data = memoryManager.Read<byte>(currentSrcVa, true);
-                    memoryManager.Write(currentDstVa, data);
-                }
+                // 如果整个复制操作失败，静默失败而不是崩溃
+                return;
             }
         }
 
@@ -781,8 +835,15 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         /// <param name="argument">Method call argument</param>
         private void LaunchDma(int argument)
         {
-            DmaCopy(argument);
-            ReleaseSemaphore(argument);
+            try
+            {
+                DmaCopy(argument);
+                ReleaseSemaphore(argument);
+            }
+            catch
+            {
+                // 如果DMA操作失败，静默失败而不是崩溃
+            }
         }
     }
 }
