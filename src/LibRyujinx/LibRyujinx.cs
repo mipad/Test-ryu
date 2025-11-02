@@ -79,6 +79,10 @@ namespace LibRyujinx
         private static bool _surfaceFormatsSaved = false;
         private static object _saveLock = new object();
 
+        // 添加暂停状态字段
+        private static bool _isPaused = false;
+        private static object _pauseLock = new object();
+
         // Mod 相关类型定义
         public class ModInfo
         {
@@ -211,6 +215,57 @@ namespace LibRyujinx
         public static long GetSystemTimeOffset()
         {
             return _systemTimeOffset;
+        }
+
+        // 添加暂停模拟器的方法
+        public static void PauseEmulation()
+        {
+            lock (_pauseLock)
+            {
+                if (_isPaused || SwitchDevice?.EmulationContext == null)
+                    return;
+
+                try
+                {
+                    SwitchDevice.EmulationContext.System.TogglePauseEmulation(true);
+                    _isPaused = true;
+                    Logger.Info?.Print(LogClass.Emulation, "Emulation paused via LibRyujinx");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error?.Print(LogClass.Emulation, $"Error pausing emulation: {ex.Message}");
+                }
+            }
+        }
+
+        // 添加恢复模拟器的方法
+        public static void ResumeEmulation()
+        {
+            lock (_pauseLock)
+            {
+                if (!_isPaused || SwitchDevice?.EmulationContext == null)
+                    return;
+
+                try
+                {
+                    SwitchDevice.EmulationContext.System.TogglePauseEmulation(false);
+                    _isPaused = false;
+                    Logger.Info?.Print(LogClass.Emulation, "Emulation resumed via LibRyujinx");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error?.Print(LogClass.Emulation, $"Error resuming emulation: {ex.Message}");
+                }
+            }
+        }
+
+        // 添加获取暂停状态的方法
+        public static bool IsEmulationPaused()
+        {
+            lock (_pauseLock)
+            {
+                return _isPaused;
+            }
         }
 
         public static void InitializeAudio()
