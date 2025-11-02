@@ -292,6 +292,7 @@ namespace Ryujinx.Graphics.Vulkan
                 }
 
                 Logger.Error?.Print(LogClass.Gpu, $"无法创建缓冲区: 大小=0x{size:X}");
+                holder = null;
                 return BufferHandle.Null;
             }
             else
@@ -321,38 +322,69 @@ namespace Ryujinx.Graphics.Vulkan
         /// </summary>
         private BufferHolder CreateVirtualMemoryBuffer(VulkanRenderer gd, int size)
         {
+            IntPtr virtualMemory = IntPtr.Zero;
+            BufferHolder holder = null;
+            bool success = false;
+
             try
             {
                 // 分配系统虚拟内存
-                var virtualMemory = Marshal.AllocHGlobal(size);
+                virtualMemory = Marshal.AllocHGlobal(size);
                 if (virtualMemory == IntPtr.Zero)
                 {
                     Logger.Error?.Print(LogClass.Gpu, $"系统虚拟内存分配失败: 大小=0x{size:X}");
                     return null;
                 }
 
-                // 创建主机导入的缓冲区
-                var handle = CreateHostImported(gd, virtualMemory, size);
-                if (handle == BufferHandle.Null)
+                // 清零初始化内存
+                unsafe
                 {
-                    Marshal.FreeHGlobal(virtualMemory);
-                    return null;
+                    System.Buffers.SpanHelpers.Clear(new Span<byte>((void*)virtualMemory, size));
                 }
 
-                if (TryGetBuffer(handle, out var holder))
+                // 首先尝试使用标准的主机映射内存创建缓冲区
+                holder = Create(gd, size, forConditionalRendering: false, sparseCompatible: false, BufferAllocationType.HostMapped);
+                if (holder != null)
                 {
-                    // 标记这个缓冲区使用的是虚拟内存
+                    // 标记这个缓冲区使用的是虚拟内存，并设置虚拟内存指针
                     holder.SetVirtualMemoryMarker(virtualMemory, size);
+                    virtualMemory = IntPtr.Zero; // 所有权已转移，防止重复释放
+                    success = true;
                     return holder;
                 }
 
-                Marshal.FreeHGlobal(virtualMemory);
+                // 如果标准创建失败，尝试使用更宽松的内存类型
+                foreach (BufferAllocationType fallbackType in new[] 
+                { 
+                    BufferAllocationType.HostMappedNoCache, 
+                    BufferAllocationType.DeviceLocalMapped,
+                    BufferAllocationType.DeviceLocal
+                })
+                {
+                    holder = Create(gd, size, forConditionalRendering: false, sparseCompatible: false, fallbackType);
+                    if (holder != null)
+                    {
+                        holder.SetVirtualMemoryMarker(virtualMemory, size);
+                        virtualMemory = IntPtr.Zero;
+                        success = true;
+                        return holder;
+                    }
+                }
+
+                Logger.Error?.Print(LogClass.Gpu, $"虚拟内存缓冲区创建失败: 无法创建Vulkan缓冲区");
                 return null;
             }
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Gpu, $"创建虚拟内存缓冲区时发生异常: {ex.Message}");
                 return null;
+            }
+            finally
+            {
+                if (!success && virtualMemory != IntPtr.Zero)
+                {
+                    Marshal.FreeHGlobal(virtualMemory);
+                }
             }
         }
 

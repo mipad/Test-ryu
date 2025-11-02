@@ -81,6 +81,10 @@ namespace Ryujinx.Graphics.Vulkan
 
             _flushLock = new ReaderWriterLockSlim();
             _useMirrors = gd.IsTBDR;
+
+            // 初始化缓存
+            _cachedConvertedBuffers = new CacheByRange<BufferHolder>();
+            _pendingDataRanges = new BufferMirrorRangeList(size);
         }
 
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, Auto<MemoryAllocation> allocation, int size, BufferAllocationType type, BufferAllocationType currentType, int offset)
@@ -100,6 +104,10 @@ namespace Ryujinx.Graphics.Vulkan
             _activeType = currentType;
 
             _flushLock = new ReaderWriterLockSlim();
+
+            // 初始化缓存
+            _cachedConvertedBuffers = new CacheByRange<BufferHolder>();
+            _pendingDataRanges = new BufferMirrorRangeList(size);
         }
 
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, int size, Auto<MemoryAllocation>[] storageAllocations)
@@ -115,6 +123,10 @@ namespace Ryujinx.Graphics.Vulkan
             _activeType = BufferAllocationType.Sparse;
 
             _flushLock = new ReaderWriterLockSlim();
+
+            // 初始化缓存
+            _cachedConvertedBuffers = new CacheByRange<BufferHolder>();
+            _pendingDataRanges = new BufferMirrorRangeList(size);
         }
 
         /// <summary>
@@ -211,7 +223,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             // Does this binding need to be mirrored?
 
-            if (!_pendingDataRanges.OverlapsWith(offset, size))
+            if (_pendingDataRanges == null || !_pendingDataRanges.OverlapsWith(offset, size))
             {
                 buffer = null;
                 return false;
@@ -219,7 +231,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             var key = ToMirrorKey(offset, size);
 
-            if (_mirrors.TryGetValue(key, out StagingBufferReserved reserved))
+            if (_mirrors != null && _mirrors.TryGetValue(key, out StagingBufferReserved reserved))
             {
                 buffer = reserved.Buffer.GetBuffer();
                 offset = reserved.Offset;
@@ -248,6 +260,11 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 var mirror = newMirror.Value;
                 _pendingDataRanges.FillData(baseData, modData, offset, new Span<byte>((void*)(mirror.Buffer._map + mirror.Offset), size));
+
+                if (_mirrors == null)
+                {
+                    _mirrors = new Dictionary<ulong, StagingBufferReserved>();
+                }
 
                 if (_mirrors.Count == 0)
                 {
@@ -331,7 +348,7 @@ namespace Ryujinx.Graphics.Vulkan
             // Clear mirrors without forcing a flush. This happens when the command buffer is switched,
             // as all reserved areas on the staging buffer are released.
 
-            if (_pendingData != null)
+            if (_pendingData != null && _mirrors != null)
             {
                 _mirrors.Clear();
             };
@@ -346,7 +363,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (_pendingData != null)
             {
-                bool hadMirrors = _mirrors.Count > 0 && RemoveOverlappingMirrors(offset, size);
+                bool hadMirrors = _mirrors != null && _mirrors.Count > 0 && RemoveOverlappingMirrors(offset, size);
 
                 if (_pendingDataRanges.Count() != 0)
                 {
@@ -402,6 +419,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void SignalWrite(int offset, int size)
         {
+            if (_cachedConvertedBuffers == null) return;
+
             if (offset == 0 && size == Size)
             {
                 _cachedConvertedBuffers.Clear();
@@ -534,6 +553,11 @@ namespace Ryujinx.Graphics.Vulkan
         {
             int mappingSize = Math.Min(size, Size - offset);
 
+            if (_isVirtualMemoryBuffer && _virtualMemory != IntPtr.Zero)
+            {
+                return new Span<byte>((void*)(_virtualMemory + offset), mappingSize);
+            }
+
             if (_map != IntPtr.Zero)
             {
                 return new Span<byte>((void*)(_map + offset), mappingSize);
@@ -544,6 +568,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         public bool RemoveOverlappingMirrors(int offset, int size)
         {
+            if (_mirrors == null) return false;
+
             List<ulong> toRemove = null;
             foreach (var key in _mirrors.Keys)
             {
@@ -1097,7 +1123,7 @@ namespace Ryujinx.Graphics.Vulkan
             _gd.PipelineInternal?.FlushCommandsIfWeightExceeding(_buffer, (ulong)Size);
 
             _buffer.Dispose();
-            _cachedConvertedBuffers.Dispose();
+            _cachedConvertedBuffers?.Dispose();
             if (_allocationImported)
             {
                 _allocationAuto.DecrementReferenceCount();
