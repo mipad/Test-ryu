@@ -251,58 +251,79 @@ namespace Ryujinx.Graphics.Vulkan
             BufferAllocationType baseType = BufferAllocationType.HostMapped,
             bool forceMirrors = false)
         {
-            // 新增：如果缓冲区大小超过阈值或创建失败，尝试使用虚拟内存回退方案
-            const int LargeBufferThreshold = 256 * 1024 * 1024; // 降低阈值为256MB
+            // 记录原始日志，帮助调试
+            Logger.Debug?.Print(LogClass.Gpu, $"创建缓冲区请求: 大小=0x{size:X} ({size / 1024 / 1024}MB), 类型={baseType}");
+
+            // 记录当前内存状态
+            try
+            {
+                var process = System.Diagnostics.Process.GetCurrentProcess();
+                Logger.Debug?.Print(LogClass.Gpu, $"进程内存: 工作集={process.WorkingSet64 / 1024 / 1024}MB, 私有内存={process.PrivateMemorySize64 / 1024 / 1024}MB");
+            }
+            catch
+            {
+                // 忽略内存状态记录错误
+            }
+
+            const int LargeBufferThreshold = 256 * 1024 * 1024; // 256MB
             bool isLargeBuffer = size >= LargeBufferThreshold;
             
             if (isLargeBuffer)
             {
-                Logger.Warning?.Print(LogClass.Gpu, $"尝试创建大缓冲区: 大小=0x{size:X}, 类型={baseType}");
+                Logger.Warning?.Print(LogClass.Gpu, $"尝试创建大缓冲区: 大小=0x{size:X} ({size / 1024 / 1024}MB), 类型={baseType}");
             }
 
             // 首先尝试正常创建
-            holder = Create(gd, size, forConditionalRendering: false, sparseCompatible, baseType);
-            if (holder != null)
+            try
             {
-                if (isLargeBuffer)
+                holder = Create(gd, size, forConditionalRendering: false, sparseCompatible, baseType);
+                if (holder != null)
                 {
-                    Logger.Warning?.Print(LogClass.Gpu, $"大缓冲区创建成功: 大小=0x{size:X}, 类型={baseType}");
-                }
+                    if (isLargeBuffer)
+                    {
+                        Logger.Warning?.Print(LogClass.Gpu, $"大缓冲区创建成功: 大小=0x{size:X}");
+                    }
 
-                BufferCount++;
-                ulong handle64 = (uint)_buffers.Add(holder);
-                return Unsafe.As<ulong, BufferHandle>(ref handle64);
+                    BufferCount++;
+                    ulong handle64 = (uint)_buffers.Add(holder);
+                    return Unsafe.As<ulong, BufferHandle>(ref handle64);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, $"缓冲区创建异常: {ex.Message}");
             }
 
-            // 如果正常创建失败，尝试所有可能的类型（包括大缓冲区和小缓冲区）
+            // 如果正常创建失败，尝试回退策略
             Logger.Warning?.Print(LogClass.Gpu, $"缓冲区创建失败，尝试回退类型: 大小=0x{size:X}, 原始类型={baseType}");
             
-            // 定义回退顺序，从最可能成功的类型开始尝试
-            BufferAllocationType[] fallbackTypes = new[]
-            {
-                BufferAllocationType.HostMappedNoCache,
-                BufferAllocationType.DeviceLocalMapped,
-                BufferAllocationType.DeviceLocal,
-                BufferAllocationType.HostMapped // 再次尝试原始类型
-            };
+            // 定义更智能的回退顺序
+            BufferAllocationType[] fallbackTypes = GetFallbackTypes(baseType, isLargeBuffer);
 
             foreach (BufferAllocationType fallbackType in fallbackTypes)
             {
                 if (fallbackType == baseType) continue;
                     
                 Logger.Warning?.Print(LogClass.Gpu, $"尝试回退类型: {fallbackType}");
-                holder = Create(gd, size, forConditionalRendering: false, sparseCompatible, fallbackType);
-                if (holder != null)
+                try
                 {
-                    Logger.Warning?.Print(LogClass.Gpu, $"回退类型成功: {fallbackType}");
-                    BufferCount++;
-                    ulong handle64 = (uint)_buffers.Add(holder);
-                    return Unsafe.As<ulong, BufferHandle>(ref handle64);
+                    holder = Create(gd, size, forConditionalRendering: false, sparseCompatible, fallbackType);
+                    if (holder != null)
+                    {
+                        Logger.Warning?.Print(LogClass.Gpu, $"回退类型成功: {fallbackType}");
+                        BufferCount++;
+                        ulong handle64 = (uint)_buffers.Add(holder);
+                        return Unsafe.As<ulong, BufferHandle>(ref handle64);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, $"回退类型 {fallbackType} 失败: {ex.Message}");
                 }
             }
 
-            // 如果所有类型都失败，使用虚拟内存回退
-            Logger.Warning?.Print(LogClass.Gpu, $"所有GPU内存分配失败，使用系统虚拟内存回退: 大小=0x{size:X}");
+            // 最后尝试虚拟内存回退
+            Logger.Warning?.Print(LogClass.Gpu, $"所有GPU内存分配失败，使用系统虚拟内存回退: 大小=0x{size:X} ({size / 1024 / 1024}MB)");
             holder = CreateVirtualMemoryBuffer(gd, size);
             if (holder != null)
             {
@@ -311,9 +332,40 @@ namespace Ryujinx.Graphics.Vulkan
                 return Unsafe.As<ulong, BufferHandle>(ref handle64);
             }
 
-            Logger.Error?.Print(LogClass.Gpu, $"无法创建缓冲区: 大小=0x{size:X}");
+            Logger.Error?.Print(LogClass.Gpu, $"无法创建缓冲区: 大小=0x{size:X} ({size / 1024 / 1024}MB)");
+            Logger.Error?.Print(LogClass.Gpu, $"建议: 尝试关闭其他应用程序释放内存，或降低游戏分辨率");
+            
             holder = null;
             return BufferHandle.Null;
+        }
+
+        /// <summary>
+        /// 根据缓冲区大小和原始类型获取回退顺序
+        /// </summary>
+        private static BufferAllocationType[] GetFallbackTypes(BufferAllocationType baseType, bool isLargeBuffer)
+        {
+            if (isLargeBuffer)
+            {
+                // 对于大缓冲区，优先尝试主机映射内存，因为设备内存可能不足
+                return new[]
+                {
+                    BufferAllocationType.HostMapped,
+                    BufferAllocationType.HostMappedNoCache,
+                    BufferAllocationType.DeviceLocalMapped,
+                    BufferAllocationType.DeviceLocal
+                };
+            }
+            else
+            {
+                // 对于小缓冲区，优先尝试主机映射内存
+                return new[]
+                {
+                    BufferAllocationType.HostMappedNoCache,
+                    BufferAllocationType.DeviceLocalMapped,
+                    BufferAllocationType.DeviceLocal,
+                    BufferAllocationType.HostMapped
+                };
+            }
         }
 
         /// <summary>
@@ -321,6 +373,8 @@ namespace Ryujinx.Graphics.Vulkan
         /// </summary>
         private BufferHolder CreateVirtualMemoryBuffer(VulkanRenderer gd, int size)
         {
+            Logger.Warning?.Print(LogClass.Gpu, $"创建虚拟内存缓冲区: 大小=0x{size:X} ({size / 1024 / 1024}MB)");
+
             IntPtr virtualMemory = IntPtr.Zero;
             BufferHolder holder = null;
             bool success = false;
@@ -335,7 +389,9 @@ namespace Ryujinx.Graphics.Vulkan
                     return null;
                 }
 
-                // 清零初始化内存 - 使用标准方法
+                Logger.Warning?.Print(LogClass.Gpu, $"系统虚拟内存分配成功: 地址=0x{virtualMemory:X}, 大小=0x{size:X}");
+
+                // 清零初始化内存
                 unsafe
                 {
                     byte* ptr = (byte*)virtualMemory;
@@ -345,39 +401,26 @@ namespace Ryujinx.Graphics.Vulkan
                     }
                 }
 
-                // 首先尝试使用标准的主机映射内存创建缓冲区
-                holder = Create(gd, size, forConditionalRendering: false, sparseCompatible: false, BufferAllocationType.HostMapped);
+                // 尝试创建最小的Vulkan缓冲区用于包装
+                // 这里我们创建一个很小的实际缓冲区，但使用虚拟内存作为后备存储
+                const int smallBufferSize = 1024; // 1KB的最小缓冲区
+                
+                holder = Create(gd, smallBufferSize, forConditionalRendering: false, sparseCompatible: false, BufferAllocationType.HostMapped);
                 if (holder != null)
                 {
-                    // 标记这个缓冲区使用的是虚拟内存，并设置虚拟内存指针
+                    // 标记这个缓冲区使用的是虚拟内存
                     holder.SetVirtualMemoryMarker(virtualMemory, size);
-                    virtualMemory = IntPtr.Zero; // 所有权已转移，防止重复释放
+                    virtualMemory = IntPtr.Zero; // 所有权已转移
                     success = true;
-                    Logger.Warning?.Print(LogClass.Gpu, $"虚拟内存缓冲区创建成功: 大小=0x{size:X}");
+                    
+                    Logger.Warning?.Print(LogClass.Gpu, $"虚拟内存缓冲区创建成功: 逻辑大小=0x{size:X}, 实际缓冲区大小=0x{smallBufferSize:X}");
                     return holder;
                 }
-
-                // 如果标准创建失败，尝试使用更宽松的内存类型
-                foreach (BufferAllocationType fallbackType in new[] 
-                { 
-                    BufferAllocationType.HostMappedNoCache, 
-                    BufferAllocationType.DeviceLocalMapped,
-                    BufferAllocationType.DeviceLocal
-                })
+                else
                 {
-                    holder = Create(gd, size, forConditionalRendering: false, sparseCompatible: false, fallbackType);
-                    if (holder != null)
-                    {
-                        holder.SetVirtualMemoryMarker(virtualMemory, size);
-                        virtualMemory = IntPtr.Zero;
-                        success = true;
-                        Logger.Warning?.Print(LogClass.Gpu, $"虚拟内存缓冲区创建成功(回退类型 {fallbackType}): 大小=0x{size:X}");
-                        return holder;
-                    }
+                    Logger.Error?.Print(LogClass.Gpu, $"无法创建包装缓冲区，虚拟内存方案失败");
+                    return null;
                 }
-
-                Logger.Error?.Print(LogClass.Gpu, $"虚拟内存缓冲区创建失败: 无法创建Vulkan缓冲区");
-                return null;
             }
             catch (Exception ex)
             {
@@ -389,6 +432,7 @@ namespace Ryujinx.Graphics.Vulkan
                 if (!success && virtualMemory != IntPtr.Zero)
                 {
                     Marshal.FreeHGlobal(virtualMemory);
+                    Logger.Warning?.Print(LogClass.Gpu, $"已释放虚拟内存: 地址=0x{virtualMemory:X}");
                 }
             }
         }
