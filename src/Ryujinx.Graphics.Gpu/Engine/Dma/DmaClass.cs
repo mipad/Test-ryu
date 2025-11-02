@@ -185,6 +185,24 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         }
 
         /// <summary>
+        /// Validates if a GPU virtual address is within reasonable bounds.
+        /// </summary>
+        /// <param name="va">GPU virtual address to validate</param>
+        /// <returns>True if the address is valid, false otherwise</returns>
+        private static bool ValidateAddress(ulong va)
+        {
+            // 检查是否为明显的无效地址
+            if (va == ulong.MaxValue)
+            {
+                return false;
+            }
+
+            // 检查地址是否在合理的范围内（40位地址空间）
+            const ulong maxValidAddress = (1UL << 40) - 1;
+            return va <= maxValidAddress;
+        }
+
+        /// <summary>
         /// Performs a buffer to buffer, or buffer to texture copy.
         /// </summary>
         /// <param name="argument">The LaunchDma call argument</param>
@@ -210,7 +228,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
             ulong dstGpuVa = ((ulong)_state.State.OffsetOutUpperUpper << 32) | _state.State.OffsetOutLower;
 
             // 检查地址有效性 - 新增的检查
-            if (srcGpuVa == ulong.MaxValue || dstGpuVa == ulong.MaxValue)
+            if (!ValidateAddress(srcGpuVa) || !ValidateAddress(dstGpuVa))
             {
                 // 如果源或目标地址无效，跳过DMA操作
                 return;
@@ -284,8 +302,9 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                 }
 
                 // 检查源和目标地址范围的有效性 - 新增的检查
-                if (!memoryManager.ValidateAddress(srcGpuVa + (ulong)srcBaseOffset) || 
-                    !memoryManager.ValidateAddress(dstGpuVa + (ulong)dstBaseOffset))
+                ulong srcRangeVa = srcGpuVa + (ulong)srcBaseOffset;
+                ulong dstRangeVa = dstGpuVa + (ulong)dstBaseOffset;
+                if (!ValidateAddress(srcRangeVa) || !ValidateAddress(dstRangeVa))
                 {
                     return;
                 }
@@ -649,7 +668,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         private static void CopyGobBlockLinearToLinear(MemoryManager memoryManager, ulong srcGpuVa, ulong dstGpuVa, ulong size)
         {
             // 检查地址有效性 - 新增的检查
-            if (srcGpuVa == ulong.MaxValue || dstGpuVa == ulong.MaxValue)
+            if (!ValidateAddress(srcGpuVa) || !ValidateAddress(dstGpuVa))
             {
                 return;
             }
@@ -662,7 +681,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                     ulong currentDstVa = dstGpuVa + offset;
                     
                     // 检查每个地址的有效性 - 新增的检查
-                    if (currentSrcVa == ulong.MaxValue || currentDstVa == ulong.MaxValue)
+                    if (!ValidateAddress(currentSrcVa) || !ValidateAddress(currentDstVa))
                     {
                         continue;
                     }
@@ -679,7 +698,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                     ulong currentDstVa = dstGpuVa + offset;
                     
                     // 检查每个地址的有效性 - 新增的检查
-                    if (currentSrcVa == ulong.MaxValue || currentDstVa == ulong.MaxValue)
+                    if (!ValidateAddress(currentSrcVa) || !ValidateAddress(currentDstVa))
                     {
                         continue;
                     }
@@ -700,7 +719,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         private static void CopyGobLinearToBlockLinear(MemoryManager memoryManager, ulong srcGpuVa, ulong dstGpuVa, ulong size)
         {
             // 检查地址有效性 - 新增的检查
-            if (srcGpuVa == ulong.MaxValue || dstGpuVa == ulong.MaxValue)
+            if (!ValidateAddress(srcGpuVa) || !ValidateAddress(dstGpuVa))
             {
                 return;
             }
@@ -713,7 +732,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                     ulong currentDstVa = ConvertGobLinearToBlockLinearAddress(dstGpuVa + offset);
                     
                     // 检查每个地址的有效性 - 新增的检查
-                    if (currentSrcVa == ulong.MaxValue || currentDstVa == ulong.MaxValue)
+                    if (!ValidateAddress(currentSrcVa) || !ValidateAddress(currentDstVa))
                     {
                         continue;
                     }
@@ -730,7 +749,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                     ulong currentDstVa = ConvertGobLinearToBlockLinearAddress(dstGpuVa + offset);
                     
                     // 检查每个地址的有效性 - 新增的检查
-                    if (currentSrcVa == ulong.MaxValue || currentDstVa == ulong.MaxValue)
+                    if (!ValidateAddress(currentSrcVa) || !ValidateAddress(currentDstVa))
                     {
                         continue;
                     }
