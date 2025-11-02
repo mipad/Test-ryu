@@ -66,7 +66,7 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
         override fun onServiceConnected(name: ComponentName, service: IBinder) {
             emuBinder = service as EmulationService.LocalBinder
             emuBound = true
-            ghLog("EmulationService bound")
+            
 
             // 如果启动已准备且没有循环运行 → 现在在服务中启动
             if (_isStarted && !_startedViaService && _guestThread == null) {
@@ -75,7 +75,7 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
         }
 
         override fun onServiceDisconnected(name: ComponentName) {
-            ghLog("EmulationService unbound")
+            
             emuBound = false
             emuBinder = null
             _startedViaService = false
@@ -88,10 +88,6 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
         mainViewModel.gameHost = this
     }
 
-    //private fun ghLog(msg: String) {
-       // val enabled = BuildConfig.DEBUG && org.ryujinx.android.viewmodels.QuickSettings(mainViewModel.activity).enableDebugLogs
-       // if (enabled) Log.d("GameHost", msg)
-   // }
 
     /**
      * (重新)绑定当前 ANativeWindow 到渲染器
@@ -150,14 +146,14 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
     // -------- Surface 生命周期 --------
 
     override fun surfaceCreated(holder: SurfaceHolder) {
-        ghLog("surfaceCreated")
+        
         // 提前绑定，确保服务在启动前就绪
         ensureServiceStartedAndBound()
         rebindNativeWindow(force = true)
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-        ghLog("surfaceChanged ${width}x$height")
+        
         if (_isClosed) return
 
         // 总是重新绑定 - 即使尺寸相同
@@ -176,7 +172,7 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
-        ghLog("surfaceDestroyed → shutdownBinding()")
+        
         // 总是解除绑定（防止任务滑动时的泄漏）
         shutdownBinding()
         // 实际的模拟器关闭通过 close() / 退出游戏处理
@@ -185,7 +181,7 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
     override fun onWindowVisibilityChanged(visibility: Int) {
         super.onWindowVisibilityChanged(visibility)
         if (visibility != android.view.View.VISIBLE) {
-            ghLog("window not visible → shutdownBinding()")
+            
             shutdownBinding()
         }
     }
@@ -267,14 +263,14 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
         if (emuBound) {
             startRunLoopInService()
         } else {
-            ghLog("Service not yet bound → delayed runloop start")
+            
             mainHandler.postDelayed({
                 if (!_isStarted) return@postDelayed
                 if (emuBound) {
                     startRunLoopInService()
                 } else {
                     // 回退：本地线程（应该很少发生）
-                    ghLog("Fallback: starting RunLoop in local thread")
+                    
                     _guestThread = thread(start = true, name = "RyujinxGuest") { runGame() }
                 }
             }, 150)
@@ -308,7 +304,7 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
     }
 
     fun close() {
-        ghLog("close()")
+        
         _isClosed = true
         _isInit = false
         _isStarted = false
@@ -347,7 +343,7 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
     private fun safeSetSize(w: Int, h: Int) {
         if (_isClosed || w <= 0 || h <= 0) return
         try {
-            ghLog("safeSetSize: ${w}x$h (started=$_isStarted, inputInit=$_inputInitialized)")
+            
             RyujinxNative.jnaInstance.graphicsRendererSetSize(w, h)
             if (_isStarted && _inputInitialized) {
                 RyujinxNative.jnaInstance.inputSetClientSize(w, h)
@@ -448,7 +444,7 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
 
                 // 1 个稳定滴答或最多 12 次尝试
                 if ((stableCount >= 1 || attempts >= 12) && w > 0 && h > 0) {
-                    ghLog("resize stabilized after $attempts ticks → ${w}x$h")
+                    
                     safeSetSize(w, h)
                     stabilizerActive = false
                     return
@@ -494,7 +490,7 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
             emuBound = false
             emuBinder = null
             _startedViaService = false
-            ghLog("shutdownBinding() → unbound")
+           
         }
     }
 
@@ -512,6 +508,7 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
                 _startedViaService = false
             }
         }
-        ghLog("RunLoop started in EmulationService")
+        
     }
 }
+
