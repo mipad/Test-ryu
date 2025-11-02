@@ -904,6 +904,9 @@ namespace Ryujinx.Graphics.Vulkan
             return true;
         }
 
+        /// <summary>
+        /// 支持虚拟内存缓冲区的复制方法
+        /// </summary>
         public static unsafe void Copy(
             VulkanRenderer gd,
             CommandBufferScoped cbs,
@@ -1016,6 +1019,94 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 Logger.Warning?.Print(LogClass.Gpu, $"复制操作异常: {ex.Message}, 大小=0x{size:X}");
                 return;
+            }
+        }
+
+        /// <summary>
+        /// 新的复制方法，支持虚拟内存缓冲区
+        /// </summary>
+        public static unsafe void CopyData(
+            VulkanRenderer gd,
+            CommandBufferScoped cbs,
+            BufferHolder srcHolder,
+            BufferHolder dstHolder,
+            int srcOffset,
+            int dstOffset,
+            int size)
+        {
+            if (gd == null) throw new ArgumentNullException(nameof(gd));
+            if (srcHolder == null) throw new ArgumentNullException(nameof(srcHolder));
+            if (dstHolder == null) throw new ArgumentNullException(nameof(dstHolder));
+
+            if (srcOffset < 0 || dstOffset < 0 || size <= 0)
+            {
+                throw new ArgumentOutOfRangeException("Invalid offset or size");
+            }
+
+            // 检查边界
+            if (srcOffset + size > srcHolder.Size || dstOffset + size > dstHolder.Size)
+            {
+                throw new ArgumentOutOfRangeException("Copy range exceeds buffer size");
+            }
+
+            try
+            {
+                // 情况1: 两个缓冲区都是虚拟内存缓冲区 - 使用CPU复制
+                if (srcHolder._isVirtualMemoryBuffer && dstHolder._isVirtualMemoryBuffer)
+                {
+                    unsafe
+                    {
+                        var srcSpan = new Span<byte>((void*)(srcHolder._virtualMemory + srcOffset), size);
+                        var dstSpan = new Span<byte>((void*)(dstHolder._virtualMemory + dstOffset), size);
+                        srcSpan.CopyTo(dstSpan);
+                    }
+                    Logger.Debug?.Print(LogClass.Gpu, $"虚拟内存到虚拟内存复制: 大小=0x{size:X}");
+                    return;
+                }
+
+                // 情况2: 源是虚拟内存缓冲区，目标是普通缓冲区
+                if (srcHolder._isVirtualMemoryBuffer)
+                {
+                    // 从虚拟内存读取数据并写入目标缓冲区
+                    unsafe
+                    {
+                        var srcSpan = new Span<byte>((void*)(srcHolder._virtualMemory + srcOffset), size);
+                        dstHolder.SetData(dstOffset, srcSpan, cbs, null);
+                    }
+                    Logger.Debug?.Print(LogClass.Gpu, $"虚拟内存到GPU复制: 大小=0x{size:X}");
+                    return;
+                }
+
+                // 情况3: 目标是虚拟内存缓冲区，源是普通缓冲区
+                if (dstHolder._isVirtualMemoryBuffer)
+                {
+                    // 从源缓冲区读取数据并写入虚拟内存
+                    var srcData = srcHolder.GetData(srcOffset, size);
+                    unsafe
+                    {
+                        var dstSpan = new Span<byte>((void*)(dstHolder._virtualMemory + dstOffset), size);
+                        srcData.Get().CopyTo(dstSpan);
+                    }
+                    Logger.Debug?.Print(LogClass.Gpu, $"GPU到虚拟内存复制: 大小=0x{size:X}");
+                    return;
+                }
+
+                // 情况4: 两个都是普通缓冲区 - 使用原来的Vulkan复制
+                var srcBuffer = srcHolder.GetBuffer(cbs.CommandBuffer, srcOffset, size);
+                var dstBuffer = dstHolder.GetBuffer(cbs.CommandBuffer, dstOffset, size, true);
+
+                if (srcBuffer == null || dstBuffer == null)
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, $"无法获取缓冲区句柄进行复制");
+                    return;
+                }
+
+                Copy(gd, cbs, srcBuffer, dstBuffer, srcOffset, dstOffset, size);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Gpu, $"复制数据失败: {ex.Message}");
+                throw;
             }
         }
 
