@@ -336,10 +336,14 @@ namespace Ryujinx.Graphics.Vulkan
                     return null;
                 }
 
-                // 清零初始化内存
+                // 清零初始化内存 - 使用标准方法而不是 SpanHelpers
                 unsafe
                 {
-                    System.Buffers.SpanHelpers.Clear(new Span<byte>((void*)virtualMemory, size));
+                    byte* ptr = (byte*)virtualMemory;
+                    for (int i = 0; i < size; i++)
+                    {
+                        ptr[i] = 0;
+                    }
                 }
 
                 // 首先尝试使用标准的主机映射内存创建缓冲区
