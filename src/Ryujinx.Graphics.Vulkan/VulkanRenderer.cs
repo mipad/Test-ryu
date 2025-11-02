@@ -671,7 +671,7 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (info.Width == 0 || info.Height == 0 || info.Depth == 0)
             {
-                Logger.Error?.Print(LogClass.Gpu, $"Invalid texture dimensions: {info.Width}x{info.Height}x{info.Depth}");
+                
                 throw new ArgumentException("Invalid texture dimensions");
             }
             return new TextureStorage(this, _device, info);
@@ -1078,7 +1078,6 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (!PresentAllowed || SurfaceLock == null)
             {
-                Logger.Warning?.Print(LogClass.Gpu, "Cannot recreate surface: Present not allowed or SurfaceLock is null");
                 return false;
             }
 
@@ -1095,18 +1094,17 @@ namespace Ryujinx.Graphics.Vulkan
                     _surface = _getSurface(_instance.Instance, Api);
                     if (_surface.Handle == 0)
                     {
-                        Logger.Warning?.Print(LogClass.Gpu, "Failed to create new surface");
                         return false;
                     }
 
                     ( _window as Window )?.SetSurface(_surface);
                     ( _window as Window )?.SetSurfaceQueryAllowed(true);
-                    Logger.Info?.Print(LogClass.Gpu, "Surface recreated successfully");
+          
                     return true;
                 }
                 catch (Exception ex)
                 {
-                    Logger.Warning?.Print(LogClass.Gpu, $"Failed to recreate surface: {ex.Message}");
+                    
                     return false;
                 }
             }
@@ -1116,7 +1114,7 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (SurfaceLock == null)
             {
-                Logger.Warning?.Print(LogClass.Gpu, "Cannot release surface: SurfaceLock is null");
+                
                 return;
             }
 
@@ -1130,12 +1128,12 @@ namespace Ryujinx.Graphics.Vulkan
                     {
                         SurfaceApi.DestroySurface(_instance.Instance, _surface, null);
                         _surface = new SurfaceKHR(0);
-                        Logger.Info?.Print(LogClass.Gpu, "Surface released successfully");
+                        
                     }
                 }
                 catch (Exception ex)
                 {
-                    Logger.Warning?.Print(LogClass.Gpu, $"Error releasing surface: {ex.Message}");
+                    
                 }
 
                 ( _window as Window )?.OnSurfaceLost();
@@ -1146,12 +1144,12 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (!_initialized || SurfaceLock == null)
             {
-                Logger.Warning?.Print(LogClass.Gpu, "VulkanRenderer not fully initialized, ignoring SetPresentEnabled call");
+                
                 return;
             }
 
             PresentAllowed = enabled;
-            Logger.Trace?.Print(LogClass.Gpu, $"PresentAllowed set to {enabled}");
+            
 
             if (!enabled)
             {
@@ -1168,12 +1166,12 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (!_initialized || SurfaceLock == null)
             {
-                Logger.Warning?.Print(LogClass.Gpu, "VulkanRenderer not fully initialized, ignoring SetPresentAllowed call");
+                
                 return;
             }
 
             PresentAllowed = allowed;
-            Logger.Trace?.Print(LogClass.Gpu, $"PresentAllowed={allowed}");
+            
 
             if (allowed)
             {
@@ -1185,7 +1183,7 @@ namespace Ryujinx.Graphics.Vulkan
                 }
                 catch (Exception ex)
                 {
-                    Logger.Warning?.Print(LogClass.Gpu, $"Error in SetPresentAllowed(true): {ex.Message}");
+                    
                 }
             }
             else
@@ -1238,3 +1236,4 @@ namespace Ryujinx.Graphics.Vulkan
         }        
     }
 }
+
