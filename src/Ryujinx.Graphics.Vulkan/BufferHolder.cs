@@ -481,34 +481,31 @@ namespace Ryujinx.Graphics.Vulkan
             _flushLock.EnterReadLock();
         }
 
-        public PinnedSpan<byte> GetData(int offset, int size)
+        public unsafe PinnedSpan<byte> GetData(int offset, int size)
         {
             // 虚拟内存缓冲区直接返回虚拟内存数据
             if (_isVirtualMemoryBuffer)
             {
-                unsafe
-                {
-                    var result = new Span<byte>((void*)(_virtualMemory + offset), Math.Min(size, _virtualMemorySize - offset));
-                    return PinnedSpan<byte>.UnsafeFromSpan(result);
-                }
+                var virtualResult = new Span<byte>((void*)(_virtualMemory + offset), Math.Min(size, _virtualMemorySize - offset));
+                return PinnedSpan<byte>.UnsafeFromSpan(virtualResult);
             }
 
             _flushLock.EnterReadLock();
 
             WaitForFlushFence();
 
-            Span<byte> result;
+            Span<byte> dataResult;
 
             if (_map != IntPtr.Zero)
             {
-                result = GetDataStorage(offset, size);
+                dataResult = GetDataStorage(offset, size);
 
                 // Need to be careful here, the buffer can't be unmapped while the data is being used.
                 _buffer.IncrementReferenceCount();
 
                 _flushLock.ExitReadLock();
 
-                return PinnedSpan<byte>.UnsafeFromSpan(result, _buffer.DecrementReferenceCount);
+                return PinnedSpan<byte>.UnsafeFromSpan(dataResult, _buffer.DecrementReferenceCount);
             }
 
             BackgroundResource resource = _gd.BackgroundResources.Get();
@@ -517,17 +514,17 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 _gd.FlushAllCommands();
 
-                result = resource.GetFlushBuffer().GetBufferData(_gd.CommandBufferPool, this, offset, size);
+                dataResult = resource.GetFlushBuffer().GetBufferData(_gd.CommandBufferPool, this, offset, size);
             }
             else
             {
-                result = resource.GetFlushBuffer().GetBufferData(resource.GetPool(), this, offset, size);
+                dataResult = resource.GetFlushBuffer().GetBufferData(resource.GetPool(), this, offset, size);
             }
 
             _flushLock.ExitReadLock();
 
             // Flush buffer is pinned until the next GetBufferData on the thread, which is fine for current uses.
-            return PinnedSpan<byte>.UnsafeFromSpan(result);
+            return PinnedSpan<byte>.UnsafeFromSpan(dataResult);
         }
 
         public unsafe Span<byte> GetDataStorage(int offset, int size)
