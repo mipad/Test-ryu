@@ -166,6 +166,11 @@ interface RyujinxNativeJna : Library {
     fun deviceSetWindowHandle(handle: Long)
     fun deviceRecreateSwapchain()
     fun deviceWaitForGpuDone(timeoutMs: Int)
+    
+    // ==================== 新增：暂停和恢复模拟器的方法 ====================
+    fun devicePauseEmulation()
+    fun deviceResumeEmulation()
+    fun deviceIsEmulationPaused(): Boolean
 }
 
 class RyujinxNative {
@@ -507,6 +512,31 @@ class RyujinxNative {
         fun TryReattachSurface(): Boolean {
             return try {
                 jnaInstance.TryReattachSurface()
+            } catch (_: Throwable) {
+                false
+            }
+        }
+        
+        // ==================== 新增：暂停和恢复模拟器的静态方法 ====================
+        
+        @JvmStatic
+        fun pauseEmulation() {
+            try {
+                jnaInstance.devicePauseEmulation()
+            } catch (_: Throwable) {}
+        }
+
+        @JvmStatic
+        fun resumeEmulation() {
+            try {
+                jnaInstance.deviceResumeEmulation()
+            } catch (_: Throwable) {}
+        }
+
+        @JvmStatic
+        fun isEmulationPaused(): Boolean {
+            return try {
+                jnaInstance.deviceIsEmulationPaused()
             } catch (_: Throwable) {
                 false
             }
