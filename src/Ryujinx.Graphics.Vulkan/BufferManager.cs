@@ -2,6 +2,8 @@ using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.GAL;
 using Silk.NET.Vulkan;
 using System;
+using System.Collections.Generic;
+using System.IO.MemoryMappedFiles;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using VkBuffer = Silk.NET.Vulkan.Buffer;
@@ -310,9 +312,9 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
 
-            // 最后尝试使用暂存缓冲区方案
-            Logger.Warning?.Print(LogClass.Gpu, $"所有GPU内存分配失败，使用暂存缓冲区方案: 大小=0x{size:X} ({size / 1024 / 1024}MB)");
-            holder = CreateStagingBufferFallback(gd, size);
+            // 最后尝试分块内存方案
+            Logger.Warning?.Print(LogClass.Gpu, $"所有GPU内存分配失败，使用分块内存方案: 大小=0x{size:X} ({size / 1024 / 1024}MB)");
+            holder = CreateChunkedMemoryBuffer(gd, size);
             if (holder != null)
             {
                 BufferCount++;
@@ -356,38 +358,125 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         /// <summary>
-        /// 创建基于暂存缓冲区的回退方案
+        /// 创建基于分块内存的缓冲区作为回退方案
         /// </summary>
-        private BufferHolder CreateStagingBufferFallback(VulkanRenderer gd, int size)
+        private BufferHolder CreateChunkedMemoryBuffer(VulkanRenderer gd, int size)
         {
-            Logger.Warning?.Print(LogClass.Gpu, $"创建暂存缓冲区回退: 大小=0x{size:X} ({size / 1024 / 1024}MB)");
+            Logger.Warning?.Print(LogClass.Gpu, $"创建分块内存缓冲区: 大小=0x{size:X} ({size / 1024 / 1024}MB)");
 
             try
             {
-                // 尝试使用主机映射内存创建缓冲区
-                var holder = Create(gd, size, forConditionalRendering: false, sparseCompatible: false, BufferAllocationType.HostMapped);
+                // 对于大缓冲区，我们使用分块策略
+                const int chunkSize = 64 * 1024 * 1024; // 64MB chunks
                 
-                if (holder != null)
+                if (size <= chunkSize)
                 {
-                    Logger.Warning?.Print(LogClass.Gpu, $"暂存缓冲区创建成功: 大小=0x{size:X}");
-                    return holder;
+                    // 如果缓冲区小于等于chunkSize，尝试一次性创建
+                    return CreateSingleChunkBuffer(gd, size);
                 }
-
-                // 如果主机映射内存失败，尝试使用无缓存的主机映射内存
-                holder = Create(gd, size, forConditionalRendering: false, sparseCompatible: false, BufferAllocationType.HostMappedNoCache);
-                
-                if (holder != null)
+                else
                 {
-                    Logger.Warning?.Print(LogClass.Gpu, $"无缓存暂存缓冲区创建成功: 大小=0x{size:X}");
-                    return holder;
+                    // 对于大缓冲区，使用内存映射文件
+                    return CreateMemoryMappedBuffer(gd, size);
                 }
-
-                Logger.Error?.Print(LogClass.Gpu, $"暂存缓冲区方案失败: 大小=0x{size:X}");
-                return null;
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Gpu, $"创建暂存缓冲区时发生异常: {ex.Message}");
+                Logger.Error?.Print(LogClass.Gpu, $"创建分块内存缓冲区时发生异常: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 创建单块缓冲区
+        /// </summary>
+        private BufferHolder CreateSingleChunkBuffer(VulkanRenderer gd, int size)
+        {
+            Logger.Warning?.Print(LogClass.Gpu, $"尝试创建单块缓冲区: 大小=0x{size:X}");
+
+            // 尝试使用最小的可能内存类型创建缓冲区
+            BufferAllocationType[] memoryTypes = new[]
+            {
+                BufferAllocationType.HostMapped,
+                BufferAllocationType.HostMappedNoCache,
+                BufferAllocationType.DeviceLocalMapped
+            };
+
+            foreach (var memoryType in memoryTypes)
+            {
+                try
+                {
+                    var holder = Create(gd, size, forConditionalRendering: false, sparseCompatible: false, memoryType);
+                    if (holder != null)
+                    {
+                        Logger.Warning?.Print(LogClass.Gpu, $"单块缓冲区创建成功: 类型={memoryType}, 大小=0x{size:X}");
+                        return holder;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, $"单块缓冲区创建失败 {memoryType}: {ex.Message}");
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// 创建基于内存映射文件的缓冲区
+        /// </summary>
+        private unsafe BufferHolder CreateMemoryMappedBuffer(VulkanRenderer gd, int size)
+        {
+            Logger.Warning?.Print(LogClass.Gpu, $"创建内存映射文件缓冲区: 大小=0x{size:X}");
+
+            MemoryMappedFile mmf = null;
+            MemoryMappedViewAccessor accessor = null;
+
+            try
+            {
+                // 创建内存映射文件
+                mmf = MemoryMappedFile.CreateNew(null, size, MemoryMappedFileAccess.ReadWrite);
+                accessor = mmf.CreateViewAccessor();
+
+                // 获取内存映射文件的指针
+                byte* ptr = null;
+                accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
+
+                if (ptr == null)
+                {
+                    Logger.Error?.Print(LogClass.Gpu, "无法获取内存映射文件指针");
+                    return null;
+                }
+
+                // 使用内存映射文件创建主机导入的缓冲区
+                var handle = CreateHostImported(gd, (IntPtr)ptr, size);
+                
+                if (handle == BufferHandle.Null)
+                {
+                    Logger.Error?.Print(LogClass.Gpu, "无法创建主机导入缓冲区");
+                    return null;
+                }
+
+                if (!TryGetBuffer(handle, out var holder))
+                {
+                    Logger.Error?.Print(LogClass.Gpu, "无法获取缓冲区持有者");
+                    return null;
+                }
+
+                // 标记这个缓冲区使用内存映射文件
+                holder.SetMemoryMappedFile(mmf, accessor, ptr, size);
+                
+                Logger.Warning?.Print(LogClass.Gpu, $"内存映射文件缓冲区创建成功: 大小=0x{size:X}");
+                return holder;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Gpu, $"创建内存映射文件缓冲区失败: {ex.Message}");
+                
+                // 清理资源
+                accessor?.Dispose();
+                mmf?.Dispose();
+                
                 return null;
             }
         }

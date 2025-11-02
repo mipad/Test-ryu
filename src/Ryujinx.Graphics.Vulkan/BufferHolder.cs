@@ -2,6 +2,7 @@ using Ryujinx.Graphics.GAL;
 using Silk.NET.Vulkan;
 using System;
 using System.Collections.Generic;
+using System.IO.MemoryMappedFiles;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -58,6 +59,12 @@ namespace Ryujinx.Graphics.Vulkan
         private BufferMirrorRangeList _pendingDataRanges;
         private Dictionary<ulong, StagingBufferReserved> _mirrors;
         private bool _useMirrors;
+
+        // 内存映射文件相关字段
+        private MemoryMappedFile _memoryMappedFile;
+        private MemoryMappedViewAccessor _memoryMappedAccessor;
+        private unsafe byte* _memoryMappedPointer;
+        private bool _isMemoryMappedBuffer;
 
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, MemoryAllocation allocation, int size, BufferAllocationType type, BufferAllocationType currentType)
         {
@@ -124,8 +131,27 @@ namespace Ryujinx.Graphics.Vulkan
             _pendingDataRanges = new BufferMirrorRangeList();
         }
 
+        /// <summary>
+        /// 设置内存映射文件标记
+        /// </summary>
+        public unsafe void SetMemoryMappedFile(MemoryMappedFile mmf, MemoryMappedViewAccessor accessor, byte* pointer, int size)
+        {
+            _memoryMappedFile = mmf;
+            _memoryMappedAccessor = accessor;
+            _memoryMappedPointer = pointer;
+            _isMemoryMappedBuffer = true;
+            Logger.Warning?.Print(LogClass.Gpu, $"缓冲区使用内存映射文件: 大小=0x{size:X}, 指针=0x{(ulong)pointer:X}");
+        }
+
         public unsafe Auto<DisposableBufferView> CreateView(VkFormat format, int offset, int size, Action invalidateView)
         {
+            // 内存映射文件缓冲区不支持创建视图
+            if (_isMemoryMappedBuffer)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, "内存映射文件缓冲区不支持创建视图");
+                return null;
+            }
+
             var bufferViewCreateInfo = new BufferViewCreateInfo
             {
                 SType = StructureType.BufferViewCreateInfo,
@@ -142,6 +168,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe void InsertBarrier(CommandBuffer commandBuffer, bool isWrite)
         {
+            // 内存映射文件缓冲区不需要屏障
+            if (_isMemoryMappedBuffer) return;
+
             // If the last access is write, we always need a barrier to be sure we will read or modify
             // the correct data.
             // If the last access is read, and current one is a write, we need to wait until the
@@ -186,6 +215,13 @@ namespace Ryujinx.Graphics.Vulkan
 
         private unsafe bool TryGetMirror(CommandBufferScoped cbs, ref int offset, int size, out Auto<DisposableBuffer> buffer)
         {
+            // 内存映射文件缓冲区不支持镜像
+            if (_isMemoryMappedBuffer)
+            {
+                buffer = null;
+                return false;
+            }
+
             size = Math.Min(size, Size - offset);
 
             // Does this binding need to be mirrored?
@@ -281,6 +317,13 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetMirrorable(CommandBufferScoped cbs, ref int offset, int size, out bool mirrored)
         {
+            // 内存映射文件缓冲区不支持镜像
+            if (_isMemoryMappedBuffer)
+            {
+                mirrored = false;
+                return _buffer;
+            }
+
             if (_useMirrors && _pendingData != null && TryGetMirror(cbs, ref offset, size, out Auto<DisposableBuffer> result))
             {
                 mirrored = true;
@@ -300,6 +343,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void ClearMirrors()
         {
+            // 内存映射文件缓冲区不支持镜像
+            if (_isMemoryMappedBuffer) return;
+
             // Clear mirrors without forcing a flush. This happens when the command buffer is switched,
             // as all reserved areas on the staging buffer are released.
 
@@ -311,6 +357,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void ClearMirrors(CommandBufferScoped cbs, int offset, int size)
         {
+            // 内存映射文件缓冲区不支持镜像
+            if (_isMemoryMappedBuffer) return;
+
             // Clear mirrors in the given range, and submit overlapping pending data.
 
             if (_pendingData != null)
@@ -389,6 +438,15 @@ namespace Ryujinx.Graphics.Vulkan
 
         public IntPtr Map(int offset, int mappingSize)
         {
+            // 如果是内存映射文件缓冲区，返回内存映射指针
+            if (_isMemoryMappedBuffer && _memoryMappedPointer != null)
+            {
+                unsafe
+                {
+                    return (IntPtr)(_memoryMappedPointer + offset);
+                }
+            }
+
             return _map;
         }
 
@@ -446,6 +504,16 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe PinnedSpan<byte> GetData(int offset, int size)
         {
+            // 内存映射文件缓冲区直接返回内存映射数据
+            if (_isMemoryMappedBuffer && _memoryMappedPointer != null)
+            {
+                unsafe
+                {
+                    var mappedResult = new Span<byte>(_memoryMappedPointer + offset, Math.Min(size, Size - offset));
+                    return PinnedSpan<byte>.UnsafeFromSpan(mappedResult);
+                }
+            }
+
             _flushLock.EnterReadLock();
 
             WaitForFlushFence();
@@ -486,6 +554,11 @@ namespace Ryujinx.Graphics.Vulkan
         public unsafe Span<byte> GetDataStorage(int offset, int size)
         {
             int mappingSize = Math.Min(size, Size - offset);
+
+            if (_isMemoryMappedBuffer && _memoryMappedPointer != null)
+            {
+                return new Span<byte>(_memoryMappedPointer + offset, mappingSize);
+            }
 
             if (_map != IntPtr.Zero)
             {
@@ -540,6 +613,16 @@ namespace Ryujinx.Graphics.Vulkan
 
             // 从这里开始使用裁剪后的数据切片
             ReadOnlySpan<byte> dataSlice = data[..dataSize];
+
+            // 内存映射文件缓冲区直接写入内存映射文件
+            if (_isMemoryMappedBuffer && _memoryMappedPointer != null)
+            {
+                unsafe
+                {
+                    dataSlice.CopyTo(new Span<byte>(_memoryMappedPointer + offset, dataSize));
+                }
+                return;
+            }
 
             bool allowMirror = _useMirrors && allowCbsWait && cbs != null && _activeType <= BufferAllocationType.HostMapped;
 
@@ -661,6 +744,16 @@ namespace Ryujinx.Graphics.Vulkan
                 return;
             }
 
+            // 内存映射文件缓冲区直接写入内存映射文件
+            if (_isMemoryMappedBuffer && _memoryMappedPointer != null)
+            {
+                unsafe
+                {
+                    data[..dataSize].CopyTo(new Span<byte>(_memoryMappedPointer + offset, dataSize));
+                }
+                return;
+            }
+
             if (_map != IntPtr.Zero)
             {
                 unsafe
@@ -690,6 +783,16 @@ namespace Ryujinx.Graphics.Vulkan
             int dataSize = Math.Min(data.Length, Size - dstOffset);
             if (dataSize <= 0)
             {
+                return;
+            }
+
+            // 内存映射文件缓冲区直接写入内存映射文件
+            if (_isMemoryMappedBuffer && _memoryMappedPointer != null)
+            {
+                unsafe
+                {
+                    data[..dataSize].CopyTo(new Span<byte>(_memoryMappedPointer + dstOffset, dataSize));
+                }
                 return;
             }
 
@@ -1020,6 +1123,19 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void Dispose()
         {
+            // 如果是内存映射文件缓冲区，释放内存映射文件资源
+            if (_isMemoryMappedBuffer)
+            {
+                if (_memoryMappedPointer != null)
+                {
+                    _memoryMappedAccessor.SafeMemoryMappedViewHandle.ReleasePointer();
+                    _memoryMappedPointer = null;
+                }
+                _memoryMappedAccessor?.Dispose();
+                _memoryMappedFile?.Dispose();
+                Logger.Warning?.Print(LogClass.Gpu, $"释放内存映射文件缓冲区: 大小=0x{Size:X}");
+            }
+
             _gd.PipelineInternal?.FlushCommandsIfWeightExceeding(_buffer, (ulong)Size);
 
             _buffer.Dispose();
