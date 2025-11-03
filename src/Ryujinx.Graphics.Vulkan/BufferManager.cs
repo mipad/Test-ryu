@@ -1,5 +1,7 @@
 using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.GAL;
+using Ryujinx.Graphics.Gpu.Memory;
+using Ryujinx.Memory.Range;
 using Silk.NET.Vulkan;
 using System;
 using System.Runtime.CompilerServices;
@@ -76,6 +78,7 @@ namespace Ryujinx.Graphics.Vulkan
             BufferUsageFlags.TransferDstBit;
 
         private readonly Device _device;
+        private readonly VulkanRenderer _gd;
 
         private readonly IdList<BufferHolder> _buffers;
 
@@ -87,6 +90,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         public BufferManager(VulkanRenderer gd, Device device)
         {
+            _gd = gd;
             _device = device;
             _buffers = new IdList<BufferHolder>();
             StagingBuffer = new StagingBuffer(gd, this);
@@ -787,14 +791,14 @@ namespace Ryujinx.Graphics.Vulkan
         /// <summary>
         /// 复制缓冲区数据，支持虚拟内存缓冲区
         /// </summary>
-        public void CopyBuffer(MemoryManager memoryManager, ulong srcVa, ulong dstVa, ulong size)
+        public void CopyBuffer(Ryujinx.Graphics.Gpu.Memory.MemoryManager memoryManager, ulong srcVa, ulong dstVa, ulong size)
         {
             if (size == 0) return;
 
             try
             {
-                MultiRange srcRange = TranslateAndCreateMultiBuffersPhysicalOnly(memoryManager, srcVa, size, BufferStage.Copy);
-                MultiRange dstRange = TranslateAndCreateMultiBuffersPhysicalOnly(memoryManager, dstVa, size, BufferStage.Copy);
+                Ryujinx.Memory.Range.MultiRange srcRange = TranslateAndCreateMultiBuffersPhysicalOnly(memoryManager, srcVa, size, Ryujinx.Graphics.Gpu.Memory.BufferStage.Copy);
+                Ryujinx.Memory.Range.MultiRange dstRange = TranslateAndCreateMultiBuffersPhysicalOnly(memoryManager, dstVa, size, Ryujinx.Graphics.Gpu.Memory.BufferStage.Copy);
 
                 // 检查是否有虚拟内存缓冲区参与
                 bool hasVirtualBuffer = HasVirtualBufferInRange(srcRange) || HasVirtualBufferInRange(dstRange);
@@ -833,8 +837,8 @@ namespace Ryujinx.Graphics.Vulkan
                             dstOffset = 0;
                         }
 
-                        MemoryRange srcSubRange = srcRange.GetSubRange(srcRangeIndex);
-                        MemoryRange dstSubRange = dstRange.GetSubRange(dstRangeIndex);
+                        Ryujinx.Memory.Range.MemoryRange srcSubRange = srcRange.GetSubRange(srcRangeIndex);
+                        Ryujinx.Memory.Range.MemoryRange dstSubRange = dstRange.GetSubRange(dstRangeIndex);
 
                         ulong srcSize = srcSubRange.Size - srcOffset;
                         ulong dstSize = dstSubRange.Size - dstOffset;
@@ -857,14 +861,14 @@ namespace Ryujinx.Graphics.Vulkan
         /// <summary>
         /// 检查范围中是否包含虚拟内存缓冲区
         /// </summary>
-        private bool HasVirtualBufferInRange(MultiRange range)
+        private bool HasVirtualBufferInRange(Ryujinx.Memory.Range.MultiRange range)
         {
             for (int i = 0; i < range.Count; i++)
             {
-                MemoryRange subRange = range.GetSubRange(i);
-                if (subRange.Address != MemoryManager.PteUnmapped)
+                Ryujinx.Memory.Range.MemoryRange subRange = range.GetSubRange(i);
+                if (subRange.Address != Ryujinx.Graphics.Gpu.Memory.MemoryManager.PteUnmapped)
                 {
-                    var buffer = GetBuffer(subRange.Address, subRange.Size, BufferStage.Copy, false);
+                    var buffer = GetBuffer(subRange.Address, subRange.Size, Ryujinx.Graphics.Gpu.Memory.BufferStage.Copy, false);
                     if (buffer != null && buffer.IsVirtualMemoryBuffer)
                     {
                         return true;
@@ -877,7 +881,7 @@ namespace Ryujinx.Graphics.Vulkan
         /// <summary>
         /// 支持虚拟内存缓冲区的复制方法
         /// </summary>
-        private void CopyBufferWithVirtualSupport(MemoryManager memoryManager, MultiRange srcRange, MultiRange dstRange, ulong srcVa, ulong dstVa, ulong size)
+        private void CopyBufferWithVirtualSupport(Ryujinx.Graphics.Gpu.Memory.MemoryManager memoryManager, Ryujinx.Memory.Range.MultiRange srcRange, Ryujinx.Memory.Range.MultiRange dstRange, ulong srcVa, ulong dstVa, ulong size)
         {
             Logger.Warning?.Print(LogClass.Gpu, $"使用虚拟内存缓冲区复制: 源VA=0x{srcVa:X}, 目标VA=0x{dstVa:X}, 大小=0x{size:X}");
 
@@ -886,10 +890,10 @@ namespace Ryujinx.Graphics.Vulkan
                 // 对于虚拟内存缓冲区，使用CPU端复制
                 if (srcRange.Count == 1 && dstRange.Count == 1)
                 {
-                    MemoryRange srcSubRange = srcRange.GetSubRange(0);
-                    MemoryRange dstSubRange = dstRange.GetSubRange(0);
+                    Ryujinx.Memory.Range.MemoryRange srcSubRange = srcRange.GetSubRange(0);
+                    Ryujinx.Memory.Range.MemoryRange dstSubRange = dstRange.GetSubRange(0);
 
-                    if (srcSubRange.Address != MemoryManager.PteUnmapped && dstSubRange.Address != MemoryManager.PteUnmapped)
+                    if (srcSubRange.Address != Ryujinx.Graphics.Gpu.Memory.MemoryManager.PteUnmapped && dstSubRange.Address != Ryujinx.Graphics.Gpu.Memory.MemoryManager.PteUnmapped)
                     {
                         // 获取源数据
                         var srcData = memoryManager.GetSpan(srcSubRange.Address, (int)size);
@@ -927,14 +931,14 @@ namespace Ryujinx.Graphics.Vulkan
                             dstOffset = 0;
                         }
 
-                        MemoryRange srcSubRange = srcRange.GetSubRange(srcRangeIndex);
-                        MemoryRange dstSubRange = dstRange.GetSubRange(dstRangeIndex);
+                        Ryujinx.Memory.Range.MemoryRange srcSubRange = srcRange.GetSubRange(srcRangeIndex);
+                        Ryujinx.Memory.Range.MemoryRange dstSubRange = dstRange.GetSubRange(dstRangeIndex);
 
                         ulong srcSize = srcSubRange.Size - srcOffset;
                         ulong dstSize = dstSubRange.Size - dstOffset;
                         ulong copySize = Math.Min(Math.Min(srcSize, dstSize), size - copiedSize);
 
-                        if (srcSubRange.Address != MemoryManager.PteUnmapped && dstSubRange.Address != MemoryManager.PteUnmapped)
+                        if (srcSubRange.Address != Ryujinx.Graphics.Gpu.Memory.MemoryManager.PteUnmapped && dstSubRange.Address != Ryujinx.Graphics.Gpu.Memory.MemoryManager.PteUnmapped)
                         {
                             // 获取源数据
                             var srcData = memoryManager.GetSpan(srcSubRange.Address + srcOffset, (int)copySize);
@@ -960,11 +964,11 @@ namespace Ryujinx.Graphics.Vulkan
         /// <summary>
         /// 复制单个范围的缓冲区数据
         /// </summary>
-        private void CopyBufferSingleRange(MemoryManager memoryManager, ulong srcAddress, ulong dstAddress, ulong size)
+        private void CopyBufferSingleRange(Ryujinx.Graphics.Gpu.Memory.MemoryManager memoryManager, ulong srcAddress, ulong dstAddress, ulong size)
         {
             // 检查源和目标缓冲区是否为虚拟内存缓冲区
-            var srcBuffer = GetBuffer(srcAddress, size, BufferStage.Copy, false);
-            var dstBuffer = GetBuffer(dstAddress, size, BufferStage.Copy, false);
+            var srcBuffer = GetBuffer(srcAddress, size, Ryujinx.Graphics.Gpu.Memory.BufferStage.Copy, false);
+            var dstBuffer = GetBuffer(dstAddress, size, Ryujinx.Graphics.Gpu.Memory.BufferStage.Copy, false);
 
             if (srcBuffer == null || dstBuffer == null)
             {
@@ -1021,12 +1025,12 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (srcBuffer.IsModified(srcAddress, size))
             {
-                dstBuffer.SignalModified(dstAddress, size, BufferStage.Copy);
+                dstBuffer.SignalModified(dstAddress, size, Ryujinx.Graphics.Gpu.Memory.BufferStage.Copy);
             }
             else
             {
                 dstBuffer.ClearModified(dstAddress, size);
-                memoryManager.Physical.WriteTrackedResource(dstAddress, memoryManager.Physical.GetSpan(srcAddress, (int)size), ResourceKind.Buffer);
+                memoryManager.Physical.WriteTrackedResource(dstAddress, memoryManager.Physical.GetSpan(srcAddress, (int)size), Ryujinx.Graphics.Gpu.Image.ResourceKind.Buffer);
             }
 
             dstBuffer.CopyToDependantVirtualBuffers(dstAddress, size);
@@ -1042,20 +1046,20 @@ namespace Ryujinx.Graphics.Vulkan
         /// <param name="gpuVa">GPU virtual address of the region to clear</param>
         /// <param name="size">Number of bytes to clear</param>
         /// <param name="value">Value to be written into the buffer</param>
-        public void ClearBuffer(MemoryManager memoryManager, ulong gpuVa, ulong size, uint value)
+        public void ClearBuffer(Ryujinx.Graphics.Gpu.Memory.MemoryManager memoryManager, ulong gpuVa, ulong size, uint value)
         {
-            MultiRange range = TranslateAndCreateMultiBuffersPhysicalOnly(memoryManager, gpuVa, size, BufferStage.Copy);
+            Ryujinx.Memory.Range.MultiRange range = TranslateAndCreateMultiBuffersPhysicalOnly(memoryManager, gpuVa, size, Ryujinx.Graphics.Gpu.Memory.BufferStage.Copy);
 
             for (int index = 0; index < range.Count; index++)
             {
-                MemoryRange subRange = range.GetSubRange(index);
-                Buffer buffer = GetBuffer(subRange.Address, subRange.Size, BufferStage.Copy);
+                Ryujinx.Memory.Range.MemoryRange subRange = range.GetSubRange(index);
+                Ryujinx.Graphics.Gpu.Memory.Buffer buffer = GetBuffer(subRange.Address, subRange.Size, Ryujinx.Graphics.Gpu.Memory.BufferStage.Copy);
 
                 int offset = (int)(subRange.Address - buffer.Address);
 
-                _context.Renderer.Pipeline.ClearBuffer(buffer.Handle, offset, (int)subRange.Size, value);
+                _gd.Renderer.Pipeline.ClearBuffer(buffer.Handle, offset, (int)subRange.Size, value);
 
-                memoryManager.Physical.FillTrackedResource(subRange.Address, subRange.Size, value, ResourceKind.Buffer);
+                memoryManager.Physical.FillTrackedResource(subRange.Address, subRange.Size, value, Ryujinx.Graphics.Gpu.Image.ResourceKind.Buffer);
 
                 buffer.CopyToDependantVirtualBuffers(subRange.Address, subRange.Size);
             }
@@ -1068,7 +1072,7 @@ namespace Ryujinx.Graphics.Vulkan
         /// <param name="stage">Buffer stage that triggered the access</param>
         /// <param name="write">Whether the buffer will be written to by this use</param>
         /// <returns>The buffer sub-range starting at the given memory address</returns>
-        public BufferRange GetBufferRangeAligned(MultiRange range, BufferStage stage, bool write = false)
+        public BufferRange GetBufferRangeAligned(Ryujinx.Memory.Range.MultiRange range, Ryujinx.Graphics.Gpu.Memory.BufferStage stage, bool write = false)
         {
             if (range.Count > 1)
             {
@@ -1076,7 +1080,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else
             {
-                MemoryRange subRange = range.GetSubRange(0);
+                Ryujinx.Memory.Range.MemoryRange subRange = range.GetSubRange(0);
                 return GetBuffer(subRange.Address, subRange.Size, stage, write).GetRangeAligned(subRange.Address, subRange.Size, write);
             }
         }
@@ -1088,7 +1092,7 @@ namespace Ryujinx.Graphics.Vulkan
         /// <param name="stage">Buffer stage that triggered the access</param>
         /// <param name="write">Whether the buffer will be written to by this use</param>
         /// <returns>The buffer sub-range for the given range</returns>
-        public BufferRange GetBufferRange(MultiRange range, BufferStage stage, bool write = false)
+        public BufferRange GetBufferRange(Ryujinx.Memory.Range.MultiRange range, Ryujinx.Graphics.Gpu.Memory.BufferStage stage, bool write = false)
         {
             if (range.Count > 1)
             {
@@ -1096,7 +1100,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else
             {
-                MemoryRange subRange = range.GetSubRange(0);
+                Ryujinx.Memory.Range.MemoryRange subRange = range.GetSubRange(0);
                 return GetBuffer(subRange.Address, subRange.Size, stage, write).GetRange(subRange.Address, subRange.Size, write);
             }
         }
@@ -1109,18 +1113,18 @@ namespace Ryujinx.Graphics.Vulkan
         /// <param name="stage">Buffer stage that triggered the access</param>
         /// <param name="write">Whether the buffer will be written to by this use</param>
         /// <returns>The buffer where the range is fully contained</returns>
-        private MultiRangeBuffer GetBuffer(MultiRange range, BufferStage stage, bool write = false)
+        private Ryujinx.Graphics.Gpu.Memory.MultiRangeBuffer GetBuffer(Ryujinx.Memory.Range.MultiRange range, Ryujinx.Graphics.Gpu.Memory.BufferStage stage, bool write = false)
         {
             for (int i = 0; i < range.Count; i++)
             {
-                MemoryRange subRange = range.GetSubRange(i);
+                Ryujinx.Memory.Range.MemoryRange subRange = range.GetSubRange(i);
 
-                if (subRange.Address == MemoryManager.PteUnmapped)
+                if (subRange.Address == Ryujinx.Graphics.Gpu.Memory.MemoryManager.PteUnmapped)
                 {
                     continue;
                 }
 
-                Buffer subBuffer = _buffers.FindFirstOverlap(subRange.Address, subRange.Size);
+                Ryujinx.Graphics.Gpu.Memory.Buffer subBuffer = _buffers.FindFirstOverlap(subRange.Address, subRange.Size);
                 if (subBuffer == null)
                 {
                     throw new InvalidOperationException(
@@ -1135,11 +1139,11 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
 
-            MultiRangeBuffer[] overlaps = new MultiRangeBuffer[10];
+            Ryujinx.Graphics.Gpu.Memory.MultiRangeBuffer[] overlaps = new Ryujinx.Graphics.Gpu.Memory.MultiRangeBuffer[10];
 
             int overlapCount = _multiRangeBuffers.FindOverlaps(range, ref overlaps);
 
-            MultiRangeBuffer buffer = null;
+            Ryujinx.Graphics.Gpu.Memory.MultiRangeBuffer buffer = null;
 
             for (int i = 0; i < overlapCount; i++)
             {
@@ -1150,7 +1154,7 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
 
-            if (write && buffer != null && !_context.Capabilities.SupportsSparseBuffer)
+            if (write && buffer != null && !_gd.Capabilities.SupportsSparseBuffer)
             {
                 buffer.AddModifiedRegion(range, ++_virtualModifiedSequenceNumber);
             }
@@ -1167,9 +1171,9 @@ namespace Ryujinx.Graphics.Vulkan
         /// <param name="stage">Buffer stage that triggered the access</param>
         /// <param name="write">Whether the buffer will be written to by this use</param>
         /// <returns>The buffer where the range is fully contained</returns>
-        private Buffer GetBuffer(ulong address, ulong size, BufferStage stage, bool write = false)
+        private Ryujinx.Graphics.Gpu.Memory.Buffer GetBuffer(ulong address, ulong size, Ryujinx.Graphics.Gpu.Memory.BufferStage stage, bool write = false)
         {
-            Buffer buffer = null;
+            Ryujinx.Graphics.Gpu.Memory.Buffer buffer = null;
 
             if (size != 0)
             {
@@ -1215,18 +1219,18 @@ namespace Ryujinx.Graphics.Vulkan
         /// Performs guest to host memory synchronization of a given memory range.
         /// </summary>
         /// <param name="range">Physical regions of memory where the buffer is mapped</param>
-        public void SynchronizeBufferRange(MultiRange range)
+        public void SynchronizeBufferRange(Ryujinx.Memory.Range.MultiRange range)
         {
             if (range.Count == 1)
             {
-                MemoryRange subRange = range.GetSubRange(0);
+                Ryujinx.Memory.Range.MemoryRange subRange = range.GetSubRange(0);
                 SynchronizeBufferRange(subRange.Address, subRange.Size, copyBackVirtual: true);
             }
             else
             {
                 for (int index = 0; index < range.Count; index++)
                 {
-                    MemoryRange subRange = range.GetSubRange(index);
+                    Ryujinx.Memory.Range.MemoryRange subRange = range.GetSubRange(index);
                     SynchronizeBufferRange(subRange.Address, subRange.Size, copyBackVirtual: false);
                 }
             }
@@ -1243,7 +1247,7 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (size != 0)
             {
-                Buffer buffer = _buffers.FindFirstOverlap(address, size);
+                Ryujinx.Graphics.Gpu.Memory.Buffer buffer = _buffers.FindFirstOverlap(address, size);
 
                 // 优化：添加空引用检查
                 if (buffer != null)
@@ -1263,7 +1267,7 @@ namespace Ryujinx.Graphics.Vulkan
         /// forcing rebind and any overlapping multi-range buffers to be recreated.
         /// </summary>
         /// <param name="buffer">The buffer that has changed handle</param>
-        public void BufferBackingChanged(Buffer buffer)
+        public void BufferBackingChanged(Ryujinx.Graphics.Gpu.Memory.Buffer buffer)
         {
             // 优化：使用阈值控制事件触发频率
             if (++_modifyEventCount >= ModifyEventThreshold)
@@ -1355,5 +1359,55 @@ namespace Ryujinx.Graphics.Vulkan
         {
             Dispose(true);
         }
+
+        // 以下方法需要从其他类中复制或实现存根
+        private Ryujinx.Memory.Range.MultiRange TranslateAndCreateMultiBuffersPhysicalOnly(Ryujinx.Graphics.Gpu.Memory.MemoryManager memoryManager, ulong gpuVa, ulong size, Ryujinx.Graphics.Gpu.Memory.BufferStage stage)
+        {
+            // 这里需要实现地址转换和多缓冲区创建的逻辑
+            // 暂时返回一个空的MultiRange
+            return new Ryujinx.Memory.Range.MultiRange(Ryujinx.Graphics.Gpu.Memory.MemoryManager.PteUnmapped, size);
+        }
+
+        private void CreateBuffer(ulong address, ulong size, Ryujinx.Graphics.Gpu.Memory.BufferStage stage)
+        {
+            // 这里需要实现创建缓冲区的逻辑
+        }
+
+        private void RecreateMultiRangeBuffers(ulong address, ulong size)
+        {
+            // 这里需要实现重新创建多范围缓冲区的逻辑
+        }
+    }
+
+    // 临时定义缺失的类型
+    internal class BufferCacheEntry
+    {
+        public ulong Address { get; }
+        public ulong EndGpuAddress { get; }
+        public int UnmappedSequence { get; }
+        public Ryujinx.Graphics.Gpu.Memory.Buffer Buffer { get; }
+
+        public BufferCacheEntry(ulong address, ulong endGpuAddress, Ryujinx.Graphics.Gpu.Memory.Buffer buffer)
+        {
+            Address = address;
+            EndGpuAddress = endGpuAddress;
+            Buffer = buffer;
+            UnmappedSequence = buffer.UnmappedSequence;
+        }
+    }
+
+    internal class MultiRangeList<T>
+    {
+        public void Add(T item) { }
+        public void Remove(T item) { }
+        public int FindOverlaps(Ryujinx.Memory.Range.MultiRange range, ref T[] overlaps) { return 0; }
+        public int FindOverlaps(ulong address, ulong size, ref T[] overlaps) { return 0; }
+    }
+
+    internal class IdList<T>
+    {
+        public void Add(T item) { }
+        public void Remove(int id) { }
+        public bool TryGetValue(int id, out T holder) { holder = default; return false; }
     }
 }
