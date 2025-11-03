@@ -963,19 +963,19 @@ namespace Ryujinx.Graphics.Vulkan
 
             try
             {
-                // 获取缓冲区 - 修复类型不匹配问题
+                // 获取缓冲区 - 修复类型转换问题
                 VkBuffer srcBuffer;
                 VkBuffer dstBuffer;
 
                 if (registerSrcUsage)
                 {
-                    srcBuffer = src.Get(cbs, srcOffset, size).Value;
-                    dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
+                    srcBuffer = src.Get(cbs, srcOffset, size).Value.Value; // 访问 DisposableBuffer 的 Value 属性
+                    dstBuffer = dst.Get(cbs, dstOffset, size, true).Value.Value; // 访问 DisposableBuffer 的 Value 属性
                 }
                 else
                 {
-                    srcBuffer = src.GetUnsafe();
-                    dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
+                    srcBuffer = src.GetUnsafe().Value; // 访问 DisposableBuffer 的 Value 属性
+                    dstBuffer = dst.Get(cbs, dstOffset, size, true).Value.Value; // 访问 DisposableBuffer 的 Value 属性
                 }
 
                 // 设置目标缓冲区屏障 (准备写入)
