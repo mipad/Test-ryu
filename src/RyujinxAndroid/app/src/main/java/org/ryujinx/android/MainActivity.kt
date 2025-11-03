@@ -5,7 +5,7 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.os.Bundle
 import android.os.Environment
-import android.util.Log
+//import android.util.Log
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.WindowManager
@@ -108,9 +108,9 @@ class MainActivity : BaseActivity() {
         wantPresentEnabled = enabled
         try {
             RyujinxNative.jnaInstance.graphicsSetPresentEnabled(enabled)
-            Log.d(TAG_FG, "present=${if (enabled) "ENABLED" else "DISABLED"} ($reason)")
+            //Log.d(TAG_FG, "present=${if (enabled) "ENABLED" else "DISABLED"} ($reason)")
         } catch (_: Throwable) {
-            Log.d(TAG_FG, "native toggle not available ($reason)")
+            //Log.d(TAG_FG, "native toggle not available ($reason)")
         }
     }
 
@@ -144,7 +144,7 @@ class MainActivity : BaseActivity() {
             //     handler.postDelayed(this, REATTACH_DELAY_MS)
             //     return
             // }
-            Log.d(TAG_FG, "window reattached")
+            //Log.d(TAG_FG, "window reattached")
         }
     }
 
@@ -260,10 +260,10 @@ class MainActivity : BaseActivity() {
         if (isGameRunning && MainActivity.mainViewModel?.rendererReady == true) {
             try {
                 RyujinxNative.jnaInstance.graphicsSetPresentEnabled(true)
-                Log.d(TAG_FG, "present=ENABLED (onStart)")
+               // Log.d(TAG_FG, "present=ENABLED (onStart)")
             } catch (_: Throwable) {}
         } else {
-            Log.d(TAG_FG, "skip enable present (onStart) — rendererReady=${MainActivity.mainViewModel?.rendererReady}")
+            //Log.d(TAG_FG, "skip enable present (onStart) — rendererReady=${MainActivity.mainViewModel?.rendererReady}")
             setPresentEnabled(false, "cold reset: onStart (no game)")
         }
     }
@@ -287,10 +287,10 @@ class MainActivity : BaseActivity() {
             if (MainActivity.mainViewModel?.rendererReady == true) {
                 try {
                     RyujinxNative.jnaInstance.graphicsSetPresentEnabled(false)
-                    Log.d(TAG_FG, "present=DISABLED (onTrimMemory:$level)")
+                   // Log.d(TAG_FG, "present=DISABLED (onTrimMemory:$level)")
                 } catch (_: Throwable) {}
             } else {
-                Log.d(TAG_FG, "skip disable present (onTrimMemory) — rendererReady=${MainActivity.mainViewModel?.rendererReady}")
+               // Log.d(TAG_FG, "skip disable present (onTrimMemory) — rendererReady=${MainActivity.mainViewModel?.rendererReady}")
             }
         }
     }
@@ -456,7 +456,7 @@ class MainActivity : BaseActivity() {
     private fun clearEmuRunningFlag() = setEmuRunningFlag(false)
 
     private fun hardColdReset(reason: String) {
-        Log.d(TAG_FG, "Cold graphics reset ($reason)")
+       // Log.d(TAG_FG, "Cold graphics reset ($reason)")
         isGameRunning = false
         mainViewModel?.rendererReady = false
         autoPaused = false
@@ -485,3 +485,4 @@ class MainActivity : BaseActivity() {
         } catch (_: Throwable) { }
     }
 }
+
