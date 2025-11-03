@@ -969,13 +969,13 @@ namespace Ryujinx.Graphics.Vulkan
 
                 if (registerSrcUsage)
                 {
-                    srcBuffer = src.Get(cbs, srcOffset, size).Value.Value; // 访问 DisposableBuffer 的 Value 属性
-                    dstBuffer = dst.Get(cbs, dstOffset, size, true).Value.Value; // 访问 DisposableBuffer 的 Value 属性
+                    srcBuffer = src.Get(cbs, srcOffset, size).Value;
+                    dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
                 }
                 else
                 {
-                    srcBuffer = src.GetUnsafe().Value; // 访问 DisposableBuffer 的 Value 属性
-                    dstBuffer = dst.Get(cbs, dstOffset, size, true).Value.Value; // 访问 DisposableBuffer 的 Value 属性
+                    srcBuffer = src.GetUnsafe().Value;
+                    dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
                 }
 
                 // 设置目标缓冲区屏障 (准备写入)
