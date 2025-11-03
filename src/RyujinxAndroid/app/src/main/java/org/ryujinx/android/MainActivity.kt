@@ -184,6 +184,10 @@ class MainActivity : BaseActivity() {
             LogLevel.Guest.ordinal,
             quickSettings.enableGuestLogs
         )
+        RyujinxNative.jnaInstance.loggingSetEnabled(
+            LogLevel.Trace.ordinal,
+            quickSettings.enableTraceLogs
+        )
         RyujinxNative.jnaInstance.loggingEnabledGraphicsLog(
             quickSettings.enableTraceLogs
         )
@@ -485,4 +489,3 @@ class MainActivity : BaseActivity() {
         } catch (_: Throwable) { }
     }
 }
-
