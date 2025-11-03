@@ -205,7 +205,7 @@ namespace Ryujinx.Graphics.Vulkan
             // the correct data.
             // If the last access is read, and current one is a write, we need to wait until the
             // read finishes to avoid overwriting data still in use.
-            // Otherwise, if the last access is a read and the current one too, we don't need barriers.
+            // Otherwise, if the last access is read and the current one too, we don't need barriers.
             bool needsBarrier = isWrite || _lastAccessIsWrite;
 
             _lastAccessIsWrite = isWrite;
@@ -325,6 +325,7 @@ namespace Ryujinx.Graphics.Vulkan
             // 虚拟内存缓冲区返回null
             if (_isVirtualMemoryBuffer)
             {
+                Logger.Debug?.Print(LogClass.Gpu, $"虚拟内存缓冲区GetBuffer返回null: 大小=0x{Size:X}");
                 return null;
             }
 
@@ -341,6 +342,7 @@ namespace Ryujinx.Graphics.Vulkan
             // 虚拟内存缓冲区返回null
             if (_isVirtualMemoryBuffer)
             {
+                Logger.Debug?.Print(LogClass.Gpu, $"虚拟内存缓冲区GetBuffer返回null: 大小=0x{Size:X}");
                 return null;
             }
 
@@ -357,6 +359,7 @@ namespace Ryujinx.Graphics.Vulkan
             // 虚拟内存缓冲区返回null
             if (_isVirtualMemoryBuffer)
             {
+                Logger.Debug?.Print(LogClass.Gpu, $"虚拟内存缓冲区GetBuffer返回null: 偏移=0x{offset:X}, 大小=0x{size:X}");
                 return null;
             }
 
@@ -960,10 +963,26 @@ namespace Ryujinx.Graphics.Vulkan
 
             try
             {
+                // 检查缓冲区是否有效
+                var srcBufferUnsafe = src.GetUnsafe();
+                var dstBufferUnsafe = dst.GetUnsafe();
+                
+                if (srcBufferUnsafe == null || srcBufferUnsafe.Value.Handle == 0)
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, $"复制操作跳过: 源缓冲区无效, 大小=0x{size:X}");
+                    return;
+                }
+
+                if (dstBufferUnsafe == null || dstBufferUnsafe.Value.Handle == 0)
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, $"复制操作跳过: 目标缓冲区无效, 大小=0x{size:X}");
+                    return;
+                }
+
                 // 获取缓冲区
                 var srcBuffer = registerSrcUsage ? 
                     src.Get(cbs, srcOffset, size).Value : 
-                    src.GetUnsafe().Value;
+                    srcBufferUnsafe.Value;
                 
                 var dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
 

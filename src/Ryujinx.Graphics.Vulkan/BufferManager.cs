@@ -261,6 +261,16 @@ namespace Ryujinx.Graphics.Vulkan
             if (isLargeBuffer)
             {
                 Logger.Warning?.Print(LogClass.Gpu, $"尝试创建大缓冲区: 大小=0x{size:X} ({size / 1024 / 1024}MB), 类型={baseType}");
+                
+                // 对于大缓冲区，直接使用虚拟内存，避免GPU内存分配失败
+                holder = CreateVirtualMemoryBuffer(gd, size);
+                if (holder != null)
+                {
+                    BufferCount++;
+                    ulong handle64 = (uint)_buffers.Add(holder);
+                    Logger.Warning?.Print(LogClass.Gpu, $"大缓冲区使用虚拟内存创建成功: 大小=0x{size:X}");
+                    return Unsafe.As<ulong, BufferHandle>(ref handle64);
+                }
             }
 
             // 首先尝试正常创建
