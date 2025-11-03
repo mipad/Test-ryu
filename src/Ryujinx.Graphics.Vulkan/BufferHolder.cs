@@ -967,13 +967,15 @@ namespace Ryujinx.Graphics.Vulkan
                 var srcBufferUnsafe = src.GetUnsafe();
                 var dstBufferUnsafe = dst.GetUnsafe();
                 
-                if (srcBufferUnsafe == null || srcBufferUnsafe.Value.Handle == 0)
+                // 修复：检查DisposableBuffer结构体的Handle是否为0，而不是与null比较
+                if (srcBufferUnsafe == null || !srcBufferUnsafe.HasValue || srcBufferUnsafe.Value.Handle == 0)
                 {
                     Logger.Warning?.Print(LogClass.Gpu, $"复制操作跳过: 源缓冲区无效, 大小=0x{size:X}");
                     return;
                 }
 
-                if (dstBufferUnsafe == null || dstBufferUnsafe.Value.Handle == 0)
+                // 修复：检查DisposableBuffer结构体的Handle是否为0，而不是与null比较
+                if (dstBufferUnsafe == null || !dstBufferUnsafe.HasValue || dstBufferUnsafe.Value.Handle == 0)
                 {
                     Logger.Warning?.Print(LogClass.Gpu, $"复制操作跳过: 目标缓冲区无效, 大小=0x{size:X}");
                     return;
@@ -987,12 +989,14 @@ namespace Ryujinx.Graphics.Vulkan
                 var dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
 
                 // 验证缓冲区句柄
+                // 修复：检查Handle是否为0，而不是与null比较
                 if (srcBuffer.Handle == 0)
                 {
                     Logger.Warning?.Print(LogClass.Gpu, $"复制操作跳过: 源缓冲区句柄无效, 大小=0x{size:X}");
                     return;
                 }
 
+                // 修复：检查Handle是否为0，而不是与null比较
                 if (dstBuffer.Handle == 0)
                 {
                     Logger.Warning?.Print(LogClass.Gpu, $"复制操作跳过: 目标缓冲区句柄无效, 大小=0x{size:X}");
