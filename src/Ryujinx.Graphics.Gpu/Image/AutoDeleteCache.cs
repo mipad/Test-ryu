@@ -58,6 +58,8 @@ namespace Ryujinx.Graphics.Gpu.Image
         private const ulong TextureSizeCapacity8GiB = 6 * GiB;
         private const ulong TextureSizeCapacity10GiB = 10 * GiB;
         private const ulong TextureSizeCapacity12GiB = 12 * GiB;
+        private const ulong TextureSizeCapacity14GiB = 14 * GiB;
+        private const ulong TextureSizeCapacity16GiB = 16 * GiB; // 新增16GB配置
 
         private const float MemoryScaleFactor = 0.50f;
         private ulong _maxCacheMemoryUsage = DefaultTextureSizeCapacity;
@@ -93,6 +95,9 @@ namespace Ryujinx.Graphics.Gpu.Image
                 6 => TextureSizeCapacity6GiB,
                 8 => TextureSizeCapacity8GiB,
                 10 => TextureSizeCapacity10GiB,
+                12 => TextureSizeCapacity12GiB,
+                14 => TextureSizeCapacity14GiB, // 新增14GB配置
+                16 => TextureSizeCapacity16GiB, // 新增16GB配置
                 _ => TextureSizeCapacity12GiB
             };
 
