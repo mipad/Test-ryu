@@ -63,6 +63,10 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly IntPtr _virtualMemory;
         private readonly bool _isVirtualMemoryBuffer;
 
+        // 公开虚拟内存缓冲区属性
+        public bool IsVirtualMemoryBuffer => _isVirtualMemoryBuffer;
+        public IntPtr VirtualMemory => _virtualMemory;
+
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, MemoryAllocation allocation, int size, BufferAllocationType type, BufferAllocationType currentType)
         {
             _gd = gd;

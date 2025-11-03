@@ -784,6 +784,544 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
+        /// <summary>
+        /// 复制缓冲区数据，支持虚拟内存缓冲区
+        /// </summary>
+        public void CopyBuffer(MemoryManager memoryManager, ulong srcVa, ulong dstVa, ulong size)
+        {
+            if (size == 0) return;
+
+            try
+            {
+                MultiRange srcRange = TranslateAndCreateMultiBuffersPhysicalOnly(memoryManager, srcVa, size, BufferStage.Copy);
+                MultiRange dstRange = TranslateAndCreateMultiBuffersPhysicalOnly(memoryManager, dstVa, size, BufferStage.Copy);
+
+                // 检查是否有虚拟内存缓冲区参与
+                bool hasVirtualBuffer = HasVirtualBufferInRange(srcRange) || HasVirtualBufferInRange(dstRange);
+
+                if (hasVirtualBuffer)
+                {
+                    // 使用支持虚拟内存的复制方法
+                    CopyBufferWithVirtualSupport(memoryManager, srcRange, dstRange, srcVa, dstVa, size);
+                    return;
+                }
+
+                // 原有的复制逻辑
+                if (srcRange.Count == 1 && dstRange.Count == 1)
+                {
+                    CopyBufferSingleRange(memoryManager, srcRange.GetSubRange(0).Address, dstRange.GetSubRange(0).Address, size);
+                }
+                else
+                {
+                    ulong copiedSize = 0;
+                    ulong srcOffset = 0;
+                    ulong dstOffset = 0;
+                    int srcRangeIndex = 0;
+                    int dstRangeIndex = 0;
+
+                    while (copiedSize < size)
+                    {
+                        if (srcRange.GetSubRange(srcRangeIndex).Size == srcOffset)
+                        {
+                            srcRangeIndex++;
+                            srcOffset = 0;
+                        }
+
+                        if (dstRange.GetSubRange(dstRangeIndex).Size == dstOffset)
+                        {
+                            dstRangeIndex++;
+                            dstOffset = 0;
+                        }
+
+                        MemoryRange srcSubRange = srcRange.GetSubRange(srcRangeIndex);
+                        MemoryRange dstSubRange = dstRange.GetSubRange(dstRangeIndex);
+
+                        ulong srcSize = srcSubRange.Size - srcOffset;
+                        ulong dstSize = dstSubRange.Size - dstOffset;
+                        ulong copySize = Math.Min(srcSize, dstSize);
+
+                        CopyBufferSingleRange(memoryManager, srcSubRange.Address + srcOffset, dstSubRange.Address + dstOffset, copySize);
+
+                        srcOffset += copySize;
+                        dstOffset += copySize;
+                        copiedSize += copySize;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, $"缓冲区复制失败: {ex.Message}, 源VA=0x{srcVa:X}, 目标VA=0x{dstVa:X}, 大小=0x{size:X}");
+            }
+        }
+
+        /// <summary>
+        /// 检查范围中是否包含虚拟内存缓冲区
+        /// </summary>
+        private bool HasVirtualBufferInRange(MultiRange range)
+        {
+            for (int i = 0; i < range.Count; i++)
+            {
+                MemoryRange subRange = range.GetSubRange(i);
+                if (subRange.Address != MemoryManager.PteUnmapped)
+                {
+                    var buffer = GetBuffer(subRange.Address, subRange.Size, BufferStage.Copy, false);
+                    if (buffer != null && buffer.IsVirtualMemoryBuffer)
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// 支持虚拟内存缓冲区的复制方法
+        /// </summary>
+        private void CopyBufferWithVirtualSupport(MemoryManager memoryManager, MultiRange srcRange, MultiRange dstRange, ulong srcVa, ulong dstVa, ulong size)
+        {
+            Logger.Warning?.Print(LogClass.Gpu, $"使用虚拟内存缓冲区复制: 源VA=0x{srcVa:X}, 目标VA=0x{dstVa:X}, 大小=0x{size:X}");
+
+            try
+            {
+                // 对于虚拟内存缓冲区，使用CPU端复制
+                if (srcRange.Count == 1 && dstRange.Count == 1)
+                {
+                    MemoryRange srcSubRange = srcRange.GetSubRange(0);
+                    MemoryRange dstSubRange = dstRange.GetSubRange(0);
+
+                    if (srcSubRange.Address != MemoryManager.PteUnmapped && dstSubRange.Address != MemoryManager.PteUnmapped)
+                    {
+                        // 获取源数据
+                        var srcData = memoryManager.GetSpan(srcSubRange.Address, (int)size);
+                        
+                        // 写入目标数据
+                        memoryManager.Write(dstSubRange.Address, srcData);
+                        
+                        Logger.Debug?.Print(LogClass.Gpu, $"虚拟内存复制完成: 大小=0x{size:X}");
+                    }
+                    else
+                    {
+                        Logger.Warning?.Print(LogClass.Gpu, $"虚拟内存复制跳过: 源或目标地址未映射");
+                    }
+                }
+                else
+                {
+                    // 多范围复制 - 使用逐块复制
+                    ulong copiedSize = 0;
+                    ulong srcOffset = 0;
+                    ulong dstOffset = 0;
+                    int srcRangeIndex = 0;
+                    int dstRangeIndex = 0;
+
+                    while (copiedSize < size)
+                    {
+                        if (srcRange.GetSubRange(srcRangeIndex).Size == srcOffset)
+                        {
+                            srcRangeIndex++;
+                            srcOffset = 0;
+                        }
+
+                        if (dstRange.GetSubRange(dstRangeIndex).Size == dstOffset)
+                        {
+                            dstRangeIndex++;
+                            dstOffset = 0;
+                        }
+
+                        MemoryRange srcSubRange = srcRange.GetSubRange(srcRangeIndex);
+                        MemoryRange dstSubRange = dstRange.GetSubRange(dstRangeIndex);
+
+                        ulong srcSize = srcSubRange.Size - srcOffset;
+                        ulong dstSize = dstSubRange.Size - dstOffset;
+                        ulong copySize = Math.Min(Math.Min(srcSize, dstSize), size - copiedSize);
+
+                        if (srcSubRange.Address != MemoryManager.PteUnmapped && dstSubRange.Address != MemoryManager.PteUnmapped)
+                        {
+                            // 获取源数据
+                            var srcData = memoryManager.GetSpan(srcSubRange.Address + srcOffset, (int)copySize);
+                            
+                            // 写入目标数据
+                            memoryManager.Write(dstSubRange.Address + dstOffset, srcData);
+                        }
+
+                        srcOffset += copySize;
+                        dstOffset += copySize;
+                        copiedSize += copySize;
+                    }
+                    
+                    Logger.Debug?.Print(LogClass.Gpu, $"虚拟内存多范围复制完成: 大小=0x{size:X}, 范围数=源{srcRange.Count}/目标{dstRange.Count}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Gpu, $"虚拟内存缓冲区复制失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 复制单个范围的缓冲区数据
+        /// </summary>
+        private void CopyBufferSingleRange(MemoryManager memoryManager, ulong srcAddress, ulong dstAddress, ulong size)
+        {
+            // 检查源和目标缓冲区是否为虚拟内存缓冲区
+            var srcBuffer = GetBuffer(srcAddress, size, BufferStage.Copy, false);
+            var dstBuffer = GetBuffer(dstAddress, size, BufferStage.Copy, false);
+
+            if (srcBuffer == null || dstBuffer == null)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, $"复制操作跳过: 无法获取缓冲区, 源地址=0x{srcAddress:X}, 目标地址=0x{dstAddress:X}, 大小=0x{size:X}");
+                return;
+            }
+
+            // 如果任一缓冲区是虚拟内存缓冲区，使用支持虚拟内存的复制
+            if (srcBuffer.IsVirtualMemoryBuffer || dstBuffer.IsVirtualMemoryBuffer)
+            {
+                // 使用BufferHolder的CopyData方法
+                var cbs = _gd.CommandBufferPool.Rent();
+                try
+                {
+                    BufferHolder.CopyData(_gd, cbs, srcBuffer, dstBuffer, 
+                        (int)(srcAddress - srcBuffer.Address), 
+                        (int)(dstAddress - dstBuffer.Address), 
+                        (int)size);
+                }
+                finally
+                {
+                    cbs.Dispose();
+                }
+                return;
+            }
+
+            // 原有的GPU复制逻辑
+            int srcOffset = (int)(srcAddress - srcBuffer.Address);
+            int dstOffset = (int)(dstAddress - dstBuffer.Address);
+
+            var srcBufferHandle = srcBuffer.GetBuffer();
+            var dstBufferHandle = dstBuffer.GetBuffer();
+
+            if (srcBufferHandle == null || dstBufferHandle == null)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, $"复制操作跳过: 无法获取缓冲区句柄");
+                return;
+            }
+
+            var cbsCopy = _gd.CommandBufferPool.Rent();
+            try
+            {
+                _gd.Renderer.Pipeline.CopyBuffer(
+                    srcBufferHandle.Get(cbsCopy, srcOffset, (int)size).Value,
+                    dstBufferHandle.Get(cbsCopy, dstOffset, (int)size, true).Value,
+                    srcOffset,
+                    dstOffset,
+                    (int)size);
+            }
+            finally
+            {
+                cbsCopy.Dispose();
+            }
+
+            if (srcBuffer.IsModified(srcAddress, size))
+            {
+                dstBuffer.SignalModified(dstAddress, size, BufferStage.Copy);
+            }
+            else
+            {
+                dstBuffer.ClearModified(dstAddress, size);
+                memoryManager.Physical.WriteTrackedResource(dstAddress, memoryManager.Physical.GetSpan(srcAddress, (int)size), ResourceKind.Buffer);
+            }
+
+            dstBuffer.CopyToDependantVirtualBuffers(dstAddress, size);
+        }
+
+        /// <summary>
+        /// Clears a buffer at a given address with the specified value.
+        /// </summary>
+        /// <remarks>
+        /// Both the address and size must be aligned to 4 bytes.
+        /// </remarks>
+        /// <param name="memoryManager">GPU memory manager where the buffer is mapped</param>
+        /// <param name="gpuVa">GPU virtual address of the region to clear</param>
+        /// <param name="size">Number of bytes to clear</param>
+        /// <param name="value">Value to be written into the buffer</param>
+        public void ClearBuffer(MemoryManager memoryManager, ulong gpuVa, ulong size, uint value)
+        {
+            MultiRange range = TranslateAndCreateMultiBuffersPhysicalOnly(memoryManager, gpuVa, size, BufferStage.Copy);
+
+            for (int index = 0; index < range.Count; index++)
+            {
+                MemoryRange subRange = range.GetSubRange(index);
+                Buffer buffer = GetBuffer(subRange.Address, subRange.Size, BufferStage.Copy);
+
+                int offset = (int)(subRange.Address - buffer.Address);
+
+                _context.Renderer.Pipeline.ClearBuffer(buffer.Handle, offset, (int)subRange.Size, value);
+
+                memoryManager.Physical.FillTrackedResource(subRange.Address, subRange.Size, value, ResourceKind.Buffer);
+
+                buffer.CopyToDependantVirtualBuffers(subRange.Address, subRange.Size);
+            }
+        }
+
+        /// <summary>
+        /// Gets a buffer sub-range starting at a given memory address, aligned to the next page boundary.
+        /// </summary>
+        /// <param name="range">Physical regions of memory where the buffer is mapped</param>
+        /// <param name="stage">Buffer stage that triggered the access</param>
+        /// <param name="write">Whether the buffer will be written to by this use</param>
+        /// <returns>The buffer sub-range starting at the given memory address</returns>
+        public BufferRange GetBufferRangeAligned(MultiRange range, BufferStage stage, bool write = false)
+        {
+            if (range.Count > 1)
+            {
+                return GetBuffer(range, stage, write).GetRange(range);
+            }
+            else
+            {
+                MemoryRange subRange = range.GetSubRange(0);
+                return GetBuffer(subRange.Address, subRange.Size, stage, write).GetRangeAligned(subRange.Address, subRange.Size, write);
+            }
+        }
+
+        /// <summary>
+        /// Gets a buffer sub-range for a given memory range.
+        /// </summary>
+        /// <param name="range">Physical regions of memory where the buffer is mapped</param>
+        /// <param name="stage">Buffer stage that triggered the access</param>
+        /// <param name="write">Whether the buffer will be written to by this use</param>
+        /// <returns>The buffer sub-range for the given range</returns>
+        public BufferRange GetBufferRange(MultiRange range, BufferStage stage, bool write = false)
+        {
+            if (range.Count > 1)
+            {
+                return GetBuffer(range, stage, write).GetRange(range);
+            }
+            else
+            {
+                MemoryRange subRange = range.GetSubRange(0);
+                return GetBuffer(subRange.Address, subRange.Size, stage, write).GetRange(subRange.Address, subRange.Size, write);
+            }
+        }
+
+        /// <summary>
+        /// Gets a buffer for a given memory range.
+        /// A buffer overlapping with the specified range is assumed to already exist on the cache.
+        /// </summary>
+        /// <param name="range">Physical regions of memory where the buffer is mapped</param>
+        /// <param name="stage">Buffer stage that triggered the access</param>
+        /// <param name="write">Whether the buffer will be written to by this use</param>
+        /// <returns>The buffer where the range is fully contained</returns>
+        private MultiRangeBuffer GetBuffer(MultiRange range, BufferStage stage, bool write = false)
+        {
+            for (int i = 0; i < range.Count; i++)
+            {
+                MemoryRange subRange = range.GetSubRange(i);
+
+                if (subRange.Address == MemoryManager.PteUnmapped)
+                {
+                    continue;
+                }
+
+                Buffer subBuffer = _buffers.FindFirstOverlap(subRange.Address, subRange.Size);
+                if (subBuffer == null)
+                {
+                    throw new InvalidOperationException(
+                        $"No buffer found for sub-range address 0x{subRange.Address:X8}, size 0x{subRange.Size:X8}");
+                }
+
+                subBuffer.SynchronizeMemory(subRange.Address, subRange.Size);
+
+                if (write)
+                {
+                    subBuffer.SignalModified(subRange.Address, subRange.Size, stage);
+                }
+            }
+
+            MultiRangeBuffer[] overlaps = new MultiRangeBuffer[10];
+
+            int overlapCount = _multiRangeBuffers.FindOverlaps(range, ref overlaps);
+
+            MultiRangeBuffer buffer = null;
+
+            for (int i = 0; i < overlapCount; i++)
+            {
+                if (overlaps[i].Range.Contains(range))
+                {
+                    buffer = overlaps[i];
+                    break;
+                }
+            }
+
+            if (write && buffer != null && !_context.Capabilities.SupportsSparseBuffer)
+            {
+                buffer.AddModifiedRegion(range, ++_virtualModifiedSequenceNumber);
+            }
+
+            return buffer;
+        }
+
+        /// <summary>
+        /// Gets a buffer for a given memory range.
+        /// A buffer overlapping with the specified range is assumed to already exist on the cache.
+        /// </summary>
+        /// <param name="address">Start address of the memory range</param>
+        /// <param name="size">Size in bytes of the memory range</param>
+        /// <param name="stage">Buffer stage that triggered the access</param>
+        /// <param name="write">Whether the buffer will be written to by this use</param>
+        /// <returns>The buffer where the range is fully contained</returns>
+        private Buffer GetBuffer(ulong address, ulong size, BufferStage stage, bool write = false)
+        {
+            Buffer buffer = null;
+
+            if (size != 0)
+            {
+                buffer = _buffers.FindFirstOverlap(address, size);
+                
+                if (buffer == null)
+                {
+                    CreateBuffer(address, size, stage);
+                    buffer = _buffers.FindFirstOverlap(address, size);
+                    
+                    if (buffer == null)
+                    {
+                        Logger.Warning?.Print(LogClass.Gpu, 
+                            $"Failed to create buffer for address 0x{address:X}, size 0x{size:X}");
+                        throw new InvalidOperationException($"No buffer found for address 0x{address:X}, size 0x{size:X}");
+                    }
+                }
+                
+                if (buffer != null)
+                {
+                    buffer.CopyFromDependantVirtualBuffers();
+                    buffer.SynchronizeMemory(address, size);
+                    
+                    if (write)
+                    {
+                        buffer.SignalModified(address, size, stage);
+                    }
+                }
+            }
+            else
+            {
+                buffer = _buffers.FindFirstOverlap(address, 1);
+                if (buffer == null)
+                {
+                    throw new InvalidOperationException($"No buffer found for address 0x{address:X}");
+                }
+            }
+
+            return buffer;
+        }
+
+        /// <summary>
+        /// Performs guest to host memory synchronization of a given memory range.
+        /// </summary>
+        /// <param name="range">Physical regions of memory where the buffer is mapped</param>
+        public void SynchronizeBufferRange(MultiRange range)
+        {
+            if (range.Count == 1)
+            {
+                MemoryRange subRange = range.GetSubRange(0);
+                SynchronizeBufferRange(subRange.Address, subRange.Size, copyBackVirtual: true);
+            }
+            else
+            {
+                for (int index = 0; index < range.Count; index++)
+                {
+                    MemoryRange subRange = range.GetSubRange(index);
+                    SynchronizeBufferRange(subRange.Address, subRange.Size, copyBackVirtual: false);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Performs guest to host memory synchronization of a given memory range.
+        /// </summary>
+        /// <param name="address">Start address of the memory range</param>
+        /// <param name="size">Size in bytes of the memory range</param>
+        /// <param name="copyBackVirtual">Whether virtual buffers that uses this buffer as backing memory should have its data copied back if modified</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void SynchronizeBufferRange(ulong address, ulong size, bool copyBackVirtual)
+        {
+            if (size != 0)
+            {
+                Buffer buffer = _buffers.FindFirstOverlap(address, size);
+
+                // 优化：添加空引用检查
+                if (buffer != null)
+                {
+                    if (copyBackVirtual)
+                    {
+                        buffer.CopyFromDependantVirtualBuffers();
+                    }
+
+                    buffer.SynchronizeMemory(address, size);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Signal that the given buffer's handle has changed,
+        /// forcing rebind and any overlapping multi-range buffers to be recreated.
+        /// </summary>
+        /// <param name="buffer">The buffer that has changed handle</param>
+        public void BufferBackingChanged(Buffer buffer)
+        {
+            // 优化：使用阈值控制事件触发频率
+            if (++_modifyEventCount >= ModifyEventThreshold)
+            {
+                NotifyBuffersModified?.Invoke();
+                _modifyEventCount = 0;
+            }
+
+            RecreateMultiRangeBuffers(buffer.Address, buffer.Size);
+        }
+
+        /// <summary>
+        /// Prune any invalid entries from a quick access dictionary.
+        /// </summary>
+        /// <param name="dictionary">Dictionary to prune</param>
+        /// <param name="toDelete">List used to track entries to delete</param>
+        private static void Prune(Dictionary<ulong, BufferCacheEntry> dictionary, ref List<ulong> toDelete)
+        {
+            foreach (var entry in dictionary)
+            {
+                if (entry.Value.UnmappedSequence != entry.Value.Buffer.UnmappedSequence)
+                {
+                    (toDelete ??= new()).Add(entry.Key);
+                }
+            }
+
+            if (toDelete != null)
+            {
+                foreach (ulong entry in toDelete)
+                {
+                    dictionary.Remove(entry);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Prune any invalid entries from the quick access dictionaries.
+        /// </summary>
+        private void Prune()
+        {
+            List<ulong> toDelete = null;
+
+            Prune(_dirtyCache, ref toDelete);
+            toDelete = null; // Reset for next dictionary
+
+            Prune(_modifiedCache, ref toDelete);
+
+            _pruneCaches = false;
+        }
+
+        /// <summary>
+        /// Queues a prune of invalid entries the next time a dictionary cache is accessed.
+        /// </summary>
+        public void QueuePrune()
+        {
+            _pruneCaches = true;
+        }
+
         public void Delete(BufferHandle handle)
         {
             if (TryGetBuffer(handle, out var holder))
