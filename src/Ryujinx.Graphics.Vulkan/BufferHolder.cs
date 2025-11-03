@@ -963,12 +963,20 @@ namespace Ryujinx.Graphics.Vulkan
 
             try
             {
-                // 检查缓冲区是否有效 - 通过尝试获取缓冲区来验证
-                var srcBuffer = registerSrcUsage ? 
-                    src.Get(cbs, srcOffset, size).Value : 
-                    src.GetUnsafe();
-                
-                var dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
+                // 获取缓冲区 - 修复类型不匹配问题
+                VkBuffer srcBuffer;
+                VkBuffer dstBuffer;
+
+                if (registerSrcUsage)
+                {
+                    srcBuffer = src.Get(cbs, srcOffset, size).Value;
+                    dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
+                }
+                else
+                {
+                    srcBuffer = src.GetUnsafe();
+                    dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
+                }
 
                 // 设置目标缓冲区屏障 (准备写入)
                 InsertBufferBarrier(
