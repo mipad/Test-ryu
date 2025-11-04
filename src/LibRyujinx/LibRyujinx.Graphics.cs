@@ -46,6 +46,8 @@ namespace LibRyujinx
             GraphicsConfig.EnableMacroHLE = graphicsConfiguration.EnableMacroHLE;
             GraphicsConfig.EnableShaderCache = graphicsConfiguration.EnableShaderCache;
             GraphicsConfig.EnableTextureRecompression = graphicsConfiguration.EnableTextureRecompression;
+            // 新增：初始化色彩空间直通设置
+            GraphicsConfig.EnableColorSpacePassthrough = graphicsConfiguration.EnableColorSpacePassthrough;
 
             GraphicsConfiguration = graphicsConfiguration;
 
@@ -120,11 +122,13 @@ namespace LibRyujinx
                 var antiAliasing = (Ryujinx.Graphics.GAL.AntiAliasing)ConfigurationState.Instance.Graphics.AntiAliasing.Value;
                 var scalingFilter = (Ryujinx.Graphics.GAL.ScalingFilter)ConfigurationState.Instance.Graphics.ScalingFilter.Value;
                 var scalingFilterLevel = ConfigurationState.Instance.Graphics.ScalingFilterLevel.Value;
+                var enableColorSpacePassthrough = ConfigurationState.Instance.Graphics.EnableColorSpacePassthrough.Value;
                 
                 Logger.Info?.Print(LogClass.Application, $"Current graphics settings:");
                 Logger.Info?.Print(LogClass.Application, $"  - AntiAliasing: {antiAliasing}");
                 Logger.Info?.Print(LogClass.Application, $"  - ScalingFilter: {scalingFilter}");
                 Logger.Info?.Print(LogClass.Application, $"  - ScalingFilterLevel: {scalingFilterLevel}");
+                Logger.Info?.Print(LogClass.Application, $"  - EnableColorSpacePassthrough: {enableColorSpacePassthrough}");
                 Logger.Info?.Print(LogClass.Application, $"  - ResScale: {ConfigurationState.Instance.Graphics.ResScale.Value}");
                 Logger.Info?.Print(LogClass.Application, $"  - MaxAnisotropy: {ConfigurationState.Instance.Graphics.MaxAnisotropy.Value}");
 
@@ -142,6 +146,11 @@ namespace LibRyujinx
                 Logger.Info?.Print(LogClass.Application, $"Applying scaling filter level: {scalingFilterLevel}");
                 Renderer.Window.SetScalingFilterLevel(scalingFilterLevel);
                 Logger.Info?.Print(LogClass.Application, $"Scaling filter level applied successfully: {scalingFilterLevel}");
+
+                // 应用色彩空间直通设置
+                Logger.Info?.Print(LogClass.Application, $"Applying color space passthrough: {enableColorSpacePassthrough}");
+                Renderer.Window.SetColorSpacePassthrough(enableColorSpacePassthrough);
+                Logger.Info?.Print(LogClass.Application, $"Color space passthrough applied successfully: {enableColorSpacePassthrough}");
                 
                 Logger.Info?.Print(LogClass.Application, "All graphics settings applied successfully");
             }
@@ -314,6 +323,33 @@ namespace LibRyujinx
         {
             (Renderer as VulkanRenderer)?.SetPresentEnabled(enabled);
         }
+
+        // 新增：设置色彩空间直通的方法
+        public static void SetColorSpacePassthrough(bool enabled)
+        {
+            try
+            {
+                Logger.Info?.Print(LogClass.Application, $"Setting color space passthrough to: {enabled}");
+                
+                // 更新配置状态
+                ConfigurationState.Instance.Graphics.EnableColorSpacePassthrough.Value = enabled;
+                
+                // 如果渲染器已初始化，直接应用设置
+                if (Renderer != null && Renderer.Window != null)
+                {
+                    Renderer.Window.SetColorSpacePassthrough(enabled);
+                    Logger.Info?.Print(LogClass.Application, $"Color space passthrough set to: {enabled}");
+                }
+                else
+                {
+                    Logger.Warning?.Print(LogClass.Application, "Renderer or Renderer.Window is null, cannot set color space passthrough immediately");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error setting color space passthrough: {ex.Message}");
+            }
+        }
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -329,6 +365,8 @@ namespace LibRyujinx
         public bool EnableTextureRecompression = false;
         public BackendThreading BackendThreading = BackendThreading.Auto;
         public AspectRatio AspectRatio = AspectRatio.Stretched;
+        // 新增：色彩空间直通设置
+        public bool EnableColorSpacePassthrough = false;
 
         public GraphicsConfiguration()
         {
