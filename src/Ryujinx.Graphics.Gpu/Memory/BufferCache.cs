@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Ryujinx.Common.Logging;
 using System.Buffers;
 
@@ -36,6 +37,9 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
         // 大缓冲区阈值 - 超过这个大小使用CPU复制
         private const ulong LargeBufferThreshold = 256 * 1024 * 1024; // 256MB
+        
+        // 强制CPU复制阈值 - 超过1KB就使用CPU复制
+        private const ulong ForceCpuCopyThreshold = 1024; // 1KB
 
         private readonly GpuContext _context;
         private readonly PhysicalMemory _physicalMemory;
@@ -714,6 +718,26 @@ namespace Ryujinx.Graphics.Gpu.Memory
         }
 
         /// <summary>
+        /// 检查范围是否涉及虚拟内存缓冲区
+        /// </summary>
+        private bool IsRangeVirtualMemoryBuffer(MultiRange range)
+        {
+            for (int i = 0; i < range.Count; i++)
+            {
+                MemoryRange subRange = range.GetSubRange(i);
+                if (subRange.Address != MemoryManager.PteUnmapped)
+                {
+                    Buffer buffer = _buffers.FindFirstOverlap(subRange.Address, subRange.Size);
+                    if (buffer?.Holder?.IsVirtualMemoryBuffer == true)
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
         /// Copy a buffer data from a given address to another.
         /// </summary>
         /// <remarks>
@@ -727,16 +751,26 @@ namespace Ryujinx.Graphics.Gpu.Memory
         {
             try
             {
-                // 检查缓冲区大小，如果超过阈值则使用CPU复制
-                if (size > LargeBufferThreshold)
+                // 强制检查：如果缓冲区大小超过1KB，或者检测到虚拟内存缓冲区，使用CPU复制
+                bool forceCpuCopy = size > ForceCpuCopyThreshold;
+                
+                if (forceCpuCopy)
                 {
-                    Logger.Warning?.Print(LogClass.Gpu, $"大缓冲区使用CPU复制: 大小=0x{size:X} ({size / 1024 / 1024}MB), 源VA=0x{srcVa:X}, 目标VA=0x{dstVa:X}");
+                    Logger.Debug?.Print(LogClass.Gpu, $"强制使用CPU复制: 大小=0x{size:X}, 源VA=0x{srcVa:X}, 目标VA=0x{dstVa:X}");
                     CopyBufferWithCpu(memoryManager, srcVa, dstVa, size);
                     return;
                 }
 
                 MultiRange srcRange = TranslateAndCreateMultiBuffersPhysicalOnly(memoryManager, srcVa, size, BufferStage.Copy);
                 MultiRange dstRange = TranslateAndCreateMultiBuffersPhysicalOnly(memoryManager, dstVa, size, BufferStage.Copy);
+
+                // 检查是否涉及虚拟内存缓冲区
+                if (IsRangeVirtualMemoryBuffer(srcRange) || IsRangeVirtualMemoryBuffer(dstRange))
+                {
+                    Logger.Debug?.Print(LogClass.Gpu, $"检测到虚拟内存缓冲区，使用CPU复制: 大小=0x{size:X}");
+                    CopyBufferWithCpu(memoryManager, srcVa, dstVa, size);
+                    return;
+                }
 
                 if (srcRange.Count == 1 && dstRange.Count == 1)
                 {
@@ -792,31 +826,20 @@ namespace Ryujinx.Graphics.Gpu.Memory
         {
             try
             {
+                Logger.Debug?.Print(LogClass.Gpu, $"开始CPU复制: 源VA=0x{srcVa:X}, 目标VA=0x{dstVa:X}, 大小=0x{size:X}");
+
                 // 直接使用内存管理器进行CPU端复制
                 var srcData = memoryManager.GetSpan(srcVa, (int)size);
                 memoryManager.Write(dstVa, srcData);
                 
-                Logger.Debug?.Print(LogClass.Gpu, $"CPU复制完成: 大小=0x{size:X}");
+                Logger.Debug?.Print(LogClass.Gpu, $"CPU复制成功完成: 大小=0x{size:X}");
             }
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Gpu, $"CPU复制失败: {ex.Message}, 大小=0x{size:X}");
-                // 如果CPU复制失败，尝试回退到原来的GPU复制
-                Logger.Warning?.Print(LogClass.Gpu, "CPU复制失败，尝试GPU复制回退");
-                try
-                {
-                    MultiRange srcRange = TranslateAndCreateMultiBuffersPhysicalOnly(memoryManager, srcVa, size, BufferStage.Copy);
-                    MultiRange dstRange = TranslateAndCreateMultiBuffersPhysicalOnly(memoryManager, dstVa, size, BufferStage.Copy);
-
-                    if (srcRange.Count == 1 && dstRange.Count == 1)
-                    {
-                        CopyBufferSingleRange(memoryManager, srcRange.GetSubRange(0).Address, dstRange.GetSubRange(0).Address, size);
-                    }
-                }
-                catch (Exception fallbackEx)
-                {
-                    Logger.Error?.Print(LogClass.Gpu, $"GPU复制回退也失败: {fallbackEx.Message}");
-                }
+                
+                // 如果CPU复制失败，记录详细错误信息但不尝试回退，因为虚拟内存缓冲区不支持GPU复制
+                Logger.Debug?.Print(LogClass.Gpu, $"虚拟内存缓冲区不支持GPU复制回退");
             }
         }
 
@@ -832,26 +855,46 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="size">Size in bytes of the copy</param>
         private void CopyBufferSingleRange(MemoryManager memoryManager, ulong srcAddress, ulong dstAddress, ulong size)
         {
-            // 检查缓冲区大小，如果超过阈值则使用CPU复制
-            if (size > LargeBufferThreshold)
+            // 强制检查：如果缓冲区大小超过1KB，或者检测到虚拟内存缓冲区，使用CPU复制
+            bool forceCpuCopy = size > ForceCpuCopyThreshold;
+            
+            if (forceCpuCopy)
             {
-                Logger.Warning?.Print(LogClass.Gpu, $"大缓冲区使用CPU复制: 大小=0x{size:X}, 源=0x{srcAddress:X}, 目标=0x{dstAddress:X}");
+                Logger.Debug?.Print(LogClass.Gpu, $"单范围强制CPU复制: 大小=0x{size:X}, 源=0x{srcAddress:X}, 目标=0x{dstAddress:X}");
                 try
                 {
                     var srcData = memoryManager.GetSpan(srcAddress, (int)size);
                     memoryManager.Write(dstAddress, srcData);
-                    Logger.Debug?.Print(LogClass.Gpu, $"CPU复制完成: 大小=0x{size:X}");
+                    Logger.Debug?.Print(LogClass.Gpu, $"单范围CPU复制完成: 大小=0x{size:X}");
                 }
                 catch (Exception ex)
                 {
-                    Logger.Error?.Print(LogClass.Gpu, $"CPU复制失败: {ex.Message}");
+                    Logger.Error?.Print(LogClass.Gpu, $"单范围CPU复制失败: {ex.Message}");
                 }
                 return;
             }
 
+            // 检查缓冲区是否为虚拟内存缓冲区
             Buffer srcBuffer = GetBuffer(srcAddress, size, BufferStage.Copy);
             Buffer dstBuffer = GetBuffer(dstAddress, size, BufferStage.Copy);
 
+            if (srcBuffer?.Holder?.IsVirtualMemoryBuffer == true || dstBuffer?.Holder?.IsVirtualMemoryBuffer == true)
+            {
+                Logger.Debug?.Print(LogClass.Gpu, $"单范围检测到虚拟内存缓冲区，使用CPU复制: 大小=0x{size:X}");
+                try
+                {
+                    var srcData = memoryManager.GetSpan(srcAddress, (int)size);
+                    memoryManager.Write(dstAddress, srcData);
+                    Logger.Debug?.Print(LogClass.Gpu, $"单范围虚拟内存CPU复制完成: 大小=0x{size:X}");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error?.Print(LogClass.Gpu, $"单范围虚拟内存CPU复制失败: {ex.Message}");
+                }
+                return;
+            }
+
+            // 原有的GPU复制逻辑...
             int srcOffset = (int)(srcAddress - srcBuffer.Address);
             int dstOffset = (int)(dstAddress - dstBuffer.Address);
 
