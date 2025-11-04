@@ -268,6 +268,28 @@ namespace LibRyujinx
             }
         }
 
+        // 添加设置色彩空间直通的方法
+        public static void SetColorSpacePassthrough(bool enabled)
+        {
+            try
+            {
+                // 更新配置状态
+                ConfigurationState.Instance.Graphics.EnableColorSpacePassthrough.Value = enabled;
+                
+                // 如果渲染器已初始化，直接应用设置
+                if (Renderer != null && Renderer.Window != null)
+                {
+                    Renderer.Window.SetColorSpacePassthrough(enabled);
+                }
+                
+                Logger.Info?.Print(LogClass.Application, $"Color space passthrough set to: {enabled}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error setting color space passthrough: {ex.Message}");
+            }
+        }
+
         public static void InitializeAudio()
         {
             AudioDriver = new SDL2HardwareDeviceDriver();
