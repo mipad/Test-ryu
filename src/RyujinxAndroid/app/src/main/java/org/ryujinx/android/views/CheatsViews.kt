@@ -51,9 +51,9 @@ fun CheatsViews(
                         // 获取文件名
                         val fileName = getFileNameFromUri(context, uri) ?: "cheat_${System.currentTimeMillis()}.txt"
                         
-                        // 检查文件扩展名
-                        if (!fileName.endsWith(".txt") && !fileName.endsWith(".json")) {
-                            viewModel.setErrorMessage("Only .txt and .json files are supported")
+                        // 检查文件扩展名 - 只允许.txt文件
+                        if (!fileName.endsWith(".txt")) {
+                            viewModel.setErrorMessage("Only .txt files are supported")
                             return@use
                         }
                         
@@ -190,22 +190,40 @@ fun CheatsViews(
     
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Manage Cheats") },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+            Column {
+                TopAppBar(
+                    title = { Text("Manage Cheats") },
+                    navigationIcon = {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                    actions = {
+                        TextButton(
+                            onClick = { viewModel.saveCheats() },
+                            enabled = !isLoading
+                        ) {
+                            Text("Save")
+                        }
                     }
-                },
-                actions = {
-                    TextButton(
-                        onClick = { viewModel.saveCheats() },
-                        enabled = !isLoading
-                    ) {
-                        Text("Save")
-                    }
+                )
+                // 添加JIT模式提示
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    )
+                ) {
+                    Text(
+                        text = "暂时只在JIT模式可用",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
                 }
-            )
+            }
         },
         bottomBar = {
             // 在底部添加操作按钮
@@ -217,8 +235,8 @@ fun CheatsViews(
             ) {
                 Button(
                     onClick = { 
-                        // 启动文件选择器，显示 txt 和 json 文件
-                        filePickerLauncher.launch(arrayOf("text/plain", "application/json"))
+                        // 启动文件选择器，只显示txt文件
+                        filePickerLauncher.launch(arrayOf("text/plain"))
                     },
                     enabled = !isLoading
                 ) {
@@ -279,7 +297,7 @@ fun CheatsViews(
                         Text("No cheats found for this game")
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Click 'Add Cheats' below to import .txt or .json files",
+                            text = "Click 'Add Cheats' below to import .txt files",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
