@@ -345,48 +345,6 @@ namespace LibRyujinx
             Renderer?.Window?.SetSize(width, height);
         }
 
-        [UnmanagedCallersOnly(EntryPoint = "graphicsRendererRunLoop")]
-        public static void JniRunLoopNative()
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            SetSwapBuffersCallback(() =>
-            {
-                var time = SwitchDevice.EmulationContext.Statistics.GetGameFrameTime();
-                Interop.FrameEnded(time);
-            });
-            RunLoop();
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "loggingSetEnabled")]
-        public static void JniSetLoggingEnabledNative(int logLevel, bool enabled)
-        {
-            Logger.SetEnable((LogLevel)logLevel, enabled);
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "loggingEnabledGraphicsLog")]
-        public static void JniSetLoggingEnabledGraphicsLog(bool enabled)
-        {
-            _enableGraphicsLogging = enabled;
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "deviceGetGameInfo")]
-        public unsafe static void JniGetGameInfo(int fileDescriptor, IntPtr extension, IntPtr infoPtr)
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            using var stream = OpenFile(fileDescriptor);
-            var ext = Marshal.PtrToStringAnsi(extension);
-            var info = GetGameInfo(stream, ext.ToLower()) ?? GetDefaultInfo(stream);
-            var i = (GameInfoNative*)infoPtr;
-            var n = new GameInfoNative(info);
-            i->TitleId = n.TitleId;
-            i->TitleName = n.TitleName;
-            i->Version = n.Version;
-            i->FileSize = n.FileSize;
-            i->Icon = n.Icon;
-            i->Version = n.Version;
-            i->Developer = n.Developer;
-        }
-
         [UnmanagedCallersOnly(EntryPoint = "graphicsRendererSetVsync")]
         public static void JnaSetVsyncStateNative(bool enabled)
         {
@@ -615,6 +573,7 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
+                Logger.Error?.Print(LogClass.Application, $"Error setting scaling filter: {ex.Message}");
             }
         }
 
@@ -635,6 +594,7 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
+                Logger.Error?.Print(LogClass.Application, $"Error setting scaling filter level: {ex.Message}");
             }
         }
 
@@ -655,6 +615,21 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
+                Logger.Error?.Print(LogClass.Application, $"Error setting anti-aliasing: {ex.Message}");
+            }
+        }
+
+        // 新增：设置色彩空间直通的JNI方法
+        [UnmanagedCallersOnly(EntryPoint = "setColorSpacePassthrough")]
+        public static void JnaSetColorSpacePassthrough(bool enabled)
+        {
+            try
+            {
+                SetColorSpacePassthrough(enabled);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error setting color space passthrough: {ex.Message}");
             }
         }
 
@@ -682,7 +657,7 @@ namespace LibRyujinx
             return IsEmulationPaused();
         }
 
-[UnmanagedCallersOnly(EntryPoint = "graphicsRendererSetPresent")]
+        [UnmanagedCallersOnly(EntryPoint = "graphicsRendererSetPresent")]
         public static void JniGraphicsRendererSetPresent(bool enabled)
         {
             try
@@ -767,6 +742,7 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
+                Logger.Error?.Print(LogClass.Application, $"Error getting available surface formats: {ex.Message}");
                 return IntPtr.Zero;
             }
         }
@@ -780,6 +756,7 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
+                Logger.Error?.Print(LogClass.Application, $"Error setting custom surface format: {ex.Message}");
             }
         }
 
@@ -792,6 +769,7 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
+                Logger.Error?.Print(LogClass.Application, $"Error clearing custom surface format: {ex.Message}");
             }
         }
 
@@ -804,6 +782,7 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
+                Logger.Error?.Print(LogClass.Application, $"Error checking custom surface format validity: {ex.Message}");
                 return false;
             }
         }
@@ -818,6 +797,7 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
+                Logger.Error?.Print(LogClass.Application, $"Error getting current surface format info: {ex.Message}");
                 return IntPtr.Zero;
             }
         }
@@ -851,6 +831,7 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
+                Logger.Error?.Print(LogClass.Application, $"Error exporting save data: {ex.Message}");
                 return false;
             }
         }
@@ -867,6 +848,7 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
+                Logger.Error?.Print(LogClass.Application, $"Error importing save data: {ex.Message}");
                 return false;
             }
         }
@@ -881,6 +863,7 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
+                Logger.Error?.Print(LogClass.Application, $"Error deleting save data: {ex.Message}");
                 return false;
             }
         }
@@ -896,6 +879,7 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
+                Logger.Error?.Print(LogClass.Application, $"Error deleting save files: {ex.Message}");
                 return false;
             }
         }
@@ -912,6 +896,7 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
+                Logger.Error?.Print(LogClass.Application, $"Error getting save ID by title ID: {ex.Message}");
                 return IntPtr.Zero;
             }
         }
@@ -926,6 +911,7 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
+                Logger.Error?.Print(LogClass.Application, $"Error checking save data existence: {ex.Message}");
                 return false;
             }
         }
@@ -940,6 +926,7 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
+                Logger.Error?.Print(LogClass.Application, $"Error refreshing save data: {ex.Message}");
             }
         }
 
@@ -953,6 +940,7 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
+                Logger.Error?.Print(LogClass.Application, $"Error debugging save data: {ex.Message}");
             }
         }
 
@@ -969,6 +957,7 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
+                Logger.Error?.Print(LogClass.Application, $"Error getting all save data: {ex.Message}");
                 return IntPtr.Zero;
             }
         }        
