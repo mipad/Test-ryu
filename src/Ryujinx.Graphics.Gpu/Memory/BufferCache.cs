@@ -34,6 +34,9 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
         private const ulong MaxDynamicGrowthSize = 0x100000;
 
+        // 大缓冲区阈值 - 超过这个大小使用CPU复制
+        private const ulong LargeBufferThreshold = 256 * 1024 * 1024; // 256MB
+
         private readonly GpuContext _context;
         private readonly PhysicalMemory _physicalMemory;
         
@@ -724,19 +727,16 @@ namespace Ryujinx.Graphics.Gpu.Memory
         {
             try
             {
-                MultiRange srcRange = TranslateAndCreateMultiBuffersPhysicalOnly(memoryManager, srcVa, size, BufferStage.Copy);
-                MultiRange dstRange = TranslateAndCreateMultiBuffersPhysicalOnly(memoryManager, dstVa, size, BufferStage.Copy);
-
-                // 检查源和目标缓冲区是否包含虚拟内存缓冲区
-                bool srcHasVirtual = HasVirtualBufferInRange(srcRange);
-                bool dstHasVirtual = HasVirtualBufferInRange(dstRange);
-
-                if (srcHasVirtual || dstHasVirtual)
+                // 检查缓冲区大小，如果超过阈值则使用CPU复制
+                if (size > LargeBufferThreshold)
                 {
-                    // 使用支持虚拟内存的CPU复制
-                    CopyBufferWithVirtualSupport(memoryManager, srcRange, dstRange, srcVa, dstVa, size);
+                    Logger.Warning?.Print(LogClass.Gpu, $"大缓冲区使用CPU复制: 大小=0x{size:X} ({size / 1024 / 1024}MB), 源VA=0x{srcVa:X}, 目标VA=0x{dstVa:X}");
+                    CopyBufferWithCpu(memoryManager, srcVa, dstVa, size);
                     return;
                 }
+
+                MultiRange srcRange = TranslateAndCreateMultiBuffersPhysicalOnly(memoryManager, srcVa, size, BufferStage.Copy);
+                MultiRange dstRange = TranslateAndCreateMultiBuffersPhysicalOnly(memoryManager, dstVa, size, BufferStage.Copy);
 
                 if (srcRange.Count == 1 && dstRange.Count == 1)
                 {
@@ -786,117 +786,37 @@ namespace Ryujinx.Graphics.Gpu.Memory
         }
 
         /// <summary>
-        /// 检查范围中是否包含虚拟内存缓冲区
+        /// 使用CPU复制缓冲区数据
         /// </summary>
-        private bool HasVirtualBufferInRange(MultiRange range)
+        private void CopyBufferWithCpu(MemoryManager memoryManager, ulong srcVa, ulong dstVa, ulong size)
         {
-            for (int i = 0; i < range.Count; i++)
-            {
-                MemoryRange subRange = range.GetSubRange(i);
-                if (subRange.Address != MemoryManager.PteUnmapped)
-                {
-                    // 检查缓冲区是否为虚拟内存缓冲区
-                    Buffer buffer = GetBuffer(subRange.Address, subRange.Size, BufferStage.Copy, false);
-                    if (buffer != null && IsVirtualMemoryBuffer(buffer))
-                    {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-
-        /// <summary>
-        /// 检查缓冲区是否为虚拟内存缓冲区
-        /// </summary>
-        private bool IsVirtualMemoryBuffer(Buffer buffer)
-        {
-            // 通过反射或其他方式检查缓冲区是否为虚拟内存缓冲区
-            // 这里需要根据实际的Buffer实现来判断
-            // 暂时返回false，需要根据实际情况实现
-            return false;
-        }
-
-        /// <summary>
-        /// 支持虚拟内存缓冲区的复制方法
-        /// </summary>
-        private void CopyBufferWithVirtualSupport(MemoryManager memoryManager, MultiRange srcRange, MultiRange dstRange, ulong srcVa, ulong dstVa, ulong size)
-        {
-            Logger.Warning?.Print(LogClass.Gpu, $"使用虚拟内存缓冲区复制: 源VA=0x{srcVa:X}, 目标VA=0x{dstVa:X}, 大小=0x{size:X}");
-
             try
             {
-                // 对于虚拟内存缓冲区，使用CPU端复制
-                if (srcRange.Count == 1 && dstRange.Count == 1)
-                {
-                    MemoryRange srcSubRange = srcRange.GetSubRange(0);
-                    MemoryRange dstSubRange = dstRange.GetSubRange(0);
-
-                    if (srcSubRange.Address != MemoryManager.PteUnmapped && dstSubRange.Address != MemoryManager.PteUnmapped)
-                    {
-                        // 获取源数据
-                        var srcData = memoryManager.GetSpan(srcSubRange.Address, (int)size);
-                        
-                        // 写入目标数据
-                        memoryManager.Write(dstSubRange.Address, srcData);
-                        
-                        Logger.Debug?.Print(LogClass.Gpu, $"虚拟内存复制完成: 大小=0x{size:X}");
-                    }
-                    else
-                    {
-                        Logger.Warning?.Print(LogClass.Gpu, $"虚拟内存复制跳过: 源或目标地址未映射");
-                    }
-                }
-                else
-                {
-                    // 多范围复制 - 使用逐块复制
-                    ulong copiedSize = 0;
-                    ulong srcOffset = 0;
-                    ulong dstOffset = 0;
-                    int srcRangeIndex = 0;
-                    int dstRangeIndex = 0;
-
-                    while (copiedSize < size)
-                    {
-                        if (srcRange.GetSubRange(srcRangeIndex).Size == srcOffset)
-                        {
-                            srcRangeIndex++;
-                            srcOffset = 0;
-                        }
-
-                        if (dstRange.GetSubRange(dstRangeIndex).Size == dstOffset)
-                        {
-                            dstRangeIndex++;
-                            dstOffset = 0;
-                        }
-
-                        MemoryRange srcSubRange = srcRange.GetSubRange(srcRangeIndex);
-                        MemoryRange dstSubRange = dstRange.GetSubRange(dstRangeIndex);
-
-                        ulong srcSize = srcSubRange.Size - srcOffset;
-                        ulong dstSize = dstSubRange.Size - dstOffset;
-                        ulong copySize = Math.Min(Math.Min(srcSize, dstSize), size - copiedSize);
-
-                        if (srcSubRange.Address != MemoryManager.PteUnmapped && dstSubRange.Address != MemoryManager.PteUnmapped)
-                        {
-                            // 获取源数据
-                            var srcData = memoryManager.GetSpan(srcSubRange.Address + srcOffset, (int)copySize);
-                            
-                            // 写入目标数据
-                            memoryManager.Write(dstSubRange.Address + dstOffset, srcData);
-                        }
-
-                        srcOffset += copySize;
-                        dstOffset += copySize;
-                        copiedSize += copySize;
-                    }
-                    
-                    Logger.Debug?.Print(LogClass.Gpu, $"虚拟内存多范围复制完成: 大小=0x{size:X}, 范围数=源{srcRange.Count}/目标{dstRange.Count}");
-                }
+                // 直接使用内存管理器进行CPU端复制
+                var srcData = memoryManager.GetSpan(srcVa, (int)size);
+                memoryManager.Write(dstVa, srcData);
+                
+                Logger.Debug?.Print(LogClass.Gpu, $"CPU复制完成: 大小=0x{size:X}");
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Gpu, $"虚拟内存缓冲区复制失败: {ex.Message}");
+                Logger.Error?.Print(LogClass.Gpu, $"CPU复制失败: {ex.Message}, 大小=0x{size:X}");
+                // 如果CPU复制失败，尝试回退到原来的GPU复制
+                Logger.Warning?.Print(LogClass.Gpu, "CPU复制失败，尝试GPU复制回退");
+                try
+                {
+                    MultiRange srcRange = TranslateAndCreateMultiBuffersPhysicalOnly(memoryManager, srcVa, size, BufferStage.Copy);
+                    MultiRange dstRange = TranslateAndCreateMultiBuffersPhysicalOnly(memoryManager, dstVa, size, BufferStage.Copy);
+
+                    if (srcRange.Count == 1 && dstRange.Count == 1)
+                    {
+                        CopyBufferSingleRange(memoryManager, srcRange.GetSubRange(0).Address, dstRange.GetSubRange(0).Address, size);
+                    }
+                }
+                catch (Exception fallbackEx)
+                {
+                    Logger.Error?.Print(LogClass.Gpu, $"GPU复制回退也失败: {fallbackEx.Message}");
+                }
             }
         }
 
@@ -912,18 +832,25 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="size">Size in bytes of the copy</param>
         private void CopyBufferSingleRange(MemoryManager memoryManager, ulong srcAddress, ulong dstAddress, ulong size)
         {
-            Buffer srcBuffer = GetBuffer(srcAddress, size, BufferStage.Copy);
-            Buffer dstBuffer = GetBuffer(dstAddress, size, BufferStage.Copy);
-
-            // 检查是否为虚拟内存缓冲区
-            if (IsVirtualMemoryBuffer(srcBuffer) || IsVirtualMemoryBuffer(dstBuffer))
+            // 检查缓冲区大小，如果超过阈值则使用CPU复制
+            if (size > LargeBufferThreshold)
             {
-                // 使用CPU复制
-                var srcData = memoryManager.GetSpan(srcAddress, (int)size);
-                memoryManager.Write(dstAddress, srcData);
-                Logger.Debug?.Print(LogClass.Gpu, $"虚拟内存缓冲区CPU复制: 源=0x{srcAddress:X}, 目标=0x{dstAddress:X}, 大小=0x{size:X}");
+                Logger.Warning?.Print(LogClass.Gpu, $"大缓冲区使用CPU复制: 大小=0x{size:X}, 源=0x{srcAddress:X}, 目标=0x{dstAddress:X}");
+                try
+                {
+                    var srcData = memoryManager.GetSpan(srcAddress, (int)size);
+                    memoryManager.Write(dstAddress, srcData);
+                    Logger.Debug?.Print(LogClass.Gpu, $"CPU复制完成: 大小=0x{size:X}");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error?.Print(LogClass.Gpu, $"CPU复制失败: {ex.Message}");
+                }
                 return;
             }
+
+            Buffer srcBuffer = GetBuffer(srcAddress, size, BufferStage.Copy);
+            Buffer dstBuffer = GetBuffer(dstAddress, size, BufferStage.Copy);
 
             int srcOffset = (int)(srcAddress - srcBuffer.Address);
             int dstOffset = (int)(dstAddress - dstBuffer.Address);
@@ -960,6 +887,22 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="value">Value to be written into the buffer</param>
         public void ClearBuffer(MemoryManager memoryManager, ulong gpuVa, ulong size, uint value)
         {
+            // 检查缓冲区大小，如果超过阈值则使用CPU清除
+            if (size > LargeBufferThreshold)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, $"大缓冲区使用CPU清除: 大小=0x{size:X}, VA=0x{gpuVa:X}");
+                try
+                {
+                    memoryManager.Physical.FillTrackedResource(gpuVa, size, value, ResourceKind.Buffer);
+                    Logger.Debug?.Print(LogClass.Gpu, $"CPU清除完成: 大小=0x{size:X}");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error?.Print(LogClass.Gpu, $"CPU清除失败: {ex.Message}");
+                }
+                return;
+            }
+
             MultiRange range = TranslateAndCreateMultiBuffersPhysicalOnly(memoryManager, gpuVa, size, BufferStage.Copy);
 
             for (int index = 0; index < range.Count; index++)
