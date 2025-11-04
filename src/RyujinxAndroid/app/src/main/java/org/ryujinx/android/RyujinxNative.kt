@@ -97,6 +97,8 @@ interface RyujinxNativeJna : Library {
     fun setScalingFilterLevel(level: Int)
     // 添加设置抗锯齿的方法
     fun setAntiAliasing(mode: Int)
+    // 添加设置色彩空间直通的方法
+    fun setColorSpacePassthrough(enabled: Boolean)
     // 添加设置内存配置的方法
     fun setMemoryConfiguration(memoryConfiguration: Int)
     // 添加设置系统时间偏移的方法
@@ -255,14 +257,14 @@ class RyujinxNative {
                 val newWatermark = NativeHelpers.instance.getStringJava(newWatermarkPointer)
                 val newSubtitle = NativeHelpers.instance.getStringJava(newSubtitlePointer)
                 val newInitialText = NativeHelpers.instance.getStringJava(newInitialTextPointer)
-                val newMode = KeyboardMode.entries[nMode]
+                // 移除对 KeyboardMode 的引用，保持原有逻辑
                 update(newTitle,
                     newMessage,
                     newWatermark,
                     newType,
                     min,
                     max,
-                    newMode,
+                    nMode,
                     newSubtitle,
                     newInitialText);
             }
@@ -309,6 +311,12 @@ class RyujinxNative {
         @JvmStatic
         fun setAntiAliasing(mode: Int) {
             jnaInstance.setAntiAliasing(mode)
+        }
+        
+        // 添加设置色彩空间直通的静态方法
+        @JvmStatic
+        fun setColorSpacePassthrough(enabled: Boolean) {
+            jnaInstance.setColorSpacePassthrough(enabled)
         }
         
         // 添加设置内存配置的静态方法
