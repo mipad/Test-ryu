@@ -230,6 +230,9 @@ class SettingViews {
             val surfaceFormat = remember { mutableStateOf(-1) }
             val surfaceColorSpace = remember { mutableStateOf(-1) }
 
+            // 新增：Enable Color Space Passthrough 状态变量
+            val enableColorSpacePassthrough = remember { mutableStateOf(false) }
+
             if (!loaded.value) {
                 settingsViewModel.initializeState(
                     memoryManagerMode,  // 修改：传递memoryManagerMode参数
@@ -273,7 +276,9 @@ class SettingViews {
                     // 新增：表面格式相关参数
                     customSurfaceFormatEnabled,
                     surfaceFormat,
-                    surfaceColorSpace
+                    surfaceColorSpace,
+                    // 新增：Enable Color Space Passthrough 参数
+                    enableColorSpacePassthrough
                 )
                 
                 // 修改：直接从MainViewModel获取已保存的表面格式列表，不重新获取
@@ -349,7 +354,9 @@ class SettingViews {
                                     // 新增：表面格式相关参数
                                     customSurfaceFormatEnabled,
                                     surfaceFormat,
-                                    surfaceColorSpace
+                                    surfaceColorSpace,
+                                    // 新增：Enable Color Space Passthrough 参数
+                                    enableColorSpacePassthrough
                                 )
                                 settingsViewModel.navController.popBackStack()
                             }) {
@@ -2025,6 +2032,34 @@ Row(
     )
 }
 
+// 新增：Enable Color Space Passthrough 设置
+Row(
+    modifier = Modifier
+        .fillMaxWidth()
+        .padding(8.dp),
+    horizontalArrangement = Arrangement.SpaceBetween,
+    verticalAlignment = Alignment.CenterVertically
+) {
+    Column(
+        modifier = Modifier.weight(1f)
+    ) {
+        Text(text = "Enable Color Space Passthrough")
+        Text(
+            text = "Bypass color space conversion for HDR displays",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+        )
+    }
+    Switch(
+        checked = enableColorSpacePassthrough.value,
+        onCheckedChange = {
+            enableColorSpacePassthrough.value = it
+            // 立即应用设置
+            RyujinxNative.setColorSpacePassthrough(it)
+        }
+    )
+}
+
 // 内存配置选择对话框
 if (showMemoryConfigDialog.value) {
     BasicAlertDialog(
@@ -2605,7 +2640,9 @@ if (showMemoryConfigDialog.value) {
                         // 新增：表面格式相关参数
                         customSurfaceFormatEnabled,
                         surfaceFormat,
-                        surfaceColorSpace
+                        surfaceColorSpace,
+                        // 新增：Enable Color Space Passthrough 参数
+                        enableColorSpacePassthrough
                     )
                     settingsViewModel.navController.popBackStack()
                 }
