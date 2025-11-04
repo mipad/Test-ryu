@@ -90,7 +90,9 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         // 新增：表面格式相关参数
         customSurfaceFormatEnabled: MutableState<Boolean>,
         surfaceFormat: MutableState<Int>,
-        surfaceColorSpace: MutableState<Int>
+        surfaceColorSpace: MutableState<Int>,
+        // 新增：Enable Color Space Passthrough 参数
+        enableColorSpacePassthrough: MutableState<Boolean>
     ) {
 
         memoryManagerMode.value = sharedPref.getInt("memoryManagerMode", 2)  // 默认使用HostMappedUnsafe
@@ -135,12 +137,18 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         surfaceFormat.value = sharedPref.getInt("surfaceFormat", -1)
         surfaceColorSpace.value = sharedPref.getInt("surfaceColorSpace", -1)
         
+        // 初始化 Enable Color Space Passthrough
+        enableColorSpacePassthrough.value = sharedPref.getBoolean("enableColorSpacePassthrough", false)
+        
         // 如果之前保存了自定义表面格式，则恢复设置
         if (customSurfaceFormatEnabled.value && surfaceFormat.value != -1 && surfaceColorSpace.value != -1) {
             RyujinxNative.setCustomSurfaceFormat(surfaceFormat.value, surfaceColorSpace.value)
         } else {
             RyujinxNative.clearCustomSurfaceFormat()
         }
+
+        // 设置色彩空间直通
+        RyujinxNative.setColorSpacePassthrough(enableColorSpacePassthrough.value)
 
         enableDebugLogs.value = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs.value = sharedPref.getBoolean("enableStubLogs", false)
@@ -199,7 +207,9 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         // 新增：表面格式相关参数
         customSurfaceFormatEnabled: MutableState<Boolean>,
         surfaceFormat: MutableState<Int>,
-        surfaceColorSpace: MutableState<Int>
+        surfaceColorSpace: MutableState<Int>,
+        // 新增：Enable Color Space Passthrough 参数
+        enableColorSpacePassthrough: MutableState<Boolean>
     ) {
         val editor = sharedPref.edit()
 
@@ -242,6 +252,9 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         editor.putBoolean("customSurfaceFormatEnabled", customSurfaceFormatEnabled.value)
         editor.putInt("surfaceFormat", surfaceFormat.value)
         editor.putInt("surfaceColorSpace", surfaceColorSpace.value)
+
+        // 保存 Enable Color Space Passthrough
+        editor.putBoolean("enableColorSpacePassthrough", enableColorSpacePassthrough.value)
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs.value)
         editor.putBoolean("enableStubLogs", enableStubLogs.value)
@@ -307,6 +320,9 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         } else {
             RyujinxNative.clearCustomSurfaceFormat()
         }
+
+        // 设置色彩空间直通
+        RyujinxNative.setColorSpacePassthrough(enableColorSpacePassthrough.value)
 
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Debug.ordinal, enableDebugLogs.value)
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Info.ordinal, enableInfoLogs.value)

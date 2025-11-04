@@ -48,6 +48,9 @@ class QuickSettings(val activity: Activity) {
     var surfaceFormat: Int // 表面格式值
     var surfaceColorSpace: Int // 颜色空间值
 
+    // 新增：Enable Color Space Passthrough
+    var enableColorSpacePassthrough: Boolean
+
     // Logs
     var enableDebugLogs: Boolean
     var enableStubLogs: Boolean
@@ -104,6 +107,9 @@ class QuickSettings(val activity: Activity) {
         surfaceFormat = sharedPref.getInt("surfaceFormat", -1)
         surfaceColorSpace = sharedPref.getInt("surfaceColorSpace", -1)
 
+        // 初始化 Enable Color Space Passthrough
+        enableColorSpacePassthrough = sharedPref.getBoolean("enableColorSpacePassthrough", false)
+
         enableDebugLogs = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs = sharedPref.getBoolean("enableStubLogs", false)
         enableInfoLogs = sharedPref.getBoolean("enableInfoLogs", true)
@@ -158,6 +164,9 @@ class QuickSettings(val activity: Activity) {
         editor.putBoolean("customSurfaceFormatEnabled", customSurfaceFormatEnabled)
         editor.putInt("surfaceFormat", surfaceFormat)
         editor.putInt("surfaceColorSpace", surfaceColorSpace)
+
+        // 保存 Enable Color Space Passthrough
+        editor.putBoolean("enableColorSpacePassthrough", enableColorSpacePassthrough)
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs)
         editor.putBoolean("enableStubLogs", enableStubLogs)
