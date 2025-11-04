@@ -4,6 +4,7 @@ using Silk.NET.Vulkan;
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;  // 添加这行
 using VkBuffer = Silk.NET.Vulkan.Buffer;
 using VkFormat = Silk.NET.Vulkan.Format;
 
@@ -83,12 +84,12 @@ namespace Ryujinx.Graphics.Vulkan
 
         public MemoryRequirements HostImportedBufferMemoryRequirements { get; }
 
-        // 新增：内存压力阈值和智能分配策略
+        // 内存压力阈值和智能分配策略
         private const long MemoryPressureThreshold = 1024L * 1024 * 1024 * 2; // 2GB
         private const long CriticalMemoryThreshold = 1024L * 1024 * 1024 * 1; // 1GB
         private const long LargeBufferThreshold = 100 * 1024 * 1024; // 100MB以上的缓冲区视为大缓冲区
 
-        // 新增：性能统计
+        // 性能统计
         private int _totalCreationAttempts = 0;
         private int _successfulCreations = 0;
         private int _fallbackCreations = 0;
@@ -104,7 +105,7 @@ namespace Ryujinx.Graphics.Vulkan
             Logger.Info?.Print(LogClass.Gpu, "BufferManager initialized with smart memory management");
         }
 
-        // 新增：智能内存检查方法
+        // 智能内存检查方法
         private MemoryCheckResult CheckMemoryPressure(VulkanRenderer gd, int requestedSize, BufferAllocationType requestedType)
         {
             long totalAllocated = BufferHolder.GetTotalAllocatedMemory();
@@ -151,7 +152,7 @@ namespace Ryujinx.Graphics.Vulkan
             };
         }
 
-        // 新增：根据内存压力推荐缓冲区类型
+        // 根据内存压力推荐缓冲区类型
         private BufferAllocationType GetRecommendedBufferType(BufferAllocationType requested, MemoryPressureLevel pressure, bool isLarge, bool recentFailures)
         {
             if (recentFailures)
@@ -183,7 +184,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        // 新增：尝试清理内存的方法
+        // 尝试清理内存的方法
         private bool TryFreeMemory(VulkanRenderer gd, int requiredSize, bool aggressive = false)
         {
             Logger.Warning?.Print(LogClass.Gpu, 
@@ -198,10 +199,9 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     GC.Collect(2, GCCollectionMode.Forced, true);
                     GC.WaitForPendingFinalizers();
-                    GC.WaitForFullGCComplete();
                     
                     // 给系统一些时间处理
-                    if (i < 2) Thread.Sleep(50);
+                    if (i < 2) System.Threading.Thread.Sleep(50);  // 使用完全限定名
                 }
             }
             else
@@ -235,7 +235,7 @@ namespace Ryujinx.Graphics.Vulkan
             return success;
         }
 
-        // 新增：性能统计方法
+        // 性能统计方法
         public void LogPerformanceStats()
         {
             double successRate = _totalCreationAttempts > 0 ? 
@@ -880,7 +880,7 @@ namespace Ryujinx.Graphics.Vulkan
             return _buffers.TryGetValue((int)Unsafe.As<BufferHandle, ulong>(ref handle), out holder);
         }
 
-        // 新增：获取内存统计信息
+        // 获取内存统计信息
         public (long TotalAllocated, int BufferCount, int Failures, int Fallbacks) GetMemoryStatistics()
         {
             return (BufferHolder.GetTotalAllocatedMemory(), BufferCount, 
@@ -913,7 +913,7 @@ namespace Ryujinx.Graphics.Vulkan
         }
     }
 
-    // 新增：内存检查结果结构
+    // 内存检查结果结构
     internal struct MemoryCheckResult
     {
         public MemoryPressureLevel PressureLevel { get; set; }
@@ -922,7 +922,7 @@ namespace Ryujinx.Graphics.Vulkan
         public bool RequiresGarbageCollection { get; set; }
     }
 
-    // 新增：内存压力等级
+    // 内存压力等级
     internal enum MemoryPressureLevel
     {
         Low = 0,
