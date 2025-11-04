@@ -4,7 +4,6 @@ using Silk.NET.Vulkan;
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading;  // 添加这行
 using VkBuffer = Silk.NET.Vulkan.Buffer;
 using VkFormat = Silk.NET.Vulkan.Format;
 
@@ -84,10 +83,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         public MemoryRequirements HostImportedBufferMemoryRequirements { get; }
 
-        // 内存压力阈值和智能分配策略
-        private const long MemoryPressureThreshold = 1024L * 1024 * 1024 * 2; // 2GB
-        private const long CriticalMemoryThreshold = 1024L * 1024 * 1024 * 1; // 1GB
-        private const long LargeBufferThreshold = 100 * 1024 * 1024; // 100MB以上的缓冲区视为大缓冲区
+        // 简化的内存压力阈值
+        private const long LargeBufferThreshold = 50 * 1024 * 1024; // 50MB以上的缓冲区视为大缓冲区
 
         // 性能统计
         private int _totalCreationAttempts = 0;
@@ -102,114 +99,70 @@ namespace Ryujinx.Graphics.Vulkan
 
             HostImportedBufferMemoryRequirements = GetHostImportedUsageRequirements(gd);
             
-            Logger.Info?.Print(LogClass.Gpu, "BufferManager initialized with smart memory management");
+            Logger.Info?.Print(LogClass.Gpu, "BufferManager initialized with optimized memory management");
         }
 
-        // 智能内存检查方法
+        // 简化的内存检查方法
         private MemoryCheckResult CheckMemoryPressure(VulkanRenderer gd, int requestedSize, BufferAllocationType requestedType)
         {
             long totalAllocated = BufferHolder.GetTotalAllocatedMemory();
             long availableEstimate = BufferHolder.GetAvailableMemoryEstimate(gd);
-            int failureCount = BufferHolder.GetAllocationFailureCount();
             
-            // 计算内存压力等级
+            // 简化的压力计算
+            bool isLargeBuffer = requestedSize > LargeBufferThreshold;
+            bool hasRecentFailures = BufferHolder.GetAllocationFailureCount() > 0;
+            
             MemoryPressureLevel pressureLevel = MemoryPressureLevel.Low;
-            long estimatedUsage = totalAllocated + requestedSize;
             
-            if (estimatedUsage > availableEstimate)
-            {
-                pressureLevel = MemoryPressureLevel.Critical;
-            }
-            else if (estimatedUsage > availableEstimate * 0.8)
+            // 如果请求的大小超过可用内存的50%，则认为压力高
+            if (requestedSize > availableEstimate * 0.5)
             {
                 pressureLevel = MemoryPressureLevel.High;
             }
-            else if (estimatedUsage > availableEstimate * 0.6)
+            else if (requestedSize > availableEstimate * 0.3)
             {
                 pressureLevel = MemoryPressureLevel.Medium;
             }
-            
-            // 检查是否为大缓冲区
-            bool isLargeBuffer = requestedSize > LargeBufferThreshold;
-            
-            // 根据失败次数调整策略
-            bool recentFailures = failureCount > 5;
-            
+
             Logger.Debug?.Print(LogClass.Gpu, 
                 $"Memory Check - Allocated: 0x{totalAllocated:X}, " +
                 $"Requested: 0x{requestedSize:X}, " +
                 $"Available: 0x{availableEstimate:X}, " +
                 $"Pressure: {pressureLevel}, " +
-                $"Large: {isLargeBuffer}, " +
-                $"Failures: {failureCount}");
+                $"Large: {isLargeBuffer}");
 
             return new MemoryCheckResult
             {
                 PressureLevel = pressureLevel,
-                ShouldProceed = pressureLevel < MemoryPressureLevel.Critical,
-                RecommendedType = GetRecommendedBufferType(requestedType, pressureLevel, isLargeBuffer, recentFailures),
-                RequiresGarbageCollection = pressureLevel >= MemoryPressureLevel.High || recentFailures
+                ShouldProceed = true, // 总是尝试创建，让回退机制处理失败
+                RecommendedType = GetRecommendedBufferType(requestedType, pressureLevel, isLargeBuffer, hasRecentFailures),
+                RequiresGarbageCollection = pressureLevel >= MemoryPressureLevel.High && hasRecentFailures
             };
         }
 
-        // 根据内存压力推荐缓冲区类型
-        private BufferAllocationType GetRecommendedBufferType(BufferAllocationType requested, MemoryPressureLevel pressure, bool isLarge, bool recentFailures)
+        // 简化的缓冲区类型推荐
+        private BufferAllocationType GetRecommendedBufferType(BufferAllocationType requested, MemoryPressureLevel pressure, bool isLarge, bool hasRecentFailures)
         {
-            if (recentFailures)
+            // 对于大缓冲区或有失败记录的情况，使用更保守的策略
+            if (isLarge || hasRecentFailures)
             {
-                // 如果有最近的失败，使用最保守的策略
-                return BufferAllocationType.HostMappedNoCache;
+                return BufferAllocationType.HostMapped;
             }
             
-            switch (pressure)
-            {
-                case MemoryPressureLevel.Critical:
-                    return BufferAllocationType.HostMappedNoCache;
-                    
-                case MemoryPressureLevel.High:
-                    if (isLarge)
-                        return BufferAllocationType.HostMapped;
-                    else
-                        return requested;
-                    
-                case MemoryPressureLevel.Medium:
-                    if (isLarge && requested == BufferAllocationType.DeviceLocal)
-                        return BufferAllocationType.HostMapped;
-                    else
-                        return requested;
-                    
-                case MemoryPressureLevel.Low:
-                default:
-                    return requested;
-            }
+            return requested;
         }
 
-        // 尝试清理内存的方法
-        private bool TryFreeMemory(VulkanRenderer gd, int requiredSize, bool aggressive = false)
+        // 简化的内存清理方法
+        private bool TryFreeMemory(VulkanRenderer gd, int requiredSize)
         {
-            Logger.Warning?.Print(LogClass.Gpu, 
-                $"Attempting to free memory, required: 0x{requiredSize:X}, aggressive: {aggressive}");
+            Logger.Info?.Print(LogClass.Gpu, 
+                $"Attempting to free memory, required: 0x{requiredSize:X}");
 
             long memoryBefore = BufferHolder.GetTotalAllocatedMemory();
             
-            if (aggressive)
-            {
-                // 激进模式：多次GC和延迟以充分清理
-                for (int i = 0; i < 3; i++)
-                {
-                    GC.Collect(2, GCCollectionMode.Forced, true);
-                    GC.WaitForPendingFinalizers();
-                    
-                    // 给系统一些时间处理
-                    if (i < 2) System.Threading.Thread.Sleep(50);  // 使用完全限定名
-                }
-            }
-            else
-            {
-                // 普通模式：单次GC
-                GC.Collect(2, GCCollectionMode.Forced, true);
-                GC.WaitForPendingFinalizers();
-            }
+            // 单次GC，避免过于激进
+            GC.Collect(2, GCCollectionMode.Forced, true);
+            GC.WaitForPendingFinalizers();
             
             long memoryAfter = BufferHolder.GetTotalAllocatedMemory();
             long freed = memoryBefore - memoryAfter;
@@ -218,9 +171,7 @@ namespace Ryujinx.Graphics.Vulkan
                 $"Memory cleanup freed 0x{freed:X} bytes " +
                 $"(before: 0x{memoryBefore:X}, after: 0x{memoryAfter:X})");
 
-            // 检查是否释放了足够的内存
-            long currentAvailable = BufferHolder.GetAvailableMemoryEstimate(gd);
-            bool success = currentAvailable >= requiredSize;
+            bool success = freed > 0; // 只要释放了一些内存就认为是成功的
             
             if (success)
             {
@@ -228,8 +179,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else
             {
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Memory cleanup insufficient. Available: 0x{currentAvailable:X}, Required: 0x{requiredSize:X}");
+                Logger.Warning?.Print(LogClass.Gpu, "Memory cleanup did not free any memory");
             }
             
             return success;
@@ -410,26 +360,18 @@ namespace Ryujinx.Graphics.Vulkan
         {
             _totalCreationAttempts++;
             
-            // 智能内存压力检查
+            // 简化的内存压力检查
             var memoryCheck = CheckMemoryPressure(gd, size, baseType);
             
             if (memoryCheck.RequiresGarbageCollection)
             {
                 Logger.Info?.Print(LogClass.Gpu, "Memory pressure detected, performing garbage collection...");
-                TryFreeMemory(gd, size, memoryCheck.PressureLevel == MemoryPressureLevel.Critical);
+                TryFreeMemory(gd, size);
             }
             
             // 使用推荐的缓冲区类型
             BufferAllocationType recommendedType = memoryCheck.RecommendedType;
             
-            if (!memoryCheck.ShouldProceed)
-            {
-                Logger.Error?.Print(LogClass.Gpu, 
-                    $"Memory pressure too high, aborting buffer creation. Size: 0x{size:X}, Type: {baseType}");
-                holder = null;
-                return BufferHandle.Null;
-            }
-
             // 使用回退策略创建缓冲区
             BufferAllocationType actualType;
             holder = BufferHolder.CreateWithFallback(gd, _device, size, recommendedType, out actualType);
@@ -457,7 +399,7 @@ namespace Ryujinx.Graphics.Vulkan
                 ulong handle64 = (uint)_buffers.Add(holder);
 
                 // 定期记录性能统计
-                if (_totalCreationAttempts % 100 == 0)
+                if (_totalCreationAttempts % 50 == 0) // 减少记录频率
                 {
                     LogPerformanceStats();
                 }
@@ -481,25 +423,13 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else
             {
-                // 创建临时缓冲区前的内存检查
-                var memoryCheck = CheckMemoryPressure(gd, size, BufferAllocationType.HostMapped);
-                
-                if (memoryCheck.RequiresGarbageCollection)
-                {
-                    TryFreeMemory(gd, size, false);
-                }
-                
-                if (!memoryCheck.ShouldProceed)
-                {
-                    Logger.Error?.Print(LogClass.Gpu, 
-                        $"Cannot create temporary buffer due to memory pressure. Size: 0x{size:X}");
-                    return default;
-                }
-
+                // 简化的临时缓冲区创建
                 BufferHandle handle = CreateWithHandle(gd, size, out BufferHolder holder);
 
                 if (handle == BufferHandle.Null)
                 {
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        $"Failed to create temporary buffer. Size: 0x{size:X}");
                     return default;
                 }
 
@@ -927,7 +857,6 @@ namespace Ryujinx.Graphics.Vulkan
     {
         Low = 0,
         Medium = 1,
-        High = 2,
-        Critical = 3
+        High = 2
     }
 }
