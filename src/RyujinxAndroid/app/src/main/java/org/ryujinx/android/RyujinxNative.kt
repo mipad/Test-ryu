@@ -257,14 +257,14 @@ class RyujinxNative {
                 val newWatermark = NativeHelpers.instance.getStringJava(newWatermarkPointer)
                 val newSubtitle = NativeHelpers.instance.getStringJava(newSubtitlePointer)
                 val newInitialText = NativeHelpers.instance.getStringJava(newInitialTextPointer)
-                // 移除对 KeyboardMode 的引用，保持原有逻辑
+                val newMode = KeyboardMode.entries[nMode]
                 update(newTitle,
                     newMessage,
                     newWatermark,
                     newType,
                     min,
                     max,
-                    nMode,
+                    newMode,
                     newSubtitle,
                     newInitialText);
             }
