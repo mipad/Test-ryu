@@ -1,937 +1,766 @@
-using Ryujinx.Common;
-using Ryujinx.Graphics.GAL;
+using Ryujinx.Common.Memory;
 using Ryujinx.Graphics.Gpu.Image;
-using Ryujinx.Graphics.Gpu.Shader;
-using Ryujinx.Graphics.Shader;
+using Ryujinx.Memory;
 using Ryujinx.Memory.Range;
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Ryujinx.Graphics.Gpu.Memory
 {
     /// <summary>
-    /// Buffer manager.
+    /// GPU memory manager.
     /// </summary>
-    class BufferManager
+    public class MemoryManager : IWritableBlock
     {
-        private readonly GpuContext _context;
-        private readonly GpuChannel _channel;
+        private const int PtLvl0Bits = 14;
+        private const int PtLvl1Bits = 14;
+        public const int PtPageBits = 12;
 
-        private int _unalignedStorageBuffers;
-        public bool HasUnalignedStorageBuffers => _unalignedStorageBuffers > 0;
+        private const ulong PtLvl0Size = 1UL << PtLvl0Bits;
+        private const ulong PtLvl1Size = 1UL << PtLvl1Bits;
+        public const ulong PageSize = 1UL << PtPageBits;
 
-        public bool HasTransformFeedbackOutputs { get; set; }
+        private const ulong PtLvl0Mask = PtLvl0Size - 1;
+        private const ulong PtLvl1Mask = PtLvl1Size - 1;
+        public const ulong PageMask = PageSize - 1;
 
-        private IndexBuffer _indexBuffer;
-        private readonly VertexBuffer[] _vertexBuffers;
-        private readonly BufferBounds[] _transformFeedbackBuffers;
-        private readonly List<BufferTextureBinding> _bufferTextures;
-        private readonly List<BufferTextureArrayBinding<ITextureArray>> _bufferTextureArrays;
-        private readonly List<BufferTextureArrayBinding<IImageArray>> _bufferImageArrays;
-        private readonly BufferAssignment[] _ranges;
+        private const int PtLvl0Bit = PtPageBits + PtLvl1Bits;
+        private const int PtLvl1Bit = PtPageBits;
+        private const int AddressSpaceBits = PtPageBits + PtLvl1Bits + PtLvl0Bits;
+
+        public const ulong PteUnmapped = ulong.MaxValue;
+
+        private readonly PageMemoryManager _pageManager;
+        private readonly ulong[][] _pageTable;
+
+        public event EventHandler<UnmapEventArgs> MemoryUnmapped;
 
         /// <summary>
-        /// Holds shader stage buffer state and binding information.
+        /// Physical memory where the virtual memory is mapped into.
         /// </summary>
-        private class BuffersPerStage
+        internal PhysicalMemory Physical { get; }
+
+        /// <summary>
+        /// Virtual range cache.
+        /// </summary>
+        internal VirtualRangeCache VirtualRangeCache { get; }
+
+        /// <summary>
+        /// Cache of GPU counters.
+        /// </summary>
+        internal CounterCache CounterCache { get; }
+        
+        private delegate void WriteCallback(ulong address, ReadOnlySpan<byte> data);
+
+        private WriteCallback _write;
+        private WriteCallback _writeTrackedResource;
+        private WriteCallback _writeUntracked;
+
+        /// <summary>
+        /// Creates a new instance of the GPU memory manager.
+        /// </summary>
+        /// <param name="physicalMemory">Physical memory that this memory manager will map into</param>
+        /// <param name="cpuMemorySize">The amount of physical CPU Memory Avaiable on the device.</param>
+        internal MemoryManager(PhysicalMemory physicalMemory, ulong cpuMemorySize)
         {
-            /// <summary>
-            /// Shader buffer binding information.
-            /// </summary>
-            public BufferDescriptor[] Bindings { get; private set; }
+            Physical = physicalMemory;
+            _write = physicalMemory.Write;
+            _writeTrackedResource = physicalMemory.WriteTrackedResource;
+            _writeUntracked = physicalMemory.WriteUntracked;
 
-            /// <summary>
-            /// Buffer regions.
-            /// </summary>
-            public BufferBounds[] Buffers { get; }
+            _pageManager = new PageMemoryManager(1UL << AddressSpaceBits);
+            VirtualRangeCache = new VirtualRangeCache(this);
+            CounterCache = new CounterCache();
+            _pageTable = new ulong[PtLvl0Size][];
+            MemoryUnmapped += Physical.TextureCache.MemoryUnmappedHandler;
+            MemoryUnmapped += Physical.BufferCache.MemoryUnmappedHandler;
+            MemoryUnmapped += VirtualRangeCache.MemoryUnmappedHandler;
+            MemoryUnmapped += CounterCache.MemoryUnmappedHandler;
+            Physical.TextureCache.Initialize(cpuMemorySize);
+        }
 
-            /// <summary>
-            /// Flag indicating if this binding is unaligned.
-            /// </summary>
-            public bool[] Unaligned { get; }
+        /// <summary>
+        /// Reads data from GPU mapped memory.
+        /// </summary>
+        /// <typeparam name="T">Type of the data</typeparam>
+        /// <param name="va">GPU virtual address where the data is located</param>
+        /// <param name="tracked">True if read tracking is triggered on the memory region</param>
+        /// <returns>The data at the specified memory location</returns>
+        public T Read<T>(ulong va, bool tracked = false) where T : unmanaged
+        {
+            int size = Unsafe.SizeOf<T>();
 
-            /// <summary>
-            /// Total amount of buffers used on the shader.
-            /// </summary>
-            public int Count { get; private set; }
-
-            /// <summary>
-            /// Creates a new instance of the shader stage buffer information.
-            /// </summary>
-            /// <param name="count">Maximum amount of buffers that the shader stage can use</param>
-            public BuffersPerStage(int count)
+            if (IsContiguous(va, size))
             {
-                Bindings = new BufferDescriptor[count];
-                Buffers = new BufferBounds[count];
-                Unaligned = new bool[count];
+                ulong address = Translate(va);
 
-                Buffers.AsSpan().Fill(new BufferBounds(new MultiRange(MemoryManager.PteUnmapped, 0UL)));
-            }
-
-            /// <summary>
-            /// Sets the region of a buffer at a given slot.
-            /// </summary>
-            /// <param name="index">Buffer slot</param>
-            /// <param name="range">Physical memory regions where the buffer is mapped</param>
-            /// <param name="flags">Buffer usage flags</param>
-            public void SetBounds(int index, MultiRange range, BufferUsageFlags flags = BufferUsageFlags.None)
-            {
-                Buffers[index] = new BufferBounds(range, flags);
-            }
-
-            /// <summary>
-            /// Sets shader buffer binding information.
-            /// </summary>
-            /// <param name="descriptors">Buffer binding information</param>
-            public void SetBindings(BufferDescriptor[] descriptors)
-            {
-                if (descriptors == null)
+                if (tracked)
                 {
-                    Count = 0;
-                    return;
+                    return Physical.ReadTracked<T>(address);
                 }
-
-                if ((Count = descriptors.Length) != 0)
+                else
                 {
-                    Bindings = descriptors;
+                    return Physical.Read<T>(address);
                 }
-            }
-        }
-
-        private readonly BuffersPerStage _cpStorageBuffers;
-        private readonly BuffersPerStage _cpUniformBuffers;
-        private readonly BuffersPerStage[] _gpStorageBuffers;
-        private readonly BuffersPerStage[] _gpUniformBuffers;
-
-        private bool _gpStorageBuffersDirty;
-        private bool _gpUniformBuffersDirty;
-
-        private bool _indexBufferDirty;
-        private bool _vertexBuffersDirty;
-        private uint _vertexBuffersEnableMask;
-        private bool _transformFeedbackBuffersDirty;
-
-        private bool _rebind;
-
-        /// <summary>
-        /// Creates a new instance of the buffer manager.
-        /// </summary>
-        /// <param name="context">GPU context that the buffer manager belongs to</param>
-        /// <param name="channel">GPU channel that the buffer manager belongs to</param>
-        public BufferManager(GpuContext context, GpuChannel channel)
-        {
-            _context = context;
-            _channel = channel;
-
-            _indexBuffer.Range = new MultiRange(MemoryManager.PteUnmapped, 0UL);
-            _vertexBuffers = new VertexBuffer[Constants.TotalVertexBuffers];
-
-            _transformFeedbackBuffers = new BufferBounds[Constants.TotalTransformFeedbackBuffers];
-
-            _cpStorageBuffers = new BuffersPerStage(Constants.TotalCpStorageBuffers);
-            _cpUniformBuffers = new BuffersPerStage(Constants.TotalCpUniformBuffers);
-
-            _gpStorageBuffers = new BuffersPerStage[Constants.ShaderStages];
-            _gpUniformBuffers = new BuffersPerStage[Constants.ShaderStages];
-
-            for (int index = 0; index < Constants.ShaderStages; index++)
-            {
-                _gpStorageBuffers[index] = new BuffersPerStage(Constants.TotalGpStorageBuffers);
-                _gpUniformBuffers[index] = new BuffersPerStage(Constants.TotalGpUniformBuffers);
-            }
-
-            _bufferTextures = new List<BufferTextureBinding>();
-            _bufferTextureArrays = new List<BufferTextureArrayBinding<ITextureArray>>();
-            _bufferImageArrays = new List<BufferTextureArrayBinding<IImageArray>>();
-
-            _ranges = new BufferAssignment[Constants.TotalGpUniformBuffers * Constants.ShaderStages];
-        }
-
-        /// <summary>
-        /// Sets the memory range with the index buffer data, to be used for subsequent draw calls.
-        /// </summary>
-        /// <param name="gpuVa">Start GPU virtual address of the index buffer</param>
-        /// <param name="size">Size, in bytes, of the index buffer</param>
-        /// <param name="type">Type of each index buffer element</param>
-        public void SetIndexBuffer(ulong gpuVa, ulong size, IndexType type)
-        {
-            MultiRange range = _channel.MemoryManager.Physical.BufferCache.TranslateAndCreateBuffer(_channel.MemoryManager, gpuVa, size, BufferStage.IndexBuffer);
-
-            _indexBuffer.Range = range;
-            _indexBuffer.Type = type;
-
-            _indexBufferDirty = true;
-        }
-
-        /// <summary>
-        /// Sets a new index buffer that overrides the one set on the call to <see cref="CommitGraphicsBindings"/>.
-        /// </summary>
-        /// <param name="buffer">Buffer to be used as index buffer</param>
-        /// <param name="type">Type of each index buffer element</param>
-        public void SetIndexBuffer(BufferRange buffer, IndexType type)
-        {
-            _context.Renderer.Pipeline.SetIndexBuffer(buffer, type);
-
-            _indexBufferDirty = true;
-        }
-
-        /// <summary>
-        /// Sets the memory range with vertex buffer data, to be used for subsequent draw calls.
-        /// </summary>
-        /// <param name="index">Index of the vertex buffer (up to 16)</param>
-        /// <param name="gpuVa">GPU virtual address of the buffer</param>
-        /// <param name="size">Size in bytes of the buffer</param>
-        /// <param name="stride">Stride of the buffer, defined as the number of bytes of each vertex</param>
-        /// <param name="divisor">Vertex divisor of the buffer, for instanced draws</param>
-        public void SetVertexBuffer(int index, ulong gpuVa, ulong size, int stride, int divisor)
-        {
-            MultiRange range = _channel.MemoryManager.Physical.BufferCache.TranslateAndCreateBuffer(_channel.MemoryManager, gpuVa, size, BufferStage.VertexBuffer);
-
-            _vertexBuffers[index].Range = range;
-            _vertexBuffers[index].Stride = stride;
-            _vertexBuffers[index].Divisor = divisor;
-
-            _vertexBuffersDirty = true;
-
-            if (!range.IsUnmapped)
-            {
-                _vertexBuffersEnableMask |= 1u << index;
             }
             else
             {
-                _vertexBuffersEnableMask &= ~(1u << index);
+                Span<byte> data = new byte[size];
+
+                ReadImpl(va, data, tracked);
+
+                return MemoryMarshal.Cast<byte, T>(data)[0];
             }
         }
 
         /// <summary>
-        /// Sets a transform feedback buffer on the graphics pipeline.
-        /// The output from the vertex transformation stages are written into the feedback buffer.
+        /// Gets a read-only span of data from GPU mapped memory.
         /// </summary>
-        /// <param name="index">Index of the transform feedback buffer</param>
-        /// <param name="gpuVa">Start GPU virtual address of the buffer</param>
-        /// <param name="size">Size in bytes of the transform feedback buffer</param>
-        public void SetTransformFeedbackBuffer(int index, ulong gpuVa, ulong size)
+        /// <param name="va">GPU virtual address where the data is located</param>
+        /// <param name="size">Size of the data</param>
+        /// <param name="tracked">True if read tracking is triggered on the span</param>
+        /// <returns>The span of the data at the specified memory location</returns>
+        public ReadOnlySpan<byte> GetSpan(ulong va, int size, bool tracked = false)
         {
-            MultiRange range = _channel.MemoryManager.Physical.BufferCache.TranslateAndCreateMultiBuffers(_channel.MemoryManager, gpuVa, size, BufferStage.TransformFeedback);
-
-            _transformFeedbackBuffers[index] = new BufferBounds(range);
-            _transformFeedbackBuffersDirty = true;
-        }
-
-        /// <summary>
-        /// Records the alignment of a storage buffer.
-        /// Unaligned storage buffers disable some optimizations on the shader.
-        /// </summary>
-        /// <param name="buffers">The binding list to modify</param>
-        /// <param name="index">Index of the storage buffer</param>
-        /// <param name="gpuVa">Start GPU virtual address of the buffer</param>
-        private void RecordStorageAlignment(BuffersPerStage buffers, int index, ulong gpuVa)
-        {
-            bool unaligned = (gpuVa & ((ulong)_context.Capabilities.StorageBufferOffsetAlignment - 1)) != 0;
-
-            if (unaligned || HasUnalignedStorageBuffers)
+            if (IsContiguous(va, size))
             {
-                // Check if the alignment changed for this binding.
-
-                ref bool currentUnaligned = ref buffers.Unaligned[index];
-
-                if (currentUnaligned != unaligned)
-                {
-                    currentUnaligned = unaligned;
-                    _unalignedStorageBuffers += unaligned ? 1 : -1;
-                }
-            }
-        }
-
-        /// <summary>
-        /// Sets a storage buffer on the compute pipeline.
-        /// Storage buffers can be read and written to on shaders.
-        /// </summary>
-        /// <param name="index">Index of the storage buffer</param>
-        /// <param name="gpuVa">Start GPU virtual address of the buffer</param>
-        /// <param name="size">Size in bytes of the storage buffer</param>
-        /// <param name="flags">Buffer usage flags</param>
-        public void SetComputeStorageBuffer(int index, ulong gpuVa, ulong size, BufferUsageFlags flags)
-        {
-            size += gpuVa & ((ulong)_context.Capabilities.StorageBufferOffsetAlignment - 1);
-
-            RecordStorageAlignment(_cpStorageBuffers, index, gpuVa);
-
-            gpuVa = BitUtils.AlignDown<ulong>(gpuVa, (ulong)_context.Capabilities.StorageBufferOffsetAlignment);
-
-            MultiRange range = _channel.MemoryManager.Physical.BufferCache.TranslateAndCreateMultiBuffers(_channel.MemoryManager, gpuVa, size, BufferStageUtils.ComputeStorage(flags));
-
-            _cpStorageBuffers.SetBounds(index, range, flags);
-        }
-
-        /// <summary>
-        /// Sets a storage buffer on the graphics pipeline.
-        /// Storage buffers can be read and written to on shaders.
-        /// </summary>
-        /// <param name="stage">Index of the shader stage</param>
-        /// <param name="index">Index of the storage buffer</param>
-        /// <param name="gpuVa">Start GPU virtual address of the buffer</param>
-        /// <param name="size">Size in bytes of the storage buffer</param>
-        /// <param name="flags">Buffer usage flags</param>
-        public void SetGraphicsStorageBuffer(int stage, int index, ulong gpuVa, ulong size, BufferUsageFlags flags)
-        {
-            size += gpuVa & ((ulong)_context.Capabilities.StorageBufferOffsetAlignment - 1);
-
-            BuffersPerStage buffers = _gpStorageBuffers[stage];
-
-            RecordStorageAlignment(buffers, index, gpuVa);
-
-            gpuVa = BitUtils.AlignDown<ulong>(gpuVa, (ulong)_context.Capabilities.StorageBufferOffsetAlignment);
-
-            MultiRange range = _channel.MemoryManager.Physical.BufferCache.TranslateAndCreateMultiBuffers(_channel.MemoryManager, gpuVa, size, BufferStageUtils.GraphicsStorage(stage, flags));
-
-            if (!buffers.Buffers[index].Range.Equals(range))
-            {
-                _gpStorageBuffersDirty = true;
-            }
-
-            buffers.SetBounds(index, range, flags);
-        }
-
-        /// <summary>
-        /// Sets a uniform buffer on the compute pipeline.
-        /// Uniform buffers are read-only from shaders, and have a small capacity.
-        /// </summary>
-        /// <param name="index">Index of the uniform buffer</param>
-        /// <param name="gpuVa">Start GPU virtual address of the buffer</param>
-        /// <param name="size">Size in bytes of the storage buffer</param>
-        public void SetComputeUniformBuffer(int index, ulong gpuVa, ulong size)
-        {
-            MultiRange range = _channel.MemoryManager.Physical.BufferCache.TranslateAndCreateBuffer(_channel.MemoryManager, gpuVa, size, BufferStage.Compute);
-
-            _cpUniformBuffers.SetBounds(index, range);
-        }
-
-        /// <summary>
-        /// Sets a uniform buffer on the graphics pipeline.
-        /// Uniform buffers are read-only from shaders, and have a small capacity.
-        /// </summary>
-        /// <param name="stage">Index of the shader stage</param>
-        /// <param name="index">Index of the uniform buffer</param>
-        /// <param name="gpuVa">Start GPU virtual address of the buffer</param>
-        /// <param name="size">Size in bytes of the storage buffer</param>
-        public void SetGraphicsUniformBuffer(int stage, int index, ulong gpuVa, ulong size)
-        {
-            MultiRange range = _channel.MemoryManager.Physical.BufferCache.TranslateAndCreateBuffer(_channel.MemoryManager, gpuVa, size, BufferStageUtils.FromShaderStage(stage));
-
-            _gpUniformBuffers[stage].SetBounds(index, range);
-            _gpUniformBuffersDirty = true;
-        }
-
-        /// <summary>
-        /// Sets the number of vertices per instance on a instanced draw. Used for transform feedback emulation.
-        /// </summary>
-        /// <param name="vertexCount">Vertex count per instance</param>
-        public void SetInstancedDrawVertexCount(int vertexCount)
-        {
-            if (!_context.Capabilities.SupportsTransformFeedback && HasTransformFeedbackOutputs)
-            {
-                _context.SupportBufferUpdater.SetTfeVertexCount(vertexCount);
-                _context.SupportBufferUpdater.Commit();
-            }
-        }
-
-        /// <summary>
-        /// Forces transform feedback and storage buffers to be updated on the next draw.
-        /// </summary>
-        public void ForceTransformFeedbackAndStorageBuffersDirty()
-        {
-            _transformFeedbackBuffersDirty = true;
-            _gpStorageBuffersDirty = true;
-        }
-
-        /// <summary>
-        /// Sets the binding points for the storage buffers bound on the compute pipeline.
-        /// </summary>
-        /// <param name="bindings">Bindings for the active shader</param>
-        public void SetComputeBufferBindings(CachedShaderBindings bindings)
-        {
-            _cpStorageBuffers.SetBindings(bindings.StorageBufferBindings[0]);
-            _cpUniformBuffers.SetBindings(bindings.ConstantBufferBindings[0]);
-        }
-
-        /// <summary>
-        /// Sets the binding points for the storage buffers bound on the graphics pipeline.
-        /// </summary>
-        /// <param name="bindings">Bindings for the active shader</param>
-        public void SetGraphicsBufferBindings(CachedShaderBindings bindings)
-        {
-            for (int i = 0; i < Constants.ShaderStages; i++)
-            {
-                _gpStorageBuffers[i].SetBindings(bindings.StorageBufferBindings[i]);
-                _gpUniformBuffers[i].SetBindings(bindings.ConstantBufferBindings[i]);
-            }
-
-            _gpStorageBuffersDirty = true;
-            _gpUniformBuffersDirty = true;
-        }
-
-        /// <summary>
-        /// Gets a bit mask indicating which compute uniform buffers are currently bound.
-        /// </summary>
-        /// <returns>Mask where each bit set indicates a bound constant buffer</returns>
-        public uint GetComputeUniformBufferUseMask()
-        {
-            uint mask = 0;
-
-            for (int i = 0; i < _cpUniformBuffers.Buffers.Length; i++)
-            {
-                if (!_cpUniformBuffers.Buffers[i].IsUnmapped)
-                {
-                    mask |= 1u << i;
-                }
-            }
-
-            return mask;
-        }
-
-        /// <summary>
-        /// Gets a bit mask indicating which graphics uniform buffers are currently bound.
-        /// </summary>
-        /// <param name="stage">Index of the shader stage</param>
-        /// <returns>Mask where each bit set indicates a bound constant buffer</returns>
-        public uint GetGraphicsUniformBufferUseMask(int stage)
-        {
-            uint mask = 0;
-
-            for (int i = 0; i < _gpUniformBuffers[stage].Buffers.Length; i++)
-            {
-                if (!_gpUniformBuffers[stage].Buffers[i].IsUnmapped)
-                {
-                    mask |= 1u << i;
-                }
-            }
-
-            return mask;
-        }
-
-        /// <summary>
-        /// Gets the address of the compute uniform buffer currently bound at the given index.
-        /// </summary>
-        /// <param name="index">Index of the uniform buffer binding</param>
-        /// <returns>The uniform buffer address, or an undefined value if the buffer is not currently bound</returns>
-        public ulong GetComputeUniformBufferAddress(int index)
-        {
-            return _cpUniformBuffers.Buffers[index].Range.GetSubRange(0).Address;
-        }
-
-        /// <summary>
-        /// Gets the size of the compute uniform buffer currently bound at the given index.
-        /// </summary>
-        /// <param name="index">Index of the uniform buffer binding</param>
-        /// <returns>The uniform buffer size, or an undefined value if the buffer is not currently bound</returns>
-        public int GetComputeUniformBufferSize(int index)
-        {
-            return (int)_cpUniformBuffers.Buffers[index].Range.GetSubRange(0).Size;
-        }
-
-        /// <summary>
-        /// Gets the address of the graphics uniform buffer currently bound at the given index.
-        /// </summary>
-        /// <param name="stage">Index of the shader stage</param>
-        /// <param name="index">Index of the uniform buffer binding</param>
-        /// <returns>The uniform buffer address, or an undefined value if the buffer is not currently bound</returns>
-        public ulong GetGraphicsUniformBufferAddress(int stage, int index)
-        {
-            return _gpUniformBuffers[stage].Buffers[index].Range.GetSubRange(0).Address;
-        }
-
-        /// <summary>
-        /// Gets the size of the graphics uniform buffer currently bound at the given index.
-        /// </summary>
-        /// <param name="stage">Index of the shader stage</param>
-        /// <param name="index">Index of the uniform buffer binding</param>
-        /// <returns>The uniform buffer size, or an undefined value if the buffer is not currently bound</returns>
-        public int GetGraphicsUniformBufferSize(int stage, int index)
-        {
-            return (int)_gpUniformBuffers[stage].Buffers[index].Range.GetSubRange(0).Size;
-        }
-
-        /// <summary>
-        /// Gets the bounds of the uniform buffer currently bound at the given index.
-        /// </summary>
-        /// <param name="isCompute">Indicates whenever the uniform is requested by the 3D or compute engine</param>
-        /// <param name="stage">Index of the shader stage, if the uniform is for the 3D engine</param>
-        /// <param name="index">Index of the uniform buffer binding</param>
-        /// <returns>The uniform buffer bounds, or an undefined value if the buffer is not currently bound</returns>
-        public ref BufferBounds GetUniformBufferBounds(bool isCompute, int stage, int index)
-        {
-            if (isCompute)
-            {
-                return ref _cpUniformBuffers.Buffers[index];
+                return Physical.GetSpan(Translate(va), size, tracked);
             }
             else
             {
-                return ref _gpUniformBuffers[stage].Buffers[index];
+                Span<byte> data = new byte[size];
+
+                ReadImpl(va, data, tracked);
+
+                return data;
             }
         }
 
         /// <summary>
-        /// Ensures that the compute engine bindings are visible to the host GPU.
-        /// Note: this actually performs the binding using the host graphics API.
+        /// Gets a read-only span of data from GPU mapped memory, up to the entire range specified,
+        /// or the last mapped page if the range is not fully mapped.
         /// </summary>
-        public void CommitComputeBindings()
+        /// <param name="va">GPU virtual address where the data is located</param>
+        /// <param name="size">Size of the data</param>
+        /// <param name="tracked">True if read tracking is triggered on the span</param>
+        /// <returns>The span of the data at the specified memory location</returns>
+        public ReadOnlySpan<byte> GetSpanMapped(ulong va, int size, bool tracked = false)
         {
-            var bufferCache = _channel.MemoryManager.Physical.BufferCache;
+            bool isContiguous = true;
+            int mappedSize;
 
-            BindBuffers(bufferCache, _cpStorageBuffers, isStorage: true);
-            BindBuffers(bufferCache, _cpUniformBuffers, isStorage: false);
-
-            CommitBufferTextureBindings(bufferCache);
-
-            // Force rebind after doing compute work.
-            Rebind();
-
-            _context.SupportBufferUpdater.Commit();
-        }
-
-        /// <summary>
-        /// Commit any queued buffer texture bindings.
-        /// </summary>
-        /// <param name="bufferCache">Buffer cache</param>
-        private void CommitBufferTextureBindings(BufferCache bufferCache)
-        {
-            if (_bufferTextures.Count > 0)
+            if (ValidateAddress(va) && GetPte(va) != PteUnmapped && Physical.IsMapped(Translate(va)))
             {
-                foreach (var binding in _bufferTextures)
+                ulong endVa = va + (ulong)size;
+                ulong endVaAligned = (endVa + PageMask) & ~PageMask;
+                ulong currentVa = va & ~PageMask;
+
+                int pages = (int)((endVaAligned - currentVa) / PageSize);
+
+                for (int page = 0; page < pages - 1; page++)
                 {
-                    var isStore = binding.BindingInfo.Flags.HasFlag(TextureUsageFlags.ImageStore);
-                    var range = bufferCache.GetBufferRange(binding.Range, BufferStageUtils.TextureBuffer(binding.Stage, binding.BindingInfo.Flags), isStore);
-                    binding.Texture.SetStorage(range);
+                    ulong nextVa = currentVa + PageSize;
+                    ulong nextPa = Translate(nextVa);
 
-                    // The texture must be rebound to use the new storage if it was updated.
-
-                    if (binding.IsImage)
+                    if (!ValidateAddress(nextVa) || GetPte(nextVa) == PteUnmapped || !Physical.IsMapped(nextPa))
                     {
-                        _context.Renderer.Pipeline.SetImage(binding.Stage, binding.BindingInfo.Binding, binding.Texture);
-                    }
-                    else
-                    {
-                        _context.Renderer.Pipeline.SetTextureAndSampler(binding.Stage, binding.BindingInfo.Binding, binding.Texture, null);
-                    }
-                }
-
-                _bufferTextures.Clear();
-            }
-
-            if (_bufferTextureArrays.Count > 0 || _bufferImageArrays.Count > 0)
-            {
-                ITexture[] textureArray = new ITexture[1];
-
-                foreach (var binding in _bufferTextureArrays)
-                {
-                    var range = bufferCache.GetBufferRange(binding.Range, BufferStage.None);
-                    binding.Texture.SetStorage(range);
-
-                    textureArray[0] = binding.Texture;
-                    binding.Array.SetTextures(binding.Index, textureArray);
-                }
-
-                foreach (var binding in _bufferImageArrays)
-                {
-                    var isStore = binding.BindingInfo.Flags.HasFlag(TextureUsageFlags.ImageStore);
-                    var range = bufferCache.GetBufferRange(binding.Range, BufferStage.None, isStore);
-                    binding.Texture.SetStorage(range);
-
-                    textureArray[0] = binding.Texture;
-                    binding.Array.SetImages(binding.Index, textureArray);
-                }
-
-                _bufferTextureArrays.Clear();
-                _bufferImageArrays.Clear();
-            }
-        }
-
-        /// <summary>
-        /// Ensures that the graphics engine bindings are visible to the host GPU.
-        /// Note: this actually performs the binding using the host graphics API.
-        /// </summary>
-        /// <param name="indexed">True if the index buffer is in use</param>
-        public void CommitGraphicsBindings(bool indexed)
-        {
-            var bufferCache = _channel.MemoryManager.Physical.BufferCache;
-
-            if (indexed)
-            {
-                if (_indexBufferDirty || _rebind)
-                {
-                    _indexBufferDirty = false;
-
-                    if (!_indexBuffer.Range.IsUnmapped)
-                    {
-                        BufferRange buffer = bufferCache.GetBufferRange(_indexBuffer.Range, BufferStage.IndexBuffer);
-
-                        _context.Renderer.Pipeline.SetIndexBuffer(buffer, _indexBuffer.Type);
-                    }
-                }
-                else if (!_indexBuffer.Range.IsUnmapped)
-                {
-                    bufferCache.SynchronizeBufferRange(_indexBuffer.Range);
-                }
-            }
-            else if (_rebind)
-            {
-                _indexBufferDirty = true;
-            }
-
-            uint vbEnableMask = _vertexBuffersEnableMask;
-
-            if (_vertexBuffersDirty || _rebind)
-            {
-                _vertexBuffersDirty = false;
-
-                Span<VertexBufferDescriptor> vertexBuffers = stackalloc VertexBufferDescriptor[Constants.TotalVertexBuffers];
-
-                for (int index = 0; (vbEnableMask >> index) != 0; index++)
-                {
-                    VertexBuffer vb = _vertexBuffers[index];
-
-                    if (vb.Range.IsUnmapped)
-                    {
-                        continue;
+                        break;
                     }
 
-                    BufferRange buffer = bufferCache.GetBufferRange(vb.Range, BufferStage.VertexBuffer);
+                    if (Translate(currentVa) + PageSize != nextPa)
+                    {
+                        isContiguous = false;
+                    }
 
-                    vertexBuffers[index] = new VertexBufferDescriptor(buffer, vb.Stride, vb.Divisor);
+                    currentVa += PageSize;
                 }
 
-                _context.Renderer.Pipeline.SetVertexBuffers(vertexBuffers);
+                currentVa += PageSize;
+
+                if (currentVa > endVa)
+                {
+                    currentVa = endVa;
+                }
+
+                mappedSize = (int)(currentVa - va);
             }
             else
             {
-                for (int index = 0; (vbEnableMask >> index) != 0; index++)
-                {
-                    VertexBuffer vb = _vertexBuffers[index];
-
-                    if (vb.Range.IsUnmapped)
-                    {
-                        continue;
-                    }
-
-                    bufferCache.SynchronizeBufferRange(vb.Range);
-                }
+                return ReadOnlySpan<byte>.Empty;
             }
 
-            if (_transformFeedbackBuffersDirty || _rebind)
+            if (isContiguous)
             {
-                _transformFeedbackBuffersDirty = false;
+                return Physical.GetSpan(Translate(va), mappedSize, tracked);
+            }
+            else
+            {
+                Span<byte> data = new byte[mappedSize];
 
-                if (_context.Capabilities.SupportsTransformFeedback)
+                ReadImpl(va, data, tracked);
+
+                return data;
+            }
+        }
+
+        /// <summary>
+        /// Reads data from a possibly non-contiguous region of GPU mapped memory.
+        /// </summary>
+        /// <param name="va">GPU virtual address of the data</param>
+        /// <param name="data">Span to write the read data into</param>
+        /// <param name="tracked">True to enable write tracking on read, false otherwise</param>
+        private void ReadImpl(ulong va, Span<byte> data, bool tracked)
+        {
+            if (data.Length == 0)
+            {
+                return;
+            }
+
+            int offset = 0, size;
+
+            if ((va & PageMask) != 0)
+            {
+                ulong pa = Translate(va);
+
+                size = Math.Min(data.Length, (int)PageSize - (int)(va & PageMask));
+
+                // 原始代码 - 不检查未映射内存
+                Physical.GetSpan(pa, size, tracked).CopyTo(data[..size]);
+
+                offset += size;
+            }
+
+            for (; offset < data.Length; offset += size)
+            {
+                ulong pa = Translate(va + (ulong)offset);
+
+                size = Math.Min(data.Length - offset, (int)PageSize);
+
+                // 原始代码 - 不检查未映射内存
+                Physical.GetSpan(pa, size, tracked).CopyTo(data.Slice(offset, size));
+            }
+        }
+
+        /// <summary>
+        /// Gets a writable region from GPU mapped memory.
+        /// </summary>
+        /// <param name="va">Start address of the range</param>
+        /// <param name="size">Size in bytes to be range</param>
+        /// <param name="tracked">True if write tracking is triggered on the span</param>
+        /// <returns>A writable region with the data at the specified memory location</returns>
+        public WritableRegion GetWritableRegion(ulong va, int size, bool tracked = false)
+        {
+            if (IsContiguous(va, size))
+            {
+                return Physical.GetWritableRegion(Translate(va), size, tracked);
+            }
+            else
+            {
+                MemoryOwner<byte> memoryOwner = MemoryOwner<byte>.Rent(size);
+
+                ReadImpl(va, memoryOwner.Span, tracked);
+
+                return new WritableRegion(this, va, memoryOwner, tracked);
+            }
+        }
+
+        /// <summary>
+        /// Writes data to GPU mapped memory.
+        /// </summary>
+        /// <typeparam name="T">Type of the data</typeparam>
+        /// <param name="va">GPU virtual address to write the value into</param>
+        /// <param name="value">The value to be written</param>
+        public void Write<T>(ulong va, T value) where T : unmanaged
+        {
+            Write(va, MemoryMarshal.Cast<T, byte>(MemoryMarshal.CreateSpan(ref value, 1)));
+        }
+
+        /// <summary>
+        /// Writes data to GPU mapped memory.
+        /// </summary>
+        /// <param name="va">GPU virtual address to write the data into</param>
+        /// <param name="data">The data to be written</param>
+        public void Write(ulong va, ReadOnlySpan<byte> data)
+        {
+            WriteImpl(va, data, _write);
+        }
+
+        /// <summary>
+        /// Writes data to GPU mapped memory, destined for a tracked resource.
+        /// </summary>
+        /// <param name="va">GPU virtual address to write the data into</param>
+        /// <param name="data">The data to be written</param>
+        public void WriteTrackedResource(ulong va, ReadOnlySpan<byte> data)
+        {
+            WriteImpl(va, data, _writeTrackedResource);
+        }
+
+        /// <summary>
+        /// Writes data to GPU mapped memory without write tracking.
+        /// </summary>
+        /// <param name="va">GPU virtual address to write the data into</param>
+        /// <param name="data">The data to be written</param>
+        public void WriteUntracked(ulong va, ReadOnlySpan<byte> data)
+        {
+            WriteImpl(va, data, _writeUntracked);
+        }
+
+        
+
+        /// <summary>
+        /// Writes data to possibly non-contiguous GPU mapped memory.
+        /// </summary>
+        /// <param name="va">GPU virtual address of the region to write into</param>
+        /// <param name="data">Data to be written</param>
+        /// <param name="writeCallback">Write callback</param>
+        private void WriteImpl(ulong va, ReadOnlySpan<byte> data, WriteCallback writeCallback)
+        {
+            if (IsContiguous(va, data.Length))
+            {
+                writeCallback(Translate(va), data);
+            }
+            else
+            {
+                int offset = 0, size;
+
+                if ((va & PageMask) != 0)
                 {
-                    Span<BufferRange> tfbs = stackalloc BufferRange[Constants.TotalTransformFeedbackBuffers];
+                    ulong pa = Translate(va);
 
-                    for (int index = 0; index < Constants.TotalTransformFeedbackBuffers; index++)
+                    size = Math.Min(data.Length, (int)PageSize - (int)(va & PageMask));
+
+                    writeCallback(pa, data[..size]);
+
+                    offset += size;
+                }
+
+                for (; offset < data.Length; offset += size)
+                {
+                    ulong pa = Translate(va + (ulong)offset);
+
+                    size = Math.Min(data.Length - offset, (int)PageSize);
+
+                    writeCallback(pa, data.Slice(offset, size));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Runs remap actions that are added to an unmap event.
+        /// These must run after the mapping completes.
+        /// </summary>
+        /// <param name="e">Event with remap actions</param>
+        private static void RunRemapActions(UnmapEventArgs e)
+        {
+            if (e.RemapActions != null)
+            {
+                foreach (Action action in e.RemapActions)
+                {
+                    action();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Maps a given range of pages to the specified CPU virtual address.
+        /// </summary>
+        /// <remarks>
+        /// All addresses and sizes must be page aligned.
+        /// </remarks>
+        /// <param name="pa">CPU virtual address to map into</param>
+        /// <param name="va">GPU virtual address to be mapped</param>
+        /// <param name="size">Size in bytes of the mapping</param>
+        /// <param name="kind">Kind of the resource located at the mapping</param>
+        public void Map(ulong pa, ulong va, ulong size, PteKind kind)
+        {
+            lock (_pageTable)
+            {
+                _pageManager.Map(va, size);
+
+                UnmapEventArgs e = new(va, size);
+                MemoryUnmapped?.Invoke(this, e);
+
+                for (ulong offset = 0; offset < size; offset += PageSize)
+                {
+                    SetPte(va + offset, PackPte(pa + offset, kind));
+                }
+
+                RunRemapActions(e);
+            }
+        }
+
+        /// <summary>
+        /// Unmaps a given range of pages at the specified GPU virtual memory region.
+        /// </summary>
+        /// <param name="va">GPU virtual address to unmap</param>
+        /// <param name="size">Size in bytes of the region being unmapped</param>
+        public void Unmap(ulong va, ulong size)
+        {
+            lock (_pageTable)
+            {
+                _pageManager.Unmap(va, size);
+
+                // Event handlers are not expected to be thread safe.
+                UnmapEventArgs e = new(va, size);
+                MemoryUnmapped?.Invoke(this, e);
+
+                for (ulong offset = 0; offset < size; offset += PageSize)
+                {
+                    SetPte(va + offset, PteUnmapped);
+                }
+
+                RunRemapActions(e);
+            }
+        }
+
+        /// <summary>
+        /// Checks if a region of GPU mapped memory is contiguous.
+        /// </summary>
+        /// <param name="va">GPU virtual address of the region</param>
+        /// <param name="size">Size of the region</param>
+        /// <returns>True if the region is contiguous, false otherwise</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool IsContiguous(ulong va, int size)
+        {
+            if (!ValidateAddress(va) || GetPte(va) == PteUnmapped)
+            {
+                return false;
+            }
+
+            ulong endVa = (va + (ulong)size + PageMask) & ~PageMask;
+
+            va &= ~PageMask;
+
+            int pages = (int)((endVa - va) / PageSize);
+
+            for (int page = 0; page < pages - 1; page++)
+            {
+                if (!ValidateAddress(va + PageSize) || GetPte(va + PageSize) == PteUnmapped)
+                {
+                    return false;
+                }
+
+                if (Translate(va) + PageSize != Translate(va + PageSize))
+                {
+                    return false;
+                }
+
+                va += PageSize;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Gets the physical regions that make up the given virtual address region.
+        /// </summary>
+        /// <param name="va">Virtual address of the range</param>
+        /// <param name="size">Size of the range</param>
+        /// <returns>Multi-range with the physical regions</returns>
+        public MultiRange GetPhysicalRegions(ulong va, ulong size)
+        {
+            if (IsContiguous(va, (int)size))
+            {
+                return new MultiRange(Translate(va), size);
+            }
+
+            ulong regionStart = Translate(va);
+            ulong regionSize = Math.Min(size, PageSize - (va & PageMask));
+
+            ulong endVa = va + size;
+            ulong endVaRounded = (endVa + PageMask) & ~PageMask;
+
+            va &= ~PageMask;
+
+            int pages = (int)((endVaRounded - va) / PageSize);
+
+            var regions = new List<MemoryRange>();
+
+            for (int page = 0; page < pages - 1; page++)
+            {
+                ulong currPa = Translate(va);
+                ulong newPa = Translate(va + PageSize);
+
+                if ((currPa != PteUnmapped || newPa != PteUnmapped) && currPa + PageSize != newPa)
+                {
+                    regions.Add(new MemoryRange(regionStart, regionSize));
+                    regionStart = newPa;
+                    regionSize = 0;
+                }
+
+                va += PageSize;
+                regionSize += Math.Min(endVa - va, PageSize);
+            }
+
+            if (regions.Count == 0)
+            {
+                return new MultiRange(regionStart, regionSize);
+            }
+
+            regions.Add(new MemoryRange(regionStart, regionSize));
+
+            return new MultiRange(regions.ToArray());
+        }
+
+        /// <summary>
+        /// Checks if a given GPU virtual memory range is mapped to the same physical regions
+        /// as the specified physical memory multi-range.
+        /// </summary>
+        /// <param name="range">Physical memory multi-range</param>
+        /// <param name="va">GPU virtual memory address</param>
+        /// <returns>True if the virtual memory region is mapped into the specified physical one, false otherwise</returns>
+        public bool CompareRange(MultiRange range, ulong va)
+        {
+            va &= ~PageMask;
+
+            for (int i = 0; i < range.Count; i++)
+            {
+                MemoryRange currentRange = range.GetSubRange(i);
+
+                if (currentRange.Address != PteUnmapped)
+                {
+                    ulong address = currentRange.Address & ~PageMask;
+                    ulong endAddress = (currentRange.EndAddress + PageMask) & ~PageMask;
+
+                    while (address < endAddress)
                     {
-                        BufferBounds tfb = _transformFeedbackBuffers[index];
-
-                        if (tfb.IsUnmapped)
+                        if (Translate(va) != address)
                         {
-                            tfbs[index] = BufferRange.Empty;
-                            continue;
+                            return false;
                         }
 
-                        tfbs[index] = bufferCache.GetBufferRange(tfb.Range, BufferStage.TransformFeedback, write: true);
+                        va += PageSize;
+                        address += PageSize;
                     }
-
-                    _context.Renderer.Pipeline.SetTransformFeedbackBuffers(tfbs);
                 }
-                else if (HasTransformFeedbackOutputs)
+                else
                 {
-                    Span<BufferAssignment> buffers = stackalloc BufferAssignment[Constants.TotalTransformFeedbackBuffers];
+                    ulong endVa = va + (((currentRange.Size) + PageMask) & ~PageMask);
 
-                    int alignment = _context.Capabilities.StorageBufferOffsetAlignment;
-
-                    for (int index = 0; index < Constants.TotalTransformFeedbackBuffers; index++)
+                    while (va < endVa)
                     {
-                        BufferBounds tfb = _transformFeedbackBuffers[index];
-
-                        if (tfb.IsUnmapped)
+                        if (Translate(va) != PteUnmapped)
                         {
-                            buffers[index] = new BufferAssignment(index, BufferRange.Empty);
+                            return false;
                         }
-                        else
-                        {
-                            MultiRange range = tfb.Range;
-                            ulong address0 = range.GetSubRange(0).Address;
-                            ulong address = BitUtils.AlignDown(address0, (ulong)alignment);
 
-                            if (range.Count == 1)
-                            {
-                                range = new MultiRange(address, range.GetSubRange(0).Size + (address0 - address));
-                            }
-                            else
-                            {
-                                MemoryRange[] subRanges = new MemoryRange[range.Count];
-
-                                subRanges[0] = new MemoryRange(address, range.GetSubRange(0).Size + (address0 - address));
-
-                                for (int i = 1; i < range.Count; i++)
-                                {
-                                    subRanges[i] = range.GetSubRange(i);
-                                }
-
-                                range = new MultiRange(subRanges);
-                            }
-
-                            int tfeOffset = ((int)address0 & (alignment - 1)) / 4;
-
-                            _context.SupportBufferUpdater.SetTfeOffset(index, tfeOffset);
-
-                            buffers[index] = new BufferAssignment(index, bufferCache.GetBufferRange(range, BufferStage.TransformFeedback, write: true));
-                        }
-                    }
-
-                    _context.Renderer.Pipeline.SetStorageBuffers(buffers);
-                }
-            }
-            else
-            {
-                for (int index = 0; index < Constants.TotalTransformFeedbackBuffers; index++)
-                {
-                    BufferBounds tfb = _transformFeedbackBuffers[index];
-
-                    if (tfb.IsUnmapped)
-                    {
-                        continue;
-                    }
-
-                    bufferCache.SynchronizeBufferRange(tfb.Range);
-                }
-            }
-
-            if (_gpStorageBuffersDirty || _rebind)
-            {
-                _gpStorageBuffersDirty = false;
-
-                BindBuffers(bufferCache, _gpStorageBuffers, isStorage: true);
-            }
-            else
-            {
-                UpdateBuffers(_gpStorageBuffers);
-            }
-
-            if (_gpUniformBuffersDirty || _rebind)
-            {
-                _gpUniformBuffersDirty = false;
-
-                BindBuffers(bufferCache, _gpUniformBuffers, isStorage: false);
-            }
-            else
-            {
-                UpdateBuffers(_gpUniformBuffers);
-            }
-
-            CommitBufferTextureBindings(bufferCache);
-
-            _rebind = false;
-
-            _context.SupportBufferUpdater.Commit();
-        }
-
-        /// <summary>
-        /// Bind respective buffer bindings on the host API.
-        /// </summary>
-        /// <param name="bufferCache">Buffer cache holding the buffers for the specified ranges</param>
-        /// <param name="bindings">Buffer memory ranges to bind</param>
-        /// <param name="isStorage">True to bind as storage buffer, false to bind as uniform buffer</param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void BindBuffers(BufferCache bufferCache, BuffersPerStage[] bindings, bool isStorage)
-        {
-            int rangesCount = 0;
-
-            Span<BufferAssignment> ranges = _ranges;
-
-            for (ShaderStage stage = ShaderStage.Vertex; stage <= ShaderStage.Fragment; stage++)
-            {
-                ref var buffers = ref bindings[(int)stage - 1];
-                BufferStage bufferStage = BufferStageUtils.FromShaderStage(stage);
-
-                for (int index = 0; index < buffers.Count; index++)
-                {
-                    ref var bindingInfo = ref buffers.Bindings[index];
-
-                    BufferBounds bounds = buffers.Buffers[bindingInfo.Slot];
-
-                    if (!bounds.IsUnmapped)
-                    {
-                        var isWrite = bounds.Flags.HasFlag(BufferUsageFlags.Write);
-                        var range = isStorage
-                            ? bufferCache.GetBufferRangeAligned(bounds.Range, bufferStage | BufferStageUtils.FromUsage(bounds.Flags), isWrite)
-                            : bufferCache.GetBufferRange(bounds.Range, bufferStage);
-
-                        ranges[rangesCount++] = new BufferAssignment(bindingInfo.Binding, range);
+                        va += PageSize;
                     }
                 }
             }
 
-            if (rangesCount != 0)
-            {
-                SetHostBuffers(ranges, rangesCount, isStorage);
-            }
+            return true;
         }
 
         /// <summary>
-        /// Bind respective buffer bindings on the host API.
+        /// Validates a GPU virtual address.
         /// </summary>
-        /// <param name="bufferCache">Buffer cache holding the buffers for the specified ranges</param>
-        /// <param name="buffers">Buffer memory ranges to bind</param>
-        /// <param name="isStorage">True to bind as storage buffer, false to bind as uniform buffer</param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void BindBuffers(BufferCache bufferCache, BuffersPerStage buffers, bool isStorage)
+        /// <param name="va">Address to validate</param>
+        /// <returns>True if the address is valid, false otherwise</returns>
+        private static bool ValidateAddress(ulong va)
         {
-            int rangesCount = 0;
+            return va < (1UL << AddressSpaceBits);
+        }
 
-            Span<BufferAssignment> ranges = _ranges;
+        /// <summary>
+        /// Checks if a given page is mapped.
+        /// </summary>
+        /// <param name="va">GPU virtual address of the page to check</param>
+        /// <returns>True if the page is mapped, false otherwise</returns>
+        public bool IsMapped(ulong va)
+        {
+            return Translate(va) != PteUnmapped;
+        }
 
-            for (int index = 0; index < buffers.Count; index++)
+        /// <summary>
+        /// Translates a GPU virtual address to a CPU virtual address.
+        /// </summary>
+        /// <param name="va">GPU virtual address to be translated</param>
+        /// <returns>CPU virtual address, or <see cref="PteUnmapped"/> if unmapped</returns>
+        public ulong Translate(ulong va)
+        {
+            // 特殊处理：如果地址是 0xFFFFFFFFFFFFFFFF，直接返回未映射
+            if (va == ulong.MaxValue)
             {
-                ref var bindingInfo = ref buffers.Bindings[index];
+                return PteUnmapped;
+            }
 
-                BufferBounds bounds = buffers.Buffers[bindingInfo.Slot];
+            if (!ValidateAddress(va))
+            {
+                return PteUnmapped;
+            }
 
-                if (!bounds.IsUnmapped)
+            ulong pte = GetPte(va);
+
+            if (pte == PteUnmapped)
+            {
+                if (_pageManager.HandlePageFault(va))
                 {
-                    var isWrite = bounds.Flags.HasFlag(BufferUsageFlags.Write);
-                    var range = isStorage
-                        ? bufferCache.GetBufferRangeAligned(bounds.Range, BufferStageUtils.ComputeStorage(bounds.Flags), isWrite)
-                        : bufferCache.GetBufferRange(bounds.Range, BufferStage.Compute);
-
-                    ranges[rangesCount++] = new BufferAssignment(bindingInfo.Binding, range);
+                    pte = GetPte(va); // 重试获取PTE
+                }
+                else
+                {
+                    return PteUnmapped;
                 }
             }
 
-            if (rangesCount != 0)
-            {
-                SetHostBuffers(ranges, rangesCount, isStorage);
-            }
+            return UnpackPaFromPte(pte) + (va & PageMask);
         }
 
         /// <summary>
-        /// Bind respective buffer bindings on the host API.
+        /// Translates a GPU virtual address to a CPU virtual address on the first mapped page of memory
+        /// on the specified region.
+        /// If no page is mapped on the specified region, <see cref="PteUnmapped"/> is returned.
         /// </summary>
-        /// <param name="ranges">Host buffers to bind, with their offsets and sizes</param>
-        /// <param name="first">First binding point</param>
-        /// <param name="count">Number of bindings</param>
-        /// <param name="isStorage">Indicates if the buffers are storage or uniform buffers</param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SetHostBuffers(ReadOnlySpan<BufferAssignment> ranges, int count, bool isStorage)
+        /// <param name="va">GPU virtual address to be translated</param>
+        /// <param name="size">Size of the range to be translated</param>
+        /// <returns>CPU virtual address, or <see cref="PteUnmapped"/> if unmapped</returns>
+        public ulong TranslateFirstMapped(ulong va, ulong size)
         {
-            if (isStorage)
+            if (!ValidateAddress(va))
             {
-                _context.Renderer.Pipeline.SetStorageBuffers(ranges[..count]);
+                return PteUnmapped;
             }
-            else
+
+            ulong endVa = va + size;
+
+            ulong pte = GetPte(va);
+
+            for (; va < endVa && pte == PteUnmapped; va += PageSize - (va & PageMask))
             {
-                _context.Renderer.Pipeline.SetUniformBuffers(ranges[..count]);
+                pte = GetPte(va);
             }
+
+            if (pte == PteUnmapped)
+            {
+                return PteUnmapped;
+            }
+
+            return UnpackPaFromPte(pte) + (va & PageMask);
         }
 
         /// <summary>
-        /// Updates data for the already bound buffer bindings.
+        /// Translates a GPU virtual address and returns the number of bytes that are mapped after it.
         /// </summary>
-        /// <param name="bindings">Bindings to update</param>
-        private void UpdateBuffers(BuffersPerStage[] bindings)
+        /// <param name="va">GPU virtual address to be translated</param>
+        /// <param name="maxSize">Maximum size in bytes to scan</param>
+        /// <returns>Number of bytes, 0 if unmapped</returns>
+        public ulong GetMappedSize(ulong va, ulong maxSize)
         {
-            for (ShaderStage stage = ShaderStage.Vertex; stage <= ShaderStage.Fragment; stage++)
+            if (!ValidateAddress(va))
             {
-                ref var buffers = ref bindings[(int)stage - 1];
+                return 0;
+            }
 
-                for (int index = 0; index < buffers.Count; index++)
+            ulong startVa = va;
+            ulong endVa = va + maxSize;
+
+            ulong pte = GetPte(va);
+
+            while (pte != PteUnmapped && va < endVa)
+            {
+                va += PageSize - (va & PageMask);
+                pte = GetPte(va);
+            }
+
+            return Math.Min(maxSize, va - startVa);
+        }
+
+        /// <summary>
+        /// Gets the kind of a given memory page.
+        /// This might indicate the type of resource that can be allocated on the page, and also texture tiling.
+        /// </summary>
+        /// <param name="va">GPU virtual address</param>
+        /// <returns>Kind of the memory page</returns>
+        public PteKind GetKind(ulong va)
+        {
+            if (!ValidateAddress(va))
+            {
+                return PteKind.Invalid;
+            }
+
+            ulong pte = GetPte(va);
+
+            if (pte == PteUnmapped)
+            {
+                return PteKind.Invalid;
+            }
+
+            return UnpackKindFromPte(pte);
+        }
+
+        /// <summary>
+        /// Gets the Page Table entry for a given GPU virtual address.
+        /// </summary>
+        /// <param name="va">GPU virtual address</param>
+        /// <returns>Page table entry (CPU virtual address)</returns>
+        private ulong GetPte(ulong va)
+        {
+            ulong l0 = (va >> PtLvl0Bit) & PtLvl0Mask;
+            ulong l1 = (va >> PtLvl1Bit) & PtLvl1Mask;
+
+            if (_pageTable[l0] == null)
+            {
+                return PteUnmapped;
+            }
+
+            return _pageTable[l0][l1];
+        }
+
+        /// <summary>
+        /// Sets a Page Table entry at a given GPU virtual address.
+        /// </summary>
+        /// <param name="va">GPU virtual address</param>
+        /// <param name="pte">Page table entry (CPU virtual address)</param>
+        private void SetPte(ulong va, ulong pte)
+        {
+            ulong l0 = (va >> PtLvl0Bit) & PtLvl0Mask;
+            ulong l1 = (va >> PtLvl1Bit) & PtLvl1Mask;
+
+            if (_pageTable[l0] == null)
+            {
+                _pageTable[l0] = new ulong[PtLvl1Size];
+
+                for (ulong index = 0; index < PtLvl1Size; index++)
                 {
-                    ref var binding = ref buffers.Bindings[index];
-
-                    BufferBounds bounds = buffers.Buffers[binding.Slot];
-
-                    if (bounds.IsUnmapped)
-                    {
-                        continue;
-                    }
-
-                    _channel.MemoryManager.Physical.BufferCache.SynchronizeBufferRange(bounds.Range);
+                    _pageTable[l0][index] = PteUnmapped;
                 }
             }
+
+            _pageTable[l0][l1] = pte;
         }
 
         /// <summary>
-        /// Sets the buffer storage of a buffer texture. This will be bound when the buffer manager commits bindings.
+        /// Creates a page table entry from a physical address and kind.
         /// </summary>
-        /// <param name="stage">Shader stage accessing the texture</param>
-        /// <param name="texture">Buffer texture</param>
-        /// <param name="range">Physical ranges of memory where the buffer texture data is located</param>
-        /// <param name="bindingInfo">Binding info for the buffer texture</param>
-        /// <param name="format">Format of the buffer texture</param>
-        /// <param name="isImage">Whether the binding is for an image or a sampler</param>
-        public void SetBufferTextureStorage(
-            ShaderStage stage,
-            ITexture texture,
-            MultiRange range,
-            TextureBindingInfo bindingInfo,
-            bool isImage)
+        /// <param name="pa">Physical address</param>
+        /// <param name="kind">Kind</param>
+        /// <returns>Page table entry</returns>
+        private static ulong PackPte(ulong pa, PteKind kind)
         {
-            _channel.MemoryManager.Physical.BufferCache.CreateBuffer(range, BufferStageUtils.TextureBuffer(stage, bindingInfo.Flags));
-
-            _bufferTextures.Add(new BufferTextureBinding(stage, texture, range, bindingInfo, isImage));
+            return pa | ((ulong)kind << 56);
         }
 
         /// <summary>
-        /// Sets the buffer storage of a buffer texture array element. This will be bound when the buffer manager commits bindings.
+        /// Unpacks kind from a page table entry.
         /// </summary>
-        /// <param name="stage">Shader stage accessing the texture</param>
-        /// <param name="array">Texture array where the element will be inserted</param>
-        /// <param name="texture">Buffer texture</param>
-        /// <param name="range">Physical ranges of memory where the buffer texture data is located</param>
-        /// <param name="bindingInfo">Binding info for the buffer texture</param>
-        /// <param name="index">Index of the binding on the array</param>
-        /// <param name="format">Format of the buffer texture</param>
-        public void SetBufferTextureStorage(
-            ShaderStage stage,
-            ITextureArray array,
-            ITexture texture,
-            MultiRange range,
-            TextureBindingInfo bindingInfo,
-            int index)
+        /// <param name="pte">Page table entry</param>
+        /// <returns>Kind</returns>
+        private static PteKind UnpackKindFromPte(ulong pte)
         {
-            _channel.MemoryManager.Physical.BufferCache.CreateBuffer(range, BufferStageUtils.TextureBuffer(stage, bindingInfo.Flags));
-
-            _bufferTextureArrays.Add(new BufferTextureArrayBinding<ITextureArray>(array, texture, range, bindingInfo, index));
+            return (PteKind)(pte >> 56);
         }
 
         /// <summary>
-        /// Sets the buffer storage of a buffer image array element. This will be bound when the buffer manager commits bindings.
+        /// Unpacks physical address from a page table entry.
         /// </summary>
-        /// <param name="stage">Shader stage accessing the texture</param>
-        /// <param name="array">Image array where the element will be inserted</param>
-        /// <param name="texture">Buffer texture</param>
-        /// <param name="range">Physical ranges of memory where the buffer texture data is located</param>
-        /// <param name="bindingInfo">Binding info for the buffer texture</param>
-        /// <param name="index">Index of the binding on the array</param>
-        /// <param name="format">Format of the buffer texture</param>
-        public void SetBufferTextureStorage(
-            ShaderStage stage,
-            IImageArray array,
-            ITexture texture,
-            MultiRange range,
-            TextureBindingInfo bindingInfo,
-            int index)
+        /// <param name="pte">Page table entry</param>
+        /// <returns>Physical address</returns>
+        private static ulong UnpackPaFromPte(ulong pte)
         {
-            _channel.MemoryManager.Physical.BufferCache.CreateBuffer(range, BufferStageUtils.TextureBuffer(stage, bindingInfo.Flags));
-
-            _bufferImageArrays.Add(new BufferTextureArrayBinding<IImageArray>(array, texture, range, bindingInfo, index));
-        }
-
-        /// <summary>
-        /// Force all bound textures and images to be rebound the next time CommitBindings is called.
-        /// </summary>
-        public void Rebind()
-        {
-            _rebind = true;
+            return pte & 0xffffffffffffffUL;
         }
     }
 }
