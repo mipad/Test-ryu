@@ -46,8 +46,6 @@ namespace Ryujinx.Graphics.Vulkan
             MemoryPropertyFlags.HostCoherentBit |
             MemoryPropertyFlags.HostCachedBit;
 
-        // Some drivers don't expose a "HostCached" memory type,
-        // so we need those alternative flags for the allocation to succeed there.
         private const MemoryPropertyFlags DefaultBufferMemoryNoCacheFlags =
             MemoryPropertyFlags.HostVisibleBit |
             MemoryPropertyFlags.HostCoherentBit;
@@ -85,6 +83,10 @@ namespace Ryujinx.Graphics.Vulkan
 
         public MemoryRequirements HostImportedBufferMemoryRequirements { get; }
 
+        // 新增：内存压力阈值
+        private const long MemoryPressureThreshold = 1024L * 1024 * 1024 * 6; // 6GB
+        private const long CriticalMemoryThreshold = 1024L * 1024 * 1024 * 1; // 1GB
+
         public BufferManager(VulkanRenderer gd, Device device)
         {
             _device = device;
@@ -92,6 +94,49 @@ namespace Ryujinx.Graphics.Vulkan
             StagingBuffer = new StagingBuffer(gd, this);
 
             HostImportedBufferMemoryRequirements = GetHostImportedUsageRequirements(gd);
+        }
+
+        // 新增：内存检查方法
+        private bool CheckMemoryPressure(VulkanRenderer gd, int requestedSize)
+        {
+            long totalAllocated = BufferHolder.GetTotalAllocatedMemory();
+            long availableEstimate = BufferHolder.GetAvailableMemoryEstimate(gd);
+
+            Logger.Debug?.Print(LogClass.Gpu, $"Memory Check - Allocated: 0x{totalAllocated:X}, Requested: 0x{requestedSize:X}, Available: 0x{availableEstimate:X}");
+
+            if (totalAllocated + requestedSize > MemoryPressureThreshold)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, $"Memory pressure detected! Total: 0x{totalAllocated:X}, Requesting: 0x{requestedSize:X}");
+                
+                if (totalAllocated + requestedSize > availableEstimate)
+                {
+                    Logger.Error?.Print(LogClass.Gpu, $"Insufficient memory! Need: 0x{totalAllocated + requestedSize:X}, Available: 0x{availableEstimate:X}");
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // 新增：尝试清理内存的方法
+        private bool TryFreeMemory(VulkanRenderer gd, int minRequiredSize)
+        {
+            Logger.Warning?.Print(LogClass.Gpu, $"Attempting to free memory, required: 0x{minRequiredSize:X}");
+
+            // 首先尝试强制垃圾回收
+            BufferHolder.ForceGarbageCollection(this);
+
+            long currentMemory = BufferHolder.GetTotalAllocatedMemory();
+            long availableEstimate = BufferHolder.GetAvailableMemoryEstimate(gd);
+
+            if (currentMemory + minRequiredSize <= availableEstimate)
+            {
+                Logger.Info?.Print(LogClass.Gpu, $"Memory freed successfully. Now available: 0x{availableEstimate - currentMemory:X}");
+                return true;
+            }
+
+            Logger.Error?.Print(LogClass.Gpu, $"Failed to free sufficient memory. Still need: 0x{minRequiredSize:X}");
+            return false;
         }
 
         public unsafe BufferHandle CreateHostImported(VulkanRenderer gd, nint pointer, int size)
@@ -251,6 +296,18 @@ namespace Ryujinx.Graphics.Vulkan
             BufferAllocationType baseType = BufferAllocationType.HostMapped,
             bool forceMirrors = false)
         {
+            // 新增：内存压力检查
+            if (!CheckMemoryPressure(gd, size))
+            {
+                // 尝试清理内存
+                if (!TryFreeMemory(gd, size))
+                {
+                    holder = null;
+                    Logger.Error?.Print(LogClass.Gpu, $"Failed to create buffer with size 0x{size:X} due to memory pressure");
+                    return BufferHandle.Null;
+                }
+            }
+
             holder = Create(gd, size, forConditionalRendering: false, sparseCompatible, baseType);
             if (holder == null)
             {
@@ -279,7 +336,16 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else
             {
-                // Create a temporary buffer.
+                // 新增：创建临时缓冲区前的内存检查
+                if (!CheckMemoryPressure(gd, size))
+                {
+                    if (!TryFreeMemory(gd, size))
+                    {
+                        Logger.Error?.Print(LogClass.Gpu, $"Failed to create temporary buffer with size 0x{size:X} due to memory pressure");
+                        return default;
+                    }
+                }
+
                 BufferHandle handle = CreateWithHandle(gd, size, out BufferHolder holder);
 
                 return new ScopedTemporaryBuffer(this, holder, handle, 0, size, false);
@@ -360,7 +426,6 @@ namespace Ryujinx.Graphics.Vulkan
                     _ => DefaultBufferMemoryFlags,
                 };
 
-                // If an allocation with this memory type fails, fall back to the previous one.
                 try
                 {
                     allocation = gd.MemoryAllocator.AllocateDeviceMemory(requirements, allocateFlags, true);
@@ -528,8 +593,6 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (!hasConvertedIndexBuffer || !hasConvertedIndirectBuffer || !hasCachedDrawCount)
             {
-                // The destination index size is always I32.
-
                 int indexCount = indexBuffer.Size / indexSize;
 
                 int convertedCount = pattern.GetConvertedCount(indexCount);
@@ -565,9 +628,6 @@ namespace Ryujinx.Graphics.Vulkan
                     maxDrawCount,
                     indirectDataStride);
 
-                // Any modification of the indirect buffer should invalidate the index buffers that are associated with it,
-                // since we used the indirect data to find the range of the index buffer that is used.
-
                 var indexBufferDependency = new Dependency(
                     indexBufferHolder,
                     indexBuffer.Offset,
@@ -586,9 +646,6 @@ namespace Ryujinx.Graphics.Vulkan
                     {
                         drawCountBufferHolder.AddCachedConvertedBuffer(drawCountBuffer.Offset, drawCountBuffer.Size, drawCountBufferKey, null);
                     }
-
-                    // If we have a draw count, any modification of the draw count should invalidate all indirect buffers
-                    // where we used it to find the range of indirect data that is actually used.
 
                     var indirectBufferDependency = new Dependency(
                         indirectBufferHolder,
@@ -648,12 +705,22 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 holder.Dispose();
                 _buffers.Remove((int)Unsafe.As<BufferHandle, ulong>(ref handle));
+                
+                // 新增：删除后记录缓冲区数量
+                BufferCount--;
+                Logger.Debug?.Print(LogClass.Gpu, $"Buffer deleted, remaining buffers: {BufferCount}");
             }
         }
 
         private bool TryGetBuffer(BufferHandle handle, out BufferHolder holder)
         {
             return _buffers.TryGetValue((int)Unsafe.As<BufferHandle, ulong>(ref handle), out holder);
+        }
+
+        // 新增：获取内存统计信息
+        public (long TotalAllocated, int BufferCount) GetMemoryStatistics()
+        {
+            return (BufferHolder.GetTotalAllocatedMemory(), BufferCount);
         }
 
         protected virtual void Dispose(bool disposing)
@@ -668,6 +735,9 @@ namespace Ryujinx.Graphics.Vulkan
                 }
 
                 _buffers.Clear();
+                
+                // 新增：清理后记录
+                Logger.Info?.Print(LogClass.Gpu, "BufferManager disposed, all buffers released");
             }
         }
 

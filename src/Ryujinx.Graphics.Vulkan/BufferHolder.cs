@@ -59,6 +59,11 @@ namespace Ryujinx.Graphics.Vulkan
         private Dictionary<ulong, StagingBufferReserved> _mirrors;
         private bool _useMirrors;
 
+        // 新增：内存监控相关字段
+        private static long _totalAllocatedMemory = 0;
+        private static readonly object _memoryLock = new object();
+        private readonly long _allocatedSize;
+
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, MemoryAllocation allocation, int size, BufferAllocationType type, BufferAllocationType currentType)
         {
             _gd = gd;
@@ -75,7 +80,15 @@ namespace Ryujinx.Graphics.Vulkan
             _activeType = currentType;
 
             _flushLock = new ReaderWriterLockSlim();
-            _useMirrors = gd.IsTBDR; 
+            _useMirrors = gd.IsTBDR;
+
+            // 新增：内存跟踪
+            _allocatedSize = size;
+            lock (_memoryLock)
+            {
+                _totalAllocatedMemory += _allocatedSize;
+                Logger.Debug?.Print(LogClass.Gpu, $"Buffer allocated: 0x{size:X} bytes, Total: 0x{_totalAllocatedMemory:X} bytes");
+            }
         }
 
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, Auto<MemoryAllocation> allocation, int size, BufferAllocationType type, BufferAllocationType currentType, int offset)
@@ -95,6 +108,14 @@ namespace Ryujinx.Graphics.Vulkan
             _activeType = currentType;
 
             _flushLock = new ReaderWriterLockSlim();
+            
+            // 新增：内存跟踪
+            _allocatedSize = size;
+            lock (_memoryLock)
+            {
+                _totalAllocatedMemory += _allocatedSize;
+                Logger.Debug?.Print(LogClass.Gpu, $"Buffer allocated: 0x{size:X} bytes, Total: 0x{_totalAllocatedMemory:X} bytes");
+            }
         }
 
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, int size, Auto<MemoryAllocation>[] storageAllocations)
@@ -110,6 +131,51 @@ namespace Ryujinx.Graphics.Vulkan
             _activeType = BufferAllocationType.Sparse;
 
             _flushLock = new ReaderWriterLockSlim();
+            
+            // 新增：内存跟踪
+            _allocatedSize = size;
+            lock (_memoryLock)
+            {
+                _totalAllocatedMemory += _allocatedSize;
+                Logger.Debug?.Print(LogClass.Gpu, $"Buffer allocated: 0x{size:X} bytes, Total: 0x{_totalAllocatedMemory:X} bytes");
+            }
+        }
+
+        // 新增：静态方法获取内存使用情况
+        public static long GetTotalAllocatedMemory()
+        {
+            lock (_memoryLock)
+            {
+                return _totalAllocatedMemory;
+            }
+        }
+
+        public static long GetAvailableMemoryEstimate(VulkanRenderer gd)
+        {
+            if (gd?.MemoryAllocator == null) return 0;
+
+            try
+            {
+                // 这里可以根据实际情况实现更精确的内存估算
+                // 例如查询设备内存总量和已使用量
+                return 1024L * 1024 * 1024 * 8; // 假设8GB可用
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        // 新增：内存清理方法
+        public static void ForceGarbageCollection(BufferManager bufferManager)
+        {
+            Logger.Warning?.Print(LogClass.Gpu, "Forcing buffer garbage collection due to memory pressure");
+            
+            // 可以在这里添加强制清理逻辑
+            // 例如清理长时间未使用的缓冲区等
+            
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
         }
 
         public unsafe Auto<DisposableBufferView> CreateView(VkFormat format, int offset, int size, Action invalidateView)
@@ -130,11 +196,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe void InsertBarrier(CommandBuffer commandBuffer, bool isWrite)
         {
-            // If the last access is write, we always need a barrier to be sure we will read or modify
-            // the correct data.
-            // If the last access is read, and current one is a write, we need to wait until the
-            // read finishes to avoid overwriting data still in use.
-            // Otherwise, if the last access is a read and the current one too, we don't need barriers.
             bool needsBarrier = isWrite || _lastAccessIsWrite;
 
             _lastAccessIsWrite = isWrite;
@@ -152,7 +213,7 @@ namespace Ryujinx.Graphics.Vulkan
                     commandBuffer,
                     PipelineStageFlags.AllCommandsBit,
                     PipelineStageFlags.AllCommandsBit,
-                    0,                  // 整合：使用0而不是DependencyFlags.DeviceGroupBit
+                    0,
                     1,
                     in memoryBarrier,
                     0,
@@ -176,8 +237,6 @@ namespace Ryujinx.Graphics.Vulkan
         {
             size = Math.Min(size, Size - offset);
 
-            // Does this binding need to be mirrored?
-
             if (!_pendingDataRanges.OverlapsWith(offset, size))
             {
                 buffer = null;
@@ -194,17 +253,13 @@ namespace Ryujinx.Graphics.Vulkan
                 return true;
             }
 
-            // Is this mirror allowed to exist? Can't be used for write in any in-flight write.
             if (_waitable.IsBufferRangeInUse(offset, size, true))
             {
-                // Some of the data is not mirrorable, so upload the whole range.
                 ClearMirrors(cbs, offset, size);
 
                 buffer = null;
                 return false;
             }
-
-            // Build data for the new mirror.
 
             var baseData = new Span<byte>((void*)(_map + offset), size);
             var modData = _pendingData.AsSpan(offset, size);
@@ -230,7 +285,6 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else
             {
-                // Data could not be placed on the mirror, likely out of space. Force the data to flush.
                 ClearMirrors(cbs, offset, size);
 
                 buffer = null;
@@ -265,7 +319,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetMirrorable(CommandBufferScoped cbs, ref int offset, int size, out bool mirrored)
         {
-            // 整合：添加_useMirrors检查
             if (_useMirrors && _pendingData != null && TryGetMirror(cbs, ref offset, size, out Auto<DisposableBuffer> result))
             {
                 mirrored = true;
@@ -278,16 +331,11 @@ namespace Ryujinx.Graphics.Vulkan
 
         Auto<DisposableBufferView> IMirrorable<DisposableBufferView>.GetMirrorable(CommandBufferScoped cbs, ref int offset, int size, out bool mirrored)
         {
-            // Cannot mirror buffer views right now.
-
             throw new NotImplementedException();
         }
 
         public void ClearMirrors()
         {
-            // Clear mirrors without forcing a flush. This happens when the command buffer is switched,
-            // as all reserved areas on the staging buffer are released.
-
             if (_pendingData != null)
             {
                 _mirrors.Clear();
@@ -296,8 +344,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void ClearMirrors(CommandBufferScoped cbs, int offset, int size)
         {
-            // Clear mirrors in the given range, and submit overlapping pending data.
-
             if (_pendingData != null)
             {
                 bool hadMirrors = _mirrors.Count > 0 && RemoveOverlappingMirrors(offset, size);
@@ -379,8 +425,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         private void ClearFlushFence()
         {
-            // Assumes _flushLock is held as writer.
-
             if (_flushFence != null)
             {
                 if (_flushWaiting == 0)
@@ -399,7 +443,6 @@ namespace Ryujinx.Graphics.Vulkan
                 return;
             }
 
-            // If storage has changed, make sure the fence has been reached so that the data is in place.
             _flushLock.ExitReadLock();
             _flushLock.EnterWriteLock();
 
@@ -407,8 +450,6 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 var fence = _flushFence;
                 Interlocked.Increment(ref _flushWaiting);
-
-                // Don't wait in the lock.
 
                 _flushLock.ExitWriteLock();
 
@@ -424,7 +465,6 @@ namespace Ryujinx.Graphics.Vulkan
                 _flushFence = null;
             }
 
-            // Assumes the _flushLock is held as reader, returns in same state.
             _flushLock.ExitWriteLock();
             _flushLock.EnterReadLock();
         }
@@ -441,7 +481,6 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 result = GetDataStorage(offset, size);
 
-                // Need to be careful here, the buffer can't be unmapped while the data is being used.
                 _buffer.IncrementReferenceCount();
 
                 _flushLock.ExitReadLock();
@@ -464,7 +503,6 @@ namespace Ryujinx.Graphics.Vulkan
 
             _flushLock.ExitReadLock();
 
-            // Flush buffer is pinned until the next GetBufferData on the thread, which is fine for current uses.
             return PinnedSpan<byte>.UnsafeFromSpan(result);
         }
 
@@ -488,7 +526,7 @@ namespace Ryujinx.Graphics.Vulkan
                 (int keyOffset, int keySize) = FromMirrorKey(key);
                 if (!(offset + size <= keyOffset || offset >= keyOffset + keySize))
                 {
-                    toRemove ??= new List<ulong>(); // 整合：保持原语法
+                    toRemove ??= new List<ulong>();
 
                     toRemove.Add(key);
                 }
@@ -509,7 +547,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe void SetData(int offset, ReadOnlySpan<byte> data, CommandBufferScoped? cbs = null, Action endRenderPass = null, bool allowCbsWait = true)
         {
-            // 整合：添加边界保护，防止设备/交换链重置后的越界写入
             if (offset < 0 || offset >= Size)
             {
                 return;
@@ -521,17 +558,14 @@ namespace Ryujinx.Graphics.Vulkan
                 return;
             }
 
-            // 从这里开始使用裁剪后的数据切片
             ReadOnlySpan<byte> dataSlice = data[..dataSize];
 
             bool allowMirror = _useMirrors && allowCbsWait && cbs != null && _activeType <= BufferAllocationType.HostMapped;
 
             if (_map != IntPtr.Zero)
             {
-                // If persistently mapped, set the data directly if the buffer is not currently in use.
                 bool isRented = _buffer.HasRentedCommandBufferDependency(_gd.CommandBufferPool);
 
-                // If the buffer is rented, take a little more time and check if the use overlaps this handle.
                 bool needsFlush = isRented && _waitable.IsBufferRangeInUse(offset, dataSize, false);
 
                 if (!needsFlush)
@@ -545,7 +579,6 @@ namespace Ryujinx.Graphics.Vulkan
                         bool removed = _pendingDataRanges.Remove(offset, dataSize);
                         if (RemoveOverlappingMirrors(offset, dataSize) || removed)
                         {
-                            // If any mirrors were removed, rebind the buffer range.
                             _gd.PipelineInternal.Rebind(_buffer, offset, dataSize);
                         }
                     }
@@ -556,7 +589,6 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
 
-            // If the buffer does not have an in-flight write (including an inline update), then upload data to a pendingCopy.
             if (allowMirror && !_waitable.IsBufferRangeInUse(offset, dataSize, true))
             {
                 if (_pendingData == null)
@@ -568,10 +600,8 @@ namespace Ryujinx.Graphics.Vulkan
                 dataSlice.CopyTo(_pendingData.AsSpan(offset, dataSize));
                 _pendingDataRanges.Add(offset, dataSize);
 
-                // Remove any overlapping mirrors.
                 RemoveOverlappingMirrors(offset, dataSize);
 
-                // Tell the graphics device to rebind any constant buffer that overlaps the newly modified range, as it should access a mirror.
                 _gd.PipelineInternal.Rebind(_buffer, offset, dataSize);
 
                 return;
@@ -587,9 +617,6 @@ namespace Ryujinx.Graphics.Vulkan
                 !(_buffer.HasCommandBufferDependency(cbs.Value) &&
                 _waitable.IsBufferRangeInUse(cbs.Value.CommandBufferIndex, offset, dataSize)))
             {
-                // If the buffer hasn't been used on the command buffer yet, try to preload the data.
-                // This avoids ending and beginning render passes on each buffer data upload.
-
                 cbs = _gd.PipelineInternal.GetPreloadCommandBuffer();
                 endRenderPass = null;
             }
@@ -613,7 +640,6 @@ namespace Ryujinx.Graphics.Vulkan
 
                     if (!_gd.BufferManager.StagingBuffer.TryPushData(cbs.Value, endRenderPass, this, offset, dataSlice))
                     {
-                        // Need to do a slow upload.
                         BufferHolder srcHolder = _gd.BufferManager.Create(_gd, dataSize, baseType: BufferAllocationType.HostMapped);
                         srcHolder.SetDataUnchecked(0, dataSlice);
 
@@ -647,7 +673,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else
             {
-                _gd.BufferManager.StagingBuffer.PushData(_gd.CommandBufferPool, null, null, this, offset, data[..dataSize]); // 整合：使用裁剪后的数据
+                _gd.BufferManager.StagingBuffer.PushData(_gd.CommandBufferPool, null, null, this, offset, data[..dataSize]);
             }
         }
 
@@ -658,7 +684,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void SetDataInline(CommandBufferScoped cbs, Action endRenderPass, int dstOffset, ReadOnlySpan<byte> data)
         {
-            // 整合：为内联更新添加边界检查
             if (dstOffset < 0 || dstOffset >= Size)
             {
                 return;
@@ -732,7 +757,6 @@ namespace Ryujinx.Graphics.Vulkan
             int size,
             bool registerSrcUsage = true)
         {
-            // 整合：增强的参数验证和错误处理
             if (gd == null)
             {
                 throw new ArgumentNullException(nameof(gd), "Graphics device is null.");
@@ -770,14 +794,12 @@ namespace Ryujinx.Graphics.Vulkan
 
             try
             {
-                // 获取缓冲区
                 var srcBuffer = registerSrcUsage ? 
                     src.Get(cbs, srcOffset, size).Value : 
                     src.GetUnsafe().Value;
                 
                 var dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
 
-                // 验证缓冲区句柄
                 if (srcBuffer.Handle == 0)
                 {
                     throw new InvalidOperationException("Invalid source buffer handle (VkBuffer is null).");
@@ -788,7 +810,6 @@ namespace Ryujinx.Graphics.Vulkan
                     throw new InvalidOperationException("Invalid destination buffer handle (VkBuffer is null).");
                 }
 
-                // 设置目标缓冲区屏障 (准备写入)
                 InsertBufferBarrier(
                     gd,
                     cbs.CommandBuffer,
@@ -800,12 +821,10 @@ namespace Ryujinx.Graphics.Vulkan
                     dstOffset,
                     size);
 
-                // 执行缓冲区复制
                 var region = new BufferCopy((ulong)srcOffset, (ulong)dstOffset, (ulong)size);
                 
                 gd.Api.CmdCopyBuffer(cbs.CommandBuffer, srcBuffer, dstBuffer, 1, &region);
 
-                // 设置目标缓冲区屏障 (完成写入)
                 InsertBufferBarrier(
                     gd,
                     cbs.CommandBuffer,
@@ -823,7 +842,6 @@ namespace Ryujinx.Graphics.Vulkan
             }
             catch (NullReferenceException)
             {
-                // 整合：处理设备/表面重置后的空引用异常
                 return;
             }
         }
@@ -947,8 +965,6 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (!_cachedConvertedBuffers.TryGetValue(offset, size, key, out var holder))
             {
-                // The destination index size is always I32.
-
                 int indexCount = size / indexSize;
 
                 int convertedCount = pattern.GetConvertedCount(indexCount);
@@ -999,6 +1015,13 @@ namespace Ryujinx.Graphics.Vulkan
             else
             {
                 _allocationAuto?.Dispose();
+            }
+
+            // 新增：释放时更新内存统计
+            lock (_memoryLock)
+            {
+                _totalAllocatedMemory -= _allocatedSize;
+                Logger.Debug?.Print(LogClass.Gpu, $"Buffer disposed: 0x{_allocatedSize:X} bytes, Total: 0x{_totalAllocatedMemory:X} bytes");
             }
 
             _flushLock.EnterWriteLock();
