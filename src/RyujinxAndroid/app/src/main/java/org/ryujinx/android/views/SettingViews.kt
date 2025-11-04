@@ -2045,7 +2045,7 @@ Row(
     ) {
         Text(text = "Enable Color Space Passthrough")
         Text(
-            text = "Bypass color space conversion for HDR displays",
+            text = "This allows the Vulkan graphics engine to directly transmit raw color information. For users with wide color gamut (such as DCI-P3) displays, this results in more vibrant colors, but at the cost of some loss in color accuracy.",
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
         )
@@ -2139,7 +2139,7 @@ if (showMemoryConfigDialog.value) {
                                 })
                             }
                             Text(
-                                text = "Warning: This may improve performance but can cause instability in some games",
+                                text = "Warning: I'm not sure what it does, so it's best not to turn it on by default",
                                 fontSize = 12.sp,
                                 modifier = Modifier.padding(8.dp)
                             )
