@@ -59,17 +59,6 @@ namespace Ryujinx.Graphics.Vulkan
         private Dictionary<ulong, StagingBufferReserved> _mirrors;
         private bool _useMirrors;
 
-        // 改进的内存监控
-        private static long _totalAllocatedMemory = 0;
-        private static readonly object _memoryLock = new object();
-        private readonly long _allocatedSize;
-        private static int _allocationFailures = 0;
-        private static DateTime _lastFailureTime = DateTime.MinValue;
-
-        // 新增：GC控制
-        private static int _gcCount = 0;
-        private static DateTime _lastGCTime = DateTime.MinValue;
-
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, MemoryAllocation allocation, int size, BufferAllocationType type, BufferAllocationType currentType)
         {
             _gd = gd;
@@ -87,14 +76,6 @@ namespace Ryujinx.Graphics.Vulkan
 
             _flushLock = new ReaderWriterLockSlim();
             _useMirrors = gd.IsTBDR;
-
-            // 内存跟踪
-            _allocatedSize = size;
-            lock (_memoryLock)
-            {
-                _totalAllocatedMemory += _allocatedSize;
-                Logger.Debug?.Print(LogClass.Gpu, $"Buffer allocated: 0x{size:X} bytes, Type: {currentType}, Total: 0x{_totalAllocatedMemory:X} bytes");
-            }
         }
 
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, Auto<MemoryAllocation> allocation, int size, BufferAllocationType type, BufferAllocationType currentType, int offset)
@@ -114,13 +95,6 @@ namespace Ryujinx.Graphics.Vulkan
             _activeType = currentType;
 
             _flushLock = new ReaderWriterLockSlim();
-            
-            _allocatedSize = size;
-            lock (_memoryLock)
-            {
-                _totalAllocatedMemory += _allocatedSize;
-                Logger.Debug?.Print(LogClass.Gpu, $"Buffer allocated: 0x{size:X} bytes, Type: {currentType}, Total: 0x{_totalAllocatedMemory:X} bytes");
-            }
         }
 
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, int size, Auto<MemoryAllocation>[] storageAllocations)
@@ -136,154 +110,9 @@ namespace Ryujinx.Graphics.Vulkan
             _activeType = BufferAllocationType.Sparse;
 
             _flushLock = new ReaderWriterLockSlim();
-            
-            _allocatedSize = size;
-            lock (_memoryLock)
-            {
-                _totalAllocatedMemory += _allocatedSize;
-                Logger.Debug?.Print(LogClass.Gpu, $"Buffer allocated: 0x{size:X} bytes, Type: {_activeType}, Total: 0x{_totalAllocatedMemory:X} bytes");
-            }
         }
 
-        // 静态方法获取内存使用情况
-        public static long GetTotalAllocatedMemory()
-        {
-            lock (_memoryLock)
-            {
-                return _totalAllocatedMemory;
-            }
-        }
-
-        public static int GetAllocationFailureCount()
-        {
-            lock (_memoryLock)
-            {
-                return _allocationFailures;
-            }
-        }
-
-        public static void RecordAllocationFailure()
-        {
-            lock (_memoryLock)
-            {
-                _allocationFailures++;
-                _lastFailureTime = DateTime.UtcNow;
-                
-                if (_allocationFailures > 10)
-                {
-                    Logger.Warning?.Print(LogClass.Gpu, $"High allocation failure count: {_allocationFailures}, last failure at {_lastFailureTime}");
-                }
-            }
-        }
-
-        public static void ResetAllocationFailures()
-        {
-            lock (_memoryLock)
-            {
-                _allocationFailures = 0;
-                Logger.Info?.Print(LogClass.Gpu, "Allocation failure counter reset");
-            }
-        }
-
-        // 改进的可用内存估算
-        public static long GetAvailableMemoryEstimate(VulkanRenderer gd)
-        {
-            try
-            {
-                // 使用更保守的估算方法
-                long totalMemory = GetTotalPhysicalMemory();
-                long allocatedMemory = GetTotalAllocatedMemory();
-                
-                // 保留至少512MB的可用空间
-                long available = totalMemory - allocatedMemory - (512 * 1024 * 1024);
-                
-                // 确保不会返回负值
-                return Math.Max(available, 64 * 1024 * 1024); // 至少64MB
-            }
-            catch
-            {
-                // 如果无法获取系统信息，返回保守估计
-                return 256 * 1024 * 1024; // 256MB
-            }
-        }
-
-        // 获取物理内存总量
-        private static long GetTotalPhysicalMemory()
-        {
-            try
-            {
-                // 在移动设备上，我们使用更保守的估计
-                // 假设大多数现代手机至少有4GB RAM
-                return 4L * 1024 * 1024 * 1024; // 4GB
-            }
-            catch
-            {
-                return 2L * 1024 * 1024 * 1024; // 2GB 作为保守估计
-            }
-        }
-
-        // 改进的垃圾回收方法
-        public static bool ForceGarbageCollection(BufferManager bufferManager, int requiredSize, bool aggressive = false)
-        {
-            // 避免过于频繁的GC
-            var now = DateTime.UtcNow;
-            if ((now - _lastGCTime).TotalSeconds < 5) // 5秒内不重复GC
-            {
-                Logger.Debug?.Print(LogClass.Gpu, "GC skipped: too recent");
-                return false;
-            }
-
-            _lastGCTime = now;
-            _gcCount++;
-
-            Logger.Info?.Print(LogClass.Gpu, 
-                $"GC #{_gcCount} requested, required: 0x{requiredSize:X}, aggressive: {aggressive}");
-
-            long memoryBefore = GetTotalAllocatedMemory();
-            
-            if (aggressive && _gcCount % 3 == 0) // 每3次失败才使用激进模式
-            {
-                Logger.Warning?.Print(LogClass.Gpu, "Using aggressive GC mode");
-                
-                // 激进模式：多次GC
-                for (int i = 0; i < 2; i++) // 减少到2次
-                {
-                    GC.Collect(2, GCCollectionMode.Forced, true);
-                    GC.WaitForPendingFinalizers();
-                    
-                    // 移除Thread.Sleep，在移动设备上可能不必要
-                }
-            }
-            else
-            {
-                // 普通模式：单次GC
-                GC.Collect(2, GCCollectionMode.Forced, true);
-                GC.WaitForPendingFinalizers();
-            }
-            
-            long memoryAfter = GetTotalAllocatedMemory();
-            long freed = memoryBefore - memoryAfter;
-            
-            Logger.Info?.Print(LogClass.Gpu, 
-                $"GC #{_gcCount} freed 0x{freed:X} bytes " +
-                $"(before: 0x{memoryBefore:X}, after: 0x{memoryAfter:X})");
-
-            bool success = freed >= requiredSize || memoryAfter < memoryBefore;
-            
-            if (success)
-            {
-                Logger.Info?.Print(LogClass.Gpu, $"GC #{_gcCount} successful");
-            }
-            else
-            {
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"GC #{_gcCount} insufficient. Freed: 0x{freed:X}, Required: 0x{requiredSize:X}");
-            }
-            
-            return success;
-        }
-
-        // 改进的创建缓冲区回退策略
+        // 简化的回退策略
         public static BufferHolder CreateWithFallback(
             VulkanRenderer gd,
             Device device,
@@ -292,95 +121,69 @@ namespace Ryujinx.Graphics.Vulkan
             out BufferAllocationType actualType)
         {
             actualType = preferredType;
-            int attempt = 0;
-            const int maxAttempts = 3; // 减少尝试次数
             
-            // 简化回退策略
-            var fallbackStrategy = new (BufferAllocationType type, string description)[]
-            {
-                (preferredType, "Original preferred type"),
-                (BufferAllocationType.HostMapped, "Fallback to HostMapped"),
-                (BufferAllocationType.HostMappedNoCache, "Fallback to HostMappedNoCache")
-            };
-            
-            foreach (var strategy in fallbackStrategy)
-            {
-                if (attempt >= maxAttempts) break;
-                
-                attempt++;
-                Logger.Info?.Print(LogClass.Gpu, 
-                    $"Buffer creation attempt {attempt}/{maxAttempts}: {strategy.description}, Size: 0x{size:X}");
+            // 直接尝试首选类型
+            Logger.Info?.Print(LogClass.Gpu, $"Creating buffer with preferred type: {preferredType}, Size: 0x{size:X}");
 
+            try
+            {
+                var result = gd.BufferManager.CreateBacking(gd, size, preferredType);
+                
+                if (result.buffer.Handle != 0)
+                {
+                    actualType = result.resultType;
+                    var holder = new BufferHolder(gd, device, result.buffer, result.allocation, size, preferredType, actualType);
+                    
+                    Logger.Info?.Print(LogClass.Gpu, $"Buffer created successfully with type: {actualType}");
+                    return holder;
+                }
+                else
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, $"Buffer creation returned null buffer for type: {preferredType}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Buffer creation failed with {preferredType}: {ex.GetType().Name} - {ex.Message}");
+            }
+            
+            // 如果首选类型失败，尝试回退到HostMapped
+            if (preferredType != BufferAllocationType.HostMapped)
+            {
+                Logger.Info?.Print(LogClass.Gpu, $"Falling back to HostMapped for size: 0x{size:X}");
+                
                 try
                 {
-                    var result = gd.BufferManager.CreateBacking(gd, size, strategy.type);
+                    var result = gd.BufferManager.CreateBacking(gd, size, BufferAllocationType.HostMapped);
                     
                     if (result.buffer.Handle != 0)
                     {
                         actualType = result.resultType;
                         var holder = new BufferHolder(gd, device, result.buffer, result.allocation, size, preferredType, actualType);
                         
-                        Logger.Info?.Print(LogClass.Gpu, $"Buffer created successfully with type: {actualType}");
-                        ResetAllocationFailures();
+                        Logger.Info?.Print(LogClass.Gpu, $"Buffer created successfully with fallback type: {actualType}");
                         return holder;
-                    }
-                    else
-                    {
-                        Logger.Warning?.Print(LogClass.Gpu, $"Buffer creation returned null buffer for type: {strategy.type}");
                     }
                 }
                 catch (Exception ex)
                 {
                     Logger.Warning?.Print(LogClass.Gpu, 
-                        $"Buffer creation failed with {strategy.type}: {ex.GetType().Name} - {ex.Message}");
-                    
-                    // 记录更详细的异常信息
-                    if (ex.InnerException != null)
-                    {
-                        Logger.Warning?.Print(LogClass.Gpu, 
-                            $"Inner exception: {ex.InnerException.GetType().Name} - {ex.InnerException.Message}");
-                    }
-                }
-                
-                // 只有在真正需要时才进行GC
-                if (attempt < maxAttempts && ShouldPerformGC())
-                {
-                    Logger.Info?.Print(LogClass.Gpu, "Performing garbage collection before next attempt...");
-                    ForceGarbageCollection(gd.BufferManager, size / 4, false); // 减少要求的大小
-                }
-                else if (attempt < maxAttempts)
-                {
-                    Logger.Info?.Print(LogClass.Gpu, "Skipping GC, waiting for next attempt...");
+                        $"Fallback buffer creation failed with HostMapped: {ex.GetType().Name} - {ex.Message}");
                 }
             }
             
             // 所有尝试都失败了
-            RecordAllocationFailure();
             actualType = BufferAllocationType.Auto;
-            
             Logger.Error?.Print(LogClass.Gpu, 
-                $"All buffer creation attempts failed for size 0x{size:X}. " +
-                $"Total failures: {GetAllocationFailureCount()}");
+                $"All buffer creation attempts failed for size 0x{size:X}");
                 
             return null;
         }
 
-        // 判断是否应该执行GC
-        private static bool ShouldPerformGC()
-        {
-            lock (_memoryLock)
-            {
-                // 基于失败次数和时间间隔来决定
-                if (_allocationFailures > 5) return true;
-                
-                var timeSinceLastGC = DateTime.UtcNow - _lastGCTime;
-                return timeSinceLastGC.TotalSeconds > 10; // 至少10秒间隔
-            }
-        }
-
         // 其余方法保持不变...
         // [原有的大量代码保持不变，包括CreateView, InsertBarrier, TryGetMirror等方法]
-        
+
         public unsafe Auto<DisposableBufferView> CreateView(VkFormat format, int offset, int size, Action invalidateView)
         {
             var bufferViewCreateInfo = new BufferViewCreateInfo
@@ -1218,13 +1021,6 @@ namespace Ryujinx.Graphics.Vulkan
             else
             {
                 _allocationAuto?.Dispose();
-            }
-
-            // 释放时更新内存统计
-            lock (_memoryLock)
-            {
-                _totalAllocatedMemory -= _allocatedSize;
-                Logger.Debug?.Print(LogClass.Gpu, $"Buffer disposed: 0x{_allocatedSize:X} bytes, Type: {_activeType}, Total: 0x{_totalAllocatedMemory:X} bytes");
             }
 
             _flushLock.EnterWriteLock();
