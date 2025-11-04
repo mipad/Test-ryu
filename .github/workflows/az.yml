@@ -2,9 +2,9 @@ name: Android CI  Fix
 
 on:
   push:
-    branches: [ "内存幻想" ]
+    branches: [ "后软音" ]
   pull_request:
-    branches: [ "内存幻想" ]
+    branches: [ "后软音" ]
 
 jobs:
   build:
@@ -25,7 +25,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: 内存幻想
+        ref: 后软音
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
