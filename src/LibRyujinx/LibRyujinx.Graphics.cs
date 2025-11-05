@@ -46,15 +46,10 @@ namespace LibRyujinx
             GraphicsConfig.EnableMacroHLE = graphicsConfiguration.EnableMacroHLE;
             GraphicsConfig.EnableShaderCache = graphicsConfiguration.EnableShaderCache;
             GraphicsConfig.EnableTextureRecompression = graphicsConfiguration.EnableTextureRecompression;
-            
-            // 初始化色彩空间直通设置
             GraphicsConfig.EnableColorSpacePassthrough = graphicsConfiguration.EnableColorSpacePassthrough;
-            
-            // 初始化新的图形设置 - 修复类型转换错误
-            ConfigurationState.Instance.Graphics.AntiAliasing.Value = (Ryujinx.Common.Configuration.AntiAliasing)graphicsConfiguration.AntiAliasing;
-            ConfigurationState.Instance.Graphics.ScalingFilter.Value = (Ryujinx.Common.Configuration.ScalingFilter)graphicsConfiguration.ScalingFilter;
-            ConfigurationState.Instance.Graphics.ScalingFilterLevel.Value = graphicsConfiguration.ScalingFilterLevel;
-            ConfigurationState.Instance.Graphics.EnableColorSpacePassthrough.Value = graphicsConfiguration.EnableColorSpacePassthrough;
+            GraphicsConfig.AntiAliasing = (Ryujinx.Common.Configuration.AntiAliasing)graphicsConfiguration.AntiAliasing;
+            GraphicsConfig.ScalingFilter = (Ryujinx.Common.Configuration.ScalingFilter)graphicsConfiguration.ScalingFilter;
+            GraphicsConfig.ScalingFilterLevel = graphicsConfiguration.ScalingFilterLevel;
 
             GraphicsConfiguration = graphicsConfiguration;
 
@@ -341,26 +336,37 @@ namespace LibRyujinx
     [StructLayout(LayoutKind.Sequential)]
     public struct GraphicsConfiguration
     {
-        public float ResScale = 1f;
-        public float MaxAnisotropy = -1;
-        public bool FastGpuTime = true;
-        public bool Fast2DCopy = true;
-        public bool EnableMacroJit = false;
-        public bool EnableMacroHLE = true;
-        public bool EnableShaderCache = true;
-        public bool EnableTextureRecompression = false;
-        public BackendThreading BackendThreading = BackendThreading.Auto;
-        public AspectRatio AspectRatio = AspectRatio.Fixed16x9;
-        // 新增：色彩空间直通设置
-        public bool EnableColorSpacePassthrough = false;
-        
-        // 添加缺失的字段：
-        public int AntiAliasing = 0;           // 0=None, 1=Fxaa, 2=SmaaLow, etc.
-        public int ScalingFilter = 2;          // 0=Bilinear, 1=Nearest, 2=FSR, 3=Area
-        public int ScalingFilterLevel = 25;    // 0-100
+        public float ResScale;
+        public float MaxAnisotropy;
+        public bool FastGpuTime;
+        public bool Fast2DCopy;
+        public bool EnableMacroJit;
+        public bool EnableMacroHLE;
+        public bool EnableShaderCache;
+        public bool EnableTextureRecompression;
+        public BackendThreading BackendThreading;
+        public AspectRatio AspectRatio;
+        public bool EnableColorSpacePassthrough;
+        public int AntiAliasing ;           // 0=None, 1=Fxaa, 2=SmaaLow, etc.
+        public int ScalingFilter ;          // 0=Bilinear, 1=Nearest, 2=FSR, 3=Area
+        public int ScalingFilterLevel ;    // 0-100
 
         public GraphicsConfiguration()
         {
+            ResScale = 1f;
+            MaxAnisotropy = -1;
+            FastGpuTime = true;
+            Fast2DCopy = true;
+            EnableMacroJit = false;
+            EnableMacroHLE = true;
+            EnableShaderCache = true;
+            EnableTextureRecompression = false;
+            BackendThreading BackendThreading = BackendThreading.Auto;
+            AspectRatio AspectRatio = AspectRatio.Fixed16x9;
+            EnableColorSpacePassthrough = false;
+            AntiAliasing = 0;           // 0=None, 1=Fxaa, 2=SmaaLow, etc.
+            ScalingFilter = 2;          // 0=Bilinear, 1=Nearest, 2=FSR, 3=Area
+            ScalingFilterLevel = 25;    
         }
     }
 
