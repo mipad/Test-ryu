@@ -182,14 +182,22 @@ namespace LibRyujinx.Sample
     }
 
     public enum MemoryConfiguration
-    {
-        MemoryConfiguration4GiB = 0,
-        MemoryConfiguration4GiBAppletDev = 1,
-        MemoryConfiguration4GiBSystemDev = 2,
-        MemoryConfiguration6GiB = 3,
-        MemoryConfiguration6GiBAppletDev = 4,
-        MemoryConfiguration8GiB = 5,
-    }
+{
+    MemoryConfiguration4GiB = 0,
+    MemoryConfiguration4GiBAppletDev = 1,
+    MemoryConfiguration4GiBSystemDev = 2,
+    MemoryConfiguration6GiB = 3,
+    MemoryConfiguration6GiBAppletDev = 4,
+    MemoryConfiguration8GiB = 5,
+    MemoryConfiguration10GiB = 6,
+    MemoryConfiguration12GiB = 7,
+    MemoryConfiguration14GiB = 8,
+    MemoryConfiguration16GiB = 9,
+    
+    // 为了方便使用，添加最小和最大值的常量
+    Min = MemoryConfiguration4GiB,
+    Max = MemoryConfiguration16GiB,
+}
 
     /// <summary>
     /// Represent a button from a gamepad.
