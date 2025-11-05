@@ -46,10 +46,23 @@ namespace LibRyujinx
             GraphicsConfig.EnableMacroHLE = graphicsConfiguration.EnableMacroHLE;
             GraphicsConfig.EnableShaderCache = graphicsConfiguration.EnableShaderCache;
             GraphicsConfig.EnableTextureRecompression = graphicsConfiguration.EnableTextureRecompression;
-            // 新增：初始化色彩空间直通设置
+            
+            // 初始化色彩空间直通设置
             GraphicsConfig.EnableColorSpacePassthrough = graphicsConfiguration.EnableColorSpacePassthrough;
+            
+            // 初始化新的图形设置
+            ConfigurationState.Instance.Graphics.AntiAliasing.Value = (Ryujinx.Graphics.GAL.AntiAliasing)graphicsConfiguration.AntiAliasing;
+            ConfigurationState.Instance.Graphics.ScalingFilter.Value = (Ryujinx.Graphics.GAL.ScalingFilter)graphicsConfiguration.ScalingFilter;
+            ConfigurationState.Instance.Graphics.ScalingFilterLevel.Value = graphicsConfiguration.ScalingFilterLevel;
+            ConfigurationState.Instance.Graphics.EnableColorSpacePassthrough.Value = graphicsConfiguration.EnableColorSpacePassthrough;
 
             GraphicsConfiguration = graphicsConfiguration;
+
+            Logger.Info?.Print(LogClass.Application, "Graphics configuration initialized:");
+            Logger.Info?.Print(LogClass.Application, $"  - AntiAliasing: {graphicsConfiguration.AntiAliasing}");
+            Logger.Info?.Print(LogClass.Application, $"  - ScalingFilter: {graphicsConfiguration.ScalingFilter}");
+            Logger.Info?.Print(LogClass.Application, $"  - ScalingFilterLevel: {graphicsConfiguration.ScalingFilterLevel}");
+            Logger.Info?.Print(LogClass.Application, $"  - EnableColorSpacePassthrough: {graphicsConfiguration.EnableColorSpacePassthrough}");
 
             return true;
         }
@@ -340,6 +353,11 @@ namespace LibRyujinx
         public AspectRatio AspectRatio = AspectRatio.Stretched;
         // 新增：色彩空间直通设置
         public bool EnableColorSpacePassthrough = false;
+        
+        // 添加缺失的字段：
+        public int AntiAliasing = 0;           // 0=None, 1=Fxaa, 2=SmaaLow, etc.
+        public int ScalingFilter = 0;          // 0=Bilinear, 1=Nearest, 2=FSR, 3=Area
+        public int ScalingFilterLevel = 25;    // 0-100
 
         public GraphicsConfiguration()
         {
