@@ -268,6 +268,104 @@ namespace LibRyujinx
             }
         }
 
+        // ==================== 图形设置方法 ====================
+
+/// <summary>
+/// 设置抗锯齿级别
+/// </summary>
+public static void SetAntiAliasing(int level)
+{
+    try
+    {
+        // 更新配置状态
+        ConfigurationState.Instance.Graphics.AntiAliasing.Value = (Ryujinx.Common.Configuration.AntiAliasing)level;
+        
+        // 如果渲染器已初始化，直接应用设置
+        if (Renderer != null && Renderer.Window != null)
+        {
+            Renderer.Window.SetAntiAliasing((Ryujinx.Graphics.GAL.AntiAliasing)level);
+        }
+        
+        Logger.Info?.Print(LogClass.Application, $"Anti-aliasing set to: {level}");
+    }
+    catch (Exception ex)
+    {
+        Logger.Error?.Print(LogClass.Application, $"Error setting anti-aliasing: {ex.Message}");
+    }
+}
+
+/// <summary>
+/// 获取抗锯齿级别
+/// </summary>
+public static int GetAntiAliasing()
+{
+    return (int)ConfigurationState.Instance.Graphics.AntiAliasing.Value;
+}
+
+/// <summary>
+/// 设置缩放过滤器
+/// </summary>
+public static void SetScalingFilter(int filterType)
+{
+    try
+    {
+        // 更新配置状态
+        ConfigurationState.Instance.Graphics.ScalingFilter.Value = (Ryujinx.Common.Configuration.ScalingFilter)filterType;
+        
+        // 如果渲染器已初始化，直接应用设置
+        if (Renderer != null && Renderer.Window != null)
+        {
+            Renderer.Window.SetScalingFilter((Ryujinx.Graphics.GAL.ScalingFilter)filterType);
+        }
+        
+        Logger.Info?.Print(LogClass.Application, $"Scaling filter set to: {filterType}");
+    }
+    catch (Exception ex)
+    {
+        Logger.Error?.Print(LogClass.Application, $"Error setting scaling filter: {ex.Message}");
+    }
+}
+
+/// <summary>
+/// 获取缩放过滤器
+/// </summary>
+public static int GetScalingFilter()
+{
+    return (int)ConfigurationState.Instance.Graphics.ScalingFilter.Value;
+}
+
+/// <summary>
+/// 设置缩放过滤器级别
+/// </summary>
+public static void SetScalingFilterLevel(int level)
+{
+    try
+    {
+        // 更新配置状态
+        ConfigurationState.Instance.Graphics.ScalingFilterLevel.Value = level;
+        
+        // 如果渲染器已初始化，直接应用设置
+        if (Renderer != null && Renderer.Window != null)
+        {
+            Renderer.Window.SetScalingFilterLevel(level);
+        }
+        
+        Logger.Info?.Print(LogClass.Application, $"Scaling filter level set to: {level}");
+    }
+    catch (Exception ex)
+    {
+        Logger.Error?.Print(LogClass.Application, $"Error setting scaling filter level: {ex.Message}");
+    }
+}
+
+/// <summary>
+/// 获取缩放过滤器级别
+/// </summary>
+public static int GetScalingFilterLevel()
+{
+    return ConfigurationState.Instance.Graphics.ScalingFilterLevel.Value;
+}
+        
         // 添加设置色彩空间直通的方法
         public static void SetColorSpacePassthrough(bool enabled)
         {
