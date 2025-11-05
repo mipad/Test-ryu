@@ -2,8 +2,11 @@ using Ryujinx.Common;
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Shader;
 using Ryujinx.Graphics.Shader.Translation;
+using Silk.NET.Vulkan;
 using System;
 using Extent2D = Ryujinx.Graphics.GAL.Extents2D;
+using Format = Silk.NET.Vulkan.Format;
+using SamplerCreateInfo = Ryujinx.Graphics.GAL.SamplerCreateInfo;
 
 namespace Ryujinx.Graphics.Vulkan.Effects
 {
@@ -37,7 +40,6 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             _pipeline.Initialize();
 
             // 加载编译好的 MMPX SPIR-V 着色器
-            // 注意：需要提前将 .glsl 编译为 .spv
             byte[] scalingShader = EmbeddedResources.Read("Ryujinx.Graphics.Vulkan/Effects/Shaders/MmpxScaling.spv");
 
             // 创建资源布局
