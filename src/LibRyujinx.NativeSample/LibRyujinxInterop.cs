@@ -94,6 +94,14 @@ namespace LibRyujinx.Sample
         // 添加获取系统时间偏移的方法 - 更新 EntryPoint 名称
         [DllImport(dll, EntryPoint = "getSystemTimeOffsetNative")]
         internal extern static long GetSystemTimeOffset();
+
+        // 添加设置颜色空间直通
+        [DllImport(dll, EntryPoint = "setColorSpacePassthrough")]
+        internal extern static void SetColorSpacePassthrough(bool enabled);
+        
+        //添加获取颜色空间直通的方法
+        [DllImport(dll, EntryPoint = "getColorSpacePassthrough")]
+        internal extern static bool GetColorSpacePassthrough();
     }
 
     public enum GraphicsBackend
@@ -122,6 +130,7 @@ namespace LibRyujinx.Sample
         public bool EnableTextureRecompression = false;
         public BackendThreading BackendThreading = BackendThreading.Auto;
         public AspectRatio AspectRatio = AspectRatio.Fixed16x9;
+        public bool EnableColorSpacePassthrough = false; // 颜色空间直通
 
         public GraphicsConfiguration()
         {
@@ -182,14 +191,22 @@ namespace LibRyujinx.Sample
     }
 
     public enum MemoryConfiguration
-    {
-        MemoryConfiguration4GiB = 0,
-        MemoryConfiguration4GiBAppletDev = 1,
-        MemoryConfiguration4GiBSystemDev = 2,
-        MemoryConfiguration6GiB = 3,
-        MemoryConfiguration6GiBAppletDev = 4,
-        MemoryConfiguration8GiB = 5,
-    }
+{
+    MemoryConfiguration4GiB = 0,
+    MemoryConfiguration4GiBAppletDev = 1,
+    MemoryConfiguration4GiBSystemDev = 2,
+    MemoryConfiguration6GiB = 3,
+    MemoryConfiguration6GiBAppletDev = 4,
+    MemoryConfiguration8GiB = 5,
+    MemoryConfiguration10GiB = 6,
+    MemoryConfiguration12GiB = 7,
+    MemoryConfiguration14GiB = 8,
+    MemoryConfiguration16GiB = 9,
+    
+    // 为了方便使用，添加最小和最大值的常量
+    Min = MemoryConfiguration4GiB,
+    Max = MemoryConfiguration16GiB,
+}
 
     /// <summary>
     /// Represent a button from a gamepad.
