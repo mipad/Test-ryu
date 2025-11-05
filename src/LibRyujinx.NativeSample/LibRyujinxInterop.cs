@@ -102,6 +102,27 @@ namespace LibRyujinx.Sample
         //添加获取颜色空间直通的方法
         [DllImport(dll, EntryPoint = "getColorSpacePassthrough")]
         internal extern static bool GetColorSpacePassthrough();
+
+        // 抗锯齿设置
+        [DllImport(dll, EntryPoint = "setAntiAliasing")]
+        internal extern static void SetAntiAliasing(int level);
+
+        [DllImport(dll, EntryPoint = "getAntiAliasing")]
+        internal extern static int GetAntiAliasing();  // 获取方法
+
+        // 缩放过滤器设置
+        [DllImport(dll, EntryPoint = "setScalingFilter")]
+        internal extern static void SetScalingFilter(int filterType);
+
+        [DllImport(dll, EntryPoint = "getScalingFilter")]
+        internal extern static int GetScalingFilter();  // 获取方法
+
+        //缩放级别
+        [DllImport(dll, EntryPoint = "setScalingFilterLevel")]
+        internal extern static void SetScalingFilterLevel(int level);
+
+        [DllImport(dll, EntryPoint = "getScalingFilterLevel")] 
+        internal extern static int GetScalingFilterLevel();  // 获取方法
     }
 
     public enum GraphicsBackend
@@ -131,6 +152,9 @@ namespace LibRyujinx.Sample
         public BackendThreading BackendThreading = BackendThreading.Auto;
         public AspectRatio AspectRatio = AspectRatio.Fixed16x9;
         public bool EnableColorSpacePassthrough = false; // 颜色空间直通
+        public int AntiAliasing = 0;           // 0=None, 1=Fxaa, 2=SmaaLow, etc.
+        public int ScalingFilter = 0;          // 0=Bilinear, 1=Nearest, 2=FSR, 3=Area
+        public int ScalingFilterLevel = 25;    // 0-100
 
         public GraphicsConfiguration()
         {
