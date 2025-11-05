@@ -18,6 +18,7 @@
     <EmbeddedResource Include="Effects\Shaders\AreaScaling.spv" />
     <EmbeddedResource Include="Effects\Shaders\FsrScaling.spv" />
     <EmbeddedResource Include="Effects\Shaders\FsrSharpening.spv" />
+    <EmbeddedResource Include="Effects\Shaders\MmpxScaling.spv" />
     <EmbeddedResource Include="Effects\Shaders\Fxaa.spv" />
     <EmbeddedResource Include="Effects\Shaders\SmaaBlend.spv" />
     <EmbeddedResource Include="Effects\Shaders\SmaaEdge.spv" />
