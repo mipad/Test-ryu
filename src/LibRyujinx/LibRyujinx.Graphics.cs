@@ -355,9 +355,9 @@ namespace LibRyujinx
         public bool EnableColorSpacePassthrough = false;
         
         // 添加缺失的字段：
-        public int AntiAliasing = 0;           // 0=None, 1=Fxaa, 2=SmaaLow, etc.
-        public int ScalingFilter = 0;          // 0=Bilinear, 1=Nearest, 2=FSR, 3=Area
-        public int ScalingFilterLevel = 25;    // 0-100
+        public int AntiAliasing = 1;           // 0=None, 1=Fxaa, 2=SmaaLow, etc.
+        public int ScalingFilter = 1;          // 0=Bilinear, 1=Nearest, 2=FSR, 3=Area
+        public int ScalingFilterLevel = 100;    // 0-100
 
         public GraphicsConfiguration()
         {
