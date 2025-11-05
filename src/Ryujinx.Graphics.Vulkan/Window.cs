@@ -262,17 +262,11 @@ namespace Ryujinx.Graphics.Vulkan
 
                 CurrentTransform = capabilities.CurrentTransform;
 
-                // 从版本11改进：更清晰的图像使用标志
-                var usage = ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit;
-                if (!Ryujinx.Common.PlatformInfo.IsBionic)
-                {
-                    usage |= ImageUsageFlags.StorageBit; // 仅桌面平台允许在交换链上使用Storage
-                }
+                // 修改：移除安卓判断，所有平台都使用相同的 ImageUsage 标志
+                var usage = ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit | ImageUsageFlags.StorageBit;
 
-                // 从版本11改进：Android使用Identity变换，其他使用驱动推荐的变换
-                var preTransform = Ryujinx.Common.PlatformInfo.IsBionic
-                    ? SurfaceTransformFlagsKHR.IdentityBitKhr
-                    : capabilities.CurrentTransform;
+                // 修改：所有平台都使用驱动推荐的变换
+                var preTransform = capabilities.CurrentTransform;
 
                 var swapchainCreateInfo = new SwapchainCreateInfoKHR
                 {
@@ -786,9 +780,8 @@ namespace Ryujinx.Graphics.Vulkan
 
             var cbs = _gd.CommandBufferPool.Rent();
 
-            // 从版本11改进：根据路径正确设置布局/阶段
-            bool allowStorageDst = !Ryujinx.Common.PlatformInfo.IsBionic; // Android: 交换链上无Storage
-            bool useComputeDst = allowStorageDst && _scalingFilter != null;
+            // 修改：移除安卓判断，所有平台都使用计算着色器路径
+            bool useComputeDst = _scalingFilter != null;
 
             if (useComputeDst)
             {
@@ -1109,6 +1102,14 @@ namespace Ryujinx.Graphics.Vulkan
                         {
                             _scalingFilter?.Dispose();
                             _scalingFilter = new AreaScalingFilter(_gd, _device);
+                        }
+                        break;
+                    // 新增：MMPX 缩放器支持
+                    case ScalingFilter.Mmpx:
+                        if (_scalingFilter is not MmpxScalingFilter)
+                        {
+                            _scalingFilter?.Dispose();
+                            _scalingFilter = new MmpxScalingFilter(_gd, _device);
                         }
                         break;
                 }
