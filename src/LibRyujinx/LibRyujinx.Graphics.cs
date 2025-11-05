@@ -29,6 +29,11 @@ namespace LibRyujinx
         private static ManualResetEvent _gpuDoneEvent;
         private static bool _enableGraphicsLogging;
 
+        // 添加本地字段来存储图形配置
+        private static int _antiAliasing;
+        private static int _scalingFilter;
+        private static int _scalingFilterLevel;
+
         public delegate void SwapBuffersCallback();
         public delegate IntPtr GetProcAddress(string name);
         public delegate IntPtr CreateSurface(IntPtr instance);
@@ -38,6 +43,7 @@ namespace LibRyujinx
 
         public static bool InitializeGraphics(GraphicsConfiguration graphicsConfiguration)
         {
+            // 只设置 GraphicsConfig 中确实存在的属性
             GraphicsConfig.ResScale = graphicsConfiguration.ResScale;
             GraphicsConfig.MaxAnisotropy = graphicsConfiguration.MaxAnisotropy;
             GraphicsConfig.FastGpuTime = graphicsConfiguration.FastGpuTime;
@@ -47,9 +53,11 @@ namespace LibRyujinx
             GraphicsConfig.EnableShaderCache = graphicsConfiguration.EnableShaderCache;
             GraphicsConfig.EnableTextureRecompression = graphicsConfiguration.EnableTextureRecompression;
             GraphicsConfig.EnableColorSpacePassthrough = graphicsConfiguration.EnableColorSpacePassthrough;
-            GraphicsConfig.AntiAliasing = (Ryujinx.Common.Configuration.AntiAliasing)graphicsConfiguration.AntiAliasing;
-            GraphicsConfig.ScalingFilter = (Ryujinx.Common.Configuration.ScalingFilter)graphicsConfiguration.ScalingFilter;
-            GraphicsConfig.ScalingFilterLevel = graphicsConfiguration.ScalingFilterLevel;
+            
+            // 将缺失的属性存储到本地字段
+            _antiAliasing = graphicsConfiguration.AntiAliasing;
+            _scalingFilter = graphicsConfiguration.ScalingFilter;
+            _scalingFilterLevel = graphicsConfiguration.ScalingFilterLevel;
 
             GraphicsConfiguration = graphicsConfiguration;
 
@@ -126,19 +134,28 @@ namespace LibRyujinx
                     return;
                 }
 
-                // 获取当前配置值 - 修复类型转换
-                var antiAliasing = (Ryujinx.Graphics.GAL.AntiAliasing)ConfigurationState.Instance.Graphics.AntiAliasing.Value;
-                var scalingFilter = (Ryujinx.Graphics.GAL.ScalingFilter)ConfigurationState.Instance.Graphics.ScalingFilter.Value;
-                var scalingFilterLevel = ConfigurationState.Instance.Graphics.ScalingFilterLevel.Value;
-                var enableColorSpacePassthrough = ConfigurationState.Instance.Graphics.EnableColorSpacePassthrough.Value;
+                // 优先使用 ConfigurationState 中的动态配置，如果没有则使用初始化时的配置
+                var antiAliasing = ConfigurationState.Instance?.Graphics.AntiAliasing.Value != null 
+                    ? (Ryujinx.Graphics.GAL.AntiAliasing)ConfigurationState.Instance.Graphics.AntiAliasing.Value
+                    : (Ryujinx.Graphics.GAL.AntiAliasing)_antiAliasing;
+                    
+                var scalingFilter = ConfigurationState.Instance?.Graphics.ScalingFilter.Value != null
+                    ? (Ryujinx.Graphics.GAL.ScalingFilter)ConfigurationState.Instance.Graphics.ScalingFilter.Value
+                    : (Ryujinx.Graphics.GAL.ScalingFilter)_scalingFilter;
+                    
+                var scalingFilterLevel = ConfigurationState.Instance?.Graphics.ScalingFilterLevel.Value != null
+                    ? ConfigurationState.Instance.Graphics.ScalingFilterLevel.Value
+                    : _scalingFilterLevel;
+                    
+                var enableColorSpacePassthrough = ConfigurationState.Instance?.Graphics.EnableColorSpacePassthrough.Value != null
+                    ? ConfigurationState.Instance.Graphics.EnableColorSpacePassthrough.Value
+                    : GraphicsConfiguration.EnableColorSpacePassthrough;
                 
                 Logger.Info?.Print(LogClass.Application, $"Current graphics settings:");
                 Logger.Info?.Print(LogClass.Application, $"  - AntiAliasing: {antiAliasing}");
                 Logger.Info?.Print(LogClass.Application, $"  - ScalingFilter: {scalingFilter}");
                 Logger.Info?.Print(LogClass.Application, $"  - ScalingFilterLevel: {scalingFilterLevel}");
                 Logger.Info?.Print(LogClass.Application, $"  - EnableColorSpacePassthrough: {enableColorSpacePassthrough}");
-                Logger.Info?.Print(LogClass.Application, $"  - ResScale: {ConfigurationState.Instance.Graphics.ResScale.Value}");
-                Logger.Info?.Print(LogClass.Application, $"  - MaxAnisotropy: {ConfigurationState.Instance.Graphics.MaxAnisotropy.Value}");
 
                 // 应用抗锯齿设置
                 Logger.Info?.Print(LogClass.Application, $"Applying anti-aliasing: {antiAliasing}");
@@ -180,9 +197,6 @@ namespace LibRyujinx
             // 添加渲染器状态检查
             Logger.Info?.Print(LogClass.Application, $"Renderer type: {Renderer.GetType().Name}");
             Logger.Info?.Print(LogClass.Application, $"Renderer.Window is null: {Renderer.Window == null}");
-            
-            // 移除这里的 ApplyGraphicsSettings() 调用
-            // 图形设置将在渲染循环内部应用
             
             ARMeilleure.Optimizations.CacheEviction = SwitchDevice!.EnableJitCacheEviction;
             
@@ -361,8 +375,8 @@ namespace LibRyujinx
             EnableMacroHLE = true;
             EnableShaderCache = true;
             EnableTextureRecompression = false;
-            BackendThreading BackendThreading = BackendThreading.Auto;
-            AspectRatio AspectRatio = AspectRatio.Fixed16x9;
+            BackendThreading = BackendThreading.Auto;
+            AspectRatio = AspectRatio.Fixed16x9;
             EnableColorSpacePassthrough = false;
             AntiAliasing = 0;           // 0=None, 1=Fxaa, 2=SmaaLow, etc.
             ScalingFilter = 2;          // 0=Bilinear, 1=Nearest, 2=FSR, 3=Area
