@@ -1426,38 +1426,42 @@ ExpandableView(onCardArrowClick = { }, title = "Post-Processing") {
             )
         }
         
-        // Scaling Filter Level 设置
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(text = "Scaling Filter Level")
-            Text(
-                text = "${scalingFilterLevel.value}%",
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-        
-        // 滑动条
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            androidx.compose.material3.Slider(
-                value = scalingFilterLevel.value.toFloat(),
-                onValueChange = { newValue ->
-                    scalingFilterLevel.value = newValue.toInt()
-                },
-                valueRange = 0f..100f,
-                steps = 20,
-                modifier = Modifier.fillMaxWidth()
-            )
+        // Scaling Filter Level 设置 - 只在FSR模式下显示
+        AnimatedVisibility(visible = scalingFilter.value == 2) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = "FSR Sharpness")
+                    Text(
+                        text = "${scalingFilterLevel.value}%",
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                
+                // 滑动条
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    androidx.compose.material3.Slider(
+                        value = scalingFilterLevel.value.toFloat(),
+                        onValueChange = { newValue ->
+                            scalingFilterLevel.value = newValue.toInt()
+                        },
+                        valueRange = 0f..100f,
+                        steps = 99,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
         }
     }
 }
