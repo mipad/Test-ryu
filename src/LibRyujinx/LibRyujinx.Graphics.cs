@@ -50,9 +50,9 @@ namespace LibRyujinx
             // 初始化色彩空间直通设置
             GraphicsConfig.EnableColorSpacePassthrough = graphicsConfiguration.EnableColorSpacePassthrough;
             
-            // 初始化新的图形设置
-            ConfigurationState.Instance.Graphics.AntiAliasing.Value = (Ryujinx.Graphics.GAL.AntiAliasing)graphicsConfiguration.AntiAliasing;
-            ConfigurationState.Instance.Graphics.ScalingFilter.Value = (Ryujinx.Graphics.GAL.ScalingFilter)graphicsConfiguration.ScalingFilter;
+            // 初始化新的图形设置 - 修复类型转换错误
+            ConfigurationState.Instance.Graphics.AntiAliasing.Value = (Ryujinx.Common.Configuration.AntiAliasing)graphicsConfiguration.AntiAliasing;
+            ConfigurationState.Instance.Graphics.ScalingFilter.Value = (Ryujinx.Common.Configuration.ScalingFilter)graphicsConfiguration.ScalingFilter;
             ConfigurationState.Instance.Graphics.ScalingFilterLevel.Value = graphicsConfiguration.ScalingFilterLevel;
             ConfigurationState.Instance.Graphics.EnableColorSpacePassthrough.Value = graphicsConfiguration.EnableColorSpacePassthrough;
 
@@ -131,7 +131,7 @@ namespace LibRyujinx
                     return;
                 }
 
-                // 获取当前配置值
+                // 获取当前配置值 - 修复类型转换
                 var antiAliasing = (Ryujinx.Graphics.GAL.AntiAliasing)ConfigurationState.Instance.Graphics.AntiAliasing.Value;
                 var scalingFilter = (Ryujinx.Graphics.GAL.ScalingFilter)ConfigurationState.Instance.Graphics.ScalingFilter.Value;
                 var scalingFilterLevel = ConfigurationState.Instance.Graphics.ScalingFilterLevel.Value;
@@ -350,7 +350,7 @@ namespace LibRyujinx
         public bool EnableShaderCache = true;
         public bool EnableTextureRecompression = false;
         public BackendThreading BackendThreading = BackendThreading.Auto;
-        public AspectRatio AspectRatio = AspectRatio.Fixed16x9;
+        public AspectRatio AspectRatio = AspectRatio.Stretched;
         // 新增：色彩空间直通设置
         public bool EnableColorSpacePassthrough = false;
         
