@@ -6,5 +6,7 @@ namespace Ryujinx.Graphics.GAL
         Nearest,
         Fsr,
         Area,
+        Mmpx,
     }
 }
+
