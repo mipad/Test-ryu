@@ -350,7 +350,7 @@ namespace LibRyujinx
         public bool EnableShaderCache = true;
         public bool EnableTextureRecompression = false;
         public BackendThreading BackendThreading = BackendThreading.Auto;
-        public AspectRatio AspectRatio = AspectRatio.Stretched;
+        public AspectRatio AspectRatio = AspectRatio.Fixed16x9;
         // 新增：色彩空间直通设置
         public bool EnableColorSpacePassthrough = false;
         
