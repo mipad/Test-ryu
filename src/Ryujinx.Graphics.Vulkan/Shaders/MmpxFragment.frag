@@ -12,7 +12,6 @@ layout(binding = 1) uniform Region {
     float srcY1;
 };
 
-
 float luma(vec4 col) {
     return dot(col.rgb, vec3(0.2126, 0.7152, 0.0722)) * (1.0 - col.a);
 }
@@ -51,10 +50,7 @@ bool none_eq4(vec4 B, vec4 A0, vec4 A1, vec4 A2, vec4 A3) {
 
 void main()
 {
-    
     vec2 source_size = vec2(textureSize(Source, 0));
-    vec2 target_size = vec2(1.0 / (srcX1 - srcX0), 1.0 / (srcY1 - srcY0));
-    
     
     vec2 actual_tex_coord = vec2(
         srcX0 + tex_coord.x * (srcX1 - srcX0),
@@ -66,7 +62,6 @@ void main()
 
     #define src(x, y) texture(Source, coord + vec2(x, y) / source_size)
 
-    
     vec4 E = src(0.0,0.0);
 
     vec4 A = src(-1.0,-1.0);
