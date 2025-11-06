@@ -23,20 +23,37 @@ namespace Ryujinx.HLE.HOS.Services
         private int _selfId;
         private bool _isDomain;
 
-        public IpcService(ServerBase server = null)
-        {
-            // Use GetType() instead of Assembly.GetTypes() to avoid trimming warnings
-            Type currentType = GetType();
-            
-            CmifCommands = BuildCommandDictionary<CommandCmifAttribute>(currentType);
-            TipcCommands = BuildCommandDictionary<CommandTipcAttribute>(currentType);
+        public IpcService(ServerBase server = null, bool registerTipc = false)
+{
+    Stopwatch sw = Stopwatch.StartNew();
+    
+    CmifCommands = BuildCommandDictionary<CommandCmifAttribute>(GetType());
+    sw.Stop();
+    
+    Logger.Debug?.Print(
+        LogClass.Emulation, 
+        $"{CmifCommands.Count} Cmif commands loaded in {sw.ElapsedMilliseconds}ms",
+        GetType().AsPrettyString()
+    );
 
-            Server = server;
+    if (registerTipc)
+    {
+        sw.Restart();
+        TipcCommands = BuildCommandDictionary<CommandTipcAttribute>(GetType());
+        sw.Stop();
+        
+        Logger.Debug?.Print(
+            LogClass.Emulation,
+            $"{TipcCommands.Count} Tipc commands loaded in {sw.ElapsedMilliseconds}ms", 
+            GetType().AsPrettyString()
+        );
+    }
 
-            _parent = this;
-            _domainObjects = new IdDictionary();
-            _selfId = -1;
-        }
+    Server = server;
+    _parent = this;
+    _domainObjects = new IdDictionary();
+    _selfId = -1;
+}
 
         // 辅助方法，用于构建命令字典
         private static Dictionary<int, MethodInfo> BuildCommandDictionary<TAttribute>([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type type) 
@@ -299,3 +316,4 @@ namespace Ryujinx.HLE.HOS.Services
         }
     }
 }
+
