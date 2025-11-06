@@ -278,14 +278,16 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        // 修正：MMPX 片段着色器渲染方法 - 修复视口高度计算
+        // 修正：使用与标准blit相同的Y坐标顺序
         public void BlitColorWithMmpx(
             VulkanRenderer gd,
             CommandBufferScoped cbs,
             TextureView src,
             TextureView dst,
             Extents2D srcRegion,
-            Extents2D dstRegion)
+            Extents2D dstRegion,
+            bool linearFilter,  // 添加这个参数以保持接口一致
+            bool clearAlpha = false)
         {
             try
             {
@@ -295,63 +297,48 @@ namespace Ryujinx.Graphics.Vulkan
                 Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"BlitColorWithMmpx: Destination region: ({dstRegion.X1}, {dstRegion.Y1}) to ({dstRegion.X2}, {dstRegion.Y2})");
 
                 _pipeline.SetCommandBuffer(cbs);
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Command buffer set");
 
                 const int RegionBufferSize = 16;
 
-                // 设置顶点着色器的区域参数 - 与顶点着色器期望的 vec4 匹配
+                // 设置顶点着色器的区域参数
                 Span<float> region = stackalloc float[RegionBufferSize / sizeof(float)];
 
-                // 修正：正确的归一化计算
-                float srcX1 = (float)srcRegion.X1 / src.Width;
-                float srcX2 = (float)srcRegion.X2 / src.Width;
-                float srcY1 = (float)srcRegion.Y1 / src.Height;
-                float srcY2 = (float)srcRegion.Y2 / src.Height;
+                // 使用与标准blit相同的坐标计算逻辑
+                region[0] = (float)srcRegion.X1 / src.Width;
+                region[1] = (float)srcRegion.X2 / src.Width;
+                region[2] = (float)srcRegion.Y1 / src.Height;
+                region[3] = (float)srcRegion.Y2 / src.Height;
 
-                // 计算翻转标志
-                int flipX = (dstRegion.X1 > dstRegion.X2) ? 1 : 0;
-                int flipY = (dstRegion.Y1 > dstRegion.Y2) ? 1 : 0;
+                // 修正：使用与标准blit相同的翻转逻辑
+                if (dstRegion.X1 > dstRegion.X2)
+                {
+                    (region[0], region[1]) = (region[1], region[0]);
+                }
 
-                // 修正：确保坐标顺序正确
-                region[0] = (1 - flipX) * srcX1 + flipX * srcX2;  // left
-                region[1] = flipX * srcX1 + (1 - flipX) * srcX2;  // right  
-                region[2] = (1 - flipY) * srcY1 + flipY * srcY2;  // top
-                region[3] = flipY * srcY1 + (1 - flipY) * srcY2;  // bottom
+                if (dstRegion.Y1 > dstRegion.Y2)
+                {
+                    (region[2], region[3]) = (region[3], region[2]);
+                }
 
                 Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"BlitColorWithMmpx: Region parameters: [{region[0]:F6}, {region[1]:F6}, {region[2]:F6}, {region[3]:F6}]");
 
                 using ScopedTemporaryBuffer regionBuffer = gd.BufferManager.ReserveOrCreate(gd, cbs, RegionBufferSize);
                 regionBuffer.Holder.SetDataUnchecked<float>(regionBuffer.Offset, region);
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Region buffer created and data set");
 
-                // 修正：设置统一缓冲区 - 顶点着色器使用绑定点1
-                _pipeline.SetUniformBuffers([
-                    new BufferAssignment(1, regionBuffer.Range)  // 顶点着色器使用绑定点1
-                ]);
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Uniform buffers set");
+                _pipeline.SetUniformBuffers([new BufferAssignment(1, regionBuffer.Range)]);
 
-                // 设置最近邻采样器
-                _pipeline.SetTextureAndSamplerIdentitySwizzle(ShaderStage.Fragment, 0, src, _samplerNearest);
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Texture and sampler set");
+                // 设置采样器（虽然MMPX总是用最近邻，但保持接口一致）
+                ISampler sampler = linearFilter ? _samplerLinear : _samplerNearest;
+                _pipeline.SetTextureAndSamplerIdentitySwizzle(ShaderStage.Fragment, 0, src, sampler);
 
                 Span<Viewport> viewports = stackalloc Viewport[1];
 
-                // 修正：正确的视口计算 - 确保高度不为0
-                float viewportX = MathF.Min(dstRegion.X1, dstRegion.X2);
-                float viewportY = MathF.Min(dstRegion.Y1, dstRegion.Y2);
-                float viewportWidth = MathF.Abs(dstRegion.X2 - dstRegion.X1);
-                float viewportHeight = MathF.Abs(dstRegion.Y2 - dstRegion.Y1);
-
-                // 修正：确保视口高度至少为1，避免0高度
-                if (viewportHeight < 1.0f)
-                {
-                    Ryujinx.Common.Logging.Logger.Warning?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"BlitColorWithMmpx: Viewport height is {viewportHeight}, clamping to 1.0");
-                    viewportHeight = 1.0f;
-                }
-
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"BlitColorWithMmpx: Calculated viewport: X={viewportX}, Y={viewportY}, Width={viewportWidth}, Height={viewportHeight}");
-
-                Rectangle<float> rect = new(viewportX, viewportY, viewportWidth, viewportHeight);
+                // 修正：使用与标准blit相同的视口计算
+                Rectangle<float> rect = new(
+                    MathF.Min(dstRegion.X1, dstRegion.X2),
+                    MathF.Min(dstRegion.Y1, dstRegion.Y2),
+                    MathF.Abs(dstRegion.X2 - dstRegion.X1),
+                    MathF.Abs(dstRegion.Y2 - dstRegion.Y1));
 
                 viewports[0] = new Viewport(
                     rect,
@@ -369,30 +356,23 @@ namespace Ryujinx.Graphics.Vulkan
 
                 // 使用 MMPX 片段着色器程序
                 _pipeline.SetProgram(_programMmpxFragment);
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: MMPX program set");
-
                 _pipeline.SetRenderTarget(dst, (uint)dstWidth, (uint)dstHeight);
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Render target set");
-
                 _pipeline.SetRenderTargetColorMasks([0xf]);
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Color masks set");
-
                 _pipeline.SetScissors([new Rectangle<int>(0, 0, dstWidth, dstHeight)]);
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Scissors set");
-
                 _pipeline.SetViewports(viewports);
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Viewports set");
-
                 _pipeline.SetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Primitive topology set");
+
+                // 如果需要清除alpha
+                if (clearAlpha)
+                {
+                    _pipeline.ClearRenderTargetColor(0, 0, 1, new ColorF(0f, 0f, 0f, 1f));
+                }
 
                 Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: About to call Draw");
                 _pipeline.Draw(4, 1, 0, 0);
                 Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Draw call completed");
 
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: About to call Finish");
                 _pipeline.Finish(gd, cbs);
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Finish completed");
                 Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: MMPX blit completed successfully");
             }
             catch (Exception ex)
