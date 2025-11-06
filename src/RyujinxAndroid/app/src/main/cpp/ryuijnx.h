@@ -46,7 +46,7 @@ JavaVM *_vm = nullptr;
 jobject _mainActivity = nullptr;
 jclass _mainActivityClass = nullptr;
 
-// 添加 Oboe 音频相关的函数声明
+// 更新 Oboe 音频相关的函数声明
 extern "C" {
     void initOboeAudio();
     void shutdownOboeAudio();
@@ -56,6 +56,10 @@ extern "C" {
     void setOboeVolume(float volume);
     bool isOboeInitialized();
     int32_t getOboeBufferedFrames();
+    
+    // 设备信息函数
+    const char* GetAndroidDeviceModel();
+    const char* GetAndroidDeviceBrand();
 }
 
 #endif //RYUJINXNATIVE_RYUIJNX_H
