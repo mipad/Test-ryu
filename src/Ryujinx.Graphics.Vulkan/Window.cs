@@ -60,12 +60,15 @@ namespace Ryujinx.Graphics.Vulkan
             _device = device;
             _surface = surface;
 
+            Logger.Info?.Print(LogClass.Gpu, "Window constructor called");
+
             if (_gd.PresentAllowed && _surface.Handle != 0)
             {
                 CreateSwapchain();
             }
             else
             {
+                Logger.Warning?.Print(LogClass.Gpu, "Present not allowed or surface invalid, marking swapchain as dirty");
                 _swapchainIsDirty = true;
             }
         }
@@ -124,6 +127,7 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (!_gd.PresentAllowed || _surface.Handle == 0 || !CanQuerySurface())
             {
+                Logger.Warning?.Print(LogClass.Gpu, "Cannot recreate swapchain: Present not allowed, surface invalid, or cannot query surface");
                 _swapchainIsDirty = true;
                 return;
             }
@@ -132,6 +136,8 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 var oldSwapchain = _swapchain;
                 _swapchainIsDirty = false;
+
+                Logger.Info?.Print(LogClass.Gpu, "Recreating swapchain");
 
                 if (_swapchainImageViews != null)
                 {
@@ -183,8 +189,11 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 _surface = surface;
 
+                Logger.Info?.Print(LogClass.Gpu, "Surface set");
+
                 if (!_gd.PresentAllowed || _surface.Handle == 0)
                 {
+                    Logger.Warning?.Print(LogClass.Gpu, "Present not allowed or surface invalid after set");
                     _swapchainIsDirty = true;
                     return;
                 }
@@ -199,20 +208,25 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (!_gd.PresentAllowed || _surface.Handle == 0 || !CanQuerySurface())
             {
+                Logger.Warning?.Print(LogClass.Gpu, "Cannot create swapchain: Present not allowed, surface invalid, or cannot query surface");
                 _swapchainIsDirty = true;
                 return;
             }
 
             lock (_gd.SurfaceLock)
             {
+                Logger.Info?.Print(LogClass.Gpu, "Creating swapchain");
+
                 if (!TryGetSurfaceCapabilities(out var capabilities))
                 {
+                    Logger.Error?.Print(LogClass.Gpu, "Failed to get surface capabilities");
                     _swapchainIsDirty = true;
                     return;
                 }
 
                 if (!TryGetSurfaceFormats(out var surfaceFormats))
                 {
+                    Logger.Error?.Print(LogClass.Gpu, "Failed to get surface formats");
                     _swapchainIsDirty = true;
                     return;
                 }
@@ -229,6 +243,7 @@ namespace Ryujinx.Graphics.Vulkan
 
                 if (!TryGetPresentModes(out var presentModes))
                 {
+                    Logger.Error?.Print(LogClass.Gpu, "Failed to get present modes");
                     _swapchainIsDirty = true;
                     return;
                 }
@@ -250,6 +265,7 @@ namespace Ryujinx.Graphics.Vulkan
                 // 从版本11新增：防止0x0尺寸
                 if (extent.Width == 0 || extent.Height == 0)
                 {
+                    Logger.Error?.Print(LogClass.Gpu, "Swapchain extent is 0x0, marking swapchain as dirty");
                     _swapchainIsDirty = true;
                     return;
                 }
@@ -257,6 +273,8 @@ namespace Ryujinx.Graphics.Vulkan
                 _width = (int)extent.Width;
                 _height = (int)extent.Height;
                 _format = surfaceFormat.Format;
+
+                Logger.Info?.Print(LogClass.Gpu, $"Swapchain dimensions: {_width}x{_height}, format: {_format}");
 
                 var oldSwapchain = _swapchain;
 
@@ -305,6 +323,7 @@ namespace Ryujinx.Graphics.Vulkan
                 Result result = _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain);
                 if (result != Result.Success)
                 {
+                    Logger.Error?.Print(LogClass.Gpu, $"Failed to create swapchain: {result}");
                     result.ThrowOnError();
                 }
                 
@@ -342,6 +361,8 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     _gd.Api.CreateSemaphore(_device, in semaphoreCreateInfo, null, out _renderFinishedSemaphores[i]).ThrowOnError();
                 }
+
+                Logger.Info?.Print(LogClass.Gpu, "Swapchain created successfully");
             }
         }
 
@@ -700,229 +721,263 @@ namespace Ryujinx.Graphics.Vulkan
         // 从版本11改进：增强的Present方法
         public unsafe override void Present(ITexture texture, ImageCrop crop, Action swapBuffersCallback)
         {
-            // 从版本11新增：表面查询权限恢复
-            if (!_allowSurfaceQueries && _surface.Handle != 0)
+            try
             {
-                _allowSurfaceQueries = true;
-            }
+                Logger.Info?.Print(LogClass.Gpu, $"Present called with scaling filter: {_currentScalingFilter}");
 
-            if (!_gd.PresentAllowed || _surface.Handle == 0)
-            {
-                swapBuffersCallback?.Invoke();
-                return;
-            }
-
-            // 从版本11新增：尺寸检查
-            if (_width <= 0 || _height <= 0)
-            {
-                RecreateSwapchain();
-                swapBuffersCallback?.Invoke();
-                return;
-            }
-
-            // 从版本11新增：延迟初始化/恢复
-            if (_swapchain.Handle == 0 || _imageAvailableSemaphores == null || _renderFinishedSemaphores == null)
-            {
-                try { CreateSwapchain(); } catch { /* 下一帧重试 */ }
-                if (_swapchain.Handle == 0 || _imageAvailableSemaphores == null || _renderFinishedSemaphores == null)
+                // 从版本11新增：表面查询权限恢复
+                if (!_allowSurfaceQueries && _surface.Handle != 0)
                 {
+                    _allowSurfaceQueries = true;
+                }
+
+                if (!_gd.PresentAllowed || _surface.Handle == 0)
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, "Present not allowed or surface invalid, skipping present");
                     swapBuffersCallback?.Invoke();
                     return;
                 }
-            }
 
-            _gd.PipelineInternal.AutoFlush.Present();
-
-            uint nextImage = 0;
-            int semaphoreIndex = _frameIndex++ % _imageAvailableSemaphores.Length;
-
-            while (true)
-            {
-                var acquireResult = _gd.SwapchainApi.AcquireNextImage(
-                    _device,
-                    _swapchain,
-                    ulong.MaxValue,
-                    _imageAvailableSemaphores[semaphoreIndex],
-                    new Fence(),
-                    ref nextImage);
-
-                if (acquireResult == Result.ErrorOutOfDateKhr ||
-                    acquireResult == Result.SuboptimalKhr ||
-                    _swapchainIsDirty)
+                // 从版本11新增：尺寸检查
+                if (_width <= 0 || _height <= 0)
                 {
+                    Logger.Warning?.Print(LogClass.Gpu, "Invalid dimensions, recreating swapchain");
                     RecreateSwapchain();
+                    swapBuffersCallback?.Invoke();
+                    return;
+                }
 
-                    if (_swapchain.Handle == 0 || _imageAvailableSemaphores == null)
+                // 从版本11新增：延迟初始化/恢复
+                if (_swapchain.Handle == 0 || _imageAvailableSemaphores == null || _renderFinishedSemaphores == null)
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, "Swapchain or semaphores not initialized, attempting to create swapchain");
+                    try { CreateSwapchain(); } catch (Exception ex) { Logger.Error?.Print(LogClass.Gpu, $"Failed to create swapchain: {ex.Message}"); }
+                    if (_swapchain.Handle == 0 || _imageAvailableSemaphores == null || _renderFinishedSemaphores == null)
                     {
+                        Logger.Error?.Print(LogClass.Gpu, "Swapchain creation failed, skipping present");
                         swapBuffersCallback?.Invoke();
                         return;
                     }
-
-                    semaphoreIndex = (_frameIndex - 1) % _imageAvailableSemaphores.Length;
                 }
-                else if (acquireResult == Result.ErrorSurfaceLostKhr)
+
+                _gd.PipelineInternal.AutoFlush.Present();
+
+                uint nextImage = 0;
+                int semaphoreIndex = _frameIndex++ % _imageAvailableSemaphores.Length;
+
+                while (true)
                 {
-                    // 从版本11改进：在后台不立即重新创建 - 释放并返回
-                    _gd.ReleaseSurface();
-                    swapBuffersCallback?.Invoke();
-                    return;
+                    var acquireResult = _gd.SwapchainApi.AcquireNextImage(
+                        _device,
+                        _swapchain,
+                        ulong.MaxValue,
+                        _imageAvailableSemaphores[semaphoreIndex],
+                        new Fence(),
+                        ref nextImage);
+
+                    if (acquireResult == Result.ErrorOutOfDateKhr ||
+                        acquireResult == Result.SuboptimalKhr ||
+                        _swapchainIsDirty)
+                    {
+                        Logger.Warning?.Print(LogClass.Gpu, "Swapchain out of date, suboptimal, or dirty, recreating");
+                        RecreateSwapchain();
+
+                        if (_swapchain.Handle == 0 || _imageAvailableSemaphores == null)
+                        {
+                            Logger.Error?.Print(LogClass.Gpu, "Swapchain recreation failed, skipping present");
+                            swapBuffersCallback?.Invoke();
+                            return;
+                        }
+
+                        semaphoreIndex = (_frameIndex - 1) % _imageAvailableSemaphores.Length;
+                    }
+                    else if (acquireResult == Result.ErrorSurfaceLostKhr)
+                    {
+                        // 从版本11改进：在后台不立即重新创建 - 释放并返回
+                        Logger.Error?.Print(LogClass.Gpu, "Surface lost, releasing surface");
+                        _gd.ReleaseSurface();
+                        swapBuffersCallback?.Invoke();
+                        return;
+                    }
+                    else
+                    {
+                        acquireResult.ThrowOnError();
+                        break;
+                    }
+                }
+
+                var swapchainImage = _swapchainImages[nextImage];
+
+                _gd.FlushAllCommands();
+
+                var cbs = _gd.CommandBufferPool.Rent();
+
+                // 修改：所有平台都使用渲染通道路径
+                bool useComputeDst = false;
+
+                // Renderpass写入交换链图像 → ColorAttachmentOptimal
+                Transition(
+                    cbs.CommandBuffer,
+                    swapchainImage,
+                    PipelineStageFlags.TopOfPipeBit,
+                    PipelineStageFlags.ColorAttachmentOutputBit,
+                    0,
+                    AccessFlags.ColorAttachmentWriteBit,
+                    ImageLayout.Undefined,
+                    ImageLayout.ColorAttachmentOptimal);
+
+                var view = (TextureView)texture;
+
+                UpdateEffect();
+
+                if (_effect != null)
+                {
+                    Logger.Info?.Print(LogClass.Gpu, "Applying post-processing effect");
+                    view = _effect.Run(view, cbs, _width, _height);
+                }
+
+                int srcX0, srcX1, srcY0, srcY1;
+
+                if (crop.Left == 0 && crop.Right == 0)
+                {
+                    srcX0 = 0;
+                    srcX1 = view.Width;
                 }
                 else
                 {
-                    acquireResult.ThrowOnError();
-                    break;
+                    srcX0 = crop.Left;
+                    srcX1 = crop.Right;
                 }
-            }
 
-            var swapchainImage = _swapchainImages[nextImage];
-
-            _gd.FlushAllCommands();
-
-            var cbs = _gd.CommandBufferPool.Rent();
-
-            // 修改：所有平台都使用渲染通道路径
-            bool useComputeDst = false;
-
-            // Renderpass写入交换链图像 → ColorAttachmentOptimal
-            Transition(
-                cbs.CommandBuffer,
-                swapchainImage,
-                PipelineStageFlags.TopOfPipeBit,
-                PipelineStageFlags.ColorAttachmentOutputBit,
-                0,
-                AccessFlags.ColorAttachmentWriteBit,
-                ImageLayout.Undefined,
-                ImageLayout.ColorAttachmentOptimal);
-
-            var view = (TextureView)texture;
-
-            UpdateEffect();
-
-            if (_effect != null)
-            {
-                view = _effect.Run(view, cbs, _width, _height);
-            }
-
-            int srcX0, srcX1, srcY0, srcY1;
-
-            if (crop.Left == 0 && crop.Right == 0)
-            {
-                srcX0 = 0;
-                srcX1 = view.Width;
-            }
-            else
-            {
-                srcX0 = crop.Left;
-                srcX1 = crop.Right;
-            }
-
-            if (crop.Top == 0 && crop.Bottom == 0)
-            {
-                srcY0 = 0;
-                srcY1 = view.Height;
-            }
-            else
-            {
-                srcY0 = crop.Top;
-                srcY1 = crop.Bottom;
-            }
-
-            if (ScreenCaptureRequested)
-            {
-                if (_effect != null)
+                if (crop.Top == 0 && crop.Bottom == 0)
                 {
-                    var emptySems = Array.Empty<Silk.NET.Vulkan.Semaphore>();
-                    var waitStagesCO = new PipelineStageFlags[] { PipelineStageFlags.ColorAttachmentOutputBit };
-                    _gd.CommandBufferPool.Return(
-                        cbs,
-                        emptySems,
-                        waitStagesCO,
-                        emptySems);
-                    _gd.FlushAllCommands();
-                    cbs.GetFence().Wait();
-                    cbs = _gd.CommandBufferPool.Rent();
+                    srcY0 = 0;
+                    srcY1 = view.Height;
+                }
+                else
+                {
+                    srcY0 = crop.Top;
+                    srcY1 = crop.Bottom;
                 }
 
-                CaptureFrame(view, srcX0, srcY0, srcX1 - srcX0, srcY1 - srcY0, view.Info.Format.IsBgr(), crop.FlipX, crop.FlipY);
-                ScreenCaptureRequested = false;
+                if (ScreenCaptureRequested)
+                {
+                    if (_effect != null)
+                    {
+                        var emptySems = Array.Empty<Silk.NET.Vulkan.Semaphore>();
+                        var waitStagesCO = new PipelineStageFlags[] { PipelineStageFlags.ColorAttachmentOutputBit };
+                        _gd.CommandBufferPool.Return(
+                            cbs,
+                            emptySems,
+                            waitStagesCO,
+                            emptySems);
+                        _gd.FlushAllCommands();
+                        cbs.GetFence().Wait();
+                        cbs = _gd.CommandBufferPool.Rent();
+                    }
+
+                    CaptureFrame(view, srcX0, srcY0, srcX1 - srcX0, srcY1 - srcY0, view.Info.Format.IsBgr(), crop.FlipX, crop.FlipY);
+                    ScreenCaptureRequested = false;
+                }
+
+                float ratioX = crop.IsStretched ? 1.0f : MathF.Min(1.0f, _height * crop.AspectRatioX / (_width * crop.AspectRatioY));
+                float ratioY = crop.IsStretched ? 1.0f : MathF.Min(1.0f, _width * crop.AspectRatioY / (_height * crop.AspectRatioX));
+
+                int dstWidth = (int)(_width * ratioX);
+                int dstHeight = (int)(_height * ratioY);
+
+                int dstPaddingX = (_width - dstWidth) / 2;
+                int dstPaddingY = (_height - dstHeight) / 2;
+
+                int dstX0 = crop.FlipX ? _width - dstPaddingX : dstPaddingX;
+                int dstX1 = crop.FlipX ? dstPaddingX : _width - dstPaddingX;
+
+                int dstY0 = crop.FlipY ? dstPaddingY : _height - dstPaddingY;
+                int dstY1 = crop.FlipY ? _height - dstPaddingY : dstPaddingY;
+
+                // 修改：根据缩放过滤器选择渲染路径 - 添加详细日志
+                Logger.Info?.Print(LogClass.Gpu, $"Current scaling filter: {_currentScalingFilter}");
+
+                if (_currentScalingFilter == ScalingFilter.Mmpx)
+                {
+                    // 使用 MMPX 片段着色器
+                    Logger.Info?.Print(LogClass.Gpu, "Using MMPX scaling filter");
+                    try
+                    {
+                        _gd.HelperShader.BlitColorWithMmpx(
+                            _gd,
+                            cbs,
+                            view,
+                            _swapchainImageViews[nextImage],
+                            new Extents2D(srcX0, srcY0, srcX1, srcY1),
+                            new Extents2D(dstX0, dstY0, dstX1, dstY1)
+                        );
+                        Logger.Info?.Print(LogClass.Gpu, "MMPX blit completed successfully");
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error?.Print(LogClass.Gpu, $"MMPX blit failed: {ex.Message}");
+                        throw;
+                    }
+                }
+                else if (_scalingFilter != null && useComputeDst)
+                {
+                    // 其他计算着色器缩放器
+                    Logger.Info?.Print(LogClass.Gpu, $"Using compute scaling filter: {_scalingFilter.GetType().Name}");
+                    _scalingFilter!.Run(
+                        view,
+                        cbs,
+                        _swapchainImageViews[nextImage].GetImageViewForAttachment(),
+                        _format,
+                        _width,
+                        _height,
+                        new Extents2D(srcX0, srcY0, srcX1, srcY1),
+                        new Extents2D(dstX0, dstY0, dstX1, dstY1)
+                    );
+                }
+                else
+                {
+                    // 传统 Blit 路径
+                    Logger.Info?.Print(LogClass.Gpu, $"Using standard blit with linear filtering: {_isLinear}");
+                    _gd.HelperShader.BlitColor(
+                        _gd,
+                        cbs,
+                        view,
+                        _swapchainImageViews[nextImage],
+                        new Extents2D(srcX0, srcY0, srcX1, srcY1),
+                        new Extents2D(dstX0, dstY1, dstX1, dstY0),
+                        _isLinear,
+                        true);
+                }
+
+                // 转换到Present布局
+                Transition(
+                    cbs.CommandBuffer,
+                    swapchainImage,
+                    PipelineStageFlags.ColorAttachmentOutputBit,
+                    PipelineStageFlags.BottomOfPipeBit,
+                    AccessFlags.ColorAttachmentWriteBit,
+                    0,
+                    ImageLayout.ColorAttachmentOptimal,
+                    ImageLayout.PresentSrcKhr);
+
+                var waitSems = new Silk.NET.Vulkan.Semaphore[] { _imageAvailableSemaphores[semaphoreIndex] };
+                var waitStages = new PipelineStageFlags[] { PipelineStageFlags.ColorAttachmentOutputBit };
+                var signalSems = new Silk.NET.Vulkan.Semaphore[] { _renderFinishedSemaphores[semaphoreIndex] };
+                _gd.CommandBufferPool.Return(cbs, waitSems, waitStages, signalSems);
+
+                // 从版本11新增：使用PresentOne方法
+                PresentOne(_gd, _renderFinishedSemaphores[semaphoreIndex], _swapchain, nextImage);
+
+                swapBuffersCallback?.Invoke();
+                Logger.Info?.Print(LogClass.Gpu, "Present completed successfully");
             }
-
-            float ratioX = crop.IsStretched ? 1.0f : MathF.Min(1.0f, _height * crop.AspectRatioX / (_width * crop.AspectRatioY));
-            float ratioY = crop.IsStretched ? 1.0f : MathF.Min(1.0f, _width * crop.AspectRatioY / (_height * crop.AspectRatioX));
-
-            int dstWidth = (int)(_width * ratioX);
-            int dstHeight = (int)(_height * ratioY);
-
-            int dstPaddingX = (_width - dstWidth) / 2;
-            int dstPaddingY = (_height - dstHeight) / 2;
-
-            int dstX0 = crop.FlipX ? _width - dstPaddingX : dstPaddingX;
-            int dstX1 = crop.FlipX ? dstPaddingX : _width - dstPaddingX;
-
-            int dstY0 = crop.FlipY ? dstPaddingY : _height - dstPaddingY;
-            int dstY1 = crop.FlipY ? _height - dstPaddingY : dstPaddingY;
-
-            // 修改：根据缩放过滤器选择渲染路径
-            if (_currentScalingFilter == ScalingFilter.Mmpx)
+            catch (Exception ex)
             {
-                // 使用 MMPX 片段着色器
-                _gd.HelperShader.BlitColorWithMmpx(
-                    _gd,
-                    cbs,
-                    view,
-                    _swapchainImageViews[nextImage],
-                    new Extents2D(srcX0, srcY0, srcX1, srcY1),
-                    new Extents2D(dstX0, dstY0, dstX1, dstY1)
-                );
+                Logger.Error?.Print(LogClass.Gpu, $"Error in Present method: {ex.Message}");
+                Logger.Error?.Print(LogClass.Gpu, $"Stack trace: {ex.StackTrace}");
+                throw;
             }
-            else if (_scalingFilter != null && useComputeDst)
-            {
-                // 其他计算着色器缩放器
-                _scalingFilter!.Run(
-                    view,
-                    cbs,
-                    _swapchainImageViews[nextImage].GetImageViewForAttachment(),
-                    _format,
-                    _width,
-                    _height,
-                    new Extents2D(srcX0, srcY0, srcX1, srcY1),
-                    new Extents2D(dstX0, dstY0, dstX1, dstY1)
-                );
-            }
-            else
-            {
-                // 传统 Blit 路径
-                _gd.HelperShader.BlitColor(
-                    _gd,
-                    cbs,
-                    view,
-                    _swapchainImageViews[nextImage],
-                    new Extents2D(srcX0, srcY0, srcX1, srcY1),
-                    new Extents2D(dstX0, dstY1, dstX1, dstY0),
-                    _isLinear,
-                    true);
-            }
-
-            // 转换到Present布局
-            Transition(
-                cbs.CommandBuffer,
-                swapchainImage,
-                PipelineStageFlags.ColorAttachmentOutputBit,
-                PipelineStageFlags.BottomOfPipeBit,
-                AccessFlags.ColorAttachmentWriteBit,
-                0,
-                ImageLayout.ColorAttachmentOptimal,
-                ImageLayout.PresentSrcKhr);
-
-            var waitSems = new Silk.NET.Vulkan.Semaphore[] { _imageAvailableSemaphores[semaphoreIndex] };
-            var waitStages = new PipelineStageFlags[] { PipelineStageFlags.ColorAttachmentOutputBit };
-            var signalSems = new Silk.NET.Vulkan.Semaphore[] { _renderFinishedSemaphores[semaphoreIndex] };
-            _gd.CommandBufferPool.Return(cbs, waitSems, waitStages, signalSems);
-
-            // 从版本11新增：使用PresentOne方法
-            PresentOne(_gd, _renderFinishedSemaphores[semaphoreIndex], _swapchain, nextImage);
-
-            swapBuffersCallback?.Invoke();
         }
 
         // 从版本11新增：PresentOne辅助方法
@@ -932,28 +987,36 @@ namespace Ryujinx.Graphics.Vulkan
             SwapchainKHR swapchain,
             uint imageIndex)
         {
-            Silk.NET.Vulkan.Semaphore* pWait = stackalloc Silk.NET.Vulkan.Semaphore[1];
-            SwapchainKHR* pSwap = stackalloc SwapchainKHR[1];
-            uint* pImageIndex = stackalloc uint[1];
-
-            pWait[0] = signal;
-            pSwap[0] = swapchain;
-            pImageIndex[0] = imageIndex;
-
-            var presentInfo = new PresentInfoKHR
+            try
             {
-                SType = StructureType.PresentInfoKhr,
-                WaitSemaphoreCount = 1,
-                PWaitSemaphores = pWait,
-                SwapchainCount = 1,
-                PSwapchains = pSwap,
-                PImageIndices = pImageIndex,
-                PResults = null
-            };
+                Silk.NET.Vulkan.Semaphore* pWait = stackalloc Silk.NET.Vulkan.Semaphore[1];
+                SwapchainKHR* pSwap = stackalloc SwapchainKHR[1];
+                uint* pImageIndex = stackalloc uint[1];
 
-            lock (gd.QueueLock)
+                pWait[0] = signal;
+                pSwap[0] = swapchain;
+                pImageIndex[0] = imageIndex;
+
+                var presentInfo = new PresentInfoKHR
+                {
+                    SType = StructureType.PresentInfoKhr,
+                    WaitSemaphoreCount = 1,
+                    PWaitSemaphores = pWait,
+                    SwapchainCount = 1,
+                    PSwapchains = pSwap,
+                    PImageIndices = pImageIndex,
+                    PResults = null
+                };
+
+                lock (gd.QueueLock)
+                {
+                    gd.SwapchainApi.QueuePresent(gd.Queue, in presentInfo);
+                }
+            }
+            catch (Exception ex)
             {
-                gd.SwapchainApi.QueuePresent(gd.Queue, in presentInfo);
+                Logger.Error?.Print(LogClass.Gpu, $"Error in PresentOne: {ex.Message}");
+                throw;
             }
         }
 
@@ -998,6 +1061,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         public override void SetAntiAliasing(AntiAliasing effect)
         {
+            Logger.Info?.Print(LogClass.Gpu, $"SetAntiAliasing called: {effect}");
+
             if (_currentAntiAliasing == effect && _effect != null)
             {
                 return;
@@ -1010,6 +1075,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         public override void SetScalingFilter(ScalingFilter type)
         {
+            Logger.Info?.Print(LogClass.Gpu, $"SetScalingFilter called: {type}");
+
             if (_currentScalingFilter == type && _effect != null)
             {
                 return;
@@ -1022,6 +1089,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         public override void SetColorSpacePassthrough(bool colorSpacePassthroughEnabled)
         {
+            Logger.Info?.Print(LogClass.Gpu, $"SetColorSpacePassthrough called: {colorSpacePassthroughEnabled}");
             _colorSpacePassthroughEnabled = colorSpacePassthroughEnabled;
             _swapchainIsDirty = true;
         }
@@ -1031,6 +1099,8 @@ namespace Ryujinx.Graphics.Vulkan
             if (_updateEffect)
             {
                 _updateEffect = false;
+
+                Logger.Info?.Print(LogClass.Gpu, $"Updating anti-aliasing effect: {_currentAntiAliasing}");
 
                 switch (_currentAntiAliasing)
                 {
@@ -1064,6 +1134,8 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 _updateScalingFilter = false;
 
+                Logger.Info?.Print(LogClass.Gpu, $"Updating scaling filter: {_currentScalingFilter}");
+
                 switch (_currentScalingFilter)
                 {
                     case ScalingFilter.Bilinear:
@@ -1071,12 +1143,14 @@ namespace Ryujinx.Graphics.Vulkan
                         _scalingFilter?.Dispose();
                         _scalingFilter = null;
                         _isLinear = _currentScalingFilter == ScalingFilter.Bilinear;
+                        Logger.Info?.Print(LogClass.Gpu, $"Set linear filtering to: {_isLinear}");
                         break;
                     case ScalingFilter.Fsr:
                         if (_scalingFilter is not FsrScalingFilter)
                         {
                             _scalingFilter?.Dispose();
                             _scalingFilter = new FsrScalingFilter(_gd, _device);
+                            Logger.Info?.Print(LogClass.Gpu, "Created new FSR scaling filter");
                         }
 
                         _scalingFilter.Level = _scalingFilterLevel;
@@ -1086,6 +1160,7 @@ namespace Ryujinx.Graphics.Vulkan
                         {
                             _scalingFilter?.Dispose();
                             _scalingFilter = new AreaScalingFilter(_gd, _device);
+                            Logger.Info?.Print(LogClass.Gpu, "Created new Area scaling filter");
                         }
                         break;
                     // 新增：MMPX 缩放器支持 - 使用片段着色器路径
@@ -1094,6 +1169,7 @@ namespace Ryujinx.Graphics.Vulkan
                         _scalingFilter?.Dispose();
                         _scalingFilter = null;
                         _isLinear = false; // MMPX 使用最近邻采样
+                        Logger.Info?.Print(LogClass.Gpu, "MMPX scaling filter selected, using fragment shader path");
                         break;
                 }
             }
@@ -1101,12 +1177,14 @@ namespace Ryujinx.Graphics.Vulkan
 
         public override void SetScalingFilterLevel(float level)
         {
+            Logger.Info?.Print(LogClass.Gpu, $"SetScalingFilterLevel called: {level}");
             _scalingFilterLevel = level;
             _updateScalingFilter = true;
         }
 
         private void CaptureFrame(TextureView texture, int x, int y, int width, int height, bool isBgra, bool flipX, bool flipY)
         {
+            Logger.Info?.Print(LogClass.Gpu, "Capturing frame");
             byte[] bitmap = texture.GetData(x, y, width, height);
 
             _gd.OnScreenCaptured(new ScreenCaptureImageInfo(width, height, isBgra, bitmap, flipX, flipY));
@@ -1115,6 +1193,7 @@ namespace Ryujinx.Graphics.Vulkan
         // 从版本11改进：增强的SetSize方法
         public override void SetSize(int width, int height)
         {
+            Logger.Info?.Print(LogClass.Gpu, $"SetSize called: {width}x{height}");
             // We don't need to use width and height as we can get the size from the surface.
             _swapchainIsDirty = true;
 
@@ -1128,6 +1207,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         public override void ChangeVSyncMode(bool vsyncEnabled)
         {
+            Logger.Info?.Print(LogClass.Gpu, $"ChangeVSyncMode called: {vsyncEnabled}");
             _vsyncEnabled = vsyncEnabled;
             // 呈现模式可能改变，因此标记交换链需要重新创建
             _swapchainIsDirty = true;
@@ -1136,6 +1216,7 @@ namespace Ryujinx.Graphics.Vulkan
         // 从版本11新增：表面丢失处理方法
         public void OnSurfaceLost()
         {
+            Logger.Warning?.Print(LogClass.Gpu, "Surface lost, cleaning up resources");
             lock (_gd.SurfaceLock)
             {
                 // 硬清理操作，确保恢复后没有"旧"内容残留
@@ -1196,6 +1277,7 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (disposing)
             {
+                Logger.Info?.Print(LogClass.Gpu, "Disposing window resources");
                 lock (_gd.SurfaceLock)
                 {
                     unsafe
