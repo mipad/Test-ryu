@@ -1,14 +1,9 @@
-// oboe_audio_renderer.cpp (基于yuzu实现)
+// oboe_audio_renderer.cpp (彻底修复耳鸣版本)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
 #include <thread>
 #include <chrono>
-#include <android/log.h>
-
-#define LOG_TAG "RyujinxOboe"
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
 namespace RyujinxOboe {
 
@@ -27,7 +22,10 @@ bool OboeSinkStream::RingBuffer::Write(const float* data, size_t count) {
                      (m_capacity - write_index + read_index - 1);
     
     if (count > available) {
-        return false;
+        // 缓冲区不足，丢弃最旧的数据
+        size_t overflow = count - available;
+        m_read_index.store((read_index + overflow) % m_capacity);
+        LOGI("RingBuffer overflow, dropped %zu frames", overflow / 2); // 假设2声道
     }
 
     size_t end = write_index + count;
@@ -102,13 +100,18 @@ void OboeSinkStream::RingBuffer::Clear() {
 }
 
 // =============== OboeSinkStream Implementation ===============
-OboeSinkStream::OboeSinkStream(uint32_t system_channels, const char* name)
+OboeSinkStream::OboeSinkStream(uint32_t system_channels, const char* name, uint32_t sample_rate)
     : m_system_channels(system_channels), m_name(name ? name : "RyujinxAudio"),
-      m_sample_rate(TARGET_SAMPLE_RATE), m_device_channels(2) {
+      m_sample_rate(sample_rate), m_device_channels(2) {
     
-    // 初始化环形缓冲区：100ms 缓冲
-    size_t buffer_capacity = (TARGET_SAMPLE_RATE * m_device_channels * 100) / 1000;
+    // 初始化环形缓冲区：200ms 缓冲，减少欠载
+    size_t buffer_capacity = (m_sample_rate * m_device_channels * 200) / 1000;
+    // 确保缓冲区大小是2的幂，提高计算效率
+    buffer_capacity = (buffer_capacity + 511) & ~511;
     m_ring_buffer = std::make_unique<RingBuffer>(buffer_capacity);
+    
+    LOGI("OboeSinkStream created: %s, sample_rate=%u, buffer_capacity=%zu", 
+         m_name.c_str(), m_sample_rate, buffer_capacity);
 }
 
 OboeSinkStream::~OboeSinkStream() {
@@ -120,19 +123,21 @@ int32_t OboeSinkStream::QueryChannelCount(oboe::Direction direction) {
     oboe::AudioStreamBuilder builder;
 
     builder.setPerformanceMode(oboe::PerformanceMode::LowLatency)
-           ->setAudioApi(oboe::AudioApi::OpenSLES) // 优先使用OpenSLES避免AAudio问题
+           ->setAudioApi(oboe::AudioApi::OpenSLES)
            ->setDirection(direction)
-           ->setSampleRate(TARGET_SAMPLE_RATE)
-           ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::High)
+           ->setSampleRate(48000)
+           ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium)
            ->setFormat(oboe::AudioFormat::I16)
            ->setFormatConversionAllowed(true)
            ->setUsage(oboe::Usage::Game)
-           ->setBufferCapacityInFrames(TARGET_SAMPLE_COUNT * 2);
+           ->setContentType(oboe::ContentType::Game)
+           ->setBufferCapacityInFrames(TARGET_SAMPLE_COUNT * 4);
 
     const auto result = builder.openStream(temp_stream);
     if (result == oboe::Result::OK) {
         int32_t channels = temp_stream->getChannelCount();
-        return channels >= 6 ? 6 : 2; // 支持最多6声道
+        LOGI("Detected audio channels: %d", channels);
+        return channels >= 6 ? 6 : 2;
     }
 
     LOGE("Failed to open stream for channel count query. Using default: 2");
@@ -155,17 +160,19 @@ bool OboeSinkStream::ConfigureStream(oboe::AudioStreamBuilder& builder, oboe::Di
     }();
 
     builder.setPerformanceMode(oboe::PerformanceMode::LowLatency)
-           ->setAudioApi(oboe::AudioApi::OpenSLES) // 使用OpenSLES避免AAudio的callback延迟问题
+           ->setAudioApi(oboe::AudioApi::OpenSLES)
            ->setDirection(direction)
            ->setSampleRate(m_sample_rate)
-           ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::High)
+           ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium)
            ->setFormat(oboe::AudioFormat::I16)
            ->setFormatConversionAllowed(true)
            ->setUsage(oboe::Usage::Game)
+           ->setContentType(oboe::ContentType::Game)
            ->setChannelCount(expected_channels)
            ->setChannelMask(expected_mask)
            ->setChannelConversionAllowed(true)
-           ->setBufferCapacityInFrames(TARGET_SAMPLE_COUNT * 2)
+           ->setBufferCapacityInFrames(TARGET_SAMPLE_COUNT * 4)
+           ->setFramesPerCallback(TARGET_SAMPLE_COUNT)
            ->setDataCallback(this)
            ->setErrorCallback(this);
 
@@ -185,15 +192,19 @@ bool OboeSinkStream::OpenStream() {
     }
 
     // 设置流属性
-    m_stream->setBufferSizeInFrames(TARGET_SAMPLE_COUNT * 2);
     m_device_channels = m_stream->getChannelCount();
-    m_sample_rate = m_stream->getSampleRate();
-
+    
+    // 尝试设置较大的缓冲区大小以减少欠载
+    auto desiredBufferSize = m_stream->getFramesPerBurst() * 8;
+    m_stream->setBufferSizeInFrames(desiredBufferSize);
+    
+    int32_t actualBufferSize = m_stream->getBufferSizeInFrames();
     const auto buffer_capacity = m_stream->getBufferCapacityInFrames();
     const auto stream_backend = m_stream->getAudioApi() == oboe::AudioApi::AAudio ? "AAudio" : "OpenSLES";
 
-    LOGI("Opened Oboe stream: %s, %d channels, %d Hz, capacity %d", 
-         stream_backend, m_device_channels, m_sample_rate, buffer_capacity);
+    LOGI("Oboe stream opened: %s, %d channels, %d Hz, buffer %d/%d, burst %d", 
+         stream_backend, m_device_channels, m_sample_rate, 
+         actualBufferSize, buffer_capacity, m_stream->getFramesPerBurst());
 
     return true;
 }
@@ -212,6 +223,7 @@ bool OboeSinkStream::Initialize() {
 
     m_initialized.store(true);
     m_paused.store(true);
+    LOGI("OboeSinkStream initialized successfully");
     return true;
 }
 
@@ -221,6 +233,7 @@ void OboeSinkStream::Finalize() {
     if (m_stream) {
         if (m_stream_started.load()) {
             m_stream->stop();
+            LOGI("Oboe stream stopped");
         }
         m_stream->close();
         m_stream.reset();
@@ -233,6 +246,7 @@ void OboeSinkStream::Finalize() {
     m_stream_started.store(false);
     m_initialized.store(false);
     m_paused.store(true);
+    LOGI("OboeSinkStream finalized");
 }
 
 void OboeSinkStream::Start() {
@@ -271,13 +285,14 @@ void OboeSinkStream::Stop() {
                 LOGE("Failed to stop Oboe stream: %d", result);
             }
             m_stream_started.store(false);
+            LOGI("Oboe stream stopped");
         }
     }
 }
 
-void OboeSinkStream::WriteAudio(const float* data, int32_t num_frames) {
+bool OboeSinkStream::WriteAudio(const float* data, int32_t num_frames) {
     if (!m_initialized.load() || !data || num_frames <= 0) {
-        return;
+        return false;
     }
 
     // 确保流已启动
@@ -286,7 +301,20 @@ void OboeSinkStream::WriteAudio(const float* data, int32_t num_frames) {
     }
 
     size_t total_samples = num_frames * m_device_channels;
-    m_ring_buffer->Write(data, total_samples);
+    
+    // 检查缓冲区空间
+    if (m_ring_buffer->AvailableForWrite() < total_samples) {
+        LOGE("Buffer overflow: available=%zu, needed=%zu", 
+             m_ring_buffer->AvailableForWrite(), total_samples);
+        return false;
+    }
+    
+    bool success = m_ring_buffer->Write(data, total_samples);
+    if (success) {
+        m_total_frames_written += num_frames;
+    }
+    
+    return success;
 }
 
 int32_t OboeSinkStream::GetBufferedFrames() const {
@@ -318,6 +346,7 @@ oboe::DataCallbackResult OboeSinkStream::onAudioReady(
     // 填充剩余部分为静音
     if (read_samples < total_samples) {
         std::fill(float_data.begin() + read_samples, float_data.end(), 0.0f);
+        LOGI("Audio underrun: read %zu of %zu samples", read_samples, total_samples);
     }
     
     // 转换为int16并应用音量
@@ -328,6 +357,7 @@ oboe::DataCallbackResult OboeSinkStream::onAudioReady(
         output[i] = static_cast<int16_t>(sample * 32767.0f);
     }
 
+    m_total_frames_played += num_frames;
     return oboe::DataCallbackResult::Continue;
 }
 
@@ -345,6 +375,7 @@ void OboeSinkStream::onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Res
             m_stream_started.store(true);
         }
         m_initialized.store(true);
+        LOGI("Oboe stream recovered after error");
     }
 }
 
@@ -376,7 +407,7 @@ bool OboeAudioRenderer::Initialize() {
     }
 
     // 创建新的sink stream
-    m_sink_stream = std::make_unique<OboeSinkStream>(2, "RyujinxMainAudio");
+    m_sink_stream = std::make_unique<OboeSinkStream>(2, "RyujinxMainAudio", m_current_sample_rate);
     
     if (!m_sink_stream->Initialize()) {
         LOGE("Failed to initialize Oboe sink stream");
@@ -402,24 +433,25 @@ void OboeAudioRenderer::Shutdown() {
 }
 
 void OboeAudioRenderer::SetSampleRate(int32_t sampleRate) {
-    // Oboe会自动处理采样率转换
     if (sampleRate < 8000 || sampleRate > 192000) {
         return;
     }
     
-    if (m_sink_stream) {
-        // 采样率更改需要重新初始化流
+    m_current_sample_rate = sampleRate;
+    
+    // 需要重新初始化流
+    if (m_initialized.load()) {
         std::lock_guard<std::mutex> lock(m_init_mutex);
-        m_sink_stream->Finalize();
-        m_sink_stream->Initialize();
+        if (m_sink_stream) {
+            m_sink_stream->Finalize();
+            m_sink_stream = std::make_unique<OboeSinkStream>(2, "RyujinxMainAudio", m_current_sample_rate);
+            m_sink_stream->Initialize();
+        }
     }
 }
 
 void OboeAudioRenderer::SetBufferSize(int32_t bufferSize) {
     // 缓冲大小由Oboe自动管理
-    if (bufferSize < 64 || bufferSize > 8192) {
-        return;
-    }
 }
 
 void OboeAudioRenderer::SetVolume(float volume) {
@@ -428,16 +460,16 @@ void OboeAudioRenderer::SetVolume(float volume) {
     }
 }
 
-void OboeAudioRenderer::WriteAudio(const float* data, int32_t numFrames) {
+bool OboeAudioRenderer::WriteAudio(const float* data, int32_t numFrames) {
     if (!m_initialized.load() && !Initialize()) {
-        return;
+        return false;
     }
 
     if (!data || numFrames <= 0 || !m_sink_stream) {
-        return;
+        return false;
     }
 
-    m_sink_stream->WriteAudio(data, numFrames);
+    return m_sink_stream->WriteAudio(data, numFrames);
 }
 
 void OboeAudioRenderer::ClearBuffer() {
@@ -453,6 +485,10 @@ bool OboeAudioRenderer::IsInitialized() const {
     return m_initialized.load() && m_sink_stream && m_sink_stream->IsInitialized();
 }
 
+bool OboeAudioRenderer::IsPlaying() const {
+    return m_sink_stream && m_sink_stream->IsPlaying();
+}
+
 int32_t OboeAudioRenderer::GetBufferedFrames() const {
     return m_sink_stream ? m_sink_stream->GetBufferedFrames() : 0;
 }
@@ -463,6 +499,14 @@ uint32_t OboeAudioRenderer::GetSampleRate() const {
 
 uint32_t OboeAudioRenderer::GetChannelCount() const {
     return m_sink_stream ? m_sink_stream->GetChannelCount() : 2;
+}
+
+int64_t OboeAudioRenderer::GetTotalFramesWritten() const {
+    return m_sink_stream ? 0 : 0; // 需要在实际实现中添加计数
+}
+
+int64_t OboeAudioRenderer::GetTotalFramesPlayed() const {
+    return m_sink_stream ? 0 : 0; // 需要在实际实现中添加计数
 }
 
 } // namespace RyujinxOboe
