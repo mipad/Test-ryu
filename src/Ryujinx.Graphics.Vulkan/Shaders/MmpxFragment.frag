@@ -5,12 +5,16 @@ layout(location = 0) out vec4 frag_color;
 layout(binding = 0) uniform sampler2D Source;
 
 
-layout(binding = 1) uniform Region {
-    float srcX0;
-    float srcX1;
-    float srcY0;
-    float srcY1;
+layout(binding = 1) uniform tex_coord_in
+{
+    vec4 tex_coord_in_data;  
 };
+
+
+float srcX0() { return tex_coord_in_data[0]; }
+float srcX1() { return tex_coord_in_data[1]; }
+float srcY0() { return tex_coord_in_data[2]; }
+float srcY1() { return tex_coord_in_data[3]; }
 
 float luma(vec4 col) {
     return dot(col.rgb, vec3(0.2126, 0.7152, 0.0722)) * (1.0 - col.a);
@@ -52,9 +56,10 @@ void main()
 {
     vec2 source_size = vec2(textureSize(Source, 0));
     
+    
     vec2 actual_tex_coord = vec2(
-        srcX0 + tex_coord.x * (srcX1 - srcX0),
-        srcY0 + tex_coord.y * (srcY1 - srcY0)
+        srcX0() + tex_coord.x * (srcX1() - srcX0()),
+        srcY0() + tex_coord.y * (srcY1() - srcY0())
     );
     
     vec2 pos = fract(actual_tex_coord * source_size) - vec2(0.5, 0.5);
