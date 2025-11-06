@@ -192,10 +192,10 @@ namespace Ryujinx.Graphics.Vulkan
                 new ShaderSource(ReadSpirv("DepthDrawToNonMsFragment.spv"), ShaderStage.Fragment, TargetLanguage.Spirv)
             ], colorDrawToMsResourceLayout);
 
-            // 新增：MMPX 片段着色器资源布局
+            // 修正：MMPX 片段着色器资源布局 - 与着色器代码完全匹配
             ResourceLayout mmpxResourceLayout = new ResourceLayoutBuilder()
-                .Add(ResourceStages.Vertex, ResourceType.UniformBuffer, 1)
-                .Add(ResourceStages.Fragment, ResourceType.UniformBuffer, 2)
+                .Add(ResourceStages.Vertex, ResourceType.UniformBuffer, 1)    // 顶点着色器使用绑定点1
+                .Add(ResourceStages.Fragment, ResourceType.UniformBuffer, 1)  // 片段着色器也使用绑定点1（不同阶段不冲突）
                 .Add(ResourceStages.Fragment, ResourceType.TextureAndSampler, 0).Build();
 
             // 新增：MMPX 片段着色器程序
@@ -233,7 +233,7 @@ namespace Ryujinx.Graphics.Vulkan
             return EmbeddedResources.Read(string.Join('/', ShaderBinariesPath, fileName));
         }
 
-        // 新增：MMPX 片段着色器渲染方法
+        // 修正：MMPX 片段着色器渲染方法 - 完全修正资源绑定
         public void BlitColorWithMmpx(
             VulkanRenderer gd,
             CommandBufferScoped cbs,
@@ -245,9 +245,8 @@ namespace Ryujinx.Graphics.Vulkan
             _pipeline.SetCommandBuffer(cbs);
 
             const int RegionBufferSize = 16;
-            const int DimensionsBufferSize = 32;
 
-            // 设置顶点着色器的区域参数
+            // 设置顶点着色器和片段着色器共享的区域参数
             Span<float> region = stackalloc float[RegionBufferSize / sizeof(float)];
 
             // 无分支优化开始
@@ -270,24 +269,9 @@ namespace Ryujinx.Graphics.Vulkan
             using ScopedTemporaryBuffer regionBuffer = gd.BufferManager.ReserveOrCreate(gd, cbs, RegionBufferSize);
             regionBuffer.Holder.SetDataUnchecked<float>(regionBuffer.Offset, region);
 
-            // 设置片段着色器的维度参数
-            Span<float> dimensions = stackalloc float[DimensionsBufferSize / sizeof(float)];
-            dimensions[0] = srcRegion.X1;
-            dimensions[1] = srcRegion.X2;
-            dimensions[2] = srcRegion.Y1;
-            dimensions[3] = srcRegion.Y2;
-            dimensions[4] = dstRegion.X1;
-            dimensions[5] = dstRegion.X2;
-            dimensions[6] = dstRegion.Y1;
-            dimensions[7] = dstRegion.Y2;
-
-            using ScopedTemporaryBuffer dimensionsBuffer = gd.BufferManager.ReserveOrCreate(gd, cbs, DimensionsBufferSize);
-            dimensionsBuffer.Holder.SetDataUnchecked<float>(dimensionsBuffer.Offset, dimensions);
-
-            // 设置统一缓冲区
+            // 修正：只设置一个uniform buffer到绑定点1，顶点和片段着色器共享
             _pipeline.SetUniformBuffers([
-                new BufferAssignment(1, regionBuffer.Range),  // 顶点着色器区域
-                new BufferAssignment(2, dimensionsBuffer.Range) // 片段着色器维度
+                new BufferAssignment(1, regionBuffer.Range)  // 顶点和片段着色器都使用绑定点1
             ]);
 
             // 设置最近邻采样器（像素艺术适合）
@@ -471,22 +455,22 @@ namespace Ryujinx.Graphics.Vulkan
 
             Span<float> region = stackalloc float[RegionBufferSize / sizeof(float)];
 
-// 无分支优化开始
-float srcX1 = (float)srcRegion.X1 / src.Width;
-float srcX2 = (float)srcRegion.X2 / src.Width;
-float srcY1 = (float)srcRegion.Y1 / src.Height;
-float srcY2 = (float)srcRegion.Y2 / src.Height;
+            // 无分支优化开始
+            float srcX1 = (float)srcRegion.X1 / src.Width;
+            float srcX2 = (float)srcRegion.X2 / src.Width;
+            float srcY1 = (float)srcRegion.Y1 / src.Height;
+            float srcY2 = (float)srcRegion.Y2 / src.Height;
 
-// 计算翻转标志 (Mali 架构友好)
-int flipX = (dstRegion.X1 > dstRegion.X2) ? 1 : 0;
-int flipY = (dstRegion.Y1 > dstRegion.Y2) ? 1 : 0;
+            // 计算翻转标志 (Mali 架构友好)
+            int flipX = (dstRegion.X1 > dstRegion.X2) ? 1 : 0;
+            int flipY = (dstRegion.Y1 > dstRegion.Y2) ? 1 : 0;
 
-// 无分支选择 (避免移动端GPU分支预测惩罚)
-region[0] = (1 - flipX) * srcX1 + flipX * srcX2;
-region[1] = flipX * srcX1 + (1 - flipX) * srcX2;
-region[2] = (1 - flipY) * srcY1 + flipY * srcY2;
-region[3] = flipY * srcY1 + (1 - flipY) * srcY2;
-// 无分支优化结束
+            // 无分支选择 (避免移动端GPU分支预测惩罚)
+            region[0] = (1 - flipX) * srcX1 + flipX * srcX2;
+            region[1] = flipX * srcX1 + (1 - flipX) * srcX2;
+            region[2] = (1 - flipY) * srcY1 + flipY * srcY2;
+            region[3] = flipY * srcY1 + (1 - flipY) * srcY2;
+            // 无分支优化结束
 
             using ScopedTemporaryBuffer buffer = gd.BufferManager.ReserveOrCreate(gd, cbs, RegionBufferSize);
 
@@ -894,173 +878,173 @@ region[3] = flipY * srcY1 + (1 - flipY) * srcY2;
         }
 
         public unsafe void ChangeStride(VulkanRenderer gd, CommandBufferScoped cbs, BufferHolder src, BufferHolder dst, int srcOffset, int size, int stride, int newStride)
-{
-    bool supportsUint8 = gd.Capabilities.SupportsShaderInt8;
-
-    int elems = size / stride;
-    int newSize = elems * newStride;
-
-    Auto<DisposableBuffer> srcBufferAuto = src.GetBuffer();
-    Auto<DisposableBuffer> dstBufferAuto = dst.GetBuffer();
-
-    Buffer srcBuffer = srcBufferAuto.Get(cbs, srcOffset, size).Value;
-    Buffer dstBuffer = dstBufferAuto.Get(cbs, 0, newSize).Value;
-
-    // 合并屏障 - 单次设置所有内存访问
-    var barriers = new BufferMemoryBarrier[2];
-    
-    // 修正参数命名：sourceAccessMask -> SrcAccessMask, destinationAccessMask -> DstAccessMask
-    barriers[0] = new BufferMemoryBarrier()
-    {
-        SType = StructureType.BufferMemoryBarrier,
-        SrcAccessMask = BufferHolder.DefaultAccessFlags,
-        DstAccessMask = supportsUint8 ? AccessFlags.ShaderReadBit : AccessFlags.TransferReadBit,
-        Buffer = srcBuffer,
-        Offset = (ulong)srcOffset,
-        Size = (ulong)size,
-        SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
-        DstQueueFamilyIndex = Vk.QueueFamilyIgnored
-    };
-    
-    barriers[1] = new BufferMemoryBarrier()
-    {
-        SType = StructureType.BufferMemoryBarrier,
-        SrcAccessMask = BufferHolder.DefaultAccessFlags,
-        DstAccessMask = supportsUint8 ? AccessFlags.ShaderWriteBit : AccessFlags.TransferWriteBit,
-        Buffer = dstBuffer,
-        Offset = 0,
-        Size = (ulong)newSize,
-        SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
-        DstQueueFamilyIndex = Vk.QueueFamilyIgnored
-    };
-
-    PipelineStageFlags srcStage = PipelineStageFlags.AllCommandsBit;
-    PipelineStageFlags dstStage = supportsUint8 
-        ? PipelineStageFlags.ComputeShaderBit 
-        : PipelineStageFlags.TransferBit;
-
-    fixed (BufferMemoryBarrier* pBarriers = barriers)
-    {
-        gd.Api.CmdPipelineBarrier(
-            commandBuffer: cbs.CommandBuffer,
-            srcStageMask: srcStage,
-            dstStageMask: dstStage,
-            dependencyFlags: 0,
-            memoryBarrierCount: 0,
-            pMemoryBarriers: null,
-            bufferMemoryBarrierCount: (uint)barriers.Length,
-            pBufferMemoryBarriers: pBarriers,
-            imageMemoryBarrierCount: 0,
-            pImageMemoryBarriers: null
-        );
-    }
-
-    if (supportsUint8)
-    {
-        // 计算着色器路径（原实现）
-        const int ParamsBufferSize = 16;
-        Span<int> shaderParams = stackalloc int[ParamsBufferSize / sizeof(int)];
-        shaderParams[0] = stride;
-        shaderParams[1] = newStride;
-        shaderParams[2] = size;
-        shaderParams[3] = srcOffset;
-
-        using ScopedTemporaryBuffer buffer = gd.BufferManager.ReserveOrCreate(gd, cbs, ParamsBufferSize);
-        buffer.Holder.SetDataUnchecked<int>(buffer.Offset, shaderParams);
-
-        _pipeline.SetCommandBuffer(cbs);
-        _pipeline.SetUniformBuffers([new BufferAssignment(0, buffer.Range)]);
-        _pipeline.SetStorageBuffers(1, [srcBufferAuto, dstBufferAuto]);
-        _pipeline.SetProgram(_programStrideChange);
-        _pipeline.DispatchCompute(1 + elems / ConvertElementsPerWorkgroup, 1, 1);
-        _pipeline.Finish(gd, cbs);
-    }
-    else
-    {
-        // 回退到向量化拷贝
-        int vectorSize = 16; // 16字节向量大小
-        int vectorCount = size / vectorSize;
-        int remainder = size % vectorSize;
-
-        // 向量拷贝（16字节块）
-        if (vectorCount > 0)
         {
-            var bufferCopy = new BufferCopy[vectorCount];
-            for (int i = 0; i < vectorCount; i++)
+            bool supportsUint8 = gd.Capabilities.SupportsShaderInt8;
+
+            int elems = size / stride;
+            int newSize = elems * newStride;
+
+            Auto<DisposableBuffer> srcBufferAuto = src.GetBuffer();
+            Auto<DisposableBuffer> dstBufferAuto = dst.GetBuffer();
+
+            Buffer srcBuffer = srcBufferAuto.Get(cbs, srcOffset, size).Value;
+            Buffer dstBuffer = dstBufferAuto.Get(cbs, 0, newSize).Value;
+
+            // 合并屏障 - 单次设置所有内存访问
+            var barriers = new BufferMemoryBarrier[2];
+            
+            // 修正参数命名：sourceAccessMask -> SrcAccessMask, destinationAccessMask -> DstAccessMask
+            barriers[0] = new BufferMemoryBarrier()
             {
-                bufferCopy[i] = new BufferCopy(
-                    (ulong)(srcOffset + i * vectorSize),
-                    (ulong)(i * vectorSize),
-                    (ulong)vectorSize
-                );
-            }
-
-            fixed (BufferCopy* pBufferCopy = bufferCopy)
+                SType = StructureType.BufferMemoryBarrier,
+                SrcAccessMask = BufferHolder.DefaultAccessFlags,
+                DstAccessMask = supportsUint8 ? AccessFlags.ShaderReadBit : AccessFlags.TransferReadBit,
+                Buffer = srcBuffer,
+                Offset = (ulong)srcOffset,
+                Size = (ulong)size,
+                SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
+                DstQueueFamilyIndex = Vk.QueueFamilyIgnored
+            };
+            
+            barriers[1] = new BufferMemoryBarrier()
             {
-                gd.Api.CmdCopyBuffer(
-                    cbs.CommandBuffer,
-                    srcBuffer,
-                    dstBuffer,
-                    (uint)vectorCount,
-                    pBufferCopy
-                );
-            }
-        }
+                SType = StructureType.BufferMemoryBarrier,
+                SrcAccessMask = BufferHolder.DefaultAccessFlags,
+                DstAccessMask = supportsUint8 ? AccessFlags.ShaderWriteBit : AccessFlags.TransferWriteBit,
+                Buffer = dstBuffer,
+                Offset = 0,
+                Size = (ulong)newSize,
+                SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
+                DstQueueFamilyIndex = Vk.QueueFamilyIgnored
+            };
 
-        // 处理剩余字节
-        if (remainder > 0)
-        {
-            var bufferCopy = stackalloc BufferCopy[1];
-            bufferCopy[0] = new BufferCopy(
-                (ulong)(srcOffset + vectorCount * vectorSize),
-                (ulong)(vectorCount * vectorSize),
-                (ulong)remainder
-            );
-
-            gd.Api.CmdCopyBuffer(
-                cbs.CommandBuffer,
-                srcBuffer,
-                dstBuffer,
-                1,
-                bufferCopy
-            );
-        }
-    }
-
-    // 合并回写屏障
-    var postBarriers = new BufferMemoryBarrier[1];
-    postBarriers[0] = new BufferMemoryBarrier()
-    {
-        SType = StructureType.BufferMemoryBarrier,
-        SrcAccessMask = supportsUint8 
-            ? AccessFlags.ShaderWriteBit 
-            : AccessFlags.TransferWriteBit,
-        DstAccessMask = BufferHolder.DefaultAccessFlags,
-        Buffer = dstBuffer,
-        Offset = 0,
-        Size = (ulong)newSize,
-        SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
-        DstQueueFamilyIndex = Vk.QueueFamilyIgnored
-    };
-
-    fixed (BufferMemoryBarrier* pPostBarriers = postBarriers)
-    {
-        gd.Api.CmdPipelineBarrier(
-            commandBuffer: cbs.CommandBuffer,
-            srcStageMask: supportsUint8 
+            PipelineStageFlags srcStage = PipelineStageFlags.AllCommandsBit;
+            PipelineStageFlags dstStage = supportsUint8 
                 ? PipelineStageFlags.ComputeShaderBit 
-                : PipelineStageFlags.TransferBit,
-            dstStageMask: PipelineStageFlags.AllCommandsBit,
-            dependencyFlags: 0,
-            memoryBarrierCount: 0,
-            pMemoryBarriers: null,
-            bufferMemoryBarrierCount: (uint)postBarriers.Length,
-            pBufferMemoryBarriers: pPostBarriers,
-            imageMemoryBarrierCount: 0,
-            pImageMemoryBarriers: null
-        );
-    }
-}
+                : PipelineStageFlags.TransferBit;
+
+            fixed (BufferMemoryBarrier* pBarriers = barriers)
+            {
+                gd.Api.CmdPipelineBarrier(
+                    commandBuffer: cbs.CommandBuffer,
+                    srcStageMask: srcStage,
+                    dstStageMask: dstStage,
+                    dependencyFlags: 0,
+                    memoryBarrierCount: 0,
+                    pMemoryBarriers: null,
+                    bufferMemoryBarrierCount: (uint)barriers.Length,
+                    pBufferMemoryBarriers: pBarriers,
+                    imageMemoryBarrierCount: 0,
+                    pImageMemoryBarriers: null
+                );
+            }
+
+            if (supportsUint8)
+            {
+                // 计算着色器路径（原实现）
+                const int ParamsBufferSize = 16;
+                Span<int> shaderParams = stackalloc int[ParamsBufferSize / sizeof(int)];
+                shaderParams[0] = stride;
+                shaderParams[1] = newStride;
+                shaderParams[2] = size;
+                shaderParams[3] = srcOffset;
+
+                using ScopedTemporaryBuffer buffer = gd.BufferManager.ReserveOrCreate(gd, cbs, ParamsBufferSize);
+                buffer.Holder.SetDataUnchecked<int>(buffer.Offset, shaderParams);
+
+                _pipeline.SetCommandBuffer(cbs);
+                _pipeline.SetUniformBuffers([new BufferAssignment(0, buffer.Range)]);
+                _pipeline.SetStorageBuffers(1, [srcBufferAuto, dstBufferAuto]);
+                _pipeline.SetProgram(_programStrideChange);
+                _pipeline.DispatchCompute(1 + elems / ConvertElementsPerWorkgroup, 1, 1);
+                _pipeline.Finish(gd, cbs);
+            }
+            else
+            {
+                // 回退到向量化拷贝
+                int vectorSize = 16; // 16字节向量大小
+                int vectorCount = size / vectorSize;
+                int remainder = size % vectorSize;
+
+                // 向量拷贝（16字节块）
+                if (vectorCount > 0)
+                {
+                    var bufferCopy = new BufferCopy[vectorCount];
+                    for (int i = 0; i < vectorCount; i++)
+                    {
+                        bufferCopy[i] = new BufferCopy(
+                            (ulong)(srcOffset + i * vectorSize),
+                            (ulong)(i * vectorSize),
+                            (ulong)vectorSize
+                        );
+                    }
+
+                    fixed (BufferCopy* pBufferCopy = bufferCopy)
+                    {
+                        gd.Api.CmdCopyBuffer(
+                            cbs.CommandBuffer,
+                            srcBuffer,
+                            dstBuffer,
+                            (uint)vectorCount,
+                            pBufferCopy
+                        );
+                    }
+                }
+
+                // 处理剩余字节
+                if (remainder > 0)
+                {
+                    var bufferCopy = stackalloc BufferCopy[1];
+                    bufferCopy[0] = new BufferCopy(
+                        (ulong)(srcOffset + vectorCount * vectorSize),
+                        (ulong)(vectorCount * vectorSize),
+                        (ulong)remainder
+                    );
+
+                    gd.Api.CmdCopyBuffer(
+                        cbs.CommandBuffer,
+                        srcBuffer,
+                        dstBuffer,
+                        1,
+                        bufferCopy
+                    );
+                }
+            }
+
+            // 合并回写屏障
+            var postBarriers = new BufferMemoryBarrier[1];
+            postBarriers[0] = new BufferMemoryBarrier()
+            {
+                SType = StructureType.BufferMemoryBarrier,
+                SrcAccessMask = supportsUint8 
+                    ? AccessFlags.ShaderWriteBit 
+                    : AccessFlags.TransferWriteBit,
+                DstAccessMask = BufferHolder.DefaultAccessFlags,
+                Buffer = dstBuffer,
+                Offset = 0,
+                Size = (ulong)newSize,
+                SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
+                DstQueueFamilyIndex = Vk.QueueFamilyIgnored
+            };
+
+            fixed (BufferMemoryBarrier* pPostBarriers = postBarriers)
+            {
+                gd.Api.CmdPipelineBarrier(
+                    commandBuffer: cbs.CommandBuffer,
+                    srcStageMask: supportsUint8 
+                        ? PipelineStageFlags.ComputeShaderBit 
+                        : PipelineStageFlags.TransferBit,
+                    dstStageMask: PipelineStageFlags.AllCommandsBit,
+                    dependencyFlags: 0,
+                    memoryBarrierCount: 0,
+                    pMemoryBarriers: null,
+                    bufferMemoryBarrierCount: (uint)postBarriers.Length,
+                    pBufferMemoryBarriers: pPostBarriers,
+                    imageMemoryBarrierCount: 0,
+                    pImageMemoryBarriers: null
+                );
+            }
+        }
 
         public unsafe void ConvertIndexBuffer(VulkanRenderer gd,
             CommandBufferScoped cbs,
