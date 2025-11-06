@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (基于yuzu实现优化版)
+// OboeHardwareDeviceDriver.cs (彻底修复耳鸣版本)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -22,13 +22,10 @@ namespace Ryujinx.Audio.Backends.Oboe
         private static extern void shutdownOboeAudio();
 
         [DllImport("libryujinxjni", EntryPoint = "writeOboeAudio")]
-        private static extern void writeOboeAudio(float[] audioData, int num_frames);
+        private static extern bool writeOboeAudio(float[] audioData, int num_frames);
 
         [DllImport("libryujinxjni", EntryPoint = "setOboeSampleRate")]
         private static extern void setOboeSampleRate(int sample_rate);
-
-        [DllImport("libryujinxjni", EntryPoint = "setOboeBufferSize")]
-        private static extern void setOboeBufferSize(int buffer_size);
 
         [DllImport("libryujinxjni", EntryPoint = "setOboeVolume")]
         private static extern void setOboeVolume(float volume);
@@ -38,6 +35,9 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         [DllImport("libryujinxjni", EntryPoint = "getOboeBufferedFrames")]
         private static extern int getOboeBufferedFrames();
+
+        [DllImport("libryujinxjni", EntryPoint = "isOboePlaying")]
+        private static extern bool isOboePlaying();
 
         // ========== 设备信息 P/Invoke 声明 ===============
         [DllImport("libryujinxjni", EntryPoint = "getAndroidDeviceModel")]
@@ -59,6 +59,13 @@ namespace Ryujinx.Audio.Backends.Oboe
         private Thread _updateThread;
         private bool _stillRunning = true;
         private readonly object _initLock = new object();
+        private readonly object _bufferLock = new object();
+
+        // 统计信息
+        private long _totalFramesWritten = 0;
+        private long _totalFramesPlayed = 0;
+        private int _underrunCount = 0;
+        private int _overflowCount = 0;
 
         public float Volume
         {
@@ -67,6 +74,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 _volume = Math.Clamp(value, 0.0f, 1.0f);
                 setOboeVolume(_volume);
+                Logger.Info?.Print(LogClass.Audio, $"Oboe volume set to {_volume}");
             }
         }
 
@@ -74,30 +82,51 @@ namespace Ryujinx.Audio.Backends.Oboe
         public OboeHardwareDeviceDriver()
         {
             StartUpdateThread();
+            Logger.Info?.Print(LogClass.Audio, "OboeHardwareDeviceDriver initialized");
         }
 
         private void StartUpdateThread()
         {
             _updateThread = new Thread(() =>
             {
+                int errorCount = 0;
+                const int maxErrorCount = 10;
+                
                 while (_stillRunning)
                 {
-                    Thread.Sleep(10); // 调整为10ms间隔，减少CPU占用
-                    
-                    if (_isOboeInitialized)
+                    try
                     {
-                        foreach (var session in _sessions.Keys)
+                        Thread.Sleep(10); // 10ms 更新间隔
+                        
+                        if (_isOboeInitialized)
                         {
-                            int bufferedFrames = getOboeBufferedFrames();
-                            session.UpdatePlaybackStatus(bufferedFrames);
+                            foreach (var session in _sessions.Keys)
+                            {
+                                int bufferedFrames = getOboeBufferedFrames();
+                                session.UpdatePlaybackStatus(bufferedFrames);
+                            }
+                        }
+                        errorCount = 0; // 重置错误计数
+                    }
+                    catch (Exception ex)
+                    {
+                        errorCount++;
+                        Logger.Error?.Print(LogClass.Audio, $"Update thread error #{errorCount}: {ex.Message}");
+                        
+                        if (errorCount >= maxErrorCount)
+                        {
+                            Logger.Error?.Print(LogClass.Audio, "Too many errors in update thread, stopping");
+                            break;
                         }
                     }
                 }
+                
+                Logger.Info?.Print(LogClass.Audio, "Oboe update thread stopped");
             })
             {
                 Name = "Audio.Oboe.UpdateThread",
                 IsBackground = true,
-                Priority = ThreadPriority.Normal // 调整为正常优先级
+                Priority = ThreadPriority.Normal
             };
             _updateThread.Start();
         }
@@ -114,13 +143,19 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 if (disposing)
                 {
+                    Logger.Info?.Print(LogClass.Audio, "Disposing OboeHardwareDeviceDriver");
+                    
                     _stillRunning = false;
-                    _updateThread?.Join(100); // 增加等待时间确保线程安全退出
+                    _updateThread?.Join(200);
                     
                     shutdownOboeAudio();
                     _isOboeInitialized = false;
                     _pauseEvent?.Dispose();
                     _updateRequiredEvent?.Dispose();
+                    
+                    Logger.Info?.Print(LogClass.Audio, 
+                        $"Oboe statistics: Frames written={_totalFramesWritten}, played={_totalFramesPlayed}, " +
+                        $"underruns={_underrunCount}, overflows={_overflowCount}");
                 }
                 _disposed = true;
             }
@@ -167,21 +202,33 @@ namespace Ryujinx.Audio.Backends.Oboe
                 {
                     try
                     {
+                        Logger.Info?.Print(LogClass.Audio, 
+                            $"Initializing Oboe audio: sampleRate={sampleRate}, channels={channelCount}");
+
                         setOboeSampleRate((int)sampleRate);
-                        // 移除setOboeBufferSize调用，由Oboe自动管理缓冲区大小
                         setOboeVolume(_volume);
 
                         initOboeAudio();
-                        _isOboeInitialized = isOboeInitialized();
+                        
+                        // 等待初始化完成
+                        for (int i = 0; i < 10; i++)
+                        {
+                            if (isOboeInitialized())
+                            {
+                                _isOboeInitialized = true;
+                                break;
+                            }
+                            Thread.Sleep(10);
+                        }
 
                         if (!_isOboeInitialized)
-                            throw new Exception("Oboe audio failed to initialize");
+                            throw new Exception("Oboe audio failed to initialize within timeout");
 
                         Logger.Info?.Print(LogClass.Audio, "Oboe audio initialized successfully");
                     }
                     catch (Exception ex)
                     {
-                        Logger.Error?.Print(LogClass.Audio, $"Oboe audio initialization failed: {ex.Message}");
+                        Logger.Error?.Print(LogClass.Audio, $"Oboe audio initialization failed: {ex}");
                         throw;
                     }
                 }
@@ -189,46 +236,15 @@ namespace Ryujinx.Audio.Backends.Oboe
 
             var session = new OboeAudioSession(this, memoryManager, sampleFormat, sampleRate, channelCount);
             _sessions.TryAdd(session, 0);
+            
+            Logger.Info?.Print(LogClass.Audio, $"Oboe audio session created: {session.GetHashCode()}");
             return session;
         }
 
-        private bool Unregister(OboeAudioSession session) => _sessions.TryRemove(session, out _);
-
-        // 移除CalculateBufferSize方法，由Oboe自动管理缓冲区
-
-        private bool IsHighPerformanceDevice()
+        private bool Unregister(OboeAudioSession session)
         {
-            try
-            {
-                string device = Marshal.PtrToStringAnsi(GetAndroidDeviceModel())?.ToLower() ?? "";
-                string brand = Marshal.PtrToStringAnsi(GetAndroidDeviceBrand())?.ToLower() ?? "";
-                
-                // 基于yuzu的经验，优先使用OpenSLES避免AAudio问题
-                // 这里主要判断是否需要启用低延迟模式
-                if (device.Contains("mt6893") || device.Contains("dimensity8100") || brand.Contains("mediatek"))
-                {
-                    return true;
-                }
-                
-                string[] highPerfDevices = {
-                    "sdm845", "sdm855", "sdm865", "sdm888", "sm8350", "sm8450", "sm8550",
-                    "kirin980", "kirin990", "kirin9000", "dimensity9000", "dimensity9200",
-                    "exynos9820", "exynos990", "exynos2100", "exynos2200",
-                    "starqlte", "beyond1", "dreamlte", "raphael", "cepheus", "vangogh"
-                };
-                
-                foreach (string perfDevice in highPerfDevices) {
-                    if (device.Contains(perfDevice) || brand.Contains(perfDevice)) {
-                        return true;
-                    }
-                }
-                
-                return false;
-            }
-            catch
-            {
-                return false;
-            }
+            Logger.Info?.Print(LogClass.Audio, $"Oboe audio session unregistered: {session.GetHashCode()}");
+            return _sessions.TryRemove(session, out _);
         }
 
         // ========== 音频会话类 ==========
@@ -242,6 +258,8 @@ namespace Ryujinx.Audio.Backends.Oboe
             private float _volume;
             private readonly int _channelCount;
             private readonly uint _sampleRate;
+            private int _consecutiveOverflows = 0;
+            private const int MaxConsecutiveOverflows = 5;
 
             public OboeAudioSession(
                 OboeHardwareDeviceDriver driver,
@@ -255,42 +273,79 @@ namespace Ryujinx.Audio.Backends.Oboe
                 _channelCount = (int)channelCount;
                 _sampleRate = sampleRate;
                 _volume = 1.0f;
+                
+                Logger.Info?.Print(LogClass.Audio, 
+                    $"OboeAudioSession created: channels={_channelCount}, sampleRate={_sampleRate}");
             }
 
             public void UpdatePlaybackStatus(int bufferedFrames)
             {
-                ulong playedSamples = _totalWrittenSamples - (ulong)bufferedFrames * (ulong)_channelCount;
-                
-                // 确保不会出现负数
-                if (playedSamples < _totalPlayedSamples)
+                try
                 {
-                    _totalPlayedSamples = playedSamples;
-                    return;
-                }
-                
-                ulong availableSampleCount = playedSamples - _totalPlayedSamples;
-                
-                while (availableSampleCount > 0 && _queuedBuffers.TryPeek(out OboeAudioBuffer driverBuffer))
-                {
-                    ulong sampleStillNeeded = driverBuffer.SampleCount - driverBuffer.SamplePlayed;
-                    ulong playedAudioBufferSampleCount = Math.Min(sampleStillNeeded, availableSampleCount);
+                    // 更精确的播放状态计算
+                    ulong playedSamples = _totalWrittenSamples - (ulong)(bufferedFrames * _channelCount);
                     
-                    driverBuffer.SamplePlayed += playedAudioBufferSampleCount;
-                    availableSampleCount -= playedAudioBufferSampleCount;
-                    _totalPlayedSamples += playedAudioBufferSampleCount;
-                    
-                    if (driverBuffer.SamplePlayed == driverBuffer.SampleCount)
+                    if (playedSamples < _totalPlayedSamples)
                     {
-                        _queuedBuffers.TryDequeue(out _);
-                        _driver.GetUpdateRequiredEvent().Set();
+                        // 处理计数器回绕或重置
+                        _totalPlayedSamples = playedSamples;
+                        return;
                     }
+                    
+                    ulong availableSampleCount = playedSamples - _totalPlayedSamples;
+                    
+                    while (availableSampleCount > 0 && _queuedBuffers.TryPeek(out OboeAudioBuffer driverBuffer))
+                    {
+                        ulong sampleStillNeeded = driverBuffer.SampleCount - driverBuffer.SamplePlayed;
+                        ulong playedAudioBufferSampleCount = Math.Min(sampleStillNeeded, availableSampleCount);
+                        
+                        driverBuffer.SamplePlayed += playedAudioBufferSampleCount;
+                        availableSampleCount -= playedAudioBufferSampleCount;
+                        _totalPlayedSamples += playedAudioBufferSampleCount;
+                        
+                        if (driverBuffer.SamplePlayed == driverBuffer.SampleCount)
+                        {
+                            _queuedBuffers.TryDequeue(out _);
+                            _driver.GetUpdateRequiredEvent().Set();
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error?.Print(LogClass.Audio, $"Error in UpdatePlaybackStatus: {ex.Message}");
                 }
             }
 
-            public override void Dispose() => _driver.Unregister(this);
-            public override void PrepareToClose() { }
-            public override void Start() => _active = true;
-            public override void Stop() => _active = false;
+            public override void Dispose()
+            {
+                Stop();
+                _driver.Unregister(this);
+                Logger.Info?.Print(LogClass.Audio, "OboeAudioSession disposed");
+            }
+
+            public override void PrepareToClose() 
+            {
+                Stop();
+            }
+
+            public override void Start() 
+            {
+                if (!_active)
+                {
+                    _active = true;
+                    Logger.Debug?.Print(LogClass.Audio, "OboeAudioSession started");
+                }
+            }
+
+            public override void Stop() 
+            {
+                if (_active)
+                {
+                    _active = false;
+                    _queuedBuffers.Clear();
+                    Logger.Debug?.Print(LogClass.Audio, "OboeAudioSession stopped");
+                }
+            }
 
             public override void QueueBuffer(AudioBuffer buffer)
             {
@@ -300,63 +355,100 @@ namespace Ryujinx.Audio.Backends.Oboe
                 if (buffer.Data == null || buffer.Data.Length == 0) 
                     return;
 
-                // --- 优化的流量控制逻辑 ---
-                int bufferedFrames = getOboeBufferedFrames();
-                
-                // 基于采样率动态计算最大缓冲帧数
-                int maxBufferedFrames = (int)(_sampleRate * 0.1); // 100ms缓冲
-                maxBufferedFrames = Math.Clamp(maxBufferedFrames, 512, 4096);
-
-                // 如果缓冲过多，就等待一段时间再重试（非阻塞方式）
-                int retryCount = 0;
-                const int maxRetries = 5;
-                
-                while (bufferedFrames > maxBufferedFrames && _driver._stillRunning && retryCount < maxRetries)
+                lock (_driver._bufferLock)
                 {
-                    Thread.Sleep(1); // 减少等待时间
-                    bufferedFrames = getOboeBufferedFrames();
-                    retryCount++;
-                }
+                    // 流量控制：检查缓冲区状态
+                    int bufferedFrames = getOboeBufferedFrames();
+                    int maxBufferedFrames = CalculateOptimalBufferSize();
+                    
+                    // 如果缓冲过多，采用非阻塞等待
+                    int waitCount = 0;
+                    const int maxWaitCount = 3;
+                    
+                    while (bufferedFrames > maxBufferedFrames && _driver._stillRunning && waitCount < maxWaitCount)
+                    {
+                        Thread.Sleep(1);
+                        bufferedFrames = getOboeBufferedFrames();
+                        waitCount++;
+                    }
 
-                // 如果仍然缓冲过多，跳过这一帧以避免音频卡顿
-                if (bufferedFrames > maxBufferedFrames * 2)
-                {
-                    Logger.Warning?.Print(LogClass.Audio, "Audio buffer overflow, skipping frame");
-                    return;
-                }
+                    // 如果仍然缓冲过多，处理溢出
+                    if (bufferedFrames > maxBufferedFrames * 1.5f)
+                    {
+                        _consecutiveOverflows++;
+                        if (_consecutiveOverflows >= MaxConsecutiveOverflows)
+                        {
+                            Logger.Warning?.Print(LogClass.Audio, 
+                                $"Audio buffer overflow (consecutive #{_consecutiveOverflows}), skipping frame");
+                            _driver._overflowCount++;
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        _consecutiveOverflows = 0;
+                    }
 
-                // 优化：复用临时数组
-                int sampleCount = buffer.Data.Length / 2;
-                if (_driver._tempFloatBuffer.Length < sampleCount)
-                {
-                    _driver._tempFloatBuffer = new float[sampleCount];
-                }
+                    // 准备音频数据
+                    int sampleCount = buffer.Data.Length / 2;
+                    if (_driver._tempFloatBuffer.Length < sampleCount)
+                    {
+                        _driver._tempFloatBuffer = new float[sampleCount];
+                    }
 
-                ConvertToFloatInPlace(buffer.Data, _driver._tempFloatBuffer, sampleCount, _volume);
-                
-                try
-                {
-                    writeOboeAudio(_driver._tempFloatBuffer, sampleCount / _channelCount);
+                    // 转换音频格式
+                    ConvertToFloatOptimized(buffer.Data, _driver._tempFloatBuffer, sampleCount, _volume);
+                    
+                    // 写入音频数据
+                    bool writeSuccess = writeOboeAudio(_driver._tempFloatBuffer, sampleCount / _channelCount);
+                    
+                    if (writeSuccess)
+                    {
+                        // 记录缓冲区信息
+                        _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, (ulong)sampleCount));
+                        _totalWrittenSamples += (ulong)sampleCount;
+                        _driver._totalFramesWritten += sampleCount / _channelCount;
+                    }
+                    else
+                    {
+                        Logger.Warning?.Print(LogClass.Audio, "Failed to write audio data to Oboe");
+                        _driver._underrunCount++;
+                    }
                 }
-                catch (Exception ex)
-                {
-                    Logger.Error?.Print(LogClass.Audio, $"Failed to write audio data: {ex.Message}");
-                    return;
-                }
-
-                // 记录缓冲区信息
-                _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, (ulong)sampleCount));
-                _totalWrittenSamples += (ulong)sampleCount;
             }
 
-            public override bool WasBufferFullyConsumed(AudioBuffer buffer) =>
-                !_queuedBuffers.TryPeek(out var driverBuffer) || 
-                driverBuffer.DriverIdentifier != buffer.DataPointer;
+            private int CalculateOptimalBufferSize()
+            {
+                // 基于采样率动态计算最佳缓冲区大小
+                int baseBufferMs = IsLowLatencyDevice() ? 60 : 100; // 低延迟设备用更小的缓冲区
+                return (int)(_sampleRate * baseBufferMs / 1000);
+            }
+
+            private bool IsLowLatencyDevice()
+            {
+                // 简单判断是否为低延迟设备
+                try
+                {
+                    string device = Marshal.PtrToStringAnsi(GetAndroidDeviceModel())?.ToLower() ?? "";
+                    return device.Contains("pixel") || device.Contains("samsung") || device.Contains("oneplus");
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+
+            public override bool WasBufferFullyConsumed(AudioBuffer buffer)
+            {
+                return !_queuedBuffers.TryPeek(out var driverBuffer) || 
+                       driverBuffer.DriverIdentifier != buffer.DataPointer;
+            }
 
             public override void SetVolume(float volume)
             {
                 _volume = Math.Clamp(volume, 0.0f, 1.0f);
                 setOboeVolume(_volume);
+                Logger.Debug?.Print(LogClass.Audio, $"Session volume set to {_volume}");
             }
 
             public override float GetVolume() => _volume;
@@ -375,16 +467,26 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
             }
 
-            private static void ConvertToFloatInPlace(byte[] audioData, float[] output, int sampleCount, float volume)
+            private static void ConvertToFloatOptimized(byte[] audioData, float[] output, int sampleCount, float volume)
             {
-                // 优化的转换函数，减少分支和计算
+                // 高度优化的转换函数，避免爆音和失真
+                const float scale = 1.0f / 32768.0f;
+                
                 for (int i = 0; i < sampleCount; i++)
                 {
-                    short sample = (short)((audioData[i * 2 + 1] << 8) | audioData[i * 2]);
-                    output[i] = (sample * volume) / 32768.0f;
+                    int byteIndex = i * 2;
                     
-                    // 限制输出范围避免爆音
-                    output[i] = Math.Clamp(output[i], -1.0f, 1.0f);
+                    // 手动转换避免BitConverter开销，并确保正确的字节顺序
+                    short sample = (short)((audioData[byteIndex + 1] << 8) | audioData[byteIndex]);
+                    
+                    // 应用音量和限制
+                    float converted = sample * scale * volume;
+                    
+                    // 硬限制避免爆音
+                    if (converted > 1.0f) converted = 1.0f;
+                    else if (converted < -1.0f) converted = -1.0f;
+                    
+                    output[i] = converted;
                 }
             }
         }
