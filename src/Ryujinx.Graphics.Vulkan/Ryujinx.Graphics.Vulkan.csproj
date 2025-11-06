@@ -45,6 +45,7 @@
     <EmbeddedResource Include="Shaders\SpirvBinaries\DepthDrawToMsFragment.spv" />
     <EmbeddedResource Include="Shaders\SpirvBinaries\DepthDrawToNonMsFragment.spv" />
     <EmbeddedResource Include="Shaders\SpirvBinaries\DepthStencilClearFragment.spv" />
+    <EmbeddedResource Include="Shaders\SpirvBinaries\MmpxFragment.spv" />
     <EmbeddedResource Include="Shaders\SpirvBinaries\StencilBlitFragment.spv" />
     <EmbeddedResource Include="Shaders\SpirvBinaries\StencilBlitMsFragment.spv" />
     <EmbeddedResource Include="Shaders\SpirvBinaries\StencilDrawToMsFragment.spv" />
