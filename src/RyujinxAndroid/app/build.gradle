@@ -80,6 +80,13 @@ android {
             version '3.22.1'
         }
     }
+
+    // 添加着色器资源目录
+    sourceSets {
+        main {
+            assets.srcDirs += ['src/main/cpp/shaders/bin']
+        }
+    }
 }
 
 tasks.named("preBuild") {
