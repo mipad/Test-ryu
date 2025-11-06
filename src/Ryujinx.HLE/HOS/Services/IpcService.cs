@@ -7,7 +7,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using Ryujinx.Common.Utilities;
 using System.Diagnostics;
 
 namespace Ryujinx.HLE.HOS.Services
@@ -27,28 +26,16 @@ namespace Ryujinx.HLE.HOS.Services
 
         public IpcService(ServerBase server = null, bool registerTipc = false)
 {
-    Stopwatch sw = Stopwatch.StartNew();
-    
     CmifCommands = BuildCommandDictionary<CommandCmifAttribute>(GetType());
-    sw.Stop();
-    
-    Logger.Debug?.Print(
-        LogClass.Emulation, 
-        $"{CmifCommands.Count} Cmif commands loaded in {sw.ElapsedMilliseconds}ms",
-        GetType().AsPrettyString()
-    );
 
     if (registerTipc)
     {
-        sw.Restart();
         TipcCommands = BuildCommandDictionary<CommandTipcAttribute>(GetType());
-        sw.Stop();
-        
-        Logger.Debug?.Print(
-            LogClass.Emulation,
-            $"{TipcCommands.Count} Tipc commands loaded in {sw.ElapsedMilliseconds}ms", 
-            GetType().AsPrettyString()
-        );
+    }
+    else
+    {
+        // 如果没有注册 TIPC，初始化为空字典
+        TipcCommands = new Dictionary<int, MethodInfo>();
     }
 
     Server = server;
