@@ -278,7 +278,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        // 修正：MMPX 片段着色器渲染方法 - 修复视口计算和资源绑定
+        // 修正：MMPX 片段着色器渲染方法 - 修复视口高度计算
         public void BlitColorWithMmpx(
             VulkanRenderer gd,
             CommandBufferScoped cbs,
@@ -293,13 +293,6 @@ namespace Ryujinx.Graphics.Vulkan
                 Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"BlitColorWithMmpx: Source: {src.Width}x{src.Height}, Destination: {dst.Width}x{dst.Height}");
                 Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"BlitColorWithMmpx: Source region: ({srcRegion.X1}, {srcRegion.Y1}) to ({srcRegion.X2}, {srcRegion.Y2})");
                 Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"BlitColorWithMmpx: Destination region: ({dstRegion.X1}, {dstRegion.Y1}) to ({dstRegion.X2}, {dstRegion.Y2})");
-
-                // 添加错误处理：如果MMPX着色器不可用，直接抛出异常
-                if (_programMmpxFragment == null)
-                {
-                    Ryujinx.Common.Logging.Logger.Error?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: MMPX fragment shader program is null, cannot proceed");
-                    throw new InvalidOperationException("MMPX fragment shader program is not available");
-                }
 
                 _pipeline.SetCommandBuffer(cbs);
                 Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Command buffer set");
@@ -343,11 +336,20 @@ namespace Ryujinx.Graphics.Vulkan
 
                 Span<Viewport> viewports = stackalloc Viewport[1];
 
-                // 修正：正确的视口计算
+                // 修正：正确的视口计算 - 确保高度不为0
                 float viewportX = MathF.Min(dstRegion.X1, dstRegion.X2);
                 float viewportY = MathF.Min(dstRegion.Y1, dstRegion.Y2);
                 float viewportWidth = MathF.Abs(dstRegion.X2 - dstRegion.X1);
-                float viewportHeight = MathF.Abs(dstRegion.Y2 - dstRegion.Y2);
+                float viewportHeight = MathF.Abs(dstRegion.Y2 - dstRegion.Y1);
+
+                // 修正：确保视口高度至少为1，避免0高度
+                if (viewportHeight < 1.0f)
+                {
+                    Ryujinx.Common.Logging.Logger.Warning?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"BlitColorWithMmpx: Viewport height is {viewportHeight}, clamping to 1.0");
+                    viewportHeight = 1.0f;
+                }
+
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"BlitColorWithMmpx: Calculated viewport: X={viewportX}, Y={viewportY}, Width={viewportWidth}, Height={viewportHeight}");
 
                 Rectangle<float> rect = new(viewportX, viewportY, viewportWidth, viewportHeight);
 
@@ -360,7 +362,7 @@ namespace Ryujinx.Graphics.Vulkan
                     0f,
                     1f);
 
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"BlitColorWithMmpx: Setting viewport: {viewportX:F1}, {viewportY:F1}, {viewportWidth:F1}x{viewportHeight:F1}");
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"BlitColorWithMmpx: Setting viewport: {rect.X:F1}, {rect.Y:F1}, {rect.Width:F1}x{rect.Height:F1}");
 
                 int dstWidth = dst.Width;
                 int dstHeight = dst.Height;
