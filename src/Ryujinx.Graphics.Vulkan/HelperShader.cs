@@ -288,22 +288,22 @@ namespace Ryujinx.Graphics.Vulkan
             Extents2D srcRegion,
             Extents2D dstRegion)
         {
-            // 添加错误处理：如果MMPX着色器不可用，直接抛出异常
-            if (_programMmpxFragment == null)
-            {
-                Ryujinx.Common.Logging.Logger.Error?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "MMPX fragment shader program is null, cannot proceed");
-                throw new InvalidOperationException("MMPX fragment shader program is not available");
-            }
-
             try
             {
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "Starting MMPX blit operation");
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"Source: {src.Width}x{src.Height}, Destination: {dst.Width}x{dst.Height}");
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"Source region: ({srcRegion.X1}, {srcRegion.Y1}) to ({srcRegion.X2}, {srcRegion.Y2})");
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"Destination region: ({dstRegion.X1}, {dstRegion.Y1}) to ({dstRegion.X2}, {dstRegion.Y2})");
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Starting MMPX blit operation");
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"BlitColorWithMmpx: Source: {src.Width}x{src.Height}, Destination: {dst.Width}x{dst.Height}");
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"BlitColorWithMmpx: Source region: ({srcRegion.X1}, {srcRegion.Y1}) to ({srcRegion.X2}, {srcRegion.Y2})");
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"BlitColorWithMmpx: Destination region: ({dstRegion.X1}, {dstRegion.Y1}) to ({dstRegion.X2}, {dstRegion.Y2})");
+
+                // 添加错误处理：如果MMPX着色器不可用，直接抛出异常
+                if (_programMmpxFragment == null)
+                {
+                    Ryujinx.Common.Logging.Logger.Error?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: MMPX fragment shader program is null, cannot proceed");
+                    throw new InvalidOperationException("MMPX fragment shader program is not available");
+                }
 
                 _pipeline.SetCommandBuffer(cbs);
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "Command buffer set");
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Command buffer set");
 
                 const int RegionBufferSize = 16;
 
@@ -327,24 +327,25 @@ namespace Ryujinx.Graphics.Vulkan
                 region[3] = flipY * srcY1 + (1 - flipY) * srcY2;
                 // 无分支优化结束
 
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"Region parameters: [{region[0]}, {region[1]}, {region[2]}, {region[3]}]");
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"BlitColorWithMmpx: Region parameters: [{region[0]}, {region[1]}, {region[2]}, {region[3]}]");
 
                 using ScopedTemporaryBuffer regionBuffer = gd.BufferManager.ReserveOrCreate(gd, cbs, RegionBufferSize);
                 regionBuffer.Holder.SetDataUnchecked<float>(regionBuffer.Offset, region);
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "Region buffer created and data set");
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Region buffer created and data set");
 
                 // 修正：设置统一缓冲区 - 顶点和片段着色器都使用绑定点1
                 _pipeline.SetUniformBuffers([
                     new BufferAssignment(1, regionBuffer.Range)  // 顶点和片段着色器共享绑定点1
                 ]);
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "Uniform buffers set");
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Uniform buffers set");
 
                 // 设置最近邻采样器（像素艺术适合）
                 _pipeline.SetTextureAndSamplerIdentitySwizzle(ShaderStage.Fragment, 0, src, _samplerNearest);
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "Texture and sampler set");
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Texture and sampler set");
 
                 Span<Viewport> viewports = stackalloc Viewport[1];
 
+                // 修正：视图端口矩形构造错误 - 使用正确的X和Y坐标
                 Rectangle<float> rect = new(
                     MathF.Min(dstRegion.X1, dstRegion.X2),
                     MathF.Min(dstRegion.Y1, dstRegion.Y2),
@@ -363,37 +364,40 @@ namespace Ryujinx.Graphics.Vulkan
                 int dstWidth = dst.Width;
                 int dstHeight = dst.Height;
 
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"Setting viewport: {rect.X}, {rect.Y}, {rect.Width}x{rect.Height}");
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"BlitColorWithMmpx: Setting viewport: {rect.X}, {rect.Y}, {rect.Width}x{rect.Height}");
 
                 // 使用 MMPX 片段着色器程序
                 _pipeline.SetProgram(_programMmpxFragment);
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "MMPX program set");
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: MMPX program set");
 
                 _pipeline.SetRenderTarget(dst, (uint)dstWidth, (uint)dstHeight);
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "Render target set");
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Render target set");
 
                 _pipeline.SetRenderTargetColorMasks([0xf]);
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "Color masks set");
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Color masks set");
 
                 _pipeline.SetScissors([new Rectangle<int>(0, 0, dstWidth, dstHeight)]);
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "Scissors set");
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Scissors set");
 
                 _pipeline.SetViewports(viewports);
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "Viewports set");
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Viewports set");
 
                 _pipeline.SetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "Primitive topology set");
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Primitive topology set");
 
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: About to call Draw");
                 _pipeline.Draw(4, 1, 0, 0);
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "Draw command issued");
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Draw call completed");
 
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: About to call Finish");
                 _pipeline.Finish(gd, cbs);
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "MMPX blit operation completed successfully");
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Finish completed");
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: MMPX blit operation completed successfully");
             }
             catch (Exception ex)
             {
-                Ryujinx.Common.Logging.Logger.Error?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"Error in MMPX blit: {ex.Message}");
-                Ryujinx.Common.Logging.Logger.Error?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"Stack trace: {ex.StackTrace}");
+                Ryujinx.Common.Logging.Logger.Error?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"BlitColorWithMmpx: Error in MMPX blit: {ex.Message}");
+                Ryujinx.Common.Logging.Logger.Error?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"BlitColorWithMmpx: Stack trace: {ex.StackTrace}");
                 throw;
             }
         }
