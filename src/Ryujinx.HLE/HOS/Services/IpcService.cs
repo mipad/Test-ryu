@@ -7,6 +7,8 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using Gommon;
+using System.Diagnostics;
 
 namespace Ryujinx.HLE.HOS.Services
 {
