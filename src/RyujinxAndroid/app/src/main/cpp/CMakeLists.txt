@@ -75,6 +75,86 @@ set(ALSOFT_DEFAULT_MODULATION OFF CACHE BOOL "Disable default modulation")
 
 FetchContent_MakeAvailable(openal)
 
+# 着色器编译配置
+# 查找 glslangValidator
+find_program(GLSLANG_VALIDATOR glslangValidator)
+if(NOT GLSLANG_VALIDATOR)
+    # 尝试在 Android NDK 中查找 shaderc
+    find_program(SHADERC shaderc)
+    if(SHADERC)
+        set(GLSLANG_VALIDATOR ${SHADERC})
+        message(STATUS "Using shaderc for shader compilation: ${SHADERC}")
+    else()
+        message(WARNING "glslangValidator or shaderc not found, shaders will not be compiled")
+    endif()
+endif()
+
+# 设置着色器目录
+set(SHADER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/shaders")
+set(SHADER_OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/shaders/bin")
+
+# 创建着色器输出目录
+file(MAKE_DIRECTORY ${SHADER_OUTPUT_DIR})
+
+if(GLSLANG_VALIDATOR)
+    # 着色器文件列表
+    set(VERTEX_SHADERS
+        "${SHADER_SOURCE_DIR}/ColorBlitVertex.vert"
+    )
+    
+    set(FRAGMENT_SHADERS
+        "${SHADER_SOURCE_DIR}/present_mmpx.frag"
+    )
+    
+    # 编译顶点着色器
+    foreach(shader_file ${VERTEX_SHADERS})
+        get_filename_component(shader_name ${shader_file} NAME_WE)
+        set(output_file "${SHADER_OUTPUT_DIR}/${shader_name}.spv")
+        
+        add_custom_command(
+            OUTPUT ${output_file}
+            COMMAND ${GLSLANG_VALIDATOR} 
+                    -V 
+                    --target-env vulkan1.0
+                    -o ${output_file}
+                    ${shader_file}
+            DEPENDS ${shader_file}
+            COMMENT "Compiling vertex shader: ${shader_file}"
+            VERBATIM
+        )
+        list(APPEND SPIRV_SHADERS ${output_file})
+    endforeach()
+    
+    # 编译片段着色器  
+    foreach(shader_file ${FRAGMENT_SHADERS})
+        get_filename_component(shader_name ${shader_file} NAME_WE)
+        set(output_file "${SHADER_OUTPUT_DIR}/${shader_name}.spv")
+        
+        add_custom_command(
+            OUTPUT ${output_file}
+            COMMAND ${GLSLANG_VALIDATOR} 
+                    -V 
+                    --target-env vulkan1.0
+                    -o ${output_file}
+                    ${shader_file}
+            DEPENDS ${shader_file}
+            COMMENT "Compiling fragment shader: ${shader_file}"
+            VERBATIM
+        )
+        list(APPEND SPIRV_SHADERS ${output_file})
+    endforeach()
+    
+    # 创建着色器构建目标
+    add_custom_target(shaders ALL DEPENDS ${SPIRV_SHADERS})
+    
+    # 让主目标依赖于着色器
+    add_dependencies(ryujinxjni shaders)
+    
+    message(STATUS "Shader compilation enabled")
+else()
+    message(WARNING "Shader compiler not found, shaders will not be compiled")
+endif()
+
 # 创建主库
 add_library(
     ryujinxjni
