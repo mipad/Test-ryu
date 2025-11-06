@@ -263,7 +263,7 @@ namespace Ryujinx.Graphics.Vulkan
                 CurrentTransform = capabilities.CurrentTransform;
 
                 // 修改：移除安卓判断，所有平台都使用相同的 ImageUsage 标志
-                var usage = ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit | ImageUsageFlags.StorageBit;
+                var usage = ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit;
 
                 // 修改：所有平台都使用驱动推荐的变换
                 var preTransform = capabilities.CurrentTransform;
@@ -780,35 +780,19 @@ namespace Ryujinx.Graphics.Vulkan
 
             var cbs = _gd.CommandBufferPool.Rent();
 
-            // 修改：移除安卓判断，所有平台都使用计算着色器路径
-            bool useComputeDst = _scalingFilter != null;
+            // 修改：所有平台都使用渲染通道路径
+            bool useComputeDst = false;
 
-            if (useComputeDst)
-            {
-                // Compute写入交换链图像 → General + ShaderWrite
-                Transition(
-                    cbs.CommandBuffer,
-                    swapchainImage,
-                    PipelineStageFlags.TopOfPipeBit,
-                    PipelineStageFlags.ComputeShaderBit,
-                    0,
-                    AccessFlags.ShaderWriteBit,
-                    ImageLayout.Undefined,
-                    ImageLayout.General);
-            }
-            else
-            {
-                // Renderpass写入交换链图像 → ColorAttachmentOptimal
-                Transition(
-                    cbs.CommandBuffer,
-                    swapchainImage,
-                    PipelineStageFlags.TopOfPipeBit,
-                    PipelineStageFlags.ColorAttachmentOutputBit,
-                    0,
-                    AccessFlags.ColorAttachmentWriteBit,
-                    ImageLayout.Undefined,
-                    ImageLayout.ColorAttachmentOptimal);
-            }
+            // Renderpass写入交换链图像 → ColorAttachmentOptimal
+            Transition(
+                cbs.CommandBuffer,
+                swapchainImage,
+                PipelineStageFlags.TopOfPipeBit,
+                PipelineStageFlags.ColorAttachmentOutputBit,
+                0,
+                AccessFlags.ColorAttachmentWriteBit,
+                ImageLayout.Undefined,
+                ImageLayout.ColorAttachmentOptimal);
 
             var view = (TextureView)texture;
 
@@ -878,8 +862,22 @@ namespace Ryujinx.Graphics.Vulkan
             int dstY0 = crop.FlipY ? dstPaddingY : _height - dstPaddingY;
             int dstY1 = crop.FlipY ? _height - dstPaddingY : dstPaddingY;
 
-            if (_scalingFilter != null && useComputeDst)
+            // 修改：根据缩放过滤器选择渲染路径
+            if (_currentScalingFilter == ScalingFilter.Mmpx)
             {
+                // 使用 MMPX 片段着色器
+                _gd.HelperShader.BlitColorWithMmpx(
+                    _gd,
+                    cbs,
+                    view,
+                    _swapchainImageViews[nextImage],
+                    new Extents2D(srcX0, srcY0, srcX1, srcY1),
+                    new Extents2D(dstX0, dstY0, dstX1, dstY1)
+                );
+            }
+            else if (_scalingFilter != null && useComputeDst)
+            {
+                // 其他计算着色器缩放器
                 _scalingFilter!.Run(
                     view,
                     cbs,
@@ -893,6 +891,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else
             {
+                // 传统 Blit 路径
                 _gd.HelperShader.BlitColor(
                     _gd,
                     cbs,
@@ -904,34 +903,19 @@ namespace Ryujinx.Graphics.Vulkan
                     true);
             }
 
-            // 转换到Present布局 - 根据之前的路径设置阶段/访问
-            if (useComputeDst)
-            {
-                Transition(
-                    cbs.CommandBuffer,
-                    swapchainImage,
-                    PipelineStageFlags.ComputeShaderBit,
-                    PipelineStageFlags.BottomOfPipeBit,
-                    AccessFlags.ShaderWriteBit,
-                    0,
-                    ImageLayout.General,
-                    ImageLayout.PresentSrcKhr);
-            }
-            else
-            {
-                Transition(
-                    cbs.CommandBuffer,
-                    swapchainImage,
-                    PipelineStageFlags.ColorAttachmentOutputBit,
-                    PipelineStageFlags.BottomOfPipeBit,
-                    AccessFlags.ColorAttachmentWriteBit,
-                    0,
-                    ImageLayout.ColorAttachmentOptimal,
-                    ImageLayout.PresentSrcKhr);
-            }
+            // 转换到Present布局
+            Transition(
+                cbs.CommandBuffer,
+                swapchainImage,
+                PipelineStageFlags.ColorAttachmentOutputBit,
+                PipelineStageFlags.BottomOfPipeBit,
+                AccessFlags.ColorAttachmentWriteBit,
+                0,
+                ImageLayout.ColorAttachmentOptimal,
+                ImageLayout.PresentSrcKhr);
 
             var waitSems = new Silk.NET.Vulkan.Semaphore[] { _imageAvailableSemaphores[semaphoreIndex] };
-            var waitStages = new PipelineStageFlags[] { PipelineStageFlags.ColorAttachmentOutputBit }; // 在Android上很重要
+            var waitStages = new PipelineStageFlags[] { PipelineStageFlags.ColorAttachmentOutputBit };
             var signalSems = new Silk.NET.Vulkan.Semaphore[] { _renderFinishedSemaphores[semaphoreIndex] };
             _gd.CommandBufferPool.Return(cbs, waitSems, waitStages, signalSems);
 
@@ -1104,13 +1088,12 @@ namespace Ryujinx.Graphics.Vulkan
                             _scalingFilter = new AreaScalingFilter(_gd, _device);
                         }
                         break;
-                    // 新增：MMPX 缩放器支持
+                    // 新增：MMPX 缩放器支持 - 使用片段着色器路径
                     case ScalingFilter.Mmpx:
-                        if (_scalingFilter is not MmpxScalingFilter)
-                        {
-                            _scalingFilter?.Dispose();
-                            _scalingFilter = new MmpxScalingFilter(_gd, _device);
-                        }
+                        // 不需要创建计算着色器，直接使用片段着色器路径
+                        _scalingFilter?.Dispose();
+                        _scalingFilter = null;
+                        _isLinear = false; // MMPX 使用最近邻采样
                         break;
                 }
             }

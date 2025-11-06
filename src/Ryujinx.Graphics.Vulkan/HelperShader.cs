@@ -57,6 +57,9 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly ShaderCollection _programStencilDrawToMs;
         private readonly ShaderCollection _programStencilDrawToNonMs;
 
+        // 新增：MMPX 片段着色器程序
+        private readonly ShaderCollection _programMmpxFragment;
+
         public HelperShader(VulkanRenderer gd, Device device)
         {
             _pipeline = new PipelineHelperShader(gd, device);
@@ -189,6 +192,18 @@ namespace Ryujinx.Graphics.Vulkan
                 new ShaderSource(ReadSpirv("DepthDrawToNonMsFragment.spv"), ShaderStage.Fragment, TargetLanguage.Spirv)
             ], colorDrawToMsResourceLayout);
 
+            // 新增：MMPX 片段着色器资源布局
+            ResourceLayout mmpxResourceLayout = new ResourceLayoutBuilder()
+                .Add(ResourceStages.Vertex, ResourceType.UniformBuffer, 1)
+                .Add(ResourceStages.Fragment, ResourceType.UniformBuffer, 2)
+                .Add(ResourceStages.Fragment, ResourceType.TextureAndSampler, 0).Build();
+
+            // 新增：MMPX 片段着色器程序
+            _programMmpxFragment = gd.CreateProgramWithMinimalLayout([
+                new ShaderSource(ReadSpirv("ColorBlitVertex.spv"), ShaderStage.Vertex, TargetLanguage.Spirv),
+                new ShaderSource(ReadSpirv("MmpxFragment.spv"), ShaderStage.Fragment, TargetLanguage.Spirv)
+            ], mmpxResourceLayout, "MmpxScaling");
+
             if (gd.Capabilities.SupportsShaderStencilExport)
             {
                 _programStencilBlit = gd.CreateProgramWithMinimalLayout([
@@ -216,6 +231,97 @@ namespace Ryujinx.Graphics.Vulkan
         private static byte[] ReadSpirv(string fileName)
         {
             return EmbeddedResources.Read(string.Join('/', ShaderBinariesPath, fileName));
+        }
+
+        // 新增：MMPX 片段着色器渲染方法
+        public void BlitColorWithMmpx(
+            VulkanRenderer gd,
+            CommandBufferScoped cbs,
+            TextureView src,
+            TextureView dst,
+            Extents2D srcRegion,
+            Extents2D dstRegion)
+        {
+            _pipeline.SetCommandBuffer(cbs);
+
+            const int RegionBufferSize = 16;
+            const int DimensionsBufferSize = 32;
+
+            // 设置顶点着色器的区域参数
+            Span<float> region = stackalloc float[RegionBufferSize / sizeof(float)];
+
+            // 无分支优化开始
+            float srcX1 = (float)srcRegion.X1 / src.Width;
+            float srcX2 = (float)srcRegion.X2 / src.Width;
+            float srcY1 = (float)srcRegion.Y1 / src.Height;
+            float srcY2 = (float)srcRegion.Y2 / src.Height;
+
+            // 计算翻转标志 (Mali 架构友好)
+            int flipX = (dstRegion.X1 > dstRegion.X2) ? 1 : 0;
+            int flipY = (dstRegion.Y1 > dstRegion.Y2) ? 1 : 0;
+
+            // 无分支选择 (避免移动端GPU分支预测惩罚)
+            region[0] = (1 - flipX) * srcX1 + flipX * srcX2;
+            region[1] = flipX * srcX1 + (1 - flipX) * srcX2;
+            region[2] = (1 - flipY) * srcY1 + flipY * srcY2;
+            region[3] = flipY * srcY1 + (1 - flipY) * srcY2;
+            // 无分支优化结束
+
+            using ScopedTemporaryBuffer regionBuffer = gd.BufferManager.ReserveOrCreate(gd, cbs, RegionBufferSize);
+            regionBuffer.Holder.SetDataUnchecked<float>(regionBuffer.Offset, region);
+
+            // 设置片段着色器的维度参数
+            Span<float> dimensions = stackalloc float[DimensionsBufferSize / sizeof(float)];
+            dimensions[0] = srcRegion.X1;
+            dimensions[1] = srcRegion.X2;
+            dimensions[2] = srcRegion.Y1;
+            dimensions[3] = srcRegion.Y2;
+            dimensions[4] = dstRegion.X1;
+            dimensions[5] = dstRegion.X2;
+            dimensions[6] = dstRegion.Y1;
+            dimensions[7] = dstRegion.Y2;
+
+            using ScopedTemporaryBuffer dimensionsBuffer = gd.BufferManager.ReserveOrCreate(gd, cbs, DimensionsBufferSize);
+            dimensionsBuffer.Holder.SetDataUnchecked<float>(dimensionsBuffer.Offset, dimensions);
+
+            // 设置统一缓冲区
+            _pipeline.SetUniformBuffers([
+                new BufferAssignment(1, regionBuffer.Range),  // 顶点着色器区域
+                new BufferAssignment(2, dimensionsBuffer.Range) // 片段着色器维度
+            ]);
+
+            // 设置最近邻采样器（像素艺术适合）
+            _pipeline.SetTextureAndSamplerIdentitySwizzle(ShaderStage.Fragment, 0, src, _samplerNearest);
+
+            Span<Viewport> viewports = stackalloc Viewport[1];
+
+            Rectangle<float> rect = new(
+                MathF.Min(dstRegion.X1, dstRegion.X2),
+                MathF.Min(dstRegion.Y1, dstRegion.Y2),
+                MathF.Abs(dstRegion.X2 - dstRegion.X1),
+                MathF.Abs(dstRegion.Y2 - dstRegion.Y1));
+
+            viewports[0] = new Viewport(
+                rect,
+                ViewportSwizzle.PositiveX,
+                ViewportSwizzle.PositiveY,
+                ViewportSwizzle.PositiveZ,
+                ViewportSwizzle.PositiveW,
+                0f,
+                1f);
+
+            int dstWidth = dst.Width;
+            int dstHeight = dst.Height;
+
+            // 使用 MMPX 片段着色器程序
+            _pipeline.SetProgram(_programMmpxFragment);
+            _pipeline.SetRenderTarget(dst, (uint)dstWidth, (uint)dstHeight);
+            _pipeline.SetRenderTargetColorMasks([0xf]);
+            _pipeline.SetScissors([new Rectangle<int>(0, 0, dstWidth, dstHeight)]);
+            _pipeline.SetViewports(viewports);
+            _pipeline.SetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
+            _pipeline.Draw(4, 1, 0, 0);
+            _pipeline.Finish(gd, cbs);
         }
 
         public void Blit(
@@ -1777,6 +1883,10 @@ region[3] = flipY * srcY1 + (1 - flipY) * srcY2;
                 _programStencilBlitMs?.Dispose();
                 _programStencilDrawToMs?.Dispose();
                 _programStencilDrawToNonMs?.Dispose();
+                
+                // 新增：释放 MMPX 片段着色器程序
+                _programMmpxFragment?.Dispose();
+                
                 _samplerNearest.Dispose();
                 _samplerLinear.Dispose();
                 _pipeline.Dispose();
