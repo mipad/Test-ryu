@@ -910,8 +910,9 @@ namespace Ryujinx.Graphics.Vulkan
                             view,
                             _swapchainImageViews[nextImage],
                             new Extents2D(srcX0, srcY0, srcX1, srcY1),
-                            new Extents2D(dstX0, dstY0, dstX1, dstY1)
-                        );
+                            new Extents2D(dstX0, dstY1, dstX1, dstY0),  // 使用相同的Y坐标顺序
+                            false,  // MMPX总是用最近邻
+                            true);  // 清除alpha
                         Logger.Info?.Print(LogClass.Gpu, "MMPX blit completed successfully");
                     }
                     catch (Exception ex)
