@@ -202,7 +202,7 @@ namespace Ryujinx.Graphics.Vulkan
             _programMmpxFragment = gd.CreateProgramWithMinimalLayout([
                 new ShaderSource(ReadSpirv("ColorBlitVertex.spv"), ShaderStage.Vertex, TargetLanguage.Spirv),
                 new ShaderSource(ReadSpirv("MmpxFragment.spv"), ShaderStage.Fragment, TargetLanguage.Spirv)
-            ], mmpxResourceLayout, "MmpxScaling");
+            ], mmpxResourceLayout);
 
             if (gd.Capabilities.SupportsShaderStencilExport)
             {
