@@ -177,7 +177,7 @@ namespace Ryujinx.HLE.HOS.Applets
 
             //_keyboardRenderer?.SetSurfaceInfo(surfaceInfo);
 
-           // return _keyboardRenderer?.DrawTo(destination, position) ?? false;
+            return true;// _keyboardRenderer?.DrawTo(destination, position) ?? false;
         }
 
         private void ExecuteForegroundKeyboard()
