@@ -195,8 +195,7 @@ namespace Ryujinx.Graphics.Vulkan
             // 修正：MMPX 片段着色器资源布局 - 与着色器代码完全匹配
             ResourceLayout mmpxResourceLayout = new ResourceLayoutBuilder()
                 .Add(ResourceStages.Vertex, ResourceType.UniformBuffer, 1)    // 顶点着色器使用绑定点1
-                .Add(ResourceStages.Fragment, ResourceType.UniformBuffer, 1)  // 片段着色器也使用绑定点1（不同阶段不冲突）
-                .Add(ResourceStages.Fragment, ResourceType.TextureAndSampler, 0).Build();
+                .Add(ResourceStages.Fragment, ResourceType.TextureAndSampler, 0).Build();  // 片段着色器使用绑定点0
 
             // 新增：MMPX 片段着色器程序 - 添加详细的创建日志和错误处理
             try
@@ -279,7 +278,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        // 修正：MMPX 片段着色器渲染方法 - 添加详细的步骤日志
+        // 修正：MMPX 片段着色器渲染方法 - 修复视口计算和资源绑定
         public void BlitColorWithMmpx(
             VulkanRenderer gd,
             CommandBufferScoped cbs,
@@ -307,50 +306,50 @@ namespace Ryujinx.Graphics.Vulkan
 
                 const int RegionBufferSize = 16;
 
-                // 设置顶点着色器和片段着色器共享的区域参数
+                // 设置顶点着色器的区域参数 - 与顶点着色器期望的 vec4 匹配
                 Span<float> region = stackalloc float[RegionBufferSize / sizeof(float)];
 
-                // 无分支优化开始
+                // 修正：正确的归一化计算
                 float srcX1 = (float)srcRegion.X1 / src.Width;
                 float srcX2 = (float)srcRegion.X2 / src.Width;
                 float srcY1 = (float)srcRegion.Y1 / src.Height;
                 float srcY2 = (float)srcRegion.Y2 / src.Height;
 
-                // 计算翻转标志 (Mali 架构友好)
+                // 计算翻转标志
                 int flipX = (dstRegion.X1 > dstRegion.X2) ? 1 : 0;
                 int flipY = (dstRegion.Y1 > dstRegion.Y2) ? 1 : 0;
 
-                // 无分支选择 (避免移动端GPU分支预测惩罚)
-                region[0] = (1 - flipX) * srcX1 + flipX * srcX2;
-                region[1] = flipX * srcX1 + (1 - flipX) * srcX2;
-                region[2] = (1 - flipY) * srcY1 + flipY * srcY2;
-                region[3] = flipY * srcY1 + (1 - flipY) * srcY2;
-                // 无分支优化结束
+                // 修正：确保坐标顺序正确
+                region[0] = (1 - flipX) * srcX1 + flipX * srcX2;  // left
+                region[1] = flipX * srcX1 + (1 - flipX) * srcX2;  // right  
+                region[2] = (1 - flipY) * srcY1 + flipY * srcY2;  // top
+                region[3] = flipY * srcY1 + (1 - flipY) * srcY2;  // bottom
 
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"BlitColorWithMmpx: Region parameters: [{region[0]}, {region[1]}, {region[2]}, {region[3]}]");
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"BlitColorWithMmpx: Region parameters: [{region[0]:F6}, {region[1]:F6}, {region[2]:F6}, {region[3]:F6}]");
 
                 using ScopedTemporaryBuffer regionBuffer = gd.BufferManager.ReserveOrCreate(gd, cbs, RegionBufferSize);
                 regionBuffer.Holder.SetDataUnchecked<float>(regionBuffer.Offset, region);
                 Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Region buffer created and data set");
 
-                // 修正：设置统一缓冲区 - 顶点和片段着色器都使用绑定点1
+                // 修正：设置统一缓冲区 - 顶点着色器使用绑定点1
                 _pipeline.SetUniformBuffers([
-                    new BufferAssignment(1, regionBuffer.Range)  // 顶点和片段着色器共享绑定点1
+                    new BufferAssignment(1, regionBuffer.Range)  // 顶点着色器使用绑定点1
                 ]);
                 Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Uniform buffers set");
 
-                // 设置最近邻采样器（像素艺术适合）
+                // 设置最近邻采样器
                 _pipeline.SetTextureAndSamplerIdentitySwizzle(ShaderStage.Fragment, 0, src, _samplerNearest);
                 Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Texture and sampler set");
 
                 Span<Viewport> viewports = stackalloc Viewport[1];
 
-                // 修正：视图端口矩形构造错误 - 使用正确的X和Y坐标
-                Rectangle<float> rect = new(
-                    MathF.Min(dstRegion.X1, dstRegion.X2),
-                    MathF.Min(dstRegion.Y1, dstRegion.Y2),
-                    MathF.Abs(dstRegion.X2 - dstRegion.X1),
-                    MathF.Abs(dstRegion.Y2 - dstRegion.Y1));
+                // 修正：正确的视口计算
+                float viewportX = MathF.Min(dstRegion.X1, dstRegion.X2);
+                float viewportY = MathF.Min(dstRegion.Y1, dstRegion.Y2);
+                float viewportWidth = MathF.Abs(dstRegion.X2 - dstRegion.X1);
+                float viewportHeight = MathF.Abs(dstRegion.Y2 - dstRegion.Y2);
+
+                Rectangle<float> rect = new(viewportX, viewportY, viewportWidth, viewportHeight);
 
                 viewports[0] = new Viewport(
                     rect,
@@ -361,10 +360,10 @@ namespace Ryujinx.Graphics.Vulkan
                     0f,
                     1f);
 
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"BlitColorWithMmpx: Setting viewport: {viewportX:F1}, {viewportY:F1}, {viewportWidth:F1}x{viewportHeight:F1}");
+
                 int dstWidth = dst.Width;
                 int dstHeight = dst.Height;
-
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"BlitColorWithMmpx: Setting viewport: {rect.X}, {rect.Y}, {rect.Width}x{rect.Height}");
 
                 // 使用 MMPX 片段着色器程序
                 _pipeline.SetProgram(_programMmpxFragment);
@@ -392,7 +391,7 @@ namespace Ryujinx.Graphics.Vulkan
                 Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: About to call Finish");
                 _pipeline.Finish(gd, cbs);
                 Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: Finish completed");
-                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: MMPX blit operation completed successfully");
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "BlitColorWithMmpx: MMPX blit completed successfully");
             }
             catch (Exception ex)
             {
