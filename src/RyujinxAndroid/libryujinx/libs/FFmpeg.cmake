@@ -34,7 +34,7 @@ else ()
     list(APPEND PROJECT_ENV "PATH=${ANDROID_TOOLCHAIN_ROOT}/bin:$ENV{PATH}")
 endif ()
 
-# 设置 FFmpeg 配置选项 - 完整功能配置
+# 设置 FFmpeg 配置选项 - 简化配置，移除有问题的依赖
 set(FFMPEG_CONFIGURE_COMMAND
     <SOURCE_DIR>/configure
     --prefix=${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install
@@ -42,8 +42,8 @@ set(FFMPEG_CONFIGURE_COMMAND
     --target-os=android
     --arch=aarch64
     --cpu=cortex-a78
-    --cc=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}-clang
-    --cxx=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}-clang++
+    --cc=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}21-clang
+    --cxx=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}21-clang++
     --nm=${ANDROID_TOOLCHAIN_ROOT}/bin/llvm-nm
     --strip=${ANDROID_TOOLCHAIN_ROOT}/bin/llvm-strip
     --enable-cross-compile
@@ -53,16 +53,18 @@ set(FFMPEG_CONFIGURE_COMMAND
     --extra-cflags=-march=armv8.2-a+fp16+dotprod
     --extra-cflags=-mtune=cortex-a78
     --extra-cflags=-DANDROID
-    --extra-cflags=-D__ANDROID__
+    --extra-cflags=-D__ANDROID_API__=29
     --extra-ldflags=-Wl,--hash-style=both
     --extra-ldexeflags=-pie
     --enable-runtime-cpudetect
     --disable-static
     --enable-shared
-    --disable-ffprobe
-    --disable-ffplay
-    --disable-ffmpeg
+    --disable-programs
     --disable-doc
+    --disable-htmlpages
+    --disable-manpages
+    --disable-podpages
+    --disable-txtpages
     --enable-avfilter
     --enable-avcodec
     --enable-avformat
@@ -92,14 +94,7 @@ set(FFMPEG_CONFIGURE_COMMAND
     --pkg-config=pkg-config
 )
 
-# 对于天玑8100的特定优化
-if(CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
-    list(APPEND FFMPEG_CONFIGURE_COMMAND
-        --enable-v4l2-m2m
-        --enable-libdrm
-    )
-endif()
-
+# 移除有问题的依赖，简化配置
 ExternalProject_Add(
     ffmpeg
     GIT_REPOSITORY              https://github.com/FFmpeg/FFmpeg.git
