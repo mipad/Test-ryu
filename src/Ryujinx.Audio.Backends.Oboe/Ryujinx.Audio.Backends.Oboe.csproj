@@ -6,7 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup Condition="'$(RuntimeIdentifier)' == 'android-arm64'">
-    <PackageReference Include="Oboe" Version="1.7.0" />
+    <PackageReference Include="Oboe" Version="1.10.0" />
   </ItemGroup>
 
   <ItemGroup>
