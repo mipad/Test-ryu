@@ -87,6 +87,8 @@ add_library(
 # 添加编译定义以优化音频处理
 target_compile_definitions(ryujinxjni PRIVATE
     RYUJINX_AUDIO_OPTIMIZE=1
+    # 针对天玑8100的优化
+    RYUJINX_MTK_OPTIMIZE=1
     # 如果需要，可以添加更多音频优化标志
 )
 
@@ -96,7 +98,10 @@ target_compile_options(ryujinxjni PRIVATE
     -O3
     -DNDEBUG
     -ffast-math
-    -march=armv8-a
+    -march=armv8.2-a+fp16+dotprod+crypto  # 天玑8100支持的指令集
+    -mtune=cortex-a78  # 天玑8100的大核架构
+    -funsafe-math-optimizations
+    -ftree-vectorize
 )
 
 # 查找系统库
@@ -106,6 +111,81 @@ find_library(android-lib android)
 
 # 添加 Oboe 包含目录
 include_directories(${oboe_SOURCE_DIR}/include)
+
+# 设置 JNI 库输出路径
+set(JNI_PATH ../jniLibs/${CMAKE_ANDROID_ARCH_ABI})
+cmake_path(ABSOLUTE_PATH JNI_PATH NORMALIZE)
+
+# 检查 OpenSSL 库是否存在
+cmake_path(APPEND JNI_PATH libcrypto.so OUTPUT_VARIABLE LIBCRYPTO_JNI_PATH)
+cmake_path(APPEND JNI_PATH libssl.so OUTPUT_VARIABLE LIBSSL_JNI_PATH)
+
+# 构建 OpenSSL（如果预构建文件不存在）
+if (NOT (EXISTS ${LIBCRYPTO_JNI_PATH} AND EXISTS ${LIBSSL_JNI_PATH}))
+    include(../../../../libryujinx/libs/OpenSSL.cmake)
+    add_dependencies(ryujinxjni openssl)
+endif ()
+
+# 检查 FFmpeg 库是否存在
+cmake_path(APPEND JNI_PATH libavcodec.so OUTPUT_VARIABLE LIBAVCODEC_JNI_PATH)
+cmake_path(APPEND JNI_PATH libavutil.so OUTPUT_VARIABLE LIBAVUTIL_JNI_PATH)
+cmake_path(APPEND JNI_PATH libavformat.so OUTPUT_VARIABLE LIBAVFORMAT_JNI_PATH)
+cmake_path(APPEND JNI_PATH libswresample.so OUTPUT_VARIABLE LIBSWRESAMPLE_JNI_PATH)
+cmake_path(APPEND JNI_PATH libswscale.so OUTPUT_VARIABLE LIBSWSCALE_JNI_PATH)
+
+# 构建 FFmpeg（如果预构建文件不存在）
+if (NOT (EXISTS ${LIBAVCODEC_JNI_PATH} AND EXISTS ${LIBAVUTIL_JNI_PATH} AND 
+         EXISTS ${LIBAVFORMAT_JNI_PATH} AND EXISTS ${LIBSWRESAMPLE_JNI_PATH} AND
+         EXISTS ${LIBSWSCALE_JNI_PATH}))
+    message(STATUS "FFmpeg libraries not found, building from source...")
+    
+    # 包含 FFmpeg 编译脚本
+    include(../../../../libryujinx/libs/FFmpeg.cmake)
+    add_dependencies(ryujinxjni ffmpeg)
+    
+    # 设置 FFmpeg 包含目录
+    target_include_directories(ryujinxjni PRIVATE
+        ${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg
+        ${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg/libavcodec
+        ${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg/libavformat
+        ${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg/libavutil
+        ${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg/libswresample
+        ${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg/libswscale
+    )
+else()
+    message(STATUS "Using prebuilt FFmpeg libraries")
+    
+    # 导入预编译的 FFmpeg 库
+    add_library(avcodec SHARED IMPORTED)
+    set_target_properties(avcodec PROPERTIES
+        IMPORTED_LOCATION ${JNI_PATH}/libavcodec.so
+    )
+
+    add_library(avutil SHARED IMPORTED)
+    set_target_properties(avutil PROPERTIES
+        IMPORTED_LOCATION ${JNI_PATH}/libavutil.so
+    )
+
+    add_library(avformat SHARED IMPORTED)
+    set_target_properties(avformat PROPERTIES
+        IMPORTED_LOCATION ${JNI_PATH}/libavformat.so
+    )
+
+    add_library(swresample SHARED IMPORTED)
+    set_target_properties(swresample PROPERTIES
+        IMPORTED_LOCATION ${JNI_PATH}/libswresample.so
+    )
+
+    add_library(swscale SHARED IMPORTED)
+    set_target_properties(swscale PROPERTIES
+        IMPORTED_LOCATION ${JNI_PATH}/libswscale.so
+    )
+    
+    # 设置预编译 FFmpeg 的头文件路径（需要确保头文件存在）
+    target_include_directories(ryujinxjni PRIVATE
+        ../../../../libryujinx/libs/ffmpeg/include
+    )
+endif()
 
 # 链接库
 target_link_libraries(
@@ -119,18 +199,22 @@ target_link_libraries(
     OpenAL
 )
 
-# 设置 JNI 库输出路径
-set(JNI_PATH ../jniLibs/${CMAKE_ANDROID_ARCH_ABI})
-cmake_path(ABSOLUTE_PATH JNI_PATH NORMALIZE)
-
-cmake_path(APPEND JNI_PATH libcrypto.so OUTPUT_VARIABLE LIBCRYPTO_JNI_PATH)
-cmake_path(APPEND JNI_PATH libssl.so OUTPUT_VARIABLE LIBSSL_JNI_PATH)
-
-# 构建 OpenSSL（如果预构建文件不存在）
-if (NOT (EXISTS ${LIBCRYPTO_JNI_PATH} AND EXISTS ${LIBSSL_JNI_PATH}))
-    include(../../../../libryujinx/libs/OpenSSL.cmake)
-    add_dependencies(ryujinxjni openssl)
-endif ()
+# 只有在 FFmpeg 库存在时才链接
+if (EXISTS ${LIBAVCODEC_JNI_PATH} OR TARGET ffmpeg)
+    target_link_libraries(ryujinxjni
+        avcodec
+        avutil
+        avformat
+        swresample
+        swscale
+    )
+    
+    # 添加 FFmpeg 编译定义
+    target_compile_definitions(ryujinxjni PRIVATE
+        HAVE_FFMPEG=1
+        AVCODEC_STATIC=1
+    )
+endif()
 
 # 设置 OpenAL 输出目录
 set_target_properties(OpenAL PROPERTIES
@@ -138,3 +222,61 @@ set_target_properties(OpenAL PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
     RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
 )
+
+# 设置 FFmpeg 输出目录（如果是从源码编译）
+if (TARGET ffmpeg)
+    set_target_properties(avcodec avutil avformat swresample swscale PROPERTIES
+        LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
+        ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
+        RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
+    )
+endif()
+
+# 针对天玑8100的 Mali GPU 优化
+target_compile_definitions(ryujinxjni PRIVATE
+    MALI_GPU=1
+    # Mali GPU 特定优化
+    USE_MALI_OPTIMIZATIONS=1
+)
+
+# 添加针对 ARM64 和 Mali 的特定编译选项
+if(CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
+    target_compile_options(ryujinxjni PRIVATE
+        -mcpu=cortex-a78  # 天玑8100大核
+        -mcpu=cortex-a55  # 天玑8100小核
+        -fopenmp  # 开启OpenMP支持多核优化
+    )
+    
+    # 链接OpenMP库（如果使用OpenMP）
+    find_library(openmp-lib openmp)
+    if(openmp-lib)
+        target_link_libraries(ryujinxjni ${openmp-lib})
+    endif()
+endif()
+
+# 设置目标属性
+set_target_properties(ryujinxjni PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
+    ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
+    RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
+)
+
+# 安装后处理：确保所有依赖库都被复制到正确位置
+add_custom_command(TARGET ryujinxjni POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:OpenAL>
+        ${JNI_PATH}
+    COMMENT "Copying OpenAL library to JNI directory"
+)
+
+# 如果使用预编译的FFmpeg，确保库文件存在
+if(NOT TARGET ffmpeg AND EXISTS ${LIBAVCODEC_JNI_PATH})
+    add_custom_command(TARGET ryujinxjni POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E echo "FFmpeg libraries are in place"
+        COMMENT "Verifying FFmpeg libraries"
+    )
+endif()
+
+message(STATUS "Build configuration for Dimensity 8100 (ARM64, Mali GPU) completed")
+message(STATUS "JNI output path: ${JNI_PATH}")
+message(STATUS "FFmpeg support: ${HAVE_FFMPEG}")
