@@ -134,7 +134,7 @@ cmake_path(APPEND JNI_PATH libswresample.so OUTPUT_VARIABLE LIBSWRESAMPLE_JNI_PA
 cmake_path(APPEND JNI_PATH libswscale.so OUTPUT_VARIABLE LIBSWSCALE_JNI_PATH)
 
 # 总是构建 FFmpeg（确保使用修正版本）
-message(STATUS "Building FFmpeg from master branch with fixes...")
+message(STATUS "Building FFmpeg from master branch with fixed configuration...")
 
 # 包含 FFmpeg 编译脚本
 include(../../../../libryujinx/libs/FFmpeg.cmake)
@@ -237,6 +237,12 @@ add_custom_command(TARGET ffmpeg POST_BUILD
     COMMENT "Copying FFmpeg libraries to JNI directory"
 )
 
+# 添加自定义目标来显示构建状态
+add_custom_target(ffmpeg_status
+    DEPENDS ffmpeg
+    COMMENT "FFmpeg build completed successfully"
+)
+
 message(STATUS "Build configuration for Dimensity 8100 (ARM64, Mali GPU) completed")
 message(STATUS "JNI output path: ${JNI_PATH}")
-message(STATUS "FFmpeg support: Enabled (master branch)")
+message(STATUS "FFmpeg support: Enabled (master branch with fixed configuration)")
