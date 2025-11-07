@@ -142,24 +142,36 @@ namespace Ryujinx.Cpu.Nce
         }
 
         public void RequestInterrupt()
-        {
-            IntPtr threadHandle = _context.GetStorage().HostThreadHandle;
-            if (threadHandle != IntPtr.Zero)
-            {
-                // Bit 0 set means that the thread is currently running managed code.
+{
+    // 添加额外的空值检查
+    if (_context == null || _context.IsDisposed)
+        return;
+
+    IntPtr threadHandle = _context.GetStorage().HostThreadHandle;
+    if (threadHandle != IntPtr.Zero && threadHandle != null)
+    {
+       // Bit 0 set means that the thread is currently running managed code.
                 // Bit 1 set means that an interrupt was requested for the thread.
                 // This, we only need to send the suspend signal if the value was 0 (not running managed code,
                 // and no interrupt was requested before).
+                
+        ref uint inManaged = ref _context.GetStorage().InManaged;
+        uint oldValue = Interlocked.Or(ref inManaged, 2);
 
-                ref uint inManaged = ref _context.GetStorage().InManaged;
-                uint oldValue = Interlocked.Or(ref inManaged, 2);
-
-                if (oldValue == 0)
-                {
-                    NceThreadPal.SuspendThread(threadHandle);
-                }
+        if (oldValue == 0)
+        {
+            try
+            {
+                NceThreadPal.SuspendThread(threadHandle);
+            }
+            catch (Exception ex)
+            {
+                // 记录日志或静默处理
+                Debug.WriteLine($"Failed to suspend thread: {ex.Message}");
             }
         }
+    }
+}
 
         public void StopRunning()
         {
