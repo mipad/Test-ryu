@@ -1,4 +1,4 @@
-// ryujinx.cpp (修复版本)
+// ryujinx.cpp (完整修复版本)
 #include "ryuijnx.h"
 #include <chrono>
 #include <csignal>
@@ -239,16 +239,19 @@ Java_org_ryujinx_android_NativeHelpers_setIsInitialOrientationFlipped(JNIEnv *en
     isInitialOrientationFlipped = is_flipped;
 }
 
-// =============== Oboe Audio JNI 接口 (简化版本) ===============
+// =============== Oboe Audio JNI 接口 (修复版本) ===============
 extern "C"
 JNIEXPORT jboolean JNICALL
 Java_org_ryujinx_android_NativeHelpers_initOboeAudio(JNIEnv *env, jobject thiz, jint sample_rate, jint channel_count) {
-    return RyujinxOboe::OboeAudioRenderer::GetInstance().Initialize(sample_rate, channel_count) ? JNI_TRUE : JNI_FALSE;
+    bool result = RyujinxOboe::OboeAudioRenderer::GetInstance().Initialize(sample_rate, channel_count);
+    __android_log_print(ANDROID_LOG_INFO, "RyujinxOboe", "JNI initOboeAudio: %dHz %dch -> %s", sample_rate, channel_count, result ? "success" : "failed");
+    return result ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C"
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_shutdownOboeAudio(JNIEnv *env, jobject thiz) {
+    __android_log_print(ANDROID_LOG_INFO, "RyujinxOboe", "JNI shutdownOboeAudio");
     RyujinxOboe::OboeAudioRenderer::GetInstance().Shutdown();
 }
 
@@ -256,51 +259,59 @@ extern "C"
 JNIEXPORT jboolean JNICALL
 Java_org_ryujinx_android_NativeHelpers_writeOboeAudio(JNIEnv *env, jobject thiz, jshortArray audio_data, jint num_frames) {
     if (!audio_data || num_frames <= 0) {
+        __android_log_print(ANDROID_LOG_WARN, "RyujinxOboe", "JNI writeOboeAudio: invalid parameters");
         return JNI_FALSE;
     }
 
     jsize length = env->GetArrayLength(audio_data);
-    if (length < num_frames * 2) { // 假设2声道
-        return JNI_FALSE;
-    }
-
     jshort* data = env->GetShortArrayElements(audio_data, nullptr);
+    
     if (data) {
         bool success = RyujinxOboe::OboeAudioRenderer::GetInstance().WriteAudio(reinterpret_cast<int16_t*>(data), num_frames);
         env->ReleaseShortArrayElements(audio_data, data, JNI_ABORT);
+        
+        if (!success) {
+            __android_log_print(ANDROID_LOG_WARN, "RyujinxOboe", "JNI writeOboeAudio: write failed, %d frames", num_frames);
+        }
         return success ? JNI_TRUE : JNI_FALSE;
     }
     
+    __android_log_print(ANDROID_LOG_WARN, "RyujinxOboe", "JNI writeOboeAudio: failed to get array elements");
     return JNI_FALSE;
 }
 
 extern "C"
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setOboeVolume(JNIEnv *env, jobject thiz, jfloat volume) {
+    __android_log_print(ANDROID_LOG_INFO, "RyujinxOboe", "JNI setOboeVolume: %.2f", volume);
     RyujinxOboe::OboeAudioRenderer::GetInstance().SetVolume(volume);
 }
 
 extern "C"
 JNIEXPORT jboolean JNICALL
 Java_org_ryujinx_android_NativeHelpers_isOboeInitialized(JNIEnv *env, jobject thiz) {
-    return RyujinxOboe::OboeAudioRenderer::GetInstance().IsInitialized() ? JNI_TRUE : JNI_FALSE;
+    bool initialized = RyujinxOboe::OboeAudioRenderer::GetInstance().IsInitialized();
+    return initialized ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C"
 JNIEXPORT jboolean JNICALL
 Java_org_ryujinx_android_NativeHelpers_isOboePlaying(JNIEnv *env, jobject thiz) {
-    return RyujinxOboe::OboeAudioRenderer::GetInstance().IsPlaying() ? JNI_TRUE : JNI_FALSE;
+    bool playing = RyujinxOboe::OboeAudioRenderer::GetInstance().IsPlaying();
+    return playing ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C"
 JNIEXPORT jint JNICALL
 Java_org_ryujinx_android_NativeHelpers_getOboeBufferedFrames(JNIEnv *env, jobject thiz) {
-    return static_cast<jint>(RyujinxOboe::OboeAudioRenderer::GetInstance().GetBufferedFrames());
+    int32_t buffered = RyujinxOboe::OboeAudioRenderer::GetInstance().GetBufferedFrames();
+    return static_cast<jint>(buffered);
 }
 
 extern "C"
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_resetOboeAudio(JNIEnv *env, jobject thiz) {
+    __android_log_print(ANDROID_LOG_INFO, "RyujinxOboe", "JNI resetOboeAudio");
     RyujinxOboe::OboeAudioRenderer::GetInstance().Reset();
 }
 
@@ -324,24 +335,34 @@ Java_org_ryujinx_android_NativeHelpers_getAndroidDeviceBrand(JNIEnv *env, jobjec
 // =============== Oboe Audio C 接口 (for C# P/Invoke) ===============
 extern "C"
 bool initOboeAudio(int sample_rate, int channel_count) {
-    return RyujinxOboe::OboeAudioRenderer::GetInstance().Initialize(sample_rate, channel_count);
+    bool result = RyujinxOboe::OboeAudioRenderer::GetInstance().Initialize(sample_rate, channel_count);
+    __android_log_print(ANDROID_LOG_INFO, "RyujinxOboe", "C initOboeAudio: %dHz %dch -> %s", sample_rate, channel_count, result ? "success" : "failed");
+    return result;
 }
 
 extern "C"
 void shutdownOboeAudio() {
+    __android_log_print(ANDROID_LOG_INFO, "RyujinxOboe", "C shutdownOboeAudio");
     RyujinxOboe::OboeAudioRenderer::GetInstance().Shutdown();
 }
 
 extern "C"
 bool writeOboeAudio(const int16_t* data, int32_t num_frames) {
     if (!data || num_frames <= 0) {
+        __android_log_print(ANDROID_LOG_WARN, "RyujinxOboe", "C writeOboeAudio: invalid parameters");
         return false;
     }
-    return RyujinxOboe::OboeAudioRenderer::GetInstance().WriteAudio(data, num_frames);
+    
+    bool success = RyujinxOboe::OboeAudioRenderer::GetInstance().WriteAudio(data, num_frames);
+    if (!success) {
+        __android_log_print(ANDROID_LOG_WARN, "RyujinxOboe", "C writeOboeAudio: write failed, %d frames", num_frames);
+    }
+    return success;
 }
 
 extern "C"
 void setOboeVolume(float volume) {
+    __android_log_print(ANDROID_LOG_INFO, "RyujinxOboe", "C setOboeVolume: %.2f", volume);
     RyujinxOboe::OboeAudioRenderer::GetInstance().SetVolume(volume);
 }
 
@@ -362,6 +383,7 @@ int32_t getOboeBufferedFrames() {
 
 extern "C"
 void resetOboeAudio() {
+    __android_log_print(ANDROID_LOG_INFO, "RyujinxOboe", "C resetOboeAudio");
     RyujinxOboe::OboeAudioRenderer::GetInstance().Reset();
 }
 
