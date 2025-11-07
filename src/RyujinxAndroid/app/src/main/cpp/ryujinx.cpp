@@ -1,4 +1,4 @@
-// ryujinx.cpp (修复版本 - 添加缺失的C函数)
+// ryujinx.cpp (修复版本)
 #include "ryuijnx.h"
 #include <chrono>
 #include <csignal>
@@ -304,13 +304,6 @@ Java_org_ryujinx_android_NativeHelpers_resetOboeAudio(JNIEnv *env, jobject thiz)
     RyujinxOboe::OboeAudioRenderer::GetInstance().Reset();
 }
 
-// =============== 实时音频 JNI 接口 ===============
-extern "C"
-JNIEXPORT void JNICALL
-Java_org_ryujinx_android_NativeHelpers_setRealTimeMode(JNIEnv *env, jobject thiz, jboolean enabled) {
-    RyujinxOboe::OboeAudioRenderer::GetInstance().SetRealTimeMode(enabled);
-}
-
 // =============== 设备信息获取函数 ===============
 extern "C"
 JNIEXPORT jstring JNICALL
@@ -370,12 +363,6 @@ int32_t getOboeBufferedFrames() {
 extern "C"
 void resetOboeAudio() {
     RyujinxOboe::OboeAudioRenderer::GetInstance().Reset();
-}
-
-// =============== 实时音频 C 接口 (for C# P/Invoke) ===============
-extern "C"
-void setRealTimeMode(bool enabled) {
-    RyujinxOboe::OboeAudioRenderer::GetInstance().SetRealTimeMode(enabled);
 }
 
 // =============== 设备信息获取 C 接口 ===============
