@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (彻底修复耳鸣版本)
+// oboe_audio_renderer.h (双音频流共享模式)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -20,7 +20,7 @@ namespace RyujinxOboe {
 class OboeSinkStream : public oboe::AudioStreamDataCallback,
                        public oboe::AudioStreamErrorCallback {
 public:
-    explicit OboeSinkStream(uint32_t system_channels, const char* name, uint32_t sample_rate);
+    explicit OboeSinkStream(uint32_t system_channels, const char* name, uint32_t sample_rate, int stream_id);
     ~OboeSinkStream() override;
 
     bool Initialize();
@@ -37,6 +37,7 @@ public:
     int32_t GetBufferedFrames() const;
     uint32_t GetSampleRate() const { return m_sample_rate; }
     uint32_t GetChannelCount() const { return m_device_channels; }
+    int GetStreamId() const { return m_stream_id; }
     
     // 音量控制
     void SetVolume(float volume);
@@ -83,12 +84,13 @@ private:
     uint32_t m_device_channels;
     uint32_t m_sample_rate;
     std::string m_name;
+    int m_stream_id;
     
     std::atomic<float> m_volume{1.0f};
     std::atomic<int64_t> m_total_frames_written{0};
     std::atomic<int64_t> m_total_frames_played{0};
     
-    static constexpr uint32_t TARGET_SAMPLE_COUNT = 512; // 增加缓冲区大小
+    static constexpr uint32_t TARGET_SAMPLE_COUNT = 512;
 };
 
 class OboeAudioRenderer {
@@ -103,6 +105,7 @@ public:
     void SetVolume(float volume);
 
     bool WriteAudio(const float* data, int32_t numFrames);
+    bool WriteAudioToStream(const float* data, int32_t numFrames, int stream_id);
     void ClearBuffer();
 
     // 状态查询
@@ -114,14 +117,22 @@ public:
     int64_t GetTotalFramesWritten() const;
     int64_t GetTotalFramesPlayed() const;
 
+    // 多流管理
+    bool CreateAdditionalStream();
+    bool SwitchToStream(int stream_id);
+    int GetCurrentStreamId() const { return m_current_stream_id; }
+    int GetStreamCount() const { return m_stream_count; }
+
 private:
     OboeAudioRenderer();
     ~OboeAudioRenderer();
 
-    std::unique_ptr<OboeSinkStream> m_sink_stream;
+    std::vector<std::unique_ptr<OboeSinkStream>> m_sink_streams;
     std::mutex m_init_mutex;
     std::atomic<bool> m_initialized{false};
     uint32_t m_current_sample_rate{48000};
+    int m_current_stream_id{0};
+    int m_stream_count{1};
 };
 
 } // namespace RyujinxOboe

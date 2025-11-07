@@ -50,12 +50,20 @@ jclass _mainActivityClass = nullptr;
 extern "C" {
     void initOboeAudio();
     void shutdownOboeAudio();
-    void writeOboeAudio(const float* data, int32_t num_frames);
+    bool writeOboeAudio(const float* data, int32_t num_frames);
+    bool writeOboeAudioToStream(const float* data, int32_t num_frames, int stream_id);
     void setOboeSampleRate(int32_t sample_rate);
     void setOboeBufferSize(int32_t buffer_size);
     void setOboeVolume(float volume);
     bool isOboeInitialized();
+    bool isOboePlaying();
     int32_t getOboeBufferedFrames();
+    
+    // 多流管理函数
+    bool createAdditionalOboeStream();
+    bool switchToOboeStream(int stream_id);
+    int getCurrentOboeStreamId();
+    int getOboeStreamCount();
     
     // 设备信息函数
     const char* GetAndroidDeviceModel();
