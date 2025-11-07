@@ -46,28 +46,4 @@ JavaVM *_vm = nullptr;
 jobject _mainActivity = nullptr;
 jclass _mainActivityClass = nullptr;
 
-// 更新 Oboe 音频相关的函数声明
-extern "C" {
-    void initOboeAudio();
-    void shutdownOboeAudio();
-    bool writeOboeAudio(const float* data, int32_t num_frames);
-    bool writeOboeAudioToStream(const float* data, int32_t num_frames, int stream_id);
-    void setOboeSampleRate(int32_t sample_rate);
-    void setOboeBufferSize(int32_t buffer_size);
-    void setOboeVolume(float volume);
-    bool isOboeInitialized();
-    bool isOboePlaying();
-    int32_t getOboeBufferedFrames();
-    
-    // 多流管理函数
-    bool createAdditionalOboeStream();
-    bool switchToOboeStream(int stream_id);
-    int getCurrentOboeStreamId();
-    int getOboeStreamCount();
-    
-    // 设备信息函数
-    const char* GetAndroidDeviceModel();
-    const char* GetAndroidDeviceBrand();
-}
-
 #endif //RYUJINXNATIVE_RYUIJNX_H
