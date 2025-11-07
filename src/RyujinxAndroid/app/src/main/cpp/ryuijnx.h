@@ -20,6 +20,7 @@
 #include <fcntl.h>
 #include "adrenotools/driver.h"
 #include "native_window.h"
+#include <pthread.h>
 
 // A macro to pass call to Vulkan and check for return value for success
 #define CALL_VK(func)                                                 \
@@ -41,10 +42,12 @@ void *_ryujinxNative = NULL;
 // Ryujinx imported functions
 bool (*initialize)(char *) = NULL;
 
-long _renderingThreadId = 0;
-JavaVM *_vm = nullptr;
-jobject _mainActivity = nullptr;
-jclass _mainActivityClass = nullptr;
+// 全局变量声明 (在头文件中声明为extern)
+extern long _renderingThreadId;
+extern JavaVM *_vm;
+extern jobject _mainActivity;
+extern jclass _mainActivityClass;
+extern pthread_t _renderingThreadIdNative;
 
 // 简化 Oboe 音频函数声明
 extern "C" {

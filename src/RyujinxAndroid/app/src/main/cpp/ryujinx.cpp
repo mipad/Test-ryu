@@ -1,23 +1,5 @@
-// Write C++ code here.
-//
-// Do not forget to dynamically load the C++ library into your application.
-//
-// For instance,
-//
-// In MainActivity.java:
-//    static {
-//       System.loadLibrary("ryuijnx");
-//    }
-//
-// Or, in MainActivity.kt:
-//    companion object {
-//      init {
-//         System.loadLibrary("ryuijnx")
-//      }
-//    }
-
+// ryujinx.cpp (修复版本)
 #include "ryuijnx.h"
-#include "pthread.h"
 #include <chrono>
 #include <csignal>
 #include "oboe_audio_renderer.h"
@@ -25,20 +7,14 @@
 #include <stdarg.h>
 #include <sys/system_properties.h>
 
-// Global variables
-JavaVM* _vm = nullptr;
+// 全局变量定义 (在cpp文件中定义)
+long _renderingThreadId = 0;
+JavaVM *_vm = nullptr;
 jobject _mainActivity = nullptr;
 jclass _mainActivityClass = nullptr;
-pthread_t _renderingThreadId;
-std::chrono::time_point<std::chrono::steady_clock, std::chrono::nanoseconds> _currentTimePoint;
-bool isInitialOrientationFlipped = true;
+pthread_t _renderingThreadIdNative;
 
-// Vulkan helper macro
-#define VK_CHECK(result) \
-    if (result != VK_SUCCESS) { \
-        __android_log_print(ANDROID_LOG_ERROR, "Ryuijinx", "Vulkan error: %d", result); \
-        return -1; \
-    }
+std::chrono::time_point<std::chrono::steady_clock, std::chrono::nanoseconds> _currentTimePoint;
 
 extern "C"
 {
@@ -112,23 +88,25 @@ jstring createStringFromStdString(
     return str;
 }
 }
-
 extern "C"
 void setRenderingThread() {
     auto currentId = pthread_self();
-    _renderingThreadId = currentId;
+
+    _renderingThreadIdNative = currentId;
+
     _currentTimePoint = std::chrono::high_resolution_clock::now();
 }
-
 extern "C"
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_MainActivity_initVm(JNIEnv *env, jobject thiz) {
     JavaVM *vm = nullptr;
     auto success = env->GetJavaVM(&vm);
     _vm = vm;
-    _mainActivity = env->NewGlobalRef(thiz);
-    _mainActivityClass = (jclass)env->NewGlobalRef(env->GetObjectClass(thiz));
+    _mainActivity = thiz;
+    _mainActivityClass = env->GetObjectClass(thiz);
 }
+
+bool isInitialOrientationFlipped = true;
 
 extern "C"
 void setCurrentTransform(long native_window, int transform) {
@@ -226,6 +204,7 @@ JNIEXPORT jint JNICALL
 Java_org_ryujinx_android_NativeHelpers_getMaxSwapInterval(JNIEnv *env, jobject thiz,
                                                           jlong native_window) {
     auto nativeWindow = (ANativeWindow *) native_window;
+
     return nativeWindow->maxSwapInterval;
 }
 
@@ -234,6 +213,7 @@ JNIEXPORT jint JNICALL
 Java_org_ryujinx_android_NativeHelpers_getMinSwapInterval(JNIEnv *env, jobject thiz,
                                                           jlong native_window) {
     auto nativeWindow = (ANativeWindow *) native_window;
+
     return nativeWindow->minSwapInterval;
 }
 
@@ -242,6 +222,7 @@ JNIEXPORT jint JNICALL
 Java_org_ryujinx_android_NativeHelpers_setSwapInterval(JNIEnv *env, jobject thiz,
                                                        jlong native_window, jint swap_interval) {
     auto nativeWindow = (ANativeWindow *) native_window;
+
     return nativeWindow->setSwapInterval(nativeWindow, swap_interval);
 }
 
@@ -258,7 +239,7 @@ Java_org_ryujinx_android_NativeHelpers_setIsInitialOrientationFlipped(JNIEnv *en
     isInitialOrientationFlipped = is_flipped;
 }
 
-// =============== Oboe Audio JNI 接口 (双音频流共享模式) ===============
+// =============== Oboe Audio JNI 接口 (简化版本) ===============
 extern "C"
 JNIEXPORT jboolean JNICALL
 Java_org_ryujinx_android_NativeHelpers_initOboeAudio(JNIEnv *env, jobject thiz, jint sample_rate, jint channel_count) {
@@ -294,46 +275,6 @@ Java_org_ryujinx_android_NativeHelpers_writeOboeAudio(JNIEnv *env, jobject thiz,
 }
 
 extern "C"
-JNIEXPORT jboolean JNICALL
-Java_org_ryujinx_android_NativeHelpers_writeOboeAudioToStream(JNIEnv *env, jobject thiz, jfloatArray audio_data, jint num_frames, jint stream_id) {
-    if (!audio_data || num_frames <= 0) {
-        return JNI_FALSE;
-    }
-
-    jsize length = env->GetArrayLength(audio_data);
-    if (length < num_frames) {
-        return JNI_FALSE;
-    }
-
-    jfloat* data = env->GetFloatArrayElements(audio_data, nullptr);
-    if (data) {
-        bool success = RyujinxOboe::OboeAudioRenderer::GetInstance().WriteAudioToStream(data, num_frames, stream_id);
-        env->ReleaseFloatArrayElements(audio_data, data, JNI_ABORT);
-        return success ? JNI_TRUE : JNI_FALSE;
-    }
-    
-    return JNI_FALSE;
-}
-
-extern "C"
-JNIEXPORT void JNICALL
-Java_org_ryujinx_android_NativeHelpers_setOboeSampleRate(JNIEnv *env, jobject thiz, jint sample_rate) {
-    if (sample_rate < 8000 || sample_rate > 192000) {
-        return;
-    }
-    RyujinxOboe::OboeAudioRenderer::GetInstance().SetSampleRate(sample_rate);
-}
-
-extern "C"
-JNIEXPORT void JNICALL
-Java_org_ryujinx_android_NativeHelpers_setOboeBufferSize(JNIEnv *env, jobject thiz, jint buffer_size) {
-    if (buffer_size < 64 || buffer_size > 8192) {
-        return;
-    }
-    RyujinxOboe::OboeAudioRenderer::GetInstance().SetBufferSize(buffer_size);
-}
-
-extern "C"
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setOboeVolume(JNIEnv *env, jobject thiz, jfloat volume) {
     RyujinxOboe::OboeAudioRenderer::GetInstance().SetVolume(volume);
@@ -361,31 +302,6 @@ extern "C"
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_resetOboeAudio(JNIEnv *env, jobject thiz) {
     RyujinxOboe::OboeAudioRenderer::GetInstance().Reset();
-}
-
-// =============== 多流管理 JNI 接口 ===============
-extern "C"
-JNIEXPORT jboolean JNICALL
-Java_org_ryujinx_android_NativeHelpers_createAdditionalOboeStream(JNIEnv *env, jobject thiz) {
-    return RyujinxOboe::OboeAudioRenderer::GetInstance().CreateAdditionalStream() ? JNI_TRUE : JNI_FALSE;
-}
-
-extern "C"
-JNIEXPORT jboolean JNICALL
-Java_org_ryujinx_android_NativeHelpers_switchToOboeStream(JNIEnv *env, jobject thiz, jint stream_id) {
-    return RyujinxOboe::OboeAudioRenderer::GetInstance().SwitchToStream(stream_id) ? JNI_TRUE : JNI_FALSE;
-}
-
-extern "C"
-JNIEXPORT jint JNICALL
-Java_org_ryujinx_android_NativeHelpers_getCurrentOboeStreamId(JNIEnv *env, jobject thiz) {
-    return RyujinxOboe::OboeAudioRenderer::GetInstance().GetCurrentStreamId();
-}
-
-extern "C"
-JNIEXPORT jint JNICALL
-Java_org_ryujinx_android_NativeHelpers_getOboeStreamCount(JNIEnv *env, jobject thiz) {
-    return RyujinxOboe::OboeAudioRenderer::GetInstance().GetStreamCount();
 }
 
 // =============== 设备信息获取函数 ===============
@@ -425,30 +341,6 @@ bool writeOboeAudio(const int16_t* data, int32_t num_frames) {
 }
 
 extern "C"
-bool writeOboeAudioToStream(const float* data, int32_t num_frames, int stream_id) {
-    if (!data || num_frames <= 0) {
-        return false;
-    }
-    return RyujinxOboe::OboeAudioRenderer::GetInstance().WriteAudioToStream(data, num_frames, stream_id);
-}
-
-extern "C"
-void setOboeSampleRate(int32_t sample_rate) {
-    if (sample_rate < 8000 || sample_rate > 192000) {
-        return;
-    }
-    RyujinxOboe::OboeAudioRenderer::GetInstance().SetSampleRate(sample_rate);
-}
-
-extern "C"
-void setOboeBufferSize(int32_t buffer_size) {
-    if (buffer_size < 64 || buffer_size > 8192) {
-        return;
-    }
-    RyujinxOboe::OboeAudioRenderer::GetInstance().SetBufferSize(buffer_size);
-}
-
-extern "C"
 void setOboeVolume(float volume) {
     RyujinxOboe::OboeAudioRenderer::GetInstance().SetVolume(volume);
 }
@@ -471,27 +363,6 @@ int32_t getOboeBufferedFrames() {
 extern "C"
 void resetOboeAudio() {
     RyujinxOboe::OboeAudioRenderer::GetInstance().Reset();
-}
-
-// =============== 多流管理 C 接口 ===============
-extern "C"
-bool createAdditionalOboeStream() {
-    return RyujinxOboe::OboeAudioRenderer::GetInstance().CreateAdditionalStream();
-}
-
-extern "C"
-bool switchToOboeStream(int stream_id) {
-    return RyujinxOboe::OboeAudioRenderer::GetInstance().SwitchToStream(stream_id);
-}
-
-extern "C"
-int getCurrentOboeStreamId() {
-    return RyujinxOboe::OboeAudioRenderer::GetInstance().GetCurrentStreamId();
-}
-
-extern "C"
-int getOboeStreamCount() {
-    return RyujinxOboe::OboeAudioRenderer::GetInstance().GetStreamCount();
 }
 
 // =============== 设备信息获取 C 接口 ===============

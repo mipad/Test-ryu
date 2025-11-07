@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (彻底解决耳鸣版本)
+// oboe_audio_renderer.h (修复回调函数版本)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -86,6 +86,10 @@ private:
 
     bool OpenStream();
     void CloseStream();
+
+    // 回调处理函数
+    oboe::DataCallbackResult OnAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames);
+    void OnStreamError(oboe::Result error);
 
     std::shared_ptr<oboe::AudioStream> m_stream;
     std::unique_ptr<SimpleRingBuffer> m_ring_buffer;

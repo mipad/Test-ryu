@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (彻底解决耳鸣版本)
+// oboe_audio_renderer.cpp (修复回调函数版本)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
