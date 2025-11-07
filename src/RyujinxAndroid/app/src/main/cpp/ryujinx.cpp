@@ -365,6 +365,13 @@ void resetOboeAudio() {
     RyujinxOboe::OboeAudioRenderer::GetInstance().Reset();
 }
 
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_setRealTimeMode(JNIEnv *env, jobject thiz, jboolean enabled) {
+    RyujinxOboe::OboeAudioRenderer::GetInstance().SetRealTimeMode(enabled);
+}
+
 // =============== 设备信息获取 C 接口 ===============
 extern "C"
 const char* GetAndroidDeviceModel() {

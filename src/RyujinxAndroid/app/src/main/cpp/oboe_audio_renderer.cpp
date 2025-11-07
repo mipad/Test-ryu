@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (实时音频版本)
+// oboe_audio_renderer.cpp (修复编译错误版本)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
@@ -220,8 +220,8 @@ void OboeAudioRenderer::ConfigureForRealTimeAudio(oboe::AudioStreamBuilder& buil
            ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::None) // 禁用重采样以获得最低延迟
            ->setFormatConversionAllowed(false)  // 禁用格式转换
            ->setChannelConversionAllowed(false) // 禁用声道转换
-           ->setUsage(oboe::Usage::Game)        // 游戏用途，最低延迟
-           ->setContentType(oboe::ContentType::Game); // 游戏内容类型
+           ->setUsage(oboe::Usage::Game);       // 游戏用途，最低延迟
+    // 移除了有问题的 setContentType 调用
 }
 
 bool OboeAudioRenderer::ConfigureAndOpenStream() {

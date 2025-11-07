@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (实时音频版本)
+// oboe_audio_renderer.h (修复编译错误版本)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
