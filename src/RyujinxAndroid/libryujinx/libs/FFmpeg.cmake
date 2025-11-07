@@ -53,7 +53,7 @@ set(FFMPEG_CONFIGURE_COMMAND
     --extra-cflags=-march=armv8.2-a+fp16+dotprod
     --extra-cflags=-mtune=cortex-a78
     --extra-cflags=-DANDROID
-    --extra-cflags=-D__ANDROID_API__=29
+    --extra-cflags=-D__ANDROID_API__=21
     --extra-ldflags=-Wl,--hash-style=both
     --extra-ldexeflags=-pie
     --enable-runtime-cpudetect
