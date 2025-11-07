@@ -2,7 +2,7 @@ include(ExternalProject)
 
 set(PROJECT_ENV "ANDROID_NDK_ROOT=${CMAKE_ANDROID_NDK}")
 
-# 设置 Android 工具链路径 - 使用 bionic 而不是 android
+# 设置 Android 工具链路径
 set(ANDROID_TOOLCHAIN_ROOT ${CMAKE_ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64)
 set(ANDROID_SYSROOT ${ANDROID_TOOLCHAIN_ROOT}/sysroot)
 set(ANDROID_PLATFORM aarch64-linux-android21)
@@ -34,23 +34,29 @@ else ()
     list(APPEND PROJECT_ENV "PATH=${ANDROID_TOOLCHAIN_ROOT}/bin:$ENV{PATH}")
 endif ()
 
-# 设置 FFmpeg 配置选项 - 使用 linux-bionic 并针对天玑8100优化
-set(FFMPEG_CONFIGURE_FLAGS
+# 设置 FFmpeg 配置选项 - 修复参数传递问题
+set(FFMPEG_CONFIGURE_COMMAND
+    <SOURCE_DIR>/configure
     --prefix=${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install
     --cross-prefix=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}-
-    --target-os=linux  # 使用 linux 而不是 android
+    --target-os=android  # 改回 android
     --arch=aarch64
-    --cpu=cortex-a78  # 天玑8100大核
+    --cpu=armv8-a  # 使用通用 ARMv8 而不是特定 CPU
     --cc=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}-clang
     --cxx=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}-clang++
     --nm=${ANDROID_TOOLCHAIN_ROOT}/bin/llvm-nm
     --strip=${ANDROID_TOOLCHAIN_ROOT}/bin/llvm-strip
     --enable-cross-compile
     --sysroot=${ANDROID_SYSROOT}
-    --extra-cflags="-O3 -fPIC -march=armv8.2-a+fp16+dotprod -mtune=cortex-a78 -DANDROID -D__ANDROID__ -I${ANDROID_SYSROOT}/usr/include"
-    --extra-ldflags="-Wl,--hash-style=both -L${ANDROID_SYSROOT}/usr/lib"
+    --extra-cflags=-O3
+    --extra-cflags=-fPIC
+    --extra-cflags=-march=armv8.2-a+fp16+dotprod
+    --extra-cflags=-mtune=cortex-a78
+    --extra-cflags=-DANDROID
+    --extra-cflags=-D__ANDROID__
+    --extra-ldflags=-Wl,--hash-style=both
     --extra-ldexeflags=-pie
-    --enable-runtime-cpudetect  # 启用运行时CPU检测
+    --enable-runtime-cpudetect
     --disable-static
     --enable-shared
     --disable-ffprobe
@@ -64,9 +70,35 @@ set(FFMPEG_CONFIGURE_FLAGS
     --disable-avdevice
     --disable-network
     --disable-everything
-    --enable-decoder=aac,mp3,ac3,flac,opus,vorbis,h264,hevc,vp8,vp9
-    --enable-demuxer=aac,mp3,ac3,flac,ogg,opus,matroska,mov,avi
-    --enable-parser=aac,mp3,ac3,flac,opus,vorbis,h264,hevc,vp8,vp9
+    --enable-decoder=aac
+    --enable-decoder=mp3
+    --enable-decoder=ac3
+    --enable-decoder=flac
+    --enable-decoder=opus
+    --enable-decoder=vorbis
+    --enable-decoder=h264
+    --enable-decoder=hevc
+    --enable-decoder=vp8
+    --enable-decoder=vp9
+    --enable-demuxer=aac
+    --enable-demuxer=mp3
+    --enable-demuxer=ac3
+    --enable-demuxer=flac
+    --enable-demuxer=ogg
+    --enable-demuxer=opus
+    --enable-demuxer=matroska
+    --enable-demuxer=mov
+    --enable-demuxer=avi
+    --enable-parser=aac
+    --enable-parser=mp3
+    --enable-parser=ac3
+    --enable-parser=flac
+    --enable-parser=opus
+    --enable-parser=vorbis
+    --enable-parser=h264
+    --enable-parser=hevc
+    --enable-parser=vp8
+    --enable-parser=vp9
     --enable-swresample
     --enable-swscale
     --enable-avcodec
@@ -75,16 +107,12 @@ set(FFMPEG_CONFIGURE_FLAGS
     --enable-small
     --enable-neon
     --enable-asm
-    --disable-inline-asm  # 禁用内联汇编避免问题
+    --disable-inline-asm
     --pkg-config=pkg-config
     --disable-symver
+    --disable-jni  # 暂时禁用 JNI
+    --disable-mediacodec  # 暂时禁用 MediaCodec
 )
-
-# 针对 Mali GPU 添加硬件加速支持
-if(CMAKE_SYSTEM_VERSION)
-    list(APPEND FFMPEG_CONFIGURE_FLAGS --enable-mediacodec)
-    list(APPEND FFMPEG_CONFIGURE_FLAGS --enable-jni)
-endif()
 
 ExternalProject_Add(
     ffmpeg
@@ -93,10 +121,8 @@ ExternalProject_Add(
     GIT_PROGRESS                1
     GIT_SHALLOW                 1
     UPDATE_COMMAND              ""
-    LIST_SEPARATOR              |
     CONFIGURE_COMMAND           ${CMAKE_COMMAND} -E env ${PROJECT_ENV}
-                                <SOURCE_DIR>/configure
-                                ${FFMPEG_CONFIGURE_FLAGS}
+                                ${FFMPEG_CONFIGURE_COMMAND}
     BUILD_COMMAND               ${CMAKE_COMMAND} -E env ${PROJECT_ENV}
                                 ${MAKE_COMMAND} -j${CMAKE_BUILD_PARALLEL_LEVEL}
     INSTALL_COMMAND             ${MAKE_COMMAND} install
