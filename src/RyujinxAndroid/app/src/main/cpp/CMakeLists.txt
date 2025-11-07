@@ -133,36 +133,119 @@ cmake_path(APPEND JNI_PATH libavformat.so OUTPUT_VARIABLE LIBAVFORMAT_JNI_PATH)
 cmake_path(APPEND JNI_PATH libswresample.so OUTPUT_VARIABLE LIBSWRESAMPLE_JNI_PATH)
 cmake_path(APPEND JNI_PATH libswscale.so OUTPUT_VARIABLE LIBSWSCALE_JNI_PATH)
 
-# 总是构建 FFmpeg（确保使用修正版本）
-message(STATUS "Building FFmpeg from master branch with bionic configuration...")
+# 构建 FFmpeg（如果预构建文件不存在）- 使用更稳定的方法
+if (NOT (EXISTS ${LIBAVCODEC_JNI_PATH} AND EXISTS ${LIBAVUTIL_JNI_PATH} AND 
+         EXISTS ${LIBAVFORMAT_JNI_PATH} AND EXISTS ${LIBSWRESAMPLE_JNI_PATH} AND
+         EXISTS ${LIBSWSCALE_JNI_PATH}))
+    message(STATUS "FFmpeg libraries not found, building from source with simplified configuration...")
+    
+    # 包含 FFmpeg 编译脚本
+    include(../../../../libryujinx/libs/FFmpeg.cmake)
+    add_dependencies(ryujinxjni ffmpeg)
+    
+    # 设置 FFmpeg 包含目录
+    target_include_directories(ryujinxjni PRIVATE
+        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/include
+    )
+    
+    # 链接 FFmpeg 库
+    target_link_libraries(ryujinxjni
+        avcodec
+        avutil
+        avformat
+        swresample
+        swscale
+    )
+    
+    # 添加 FFmpeg 编译定义
+    target_compile_definitions(ryujinxjni PRIVATE
+        HAVE_FFMPEG=1
+        AVCODEC_STATIC=1
+        __STDC_CONSTANT_MACROS=1
+    )
+    
+    # 设置 FFmpeg 输出目录
+    set_target_properties(avcodec avutil avformat swresample swscale PROPERTIES
+        LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
+        ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
+        RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
+    )
+    
+    # 复制 FFmpeg 库到输出目录
+    add_custom_command(TARGET ffmpeg POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libavcodec.so
+            ${JNI_PATH}
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libavutil.so
+            ${JNI_PATH}
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libavformat.so
+            ${JNI_PATH}
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libswresample.so
+            ${JNI_PATH}
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libswscale.so
+            ${JNI_PATH}
+        COMMENT "Copying FFmpeg libraries to JNI directory"
+    )
+    
+    # 添加自定义目标来显示构建状态
+    add_custom_target(ffmpeg_status
+        DEPENDS ffmpeg
+        COMMENT "FFmpeg build completed successfully"
+    )
+else()
+    message(STATUS "Using prebuilt FFmpeg libraries")
+    
+    # 导入预编译的 FFmpeg 库
+    add_library(avcodec SHARED IMPORTED)
+    set_target_properties(avcodec PROPERTIES
+        IMPORTED_LOCATION ${JNI_PATH}/libavcodec.so
+    )
 
-# 包含 FFmpeg 编译脚本
-include(../../../../libryujinx/libs/FFmpeg.cmake)
-add_dependencies(ryujinxjni ffmpeg)
+    add_library(avutil SHARED IMPORTED)
+    set_target_properties(avutil PROPERTIES
+        IMPORTED_LOCATION ${JNI_PATH}/libavutil.so
+    )
 
-# 设置 FFmpeg 包含目录
-target_include_directories(ryujinxjni PRIVATE
-    ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/include
-)
+    add_library(avformat SHARED IMPORTED)
+    set_target_properties(avformat PROPERTIES
+        IMPORTED_LOCATION ${JNI_PATH}/libavformat.so
+    )
 
-# 链接 FFmpeg 库
-target_link_libraries(ryujinxjni
-    avcodec
-    avutil
-    avformat
-    swresample
-    swscale
-)
+    add_library(swresample SHARED IMPORTED)
+    set_target_properties(swresample PROPERTIES
+        IMPORTED_LOCATION ${JNI_PATH}/libswresample.so
+    )
 
-# 添加 FFmpeg 编译定义
-target_compile_definitions(ryujinxjni PRIVATE
-    HAVE_FFMPEG=1
-    AVCODEC_STATIC=1
-    __STDC_CONSTANT_MACROS=1
-    # Mali GPU 硬件加速
-    HAVE_MALI_GPU=1
-    USE_MEDIACODEC=1
-)
+    add_library(swscale SHARED IMPORTED)
+    set_target_properties(swscale PROPERTIES
+        IMPORTED_LOCATION ${JNI_PATH}/libswscale.so
+    )
+    
+    # 链接预编译的 FFmpeg 库
+    target_link_libraries(ryujinxjni
+        avcodec
+        avutil
+        avformat
+        swresample
+        swscale
+    )
+    
+    # 添加 FFmpeg 编译定义
+    target_compile_definitions(ryujinxjni PRIVATE
+        HAVE_FFMPEG=1
+        AVCODEC_STATIC=1
+        __STDC_CONSTANT_MACROS=1
+    )
+    
+    # 设置预编译 FFmpeg 的头文件路径
+    target_include_directories(ryujinxjni PRIVATE
+        ../../../../libryujinx/libs/ffmpeg/include
+    )
+endif()
 
 # 链接其他库
 target_link_libraries(
@@ -183,13 +266,6 @@ set_target_properties(OpenAL PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
 )
 
-# 设置 FFmpeg 输出目录
-set_target_properties(avcodec avutil avformat swresample swscale PROPERTIES
-    LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
-    ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
-    RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
-)
-
 # 针对天玑8100的 Mali GPU 优化
 target_compile_definitions(ryujinxjni PRIVATE
     MALI_GPU=1
@@ -197,6 +273,9 @@ target_compile_definitions(ryujinxjni PRIVATE
     USE_MALI_OPTIMIZATIONS=1
     # 天玑8100特定优化
     DIMENSITY_8100=1
+    # Mali GPU 硬件加速
+    HAVE_MALI_GPU=1
+    USE_MEDIACODEC=1
 )
 
 # 添加针对 ARM64 和 Mali 的特定编译选项
@@ -223,32 +302,6 @@ add_custom_command(TARGET ryujinxjni POST_BUILD
     COMMENT "Copying OpenAL library to JNI directory"
 )
 
-# 复制 FFmpeg 库到输出目录
-add_custom_command(TARGET ffmpeg POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libavcodec.so
-        ${JNI_PATH}
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libavutil.so
-        ${JNI_PATH}
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libavformat.so
-        ${JNI_PATH}
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libswresample.so
-        ${JNI_PATH}
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libswscale.so
-        ${JNI_PATH}
-    COMMENT "Copying FFmpeg libraries to JNI directory"
-)
-
-# 添加自定义目标来显示构建状态
-add_custom_target(ffmpeg_status
-    DEPENDS ffmpeg
-    COMMENT "FFmpeg build completed successfully"
-)
-
 message(STATUS "Build configuration for Dimensity 8100 (ARM64, Mali GPU) completed")
 message(STATUS "JNI output path: ${JNI_PATH}")
-message(STATUS "FFmpeg support: Enabled (master branch with bionic configuration)")
+message(STATUS "FFmpeg support: Enabled")
