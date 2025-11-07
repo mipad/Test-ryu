@@ -133,61 +133,35 @@ cmake_path(APPEND JNI_PATH libavformat.so OUTPUT_VARIABLE LIBAVFORMAT_JNI_PATH)
 cmake_path(APPEND JNI_PATH libswresample.so OUTPUT_VARIABLE LIBSWRESAMPLE_JNI_PATH)
 cmake_path(APPEND JNI_PATH libswscale.so OUTPUT_VARIABLE LIBSWSCALE_JNI_PATH)
 
-# 构建 FFmpeg（如果预构建文件不存在）
-if (NOT (EXISTS ${LIBAVCODEC_JNI_PATH} AND EXISTS ${LIBAVUTIL_JNI_PATH} AND 
-         EXISTS ${LIBAVFORMAT_JNI_PATH} AND EXISTS ${LIBSWRESAMPLE_JNI_PATH} AND
-         EXISTS ${LIBSWSCALE_JNI_PATH}))
-    message(STATUS "FFmpeg libraries not found, building from source...")
-    
-    # 包含 FFmpeg 编译脚本
-    include(../../../../libryujinx/libs/FFmpeg.cmake)
-    add_dependencies(ryujinxjni ffmpeg)
-    
-    # 设置 FFmpeg 包含目录
-    target_include_directories(ryujinxjni PRIVATE
-        ${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg
-        ${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg/libavcodec
-        ${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg/libavformat
-        ${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg/libavutil
-        ${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg/libswresample
-        ${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg/libswscale
-    )
-else()
-    message(STATUS "Using prebuilt FFmpeg libraries")
-    
-    # 导入预编译的 FFmpeg 库
-    add_library(avcodec SHARED IMPORTED)
-    set_target_properties(avcodec PROPERTIES
-        IMPORTED_LOCATION ${JNI_PATH}/libavcodec.so
-    )
+# 总是构建 FFmpeg（确保使用修正版本）
+message(STATUS "Building FFmpeg from master branch with fixes...")
 
-    add_library(avutil SHARED IMPORTED)
-    set_target_properties(avutil PROPERTIES
-        IMPORTED_LOCATION ${JNI_PATH}/libavutil.so
-    )
+# 包含 FFmpeg 编译脚本
+include(../../../../libryujinx/libs/FFmpeg.cmake)
+add_dependencies(ryujinxjni ffmpeg)
 
-    add_library(avformat SHARED IMPORTED)
-    set_target_properties(avformat PROPERTIES
-        IMPORTED_LOCATION ${JNI_PATH}/libavformat.so
-    )
+# 设置 FFmpeg 包含目录
+target_include_directories(ryujinxjni PRIVATE
+    ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/include
+)
 
-    add_library(swresample SHARED IMPORTED)
-    set_target_properties(swresample PROPERTIES
-        IMPORTED_LOCATION ${JNI_PATH}/libswresample.so
-    )
+# 链接 FFmpeg 库
+target_link_libraries(ryujinxjni
+    avcodec
+    avutil
+    avformat
+    swresample
+    swscale
+)
 
-    add_library(swscale SHARED IMPORTED)
-    set_target_properties(swscale PROPERTIES
-        IMPORTED_LOCATION ${JNI_PATH}/libswscale.so
-    )
-    
-    # 设置预编译 FFmpeg 的头文件路径（需要确保头文件存在）
-    target_include_directories(ryujinxjni PRIVATE
-        ../../../../libryujinx/libs/ffmpeg/include
-    )
-endif()
+# 添加 FFmpeg 编译定义
+target_compile_definitions(ryujinxjni PRIVATE
+    HAVE_FFMPEG=1
+    AVCODEC_STATIC=1
+    __STDC_CONSTANT_MACROS=1
+)
 
-# 链接库
+# 链接其他库
 target_link_libraries(
     ryujinxjni
     ${log-lib}
@@ -199,23 +173,6 @@ target_link_libraries(
     OpenAL
 )
 
-# 只有在 FFmpeg 库存在时才链接
-if (EXISTS ${LIBAVCODEC_JNI_PATH} OR TARGET ffmpeg)
-    target_link_libraries(ryujinxjni
-        avcodec
-        avutil
-        avformat
-        swresample
-        swscale
-    )
-    
-    # 添加 FFmpeg 编译定义
-    target_compile_definitions(ryujinxjni PRIVATE
-        HAVE_FFMPEG=1
-        AVCODEC_STATIC=1
-    )
-endif()
-
 # 设置 OpenAL 输出目录
 set_target_properties(OpenAL PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
@@ -223,14 +180,12 @@ set_target_properties(OpenAL PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
 )
 
-# 设置 FFmpeg 输出目录（如果是从源码编译）
-if (TARGET ffmpeg)
-    set_target_properties(avcodec avutil avformat swresample swscale PROPERTIES
-        LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
-        ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
-        RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
-    )
-endif()
+# 设置 FFmpeg 输出目录
+set_target_properties(avcodec avutil avformat swresample swscale PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
+    ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
+    RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
+)
 
 # 针对天玑8100的 Mali GPU 优化
 target_compile_definitions(ryujinxjni PRIVATE
@@ -243,15 +198,8 @@ target_compile_definitions(ryujinxjni PRIVATE
 if(CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
     target_compile_options(ryujinxjni PRIVATE
         -mcpu=cortex-a78  # 天玑8100大核
-        -mcpu=cortex-a55  # 天玑8100小核
-        -fopenmp  # 开启OpenMP支持多核优化
+        -mtune=cortex-a55  # 天玑8100小核
     )
-    
-    # 链接OpenMP库（如果使用OpenMP）
-    find_library(openmp-lib openmp)
-    if(openmp-lib)
-        target_link_libraries(ryujinxjni ${openmp-lib})
-    endif()
 endif()
 
 # 设置目标属性
@@ -269,14 +217,26 @@ add_custom_command(TARGET ryujinxjni POST_BUILD
     COMMENT "Copying OpenAL library to JNI directory"
 )
 
-# 如果使用预编译的FFmpeg，确保库文件存在
-if(NOT TARGET ffmpeg AND EXISTS ${LIBAVCODEC_JNI_PATH})
-    add_custom_command(TARGET ryujinxjni POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E echo "FFmpeg libraries are in place"
-        COMMENT "Verifying FFmpeg libraries"
-    )
-endif()
+# 复制 FFmpeg 库到输出目录
+add_custom_command(TARGET ffmpeg POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libavcodec.so
+        ${JNI_PATH}
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libavutil.so
+        ${JNI_PATH}
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libavformat.so
+        ${JNI_PATH}
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libswresample.so
+        ${JNI_PATH}
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libswscale.so
+        ${JNI_PATH}
+    COMMENT "Copying FFmpeg libraries to JNI directory"
+)
 
 message(STATUS "Build configuration for Dimensity 8100 (ARM64, Mali GPU) completed")
 message(STATUS "JNI output path: ${JNI_PATH}")
-message(STATUS "FFmpeg support: ${HAVE_FFMPEG}")
+message(STATUS "FFmpeg support: Enabled (master branch)")
