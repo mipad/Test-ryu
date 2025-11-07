@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (修复回调函数版本)
+// oboe_audio_renderer.h (完整修复版本)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -40,6 +40,9 @@ public:
     // 重置音频流
     void Reset();
 
+    // 查询设备支持的声道数 (基于yuzu的实现)
+    static int32_t QueryDeviceChannelCount(oboe::Direction direction);
+
 private:
     OboeAudioRenderer();
     ~OboeAudioRenderer();
@@ -68,12 +71,12 @@ private:
     // 简单的环形缓冲区，避免复杂的锁机制
     class SimpleRingBuffer {
     public:
-        explicit SimpleRingBuffer(size_t capacity);
+        explicit SimpleRingBuffer(size_t capacity, int32_t channels);
         ~SimpleRingBuffer();
         
         bool Write(const int16_t* data, size_t frames, int32_t channels);
         size_t Read(int16_t* output, size_t frames, int32_t channels);
-        size_t Available() const;
+        size_t Available(int32_t channels) const;
         void Clear();
         
     private:
@@ -81,11 +84,14 @@ private:
         std::atomic<size_t> m_read_pos{0};
         std::atomic<size_t> m_write_pos{0};
         size_t m_capacity;
-        int32_t m_channels{2};
+        int32_t m_channels;
     };
 
     bool OpenStream();
     void CloseStream();
+
+    // 配置流构建器 (基于yuzu的实现)
+    oboe::AudioStreamBuilder* ConfigureBuilder(oboe::AudioStreamBuilder& builder, oboe::Direction direction);
 
     // 回调处理函数
     oboe::DataCallbackResult OnAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames);
@@ -102,6 +108,7 @@ private:
     
     std::atomic<int32_t> m_sample_rate{48000};
     std::atomic<int32_t> m_channel_count{2};
+    std::atomic<int32_t> m_app_channel_count{2}; // 应用程序请求的声道数
     std::atomic<float> m_volume{1.0f};
     
     std::atomic<int64_t> m_frames_written{0};
@@ -109,6 +116,7 @@ private:
     
     static constexpr size_t BUFFER_DURATION_MS = 100; // 100ms缓冲区
     static constexpr int32_t TARGET_FRAMES_PER_CALLBACK = 256;
+    static constexpr int32_t TARGET_SAMPLE_RATE = 48000;
 };
 
 } // namespace RyujinxOboe
