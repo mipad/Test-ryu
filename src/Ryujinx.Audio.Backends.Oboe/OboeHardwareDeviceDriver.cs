@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (音频拉伸版本)
+// OboeHardwareDeviceDriver.cs (优化6声道版本)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -52,14 +52,13 @@ namespace Ryujinx.Audio.Backends.Oboe
         private bool _stillRunning = true;
         private readonly object _initLock = new object();
 
-        // 拉伸模式改进
+        // 优化模式改进
         private long _totalFramesWritten = 0;
         private int _writeFailures = 0;
         private int _currentChannelCount = 2;
         private DateTime _lastResetTime = DateTime.MinValue;
-        private readonly TimeSpan _resetCooldown = TimeSpan.FromSeconds(8); // 8秒冷却时间
+        private readonly TimeSpan _resetCooldown = TimeSpan.FromSeconds(5); // 5秒冷却时间
         private string _currentAudioMode = "Unknown";
-        private int _stretchActivations = 0;
 
         public float Volume
         {
@@ -83,28 +82,17 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 int updateCounter = 0;
                 int failureStreak = 0;
-                int lowBufferCount = 0;
                 
                 while (_stillRunning)
                 {
                     try
                     {
-                        Thread.Sleep(8); // 稍微更快的更新
+                        Thread.Sleep(10);
                         updateCounter++;
                         
                         if (_isOboeInitialized)
                         {
                             int bufferedFrames = getOboeBufferedFrames();
-                            
-                            // 检测低缓冲区状态（用于6声道拉伸）
-                            if (_currentChannelCount == 6 && bufferedFrames < 128)
-                            {
-                                lowBufferCount++;
-                            }
-                            else
-                            {
-                                lowBufferCount = 0;
-                            }
                             
                             foreach (var session in _sessions.Keys)
                             {
@@ -116,8 +104,8 @@ namespace Ryujinx.Audio.Backends.Oboe
                             {
                                 failureStreak++;
                                 
-                                // 6声道模式更宽容（因为有拉伸），其他模式更严格
-                                int failureThreshold = (_currentChannelCount == 6) ? 35 : 15;
+                                // 6声道模式更宽容，其他模式更严格
+                                int failureThreshold = (_currentChannelCount == 6) ? 25 : 15;
                                 
                                 if (failureStreak > failureThreshold)
                                 {
@@ -131,14 +119,14 @@ namespace Ryujinx.Audio.Backends.Oboe
                             }
                         }
                     }
-                    catch (Exception)
+                    catch (Exception ex)
                     {
                         failureStreak++;
                     }
                 }
             })
             {
-                Name = "Audio.Oboe.StretchThread",
+                Name = "Audio.Oboe.OptimizedThread",
                 IsBackground = true,
                 Priority = ThreadPriority.Normal
             };
@@ -157,7 +145,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 resetOboeAudio();
                 _lastResetTime = DateTime.Now;
-                _writeFailures = Math.Max(0, _writeFailures - 15);
+                _writeFailures = Math.Max(0, _writeFailures - 10);
             }
             catch (Exception)
             {
@@ -226,7 +214,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             lock (_initLock)
             {
                 // 设置当前音频模式
-                _currentAudioMode = (channelCount == 6) ? "Stretch-Mode" : "Stable";
+                _currentAudioMode = (channelCount == 6) ? "Ultra-Performance" : "Stable";
                 _currentChannelCount = (int)channelCount;
 
                 if (!_isOboeInitialized)
