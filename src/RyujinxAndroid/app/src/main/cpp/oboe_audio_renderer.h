@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (基于yuzu实现)
+// oboe_audio_renderer.h (修复版本)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -54,6 +54,7 @@ private:
     // 基于yuzu的音频缓冲区结构
     struct AudioBuffer {
         std::vector<int16_t> data;
+        size_t frames = 0;
         size_t frames_played = 0;
         bool consumed = true;
     };

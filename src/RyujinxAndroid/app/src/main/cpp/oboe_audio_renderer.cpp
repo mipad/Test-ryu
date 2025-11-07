@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (基于yuzu实现)
+// oboe_audio_renderer.cpp (修复版本)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
@@ -24,6 +24,8 @@ bool OboeAudioRenderer::SimpleBufferQueue::Write(const int16_t* data, size_t fra
     size_t samples = frames * channels;
     buffer.data.resize(samples);
     std::memcpy(buffer.data.data(), data, samples * sizeof(int16_t));
+    buffer.frames = frames;
+    buffer.frames_played = 0;
     buffer.consumed = false;
     
     m_buffers.push(std::move(buffer));
@@ -51,24 +53,26 @@ size_t OboeAudioRenderer::SimpleBufferQueue::Read(int16_t* output, size_t frames
         }
         
         // 计算当前缓冲区可用的样本
-        size_t samples_available = m_playing_buffer.data.size() - m_playing_buffer.frames_played * channels;
-        size_t samples_to_copy = std::min(samples_available, samples_needed - samples_written);
+        size_t remaining_frames = m_playing_buffer.frames - m_playing_buffer.frames_played;
+        size_t frames_to_copy = std::min(remaining_frames, frames - frames_written);
+        size_t samples_to_copy = frames_to_copy * channels;
         
         // 复制数据到输出
         std::memcpy(output + samples_written, 
-                   m_playing_buffer.data.data() + m_playing_buffer.frames_played * channels,
+                   m_playing_buffer.data.data() + (m_playing_buffer.frames_played * channels),
                    samples_to_copy * sizeof(int16_t));
         
         samples_written += samples_to_copy;
-        m_playing_buffer.frames_played += samples_to_copy / channels;
+        frames_written += frames_to_copy;
+        m_playing_buffer.frames_played += frames_to_copy;
         
         // 检查当前缓冲区是否已完全消费
-        if (m_playing_buffer.frames_played * channels >= m_playing_buffer.data.size()) {
+        if (m_playing_buffer.frames_played >= m_playing_buffer.frames) {
             m_playing_buffer.consumed = true;
         }
     }
     
-    return samples_written / channels;
+    return frames_written;
 }
 
 size_t OboeAudioRenderer::SimpleBufferQueue::Available() const {
@@ -80,14 +84,13 @@ size_t OboeAudioRenderer::SimpleBufferQueue::Available() const {
     std::queue<AudioBuffer> temp_queue = m_buffers;
     while (!temp_queue.empty()) {
         const auto& buffer = temp_queue.front();
-        total_frames += buffer.data.size() / m_playing_buffer.data.size() * channels; // 估算帧数
+        total_frames += buffer.frames;
         temp_queue.pop();
     }
     
     // 加上当前播放缓冲区剩余的帧数
     if (!m_playing_buffer.consumed && !m_playing_buffer.data.empty()) {
-        size_t channels = m_playing_buffer.data.size() / (m_playing_buffer.frames_played > 0 ? m_playing_buffer.frames_played : 1);
-        total_frames += (m_playing_buffer.data.size() - m_playing_buffer.frames_played * channels) / channels;
+        total_frames += (m_playing_buffer.frames - m_playing_buffer.frames_played);
     }
     
     return total_frames;
