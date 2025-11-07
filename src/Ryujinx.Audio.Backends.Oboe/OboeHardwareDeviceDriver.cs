@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (混合模式版本)
+// OboeHardwareDeviceDriver.cs (优化6声道版本)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -52,12 +52,12 @@ namespace Ryujinx.Audio.Backends.Oboe
         private bool _stillRunning = true;
         private readonly object _initLock = new object();
 
-        // 混合模式改进
+        // 优化模式改进
         private long _totalFramesWritten = 0;
         private int _writeFailures = 0;
         private int _currentChannelCount = 2;
         private DateTime _lastResetTime = DateTime.MinValue;
-        private readonly TimeSpan _resetCooldown = TimeSpan.FromSeconds(3); // 3秒冷却时间
+        private readonly TimeSpan _resetCooldown = TimeSpan.FromSeconds(5); // 5秒冷却时间
         private string _currentAudioMode = "Unknown";
 
         public float Volume
@@ -67,7 +67,6 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 _volume = Math.Clamp(value, 0.0f, 1.0f);
                 setOboeVolume(_volume);
-                Logger.Debug?.Print(LogClass.Audio, $"Oboe volume set to {_volume:F2}");
             }
         }
 
@@ -75,7 +74,6 @@ namespace Ryujinx.Audio.Backends.Oboe
         public OboeHardwareDeviceDriver()
         {
             StartUpdateThread();
-            Logger.Info?.Print(LogClass.Audio, "OboeHardwareDeviceDriver initialized (Hybrid Mode)");
         }
 
         private void StartUpdateThread()
@@ -101,19 +99,13 @@ namespace Ryujinx.Audio.Backends.Oboe
                                 session.UpdatePlaybackStatus(bufferedFrames);
                             }
                             
-                            // 每30次更新记录一次统计信息
-                            if (updateCounter % 30 == 0)
-                            {
-                                LogHybridStats(bufferedFrames);
-                            }
-                            
                             // 智能重置逻辑
                             if (_writeFailures > 0)
                             {
                                 failureStreak++;
                                 
                                 // 6声道模式更宽容，其他模式更严格
-                                int failureThreshold = (_currentChannelCount == 6) ? 20 : 10;
+                                int failureThreshold = (_currentChannelCount == 6) ? 25 : 15;
                                 
                                 if (failureStreak > failureThreshold)
                                 {
@@ -129,23 +121,16 @@ namespace Ryujinx.Audio.Backends.Oboe
                     }
                     catch (Exception ex)
                     {
-                        Logger.Error?.Print(LogClass.Audio, $"Update thread error: {ex.Message}");
                         failureStreak++;
                     }
                 }
             })
             {
-                Name = "Audio.Oboe.HybridThread",
+                Name = "Audio.Oboe.OptimizedThread",
                 IsBackground = true,
                 Priority = ThreadPriority.Normal
             };
             _updateThread.Start();
-        }
-
-        private void LogHybridStats(int bufferedFrames)
-        {
-            Logger.Info?.Print(LogClass.Audio, 
-                $"Oboe Hybrid: Mode={_currentAudioMode}, Buffered={bufferedFrames}, Written={_totalFramesWritten}, Failures={_writeFailures}");
         }
 
         private void AttemptSmartReset()
@@ -153,20 +138,18 @@ namespace Ryujinx.Audio.Backends.Oboe
             // 检查冷却时间
             if (DateTime.Now - _lastResetTime < _resetCooldown)
             {
-                Logger.Warning?.Print(LogClass.Audio, $"Reset on cooldown for {_currentAudioMode} mode, skipping");
                 return;
             }
 
             try
             {
-                Logger.Warning?.Print(LogClass.Audio, $"Performing smart audio reset for {_currentAudioMode} mode due to {_writeFailures} failures");
                 resetOboeAudio();
                 _lastResetTime = DateTime.Now;
-                _writeFailures = Math.Max(0, _writeFailures - 10); // 减少失败计数，但不归零
+                _writeFailures = Math.Max(0, _writeFailures - 10);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                Logger.Error?.Print(LogClass.Audio, $"Smart reset failed: {ex.Message}");
+                // 忽略重置错误
             }
         }
 
@@ -182,8 +165,6 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 if (disposing)
                 {
-                    Logger.Info?.Print(LogClass.Audio, "Disposing OboeHardwareDeviceDriver");
-                    
                     _stillRunning = false;
                     _updateThread?.Join(100);
                     
@@ -191,9 +172,6 @@ namespace Ryujinx.Audio.Backends.Oboe
                     _isOboeInitialized = false;
                     _pauseEvent?.Dispose();
                     _updateRequiredEvent?.Dispose();
-                    
-                    Logger.Info?.Print(LogClass.Audio, 
-                        $"Oboe Final Stats: Mode={_currentAudioMode}, Frames={_totalFramesWritten}, Failures={_writeFailures}");
                 }
                 _disposed = true;
             }
@@ -236,7 +214,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             lock (_initLock)
             {
                 // 设置当前音频模式
-                _currentAudioMode = (channelCount == 6) ? "High-Performance" : "Stable";
+                _currentAudioMode = (channelCount == 6) ? "Ultra-Performance" : "Stable";
                 _currentChannelCount = (int)channelCount;
 
                 if (!_isOboeInitialized)
@@ -245,9 +223,6 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
                 else if (_currentChannelCount != channelCount)
                 {
-                    // 声道数变化时重新初始化
-                    Logger.Info?.Print(LogClass.Audio, 
-                        $"Channel count changed {_currentChannelCount} -> {channelCount}, switching to {_currentAudioMode} mode");
                     ReinitializeOboe(sampleRate, channelCount);
                 }
             }
@@ -262,24 +237,17 @@ namespace Ryujinx.Audio.Backends.Oboe
         {
             try
             {
-                string mode = (channelCount == 6) ? "HIGH-PERFORMANCE" : "STABLE";
-                Logger.Info?.Print(LogClass.Audio, 
-                    $"Initializing Oboe in {mode} mode: sampleRate={sampleRate}, channels={channelCount}");
-
                 if (!initOboeAudio((int)sampleRate, (int)channelCount))
                 {
-                    throw new Exception($"Oboe audio initialization failed in {mode} mode");
+                    throw new Exception("Oboe audio initialization failed");
                 }
 
                 setOboeVolume(_volume);
                 _isOboeInitialized = true;
                 _currentChannelCount = (int)channelCount;
-
-                Logger.Info?.Print(LogClass.Audio, $"Oboe audio initialized successfully in {mode} mode");
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                Logger.Error?.Print(LogClass.Audio, $"Oboe audio initialization failed: {ex}");
                 throw;
             }
         }
@@ -367,9 +335,9 @@ namespace Ryujinx.Audio.Backends.Oboe
                         }
                     }
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
-                    Logger.Error?.Print(LogClass.Audio, $"Error in UpdatePlaybackStatus: {ex.Message}");
+                    // 忽略更新错误
                 }
             }
 
@@ -433,14 +401,6 @@ namespace Ryujinx.Audio.Backends.Oboe
                 else
                 {
                     _driver._writeFailures++;
-                    
-                    // 根据模式调整日志频率
-                    int logFrequency = (_channelCount == 6) ? 30 : 15;
-                    if (_driver._writeFailures % logFrequency == 0)
-                    {
-                        Logger.Warning?.Print(LogClass.Audio, 
-                            $"{_driver._currentAudioMode} mode: {_driver._writeFailures} write failures. Buffered: {getOboeBufferedFrames()} frames");
-                    }
                 }
             }
 
