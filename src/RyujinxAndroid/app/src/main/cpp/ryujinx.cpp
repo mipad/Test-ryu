@@ -1,4 +1,4 @@
-// ryujinx.cpp (完整修复版本)
+// ryujinx.cpp (修复版本)
 #include "ryuijnx.h"
 #include <chrono>
 #include <csignal>
@@ -239,7 +239,7 @@ Java_org_ryujinx_android_NativeHelpers_setIsInitialOrientationFlipped(JNIEnv *en
     isInitialOrientationFlipped = is_flipped;
 }
 
-// =============== Oboe Audio JNI 接口 (声道修复版本) ===============
+// =============== Oboe Audio JNI 接口 (简化版本) ===============
 extern "C"
 JNIEXPORT jboolean JNICALL
 Java_org_ryujinx_android_NativeHelpers_initOboeAudio(JNIEnv *env, jobject thiz, jint sample_rate, jint channel_count) {
@@ -266,8 +266,7 @@ Java_org_ryujinx_android_NativeHelpers_writeOboeAudio(JNIEnv *env, jobject thiz,
 
     jshort* data = env->GetShortArrayElements(audio_data, nullptr);
     if (data) {
-        // 假设输入数据是2声道
-        bool success = RyujinxOboe::OboeAudioRenderer::GetInstance().WriteAudio(reinterpret_cast<int16_t*>(data), num_frames, 2);
+        bool success = RyujinxOboe::OboeAudioRenderer::GetInstance().WriteAudio(reinterpret_cast<int16_t*>(data), num_frames);
         env->ReleaseShortArrayElements(audio_data, data, JNI_ABORT);
         return success ? JNI_TRUE : JNI_FALSE;
     }
@@ -338,27 +337,7 @@ bool writeOboeAudio(const int16_t* data, int32_t num_frames) {
     if (!data || num_frames <= 0) {
         return false;
     }
-    
-    // 这里需要知道输入数据的声道数
-    // 由于 Ryujinx 通常使用2声道，我们假设为2声道
-    // 如果游戏使用6声道，需要在更高层处理
-    return RyujinxOboe::OboeAudioRenderer::GetInstance().WriteAudio(data, num_frames, 2);
-}
-
-// 如果需要支持6声道输入，添加新的接口
-extern "C"
-bool writeOboeAudioMultiChannel(const int16_t* data, int32_t num_frames, int32_t channels) {
-    if (!data || num_frames <= 0 || (channels != 2 && channels != 6)) {
-        return false;
-    }
-    
-    return RyujinxOboe::OboeAudioRenderer::GetInstance().WriteAudio(data, num_frames, channels);
-}
-
-// 获取当前Oboe使用的声道数
-extern "C"
-int32_t getOboeCurrentChannels() {
-    return RyujinxOboe::OboeAudioRenderer::GetInstance().GetCurrentChannelCount();
+    return RyujinxOboe::OboeAudioRenderer::GetInstance().WriteAudio(data, num_frames);
 }
 
 extern "C"

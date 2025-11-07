@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (声道修复版本)
+// oboe_audio_renderer.cpp (混合模式版本)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
@@ -8,29 +8,23 @@
 
 namespace RyujinxOboe {
 
-// =============== ChannelAwareRingBuffer Implementation ===============
-OboeAudioRenderer::ChannelAwareRingBuffer::ChannelAwareRingBuffer(size_t capacity, int32_t channels) 
+// =============== HybridRingBuffer Implementation ===============
+OboeAudioRenderer::HybridRingBuffer::HybridRingBuffer(size_t capacity, int32_t channels) 
     : m_samples_capacity(capacity * channels),
       m_buffer(m_samples_capacity),
       m_capacity(capacity),
       m_channels(channels) {
-    LOGI("ChannelAwareRingBuffer: %zu frames, %d channels, %zu samples", 
+    LOGI("HybridRingBuffer: %zu frames, %d channels, %zu samples", 
          capacity, channels, m_samples_capacity);
 }
 
-OboeAudioRenderer::ChannelAwareRingBuffer::~ChannelAwareRingBuffer() {
+OboeAudioRenderer::HybridRingBuffer::~HybridRingBuffer() {
     Clear();
 }
 
-bool OboeAudioRenderer::ChannelAwareRingBuffer::Write(const int16_t* data, size_t frames, int32_t input_channels) {
+bool OboeAudioRenderer::HybridRingBuffer::Write(const int16_t* data, size_t frames) {
     if (!data || frames == 0) return false;
     
-    // 如果输入声道数与缓冲区声道数不匹配，进行转换
-    if (input_channels != m_channels) {
-        return ConvertAndWrite(data, frames, input_channels);
-    }
-    
-    // 直接写入，声道数匹配
     size_t samples_needed = frames * m_channels;
     
     // 检查是否有足够空间
@@ -54,71 +48,7 @@ bool OboeAudioRenderer::ChannelAwareRingBuffer::Write(const int16_t* data, size_
     return true;
 }
 
-bool OboeAudioRenderer::ChannelAwareRingBuffer::ConvertAndWrite(const int16_t* data, size_t frames, int32_t input_channels) {
-    LOGI("Channel conversion required: %d -> %d", input_channels, m_channels);
-    
-    if (input_channels == 6 && m_channels == 2) {
-        // 6声道转2声道下混
-        std::vector<int16_t> converted_data;
-        return Convert6To2(data, frames, converted_data) && 
-               Write(converted_data.data(), frames, 2);
-    } 
-    else if (input_channels == 2 && m_channels == 6) {
-        // 2声道转6声道上混
-        std::vector<int16_t> converted_data;
-        return Convert2To6(data, frames, converted_data) && 
-               Write(converted_data.data(), frames, 6);
-    }
-    else {
-        LOGE("Unsupported channel conversion: %d -> %d", input_channels, m_channels);
-        return false;
-    }
-}
-
-bool OboeAudioRenderer::ChannelAwareRingBuffer::Convert6To2(const int16_t* data, size_t frames, std::vector<int16_t>& output) {
-    output.resize(frames * 2);
-    
-    for (size_t frame = 0; frame < frames; frame++) {
-        const int16_t* in_frame = data + (frame * 6);
-        int16_t* out_frame = output.data() + (frame * 2);
-        
-        // 标准的5.1转立体声下混算法
-        // 左声道 = 左前 + 0.707*中置 + 0.707*左环绕 + 0.5*低音
-        float left = in_frame[0] + 0.707f * in_frame[2] + 0.707f * in_frame[4] + 0.5f * in_frame[5];
-        // 右声道 = 右前 + 0.707*中置 + 0.707*右环绕 + 0.5*低音  
-        float right = in_frame[1] + 0.707f * in_frame[2] + 0.707f * in_frame[3] + 0.5f * in_frame[5];
-        
-        // 限制在int16范围内并防止溢出
-        left = std::max(-32768.0f, std::min(32767.0f, left));
-        right = std::max(-32768.0f, std::min(32767.0f, right));
-        
-        out_frame[0] = static_cast<int16_t>(left);
-        out_frame[1] = static_cast<int16_t>(right);
-    }
-    
-    return true;
-}
-
-bool OboeAudioRenderer::ChannelAwareRingBuffer::Convert2To6(const int16_t* data, size_t frames, std::vector<int16_t>& output) {
-    output.resize(frames * 6);
-    
-    for (size_t frame = 0; frame < frames; frame++) {
-        const int16_t* in_frame = data + (frame * 2);
-        int16_t* out_frame = output.data() + (frame * 6);
-        
-        // 简单的立体声转5.1上混算法
-        out_frame[0] = in_frame[0];                    // 左前
-        out_frame[1] = in_frame[1];                    // 右前
-        out_frame[2] = static_cast<int16_t>((in_frame[0] + in_frame[1]) * 0.5f);  // 中置
-        out_frame[3] = static_cast<int16_t>(in_frame[1] * 0.7f);                  // 右环绕
-        out_frame[4] = static_cast<int16_t>(in_frame[0] * 0.7f);                  // 左环绕
-        out_frame[5] = static_cast<int16_t>((in_frame[0] + in_frame[1]) * 0.3f);  // 低音
-    }
-    
-    return true;
-}
-
-size_t OboeAudioRenderer::ChannelAwareRingBuffer::Read(int16_t* output, size_t frames) {
+size_t OboeAudioRenderer::HybridRingBuffer::Read(int16_t* output, size_t frames) {
     if (!output || frames == 0) return 0;
     
     size_t samples_requested = frames * m_channels;
@@ -151,7 +81,7 @@ size_t OboeAudioRenderer::ChannelAwareRingBuffer::Read(int16_t* output, size_t f
     return samples_to_read / m_channels;
 }
 
-size_t OboeAudioRenderer::ChannelAwareRingBuffer::Available() const {
+size_t OboeAudioRenderer::HybridRingBuffer::Available() const {
     size_t write_pos = m_write_pos.load(std::memory_order_acquire);
     size_t read_pos = m_read_pos.load(std::memory_order_acquire);
     
@@ -162,37 +92,37 @@ size_t OboeAudioRenderer::ChannelAwareRingBuffer::Available() const {
     }
 }
 
-size_t OboeAudioRenderer::ChannelAwareRingBuffer::GetFreeSpace() const {
+size_t OboeAudioRenderer::HybridRingBuffer::GetFreeSpace() const {
     size_t available = Available();
     return m_capacity - available - 1; // 保留一个样本避免完全填满
 }
 
-void OboeAudioRenderer::ChannelAwareRingBuffer::Clear() {
+void OboeAudioRenderer::HybridRingBuffer::Clear() {
     m_read_pos.store(0, std::memory_order_release);
     m_write_pos.store(0, std::memory_order_release);
 }
 
 // =============== Audio Callback Implementation ===============
-oboe::DataCallbackResult OboeAudioRenderer::ChannelAwareAudioCallback::onAudioReady(
+oboe::DataCallbackResult OboeAudioRenderer::HybridAudioCallback::onAudioReady(
     oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) {
     
     return m_renderer->OnAudioReady(audioStream, audioData, num_frames);
 }
 
-void OboeAudioRenderer::ChannelAwareErrorCallback::onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) {
+void OboeAudioRenderer::HybridErrorCallback::onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) {
     LOGW("Audio stream closed with error: %d", error);
     m_renderer->OnStreamError(error);
 }
 
-void OboeAudioRenderer::ChannelAwareErrorCallback::onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) {
+void OboeAudioRenderer::HybridErrorCallback::onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) {
     LOGE("Audio stream error before close: %d", error);
     m_renderer->OnStreamError(error);
 }
 
 // =============== OboeAudioRenderer Implementation ===============
 OboeAudioRenderer::OboeAudioRenderer() {
-    m_audio_callback = std::make_unique<ChannelAwareAudioCallback>(this);
-    m_error_callback = std::make_unique<ChannelAwareErrorCallback>(this);
+    m_audio_callback = std::make_unique<HybridAudioCallback>(this);
+    m_error_callback = std::make_unique<HybridErrorCallback>(this);
 }
 
 OboeAudioRenderer::~OboeAudioRenderer() {
@@ -221,19 +151,27 @@ bool OboeAudioRenderer::Initialize(int32_t sampleRate, int32_t channelCount) {
     m_sample_rate.store(sampleRate);
     m_channel_count.store(channelCount);
     
-    LOGI("Initializing Oboe: %dHz %dch", sampleRate, channelCount);
+    // 根据声道数选择模式
+    if (channelCount == 6) {
+        m_current_mode = "High-Performance (6-channel)";
+        LOGI("Initializing Oboe in HIGH-PERFORMANCE mode: %dHz %dch", sampleRate, channelCount);
+    } else {
+        m_current_mode = "Stable Mode";
+        LOGI("Initializing Oboe in STABLE mode: %dHz %dch", sampleRate, channelCount);
+    }
     
-    // 计算缓冲区大小
-    size_t buffer_capacity = (sampleRate * BUFFER_DURATION_MS) / 1000;
-    m_ring_buffer = std::make_unique<ChannelAwareRingBuffer>(buffer_capacity, channelCount);
+    // 根据模式计算缓冲区大小
+    size_t buffer_duration_ms = (channelCount == 6) ? BUFFER_DURATION_HIGH_PERF_MS : BUFFER_DURATION_STABLE_MS;
+    size_t buffer_capacity = (sampleRate * buffer_duration_ms) / 1000;
+    m_ring_buffer = std::make_unique<HybridRingBuffer>(buffer_capacity, channelCount);
     
     if (!ConfigureAndOpenStream()) {
-        LOGE("Failed to open audio stream for %dHz %dch", sampleRate, channelCount);
+        LOGE("Failed to open audio stream in %s mode", m_current_mode.c_str());
         return false;
     }
     
     m_initialized.store(true);
-    LOGI("OboeAudioRenderer initialized successfully for %d channels", channelCount);
+    LOGI("OboeAudioRenderer %s initialization complete", m_current_mode.c_str());
     return true;
 }
 
@@ -252,57 +190,53 @@ void OboeAudioRenderer::Shutdown() {
     LOGI("OboeAudioRenderer shutdown");
 }
 
-void OboeAudioRenderer::ConfigureForChannels(oboe::AudioStreamBuilder& builder) {
-    // 根据声道数配置
-    builder.setPerformanceMode(oboe::PerformanceMode::LowLatency)
-           ->setSharingMode(oboe::SharingMode::Shared)  // 共享模式兼容性更好
+void OboeAudioRenderer::ConfigureForHybridMode(oboe::AudioStreamBuilder& builder) {
+    int32_t channelCount = m_channel_count.load();
+    
+    // 始终使用AAudio
+    builder.setAudioApi(oboe::AudioApi::AAudio)
+           ->setPerformanceMode(PERFORMANCE_MODE)
            ->setFormat(oboe::AudioFormat::I16)
-           ->setChannelCount(m_channel_count.load())
+           ->setChannelCount(channelCount)
            ->setSampleRate(m_sample_rate.load())
-           ->setFramesPerCallback(TARGET_FRAMES_PER_CALLBACK)
            ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium)
            ->setFormatConversionAllowed(true)
            ->setChannelConversionAllowed(true);
+    
+    // 根据声道数调整参数
+    if (channelCount == 6) {
+        // 6声道: 高性能模式 - 独占模式，较小的回调
+        builder.setSharingMode(oboe::SharingMode::Exclusive)
+               ->setFramesPerCallback(TARGET_FRAMES_PER_CALLBACK_HIGH_PERF);
+    } else {
+        // 其他声道: 稳定模式 - 共享模式，较大的回调
+        builder.setSharingMode(oboe::SharingMode::Shared)
+               ->setFramesPerCallback(TARGET_FRAMES_PER_CALLBACK_STABLE);
+    }
 }
 
 bool OboeAudioRenderer::ConfigureAndOpenStream() {
     oboe::AudioStreamBuilder builder;
     
-    // 配置参数
-    ConfigureForChannels(builder);
+    // 配置混合模式参数
+    ConfigureForHybridMode(builder);
     builder.setDataCallback(m_audio_callback.get())
            ->setErrorCallback(m_error_callback.get());
     
-    // 优先使用OpenSLES，它在声道处理上更稳定
-    bool success = false;
-    
-    // 尝试1: OpenSLES
-    builder.setAudioApi(oboe::AudioApi::OpenSLES);
+    // 始终使用AAudio
     auto result = builder.openStream(m_stream);
     
-    if (result == oboe::Result::OK) {
-        LOGI("Using OpenSLES for %d channels", m_channel_count.load());
-        success = true;
-    } else {
-        LOGW("OpenSLES failed, trying AAudio");
-        
-        // 尝试2: AAudio
-        builder.setAudioApi(oboe::AudioApi::AAudio);
-        result = builder.openStream(m_stream);
-        
-        if (result == oboe::Result::OK) {
-            LOGI("Using AAudio for %d channels", m_channel_count.load());
-            success = true;
-        }
-    }
-    
-    if (!success) {
-        LOGE("All audio API attempts failed for %d channels", m_channel_count.load());
+    if (result != oboe::Result::OK) {
+        LOGE("Failed to open AAudio stream: %d", result);
         return false;
     }
     
-    // 设置合适的缓冲区大小
-    int32_t desired_buffer_size = TARGET_FRAMES_PER_CALLBACK * 2;
+    // 根据模式设置缓冲区大小
+    int32_t channelCount = m_channel_count.load();
+    int32_t target_frames_per_callback = (channelCount == 6) ? 
+        TARGET_FRAMES_PER_CALLBACK_HIGH_PERF : TARGET_FRAMES_PER_CALLBACK_STABLE;
+    
+    int32_t desired_buffer_size = target_frames_per_callback * 4;
     auto setBufferResult = m_stream->setBufferSizeInFrames(desired_buffer_size);
     if (setBufferResult) {
         LOGD("Buffer size set to %d frames", setBufferResult.value());
@@ -319,10 +253,11 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() {
     m_stream_started.store(true);
     
     // 记录流信息
-    LOGI("Audio stream: %s, %d channels, %d Hz, buffer: %d/%d frames",
-         m_stream->getAudioApi() == oboe::AudioApi::AAudio ? "AAudio" : "OpenSLES",
+    LOGI("Audio stream [%s]: AAudio, %d channels, %d Hz, %s mode, buffer: %d/%d frames",
+         m_current_mode.c_str(),
          m_stream->getChannelCount(),
          m_stream->getSampleRate(),
+         m_stream->getSharingMode() == oboe::SharingMode::Exclusive ? "exclusive" : "shared",
          m_stream->getBufferSizeInFrames(),
          m_stream->getBufferCapacityInFrames());
     
@@ -344,7 +279,7 @@ void OboeAudioRenderer::CloseStream() {
     }
 }
 
-bool OboeAudioRenderer::WriteAudio(const int16_t* data, int32_t num_frames, int32_t input_channels) {
+bool OboeAudioRenderer::WriteAudio(const int16_t* data, int32_t num_frames) {
     if (!m_initialized.load() || !data || num_frames <= 0) {
         m_write_failures++;
         return false;
@@ -355,14 +290,17 @@ bool OboeAudioRenderer::WriteAudio(const int16_t* data, int32_t num_frames, int3
         return false;
     }
     
-    // 检查输入声道数是否合理
-    if (input_channels != 2 && input_channels != 6) {
-        LOGE("Unsupported input channel count: %d", input_channels);
-        m_write_failures++;
+    // 检查是否有足够空间
+    if (m_ring_buffer->GetFreeSpace() < static_cast<size_t>(num_frames)) {
+        m_buffer_overflows++;
+        LOGW("Audio buffer overflow in %s mode: %d frames requested, %zu free", 
+             m_current_mode.c_str(), num_frames, m_ring_buffer->GetFreeSpace());
         return false;
     }
     
-    // 应用音量
+    int32_t channelCount = m_channel_count.load();
+    
+    // 根据模式选择音量处理策略
     float volume = m_volume.load();
     bool apply_volume = (volume != 1.0f);
     
@@ -370,22 +308,21 @@ bool OboeAudioRenderer::WriteAudio(const int16_t* data, int32_t num_frames, int3
     
     if (apply_volume) {
         // 需要应用音量，创建临时缓冲区
-        std::vector<int16_t> volume_adjusted(num_frames * input_channels);
-        for (int32_t i = 0; i < num_frames * input_channels; i++) {
+        std::vector<int16_t> volume_adjusted(num_frames * channelCount);
+        for (int32_t i = 0; i < num_frames * channelCount; i++) {
             volume_adjusted[i] = static_cast<int16_t>(data[i] * volume);
         }
-        success = m_ring_buffer->Write(volume_adjusted.data(), num_frames, input_channels);
+        success = m_ring_buffer->Write(volume_adjusted.data(), num_frames);
     } else {
         // 直接写入，无音量调整
-        success = m_ring_buffer->Write(data, num_frames, input_channels);
+        success = m_ring_buffer->Write(data, num_frames);
     }
     
     if (success) {
         m_frames_written += num_frames;
     } else {
         m_write_failures++;
-        LOGW("Audio write failed: %d frames, %d input channels, %d buffer channels", 
-             num_frames, input_channels, m_ring_buffer->GetChannels());
+        LOGW("Audio write failed in %s mode: %d frames", m_current_mode.c_str(), num_frames);
     }
     
     return success;
@@ -402,7 +339,7 @@ void OboeAudioRenderer::SetVolume(float volume) {
 void OboeAudioRenderer::Reset() {
     std::lock_guard<std::mutex> lock(m_stream_mutex);
     
-    LOGI("Resetting audio stream for %d channels", m_channel_count.load());
+    LOGI("Resetting audio stream in %s mode", m_current_mode.c_str());
     
     if (m_ring_buffer) {
         m_ring_buffer->Clear();
@@ -411,6 +348,14 @@ void OboeAudioRenderer::Reset() {
     // 重新配置和打开流
     CloseStream();
     ConfigureAndOpenStream();
+    
+    m_stream_restart_count++;
+    
+    // 记录统计信息
+    PerformanceStats stats = GetStats();
+    LOGI("Audio stream reset (count: %d). Mode: %s, failures=%d, overflows=%d", 
+         m_stream_restart_count.load(), m_current_mode.c_str(), 
+         stats.write_failures, stats.buffer_overflows);
 }
 
 oboe::DataCallbackResult OboeAudioRenderer::OnAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) {
@@ -434,20 +379,33 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReady(oboe::AudioStream* audi
         
         static int underflow_log_counter = 0;
         if (++underflow_log_counter >= 10) {
-            LOGW("Audio underflow: %zu/%d frames available for %d channels", 
-                 frames_read, num_frames, channels);
+            LOGW("Audio underflow in %s mode: %zu/%d frames available", 
+                 m_current_mode.c_str(), frames_read, num_frames);
             underflow_log_counter = 0;
         }
     }
+    
+    // 注意：音量调整现在在WriteAudio中进行，所以这里不需要再次调整
     
     m_frames_played += num_frames;
     return oboe::DataCallbackResult::Continue;
 }
 
 void OboeAudioRenderer::OnStreamError(oboe::Result error) {
-    LOGW("Stream error: %d for %d channels", error, m_channel_count.load());
+    LOGW("Stream error in %s mode: %d", m_current_mode.c_str(), error);
     
-    // 简单的错误处理，上层逻辑会处理重置
+    // 在混合模式下，我们让上层逻辑决定何时重置
+}
+
+OboeAudioRenderer::PerformanceStats OboeAudioRenderer::GetStats() const {
+    PerformanceStats stats;
+    stats.frames_written = m_frames_written.load();
+    stats.frames_played = m_frames_played.load();
+    stats.write_failures = m_write_failures.load();
+    stats.stream_restart_count = m_stream_restart_count.load();
+    stats.buffer_overflows = m_buffer_overflows.load();
+    stats.mode = m_current_mode;
+    return stats;
 }
 
 } // namespace RyujinxOboe
