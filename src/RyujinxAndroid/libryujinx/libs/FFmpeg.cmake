@@ -34,44 +34,29 @@ else ()
     list(APPEND PROJECT_ENV "PATH=${ANDROID_TOOLCHAIN_ROOT}/bin:$ENV{PATH}")
 endif ()
 
-# 设置 FFmpeg 配置选项 - 修复参数传递问题
-set(FFMPEG_CONFIGURE_COMMAND
+# 创建配置命令 - 使用更稳定的方法
+set(CONFIGURE_CMD ${CMAKE_COMMAND} -E env ${PROJECT_ENV}
     <SOURCE_DIR>/configure
     --prefix=${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install
     --cross-prefix=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}-
-    --target-os=android  # 改回 android
+    --target-os=android
     --arch=aarch64
-    --cpu=armv8-a  # 使用通用 ARMv8 而不是特定 CPU
+    --enable-cross-compile
+    --sysroot=${ANDROID_SYSROOT}
     --cc=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}-clang
     --cxx=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}-clang++
     --nm=${ANDROID_TOOLCHAIN_ROOT}/bin/llvm-nm
     --strip=${ANDROID_TOOLCHAIN_ROOT}/bin/llvm-strip
-    --enable-cross-compile
-    --sysroot=${ANDROID_SYSROOT}
-    --extra-cflags=-O3
-    --extra-cflags=-fPIC
-    --extra-cflags=-march=armv8.2-a+fp16+dotprod
-    --extra-cflags=-mtune=cortex-a78
-    --extra-cflags=-DANDROID
-    --extra-cflags=-D__ANDROID__
-    --extra-ldflags=-Wl,--hash-style=both
-    --extra-ldexeflags=-pie
-    --enable-runtime-cpudetect
-    --disable-static
     --enable-shared
-    --disable-ffprobe
-    --disable-ffplay
-    --disable-ffmpeg
-    --disable-debug
-    --disable-doc
-    --enable-avfilter
-    --enable-decoders
+    --disable-static
     --disable-programs
+    --disable-doc
     --disable-avdevice
+    --disable-postproc
     --disable-network
     --disable-everything
     --enable-decoder=aac
-    --enable-decoder=mp3
+    --enable-decoder=mp3  
     --enable-decoder=ac3
     --enable-decoder=flac
     --enable-decoder=opus
@@ -106,23 +91,23 @@ set(FFMPEG_CONFIGURE_COMMAND
     --enable-avutil
     --enable-small
     --enable-neon
-    --enable-asm
+    --disable-asm
     --disable-inline-asm
+    --extra-cflags=-O3
+    --extra-cflags=-fPIC
+    --extra-cflags=-DANDROID
+    --extra-ldflags=-Wl,--hash-style=both
     --pkg-config=pkg-config
-    --disable-symver
-    --enable-jni  # 暂时禁用 JNI
-    --enable-mediacodec  # 暂时禁用 MediaCodec
 )
 
 ExternalProject_Add(
     ffmpeg
     GIT_REPOSITORY              https://github.com/FFmpeg/FFmpeg.git
-    GIT_TAG                     master
+    GIT_TAG                     master  #  master
     GIT_PROGRESS                1
     GIT_SHALLOW                 1
     UPDATE_COMMAND              ""
-    CONFIGURE_COMMAND           ${CMAKE_COMMAND} -E env ${PROJECT_ENV}
-                                ${FFMPEG_CONFIGURE_COMMAND}
+    CONFIGURE_COMMAND           ${CONFIGURE_CMD}
     BUILD_COMMAND               ${CMAKE_COMMAND} -E env ${PROJECT_ENV}
                                 ${MAKE_COMMAND} -j${CMAKE_BUILD_PARALLEL_LEVEL}
     INSTALL_COMMAND             ${MAKE_COMMAND} install
