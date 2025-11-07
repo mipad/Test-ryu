@@ -134,7 +134,7 @@ cmake_path(APPEND JNI_PATH libswresample.so OUTPUT_VARIABLE LIBSWRESAMPLE_JNI_PA
 cmake_path(APPEND JNI_PATH libswscale.so OUTPUT_VARIABLE LIBSWSCALE_JNI_PATH)
 
 # 总是构建 FFmpeg（确保使用修正版本）
-message(STATUS "Building FFmpeg from master branch with fixed configuration...")
+message(STATUS "Building FFmpeg from master branch with bionic configuration...")
 
 # 包含 FFmpeg 编译脚本
 include(../../../../libryujinx/libs/FFmpeg.cmake)
@@ -159,6 +159,9 @@ target_compile_definitions(ryujinxjni PRIVATE
     HAVE_FFMPEG=1
     AVCODEC_STATIC=1
     __STDC_CONSTANT_MACROS=1
+    # Mali GPU 硬件加速
+    HAVE_MALI_GPU=1
+    USE_MEDIACODEC=1
 )
 
 # 链接其他库
@@ -192,6 +195,8 @@ target_compile_definitions(ryujinxjni PRIVATE
     MALI_GPU=1
     # Mali GPU 特定优化
     USE_MALI_OPTIMIZATIONS=1
+    # 天玑8100特定优化
+    DIMENSITY_8100=1
 )
 
 # 添加针对 ARM64 和 Mali 的特定编译选项
@@ -199,6 +204,7 @@ if(CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
     target_compile_options(ryujinxjni PRIVATE
         -mcpu=cortex-a78  # 天玑8100大核
         -mtune=cortex-a55  # 天玑8100小核
+        -march=armv8.2-a+fp16+dotprod+crypto  # 天玑8100支持的指令集
     )
 endif()
 
@@ -245,4 +251,4 @@ add_custom_target(ffmpeg_status
 
 message(STATUS "Build configuration for Dimensity 8100 (ARM64, Mali GPU) completed")
 message(STATUS "JNI output path: ${JNI_PATH}")
-message(STATUS "FFmpeg support: Enabled (master branch with fixed configuration)")
+message(STATUS "FFmpeg support: Enabled (master branch with bionic configuration)")
