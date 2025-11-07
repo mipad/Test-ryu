@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (稳定版本)
+// OboeHardwareDeviceDriver.cs (声道修复版本)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -24,6 +24,9 @@ namespace Ryujinx.Audio.Backends.Oboe
         [DllImport("libryujinxjni", EntryPoint = "writeOboeAudio")]
         private static extern bool writeOboeAudio(short[] audioData, int num_frames);
 
+        [DllImport("libryujinxjni", EntryPoint = "writeOboeAudioMultiChannel")]
+        private static extern bool writeOboeAudioMultiChannel(short[] audioData, int num_frames, int channels);
+
         [DllImport("libryujinxjni", EntryPoint = "setOboeVolume")]
         private static extern void setOboeVolume(float volume);
 
@@ -38,6 +41,9 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         [DllImport("libryujinxjni", EntryPoint = "resetOboeAudio")]
         private static extern void resetOboeAudio();
+
+        [DllImport("libryujinxjni", EntryPoint = "getOboeCurrentChannels")]
+        private static extern int getOboeCurrentChannels();
 
         // ========== 属性 ==========
         public static bool IsSupported => true;
@@ -74,7 +80,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         public OboeHardwareDeviceDriver()
         {
             StartUpdateThread();
-            Logger.Info?.Print(LogClass.Audio, "OboeHardwareDeviceDriver initialized (Stability Focus)");
+            Logger.Info?.Print(LogClass.Audio, "OboeHardwareDeviceDriver initialized (Channel-Aware Version)");
         }
 
         private void StartUpdateThread()
@@ -103,7 +109,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                             // 每50次更新记录一次统计信息
                             if (updateCounter % 50 == 0)
                             {
-                                LogStabilityStats(bufferedFrames);
+                                LogChannelStats(bufferedFrames);
                             }
                             
                             // 检查是否需要重置
@@ -122,17 +128,20 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
             })
             {
-                Name = "Audio.Oboe.StableThread",
+                Name = "Audio.Oboe.ChannelAwareThread",
                 IsBackground = true,
-                Priority = ThreadPriority.Normal // 正常优先级
+                Priority = ThreadPriority.Normal
             };
             _updateThread.Start();
         }
 
-        private void LogStabilityStats(int bufferedFrames)
+        private void LogChannelStats(int bufferedFrames)
         {
+            int oboeChannels = getOboeCurrentChannels();
             Logger.Info?.Print(LogClass.Audio, 
-                $"Oboe Stability: Buffered={bufferedFrames} frames, TotalWritten={_totalFramesWritten}, Failures={_writeFailures}");
+                $"Oboe Channel Stats: Buffered={bufferedFrames} frames, " +
+                $"TotalWritten={_totalFramesWritten}, Failures={_writeFailures}, " +
+                $"OboeChannels={oboeChannels}");
         }
 
         private void AttemptControlledReset()
@@ -257,7 +266,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 _isOboeInitialized = true;
                 _currentChannelCount = (int)channelCount;
 
-                Logger.Info?.Print(LogClass.Audio, "Oboe audio initialized successfully (Stability Focus)");
+                Logger.Info?.Print(LogClass.Audio, "Oboe audio initialized successfully (Channel-Aware)");
             }
             catch (Exception ex)
             {
@@ -397,8 +406,24 @@ namespace Ryujinx.Audio.Backends.Oboe
                 short[] audioData = new short[sampleCount];
                 Buffer.BlockCopy(buffer.Data, 0, audioData, 0, buffer.Data.Length);
 
-                // 写入音频数据
-                bool writeSuccess = writeOboeAudio(audioData, frameCount);
+                // 写入音频数据 - 明确指定声道数
+                bool writeSuccess;
+                
+                if (_channelCount == 2)
+                {
+                    // 使用兼容的2声道接口
+                    writeSuccess = writeOboeAudio(audioData, frameCount);
+                }
+                else if (_channelCount == 6)
+                {
+                    // 使用多声道接口
+                    writeSuccess = writeOboeAudioMultiChannel(audioData, frameCount, _channelCount);
+                }
+                else
+                {
+                    Logger.Error?.Print(LogClass.Audio, $"Unsupported channel count: {_channelCount}");
+                    writeSuccess = false;
+                }
 
                 if (writeSuccess)
                 {
@@ -411,11 +436,17 @@ namespace Ryujinx.Audio.Backends.Oboe
                 {
                     _driver._writeFailures++;
                     
-                    // 只在连续多次失败时记录警告
-                    if (_driver._writeFailures % 20 == 0)
+                    // 记录详细的失败信息
+                    if (_driver._writeFailures % 10 == 0)
                     {
+                        int bufferedFrames = getOboeBufferedFrames();
+                        int oboeChannels = getOboeCurrentChannels();
+                        
                         Logger.Warning?.Print(LogClass.Audio, 
-                            $"Audio write failures: {_driver._writeFailures}. Buffered frames: {getOboeBufferedFrames()}");
+                            $"Audio write failures: {_driver._writeFailures}. " +
+                            $"Buffered: {bufferedFrames} frames, " +
+                            $"App channels: {_channelCount}, " +
+                            $"Oboe channels: {oboeChannels}");
                     }
                 }
             }
