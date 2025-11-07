@@ -13,6 +13,7 @@ namespace Ryujinx.Cpu.Nce
 
         private readonly NceNativeContext _context;
         private readonly ExceptionCallbacks _exceptionCallbacks;
+        private volatile bool _disposed = false; // 添加 disposed 标志
 
         internal IntPtr NativeContextPtr => _context.BasePtr;
 
@@ -142,36 +143,35 @@ namespace Ryujinx.Cpu.Nce
         }
 
         public void RequestInterrupt()
-{
-    // 添加额外的空值检查
-    if (_context == null || _context.IsDisposed)
-        return;
+        {
+            // 检查是否已释放
+            if (_disposed)
+                return;
 
-    IntPtr threadHandle = _context.GetStorage().HostThreadHandle;
-    if (threadHandle != IntPtr.Zero && threadHandle != null)
-    {
-       // Bit 0 set means that the thread is currently running managed code.
+            IntPtr threadHandle = _context.GetStorage().HostThreadHandle;
+            if (threadHandle != IntPtr.Zero)
+            {
+                // Bit 0 set means that the thread is currently running managed code.
                 // Bit 1 set means that an interrupt was requested for the thread.
                 // This, we only need to send the suspend signal if the value was 0 (not running managed code,
                 // and no interrupt was requested before).
-                
-        ref uint inManaged = ref _context.GetStorage().InManaged;
-        uint oldValue = Interlocked.Or(ref inManaged, 2);
 
-        if (oldValue == 0)
-        {
-            try
-            {
-                NceThreadPal.SuspendThread(threadHandle);
-            }
-            catch (Exception ex)
-            {
-                // 记录日志或静默处理
-                Debug.WriteLine($"Failed to suspend thread: {ex.Message}");
+                ref uint inManaged = ref _context.GetStorage().InManaged;
+                uint oldValue = Interlocked.Or(ref inManaged, 2);
+
+                if (oldValue == 0)
+                {
+                    try
+                    {
+                        NceThreadPal.SuspendThread(threadHandle);
+                    }
+                    catch (Exception)
+                    {
+                        // 静默处理异常，不记录日志以避免依赖
+                    }
+                }
             }
         }
-    }
-}
 
         public void StopRunning()
         {
@@ -180,7 +180,11 @@ namespace Ryujinx.Cpu.Nce
 
         public void Dispose()
         {
-            _context.Dispose();
+            if (!_disposed)
+            {
+                _disposed = true;
+                _context?.Dispose();
+            }
         }
     }
 }
