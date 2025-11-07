@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (性能优化版本)
+// oboe_audio_renderer.h (修复版本)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -91,20 +91,20 @@ private:
         size_t GetBufferSize() const { return m_buffer.size(); }
         
     private:
+        size_t m_samples_capacity;  // 先声明 samples_capacity
         std::vector<int16_t> m_buffer;
         std::atomic<size_t> m_read_pos{0};
         std::atomic<size_t> m_write_pos{0};
         size_t m_capacity;
         int32_t m_channels;
-        size_t m_samples_capacity;
     };
 
     bool OpenStream();
     void CloseStream();
     bool ConfigureAndOpenStream();
 
-    // 高性能配置
-    oboe::AudioStreamBuilder* ConfigureForPerformance(oboe::AudioStreamBuilder& builder);
+    // 高性能配置 - 修改为返回void，直接修改传入的builder
+    void ConfigureForPerformance(oboe::AudioStreamBuilder& builder);
 
     // 回调处理函数
     oboe::DataCallbackResult OnAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames);
