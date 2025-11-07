@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (混合模式版本)
+// oboe_audio_renderer.h (优化6声道版本)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -15,7 +15,7 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
-#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
+#define LOGD(...) // 禁用调试日志
 
 namespace RyujinxOboe {
 
@@ -57,9 +57,9 @@ private:
     OboeAudioRenderer();
     ~OboeAudioRenderer();
 
-    class HybridAudioCallback : public oboe::AudioStreamDataCallback {
+    class OptimizedAudioCallback : public oboe::AudioStreamDataCallback {
     public:
-        explicit HybridAudioCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
+        explicit OptimizedAudioCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
         
         oboe::DataCallbackResult onAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) override;
 
@@ -67,9 +67,9 @@ private:
         OboeAudioRenderer* m_renderer;
     };
 
-    class HybridErrorCallback : public oboe::AudioStreamErrorCallback {
+    class OptimizedErrorCallback : public oboe::AudioStreamErrorCallback {
     public:
-        explicit HybridErrorCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
+        explicit OptimizedErrorCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
         
         void onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) override;
         void onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) override;
@@ -78,11 +78,11 @@ private:
         OboeAudioRenderer* m_renderer;
     };
 
-    // 混合环形缓冲区
-    class HybridRingBuffer {
+    // 优化环形缓冲区
+    class OptimizedRingBuffer {
     public:
-        explicit HybridRingBuffer(size_t capacity, int32_t channels);
-        ~HybridRingBuffer();
+        explicit OptimizedRingBuffer(size_t capacity, int32_t channels);
+        ~OptimizedRingBuffer();
         
         bool Write(const int16_t* data, size_t frames);
         size_t Read(int16_t* output, size_t frames);
@@ -106,17 +106,17 @@ private:
     void CloseStream();
     bool ConfigureAndOpenStream();
 
-    // 混合配置 - 根据声道数选择不同模式
-    void ConfigureForHybridMode(oboe::AudioStreamBuilder& builder);
+    // 优化配置 - 根据声道数选择不同模式
+    void ConfigureForOptimizedMode(oboe::AudioStreamBuilder& builder);
 
     // 回调处理函数
     oboe::DataCallbackResult OnAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames);
     void OnStreamError(oboe::Result error);
 
     std::shared_ptr<oboe::AudioStream> m_stream;
-    std::unique_ptr<HybridRingBuffer> m_ring_buffer;
-    std::unique_ptr<HybridAudioCallback> m_audio_callback;
-    std::unique_ptr<HybridErrorCallback> m_error_callback;
+    std::unique_ptr<OptimizedRingBuffer> m_ring_buffer;
+    std::unique_ptr<OptimizedAudioCallback> m_audio_callback;
+    std::unique_ptr<OptimizedErrorCallback> m_error_callback;
     
     std::mutex m_stream_mutex;
     std::atomic<bool> m_initialized{false};
@@ -136,12 +136,12 @@ private:
     // 模式选择
     std::string m_current_mode;
     
-    // 混合模式参数
-    // 6声道: 高性能模式 (100ms缓冲区，AAudio独占)
+    // 优化模式参数
+    // 6声道: 超高性能模式 (120ms缓冲区，AAudio独占，优化回调)
     // 其他声道: 稳定模式 (200ms缓冲区，AAudio共享)
-    static constexpr size_t BUFFER_DURATION_HIGH_PERF_MS = 100;  // 6声道
+    static constexpr size_t BUFFER_DURATION_HIGH_PERF_MS = 120;  // 6声道增加到120ms
     static constexpr size_t BUFFER_DURATION_STABLE_MS = 200;     // 其他声道
-    static constexpr int32_t TARGET_FRAMES_PER_CALLBACK_HIGH_PERF = 256;  // 6声道
+    static constexpr int32_t TARGET_FRAMES_PER_CALLBACK_HIGH_PERF = 384;  // 6声道优化
     static constexpr int32_t TARGET_FRAMES_PER_CALLBACK_STABLE = 512;     // 其他声道
     
     // 始终使用AAudio
