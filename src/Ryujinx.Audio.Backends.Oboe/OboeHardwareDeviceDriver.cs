@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (实时音频版本)
+// OboeHardwareDeviceDriver.cs (优化6声道版本)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -39,9 +39,6 @@ namespace Ryujinx.Audio.Backends.Oboe
         [DllImport("libryujinxjni", EntryPoint = "resetOboeAudio")]
         private static extern void resetOboeAudio();
 
-        [DllImport("libryujinxjni", EntryPoint = "setRealTimeMode")]
-        private static extern void setRealTimeMode(bool enabled);
-
         // ========== 属性 ==========
         public static bool IsSupported => true;
 
@@ -55,12 +52,13 @@ namespace Ryujinx.Audio.Backends.Oboe
         private bool _stillRunning = true;
         private readonly object _initLock = new object();
 
-        // 实时音频优化
+        // 优化模式改进
         private long _totalFramesWritten = 0;
+        private int _writeFailures = 0;
         private int _currentChannelCount = 2;
-        private DateTime _lastAudioUpdate = DateTime.Now;
-        private int _consecutiveFailures = 0;
-        private bool _realTimeMode = true;
+        private DateTime _lastResetTime = DateTime.MinValue;
+        private readonly TimeSpan _resetCooldown = TimeSpan.FromSeconds(5); // 5秒冷却时间
+        private string _currentAudioMode = "Unknown";
 
         public float Volume
         {
@@ -83,12 +81,13 @@ namespace Ryujinx.Audio.Backends.Oboe
             _updateThread = new Thread(() =>
             {
                 int updateCounter = 0;
+                int failureStreak = 0;
                 
                 while (_stillRunning)
                 {
                     try
                     {
-                        Thread.Sleep(8); // 更快的更新频率
+                        Thread.Sleep(10);
                         updateCounter++;
                         
                         if (_isOboeInitialized)
@@ -100,55 +99,57 @@ namespace Ryujinx.Audio.Backends.Oboe
                                 session.UpdatePlaybackStatus(bufferedFrames);
                             }
                             
-                            // 实时音频：动态调整模式
-                            if (updateCounter % 30 == 0)
+                            // 智能重置逻辑
+                            if (_writeFailures > 0)
                             {
-                                AdjustRealTimeMode(bufferedFrames);
+                                failureStreak++;
+                                
+                                // 6声道模式更宽容，其他模式更严格
+                                int failureThreshold = (_currentChannelCount == 6) ? 25 : 15;
+                                
+                                if (failureStreak > failureThreshold)
+                                {
+                                    AttemptSmartReset();
+                                    failureStreak = 0;
+                                }
                             }
-                            
-                            // 智能恢复
-                            if (_consecutiveFailures > 50)
+                            else
                             {
-                                AttemptRecovery();
-                                _consecutiveFailures = 0;
+                                failureStreak = 0;
                             }
                         }
                     }
-                    catch (Exception)
+                    catch (Exception ex)
                     {
-                        _consecutiveFailures++;
+                        failureStreak++;
                     }
                 }
             })
             {
-                Name = "Audio.Oboe.RealTimeThread",
+                Name = "Audio.Oboe.OptimizedThread",
                 IsBackground = true,
-                Priority = ThreadPriority.AboveNormal // 提高优先级
+                Priority = ThreadPriority.Normal
             };
             _updateThread.Start();
         }
 
-        private void AdjustRealTimeMode(int bufferedFrames)
+        private void AttemptSmartReset()
         {
-            // 根据缓冲区状态动态调整实时模式
-            bool newRealTimeMode = bufferedFrames < 1000; // 缓冲区较小则启用实时模式
-            
-            if (newRealTimeMode != _realTimeMode)
+            // 检查冷却时间
+            if (DateTime.Now - _lastResetTime < _resetCooldown)
             {
-                _realTimeMode = newRealTimeMode;
-                setRealTimeMode(_realTimeMode);
+                return;
             }
-        }
 
-        private void AttemptRecovery()
-        {
             try
             {
                 resetOboeAudio();
+                _lastResetTime = DateTime.Now;
+                _writeFailures = Math.Max(0, _writeFailures - 10);
             }
             catch (Exception)
             {
-                // 忽略恢复错误
+                // 忽略重置错误
             }
         }
 
@@ -212,6 +213,8 @@ namespace Ryujinx.Audio.Backends.Oboe
 
             lock (_initLock)
             {
+                // 设置当前音频模式
+                _currentAudioMode = (channelCount == 6) ? "Ultra-Performance" : "Stable";
                 _currentChannelCount = (int)channelCount;
 
                 if (!_isOboeInitialized)
@@ -240,7 +243,6 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
 
                 setOboeVolume(_volume);
-                setRealTimeMode(_realTimeMode);
                 _isOboeInitialized = true;
                 _currentChannelCount = (int)channelCount;
             }
@@ -260,7 +262,6 @@ namespace Ryujinx.Audio.Backends.Oboe
             }
             
             setOboeVolume(_volume);
-            setRealTimeMode(_realTimeMode);
             _currentChannelCount = (int)channelCount;
         }
 
@@ -268,6 +269,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         {
             bool removed = _sessions.TryRemove(session, out _);
             
+            // 如果没有会话了，关闭音频
             if (_sessions.IsEmpty && _isOboeInitialized)
             {
                 shutdownOboeAudio();
@@ -288,7 +290,6 @@ namespace Ryujinx.Audio.Backends.Oboe
             private float _volume;
             private readonly int _channelCount;
             private readonly uint _sampleRate;
-            private int _consecutiveWriteFailures;
 
             public OboeAudioSession(
                 OboeHardwareDeviceDriver driver,
@@ -302,7 +303,6 @@ namespace Ryujinx.Audio.Backends.Oboe
                 _channelCount = (int)channelCount;
                 _sampleRate = sampleRate;
                 _volume = 1.0f;
-                _consecutiveWriteFailures = 0;
             }
 
             public void UpdatePlaybackStatus(int bufferedFrames)
@@ -375,7 +375,7 @@ namespace Ryujinx.Audio.Backends.Oboe
 
                 if (buffer.Data == null || buffer.Data.Length == 0) return;
 
-                // 实时音频：直接处理PCM16数据
+                // 直接使用PCM16数据，避免格式转换
                 int sampleCount = buffer.Data.Length / 2;
                 int frameCount = sampleCount / _channelCount;
 
@@ -391,19 +391,16 @@ namespace Ryujinx.Audio.Backends.Oboe
                     _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, (ulong)sampleCount));
                     _totalWrittenSamples += (ulong)sampleCount;
                     _driver._totalFramesWritten += frameCount;
-                    _consecutiveWriteFailures = 0;
-                    _driver._consecutiveFailures = 0;
+                    
+                    // 成功写入时减少失败计数
+                    if (_driver._writeFailures > 0)
+                    {
+                        _driver._writeFailures = Math.Max(0, _driver._writeFailures - 1);
+                    }
                 }
                 else
                 {
-                    _consecutiveWriteFailures++;
-                    _driver._consecutiveFailures++;
-                    
-                    // 实时音频：快速恢复
-                    if (_consecutiveWriteFailures > 10)
-                    {
-                        _consecutiveWriteFailures = 0;
-                    }
+                    _driver._writeFailures++;
                 }
             }
 
