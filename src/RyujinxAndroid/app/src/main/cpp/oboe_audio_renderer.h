@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (双音频流共享模式)
+// oboe_audio_renderer.h (彻底解决耳鸣版本)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -14,125 +14,97 @@
 #define LOG_TAG "RyujinxOboe"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
 
 namespace RyujinxOboe {
-
-class OboeSinkStream : public oboe::AudioStreamDataCallback,
-                       public oboe::AudioStreamErrorCallback {
-public:
-    explicit OboeSinkStream(uint32_t system_channels, const char* name, uint32_t sample_rate, int stream_id);
-    ~OboeSinkStream() override;
-
-    bool Initialize();
-    void Finalize();
-    void Start();
-    void Stop();
-    
-    // 音频数据写入
-    bool WriteAudio(const float* data, int32_t num_frames);
-    
-    // 状态查询
-    bool IsInitialized() const { return m_initialized.load(); }
-    bool IsPlaying() const { return m_stream_started.load() && !m_paused.load(); }
-    int32_t GetBufferedFrames() const;
-    uint32_t GetSampleRate() const { return m_sample_rate; }
-    uint32_t GetChannelCount() const { return m_device_channels; }
-    int GetStreamId() const { return m_stream_id; }
-    
-    // 音量控制
-    void SetVolume(float volume);
-    float GetVolume() const { return m_volume; }
-
-    // Oboe 回调
-    oboe::DataCallbackResult onAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) override;
-    void onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) override;
-    void onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) override;
-
-private:
-    bool OpenStream();
-    bool ConfigureStream(oboe::AudioStreamBuilder& builder, oboe::Direction direction);
-    static int32_t QueryChannelCount(oboe::Direction direction);
-    
-    // 优化的环形缓冲区
-    class RingBuffer {
-    private:
-        std::vector<float> m_buffer;
-        std::atomic<size_t> m_read_index{0};
-        std::atomic<size_t> m_write_index{0};
-        size_t m_capacity;
-        mutable std::mutex m_mutex;
-
-    public:
-        explicit RingBuffer(size_t capacity);
-        bool Write(const float* data, size_t count);
-        size_t Read(float* output, size_t count);
-        size_t Available() const;
-        size_t AvailableForWrite() const;
-        void Clear();
-        size_t GetCapacity() const { return m_capacity; }
-    };
-
-    std::shared_ptr<oboe::AudioStream> m_stream;
-    std::unique_ptr<RingBuffer> m_ring_buffer;
-    std::mutex m_stream_mutex;
-    
-    std::atomic<bool> m_initialized{false};
-    std::atomic<bool> m_stream_started{false};
-    std::atomic<bool> m_paused{true};
-    
-    uint32_t m_system_channels;
-    uint32_t m_device_channels;
-    uint32_t m_sample_rate;
-    std::string m_name;
-    int m_stream_id;
-    
-    std::atomic<float> m_volume{1.0f};
-    std::atomic<int64_t> m_total_frames_written{0};
-    std::atomic<int64_t> m_total_frames_played{0};
-    
-    static constexpr uint32_t TARGET_SAMPLE_COUNT = 512;
-};
 
 class OboeAudioRenderer {
 public:
     static OboeAudioRenderer& GetInstance();
 
-    bool Initialize();
+    bool Initialize(int32_t sampleRate, int32_t channelCount);
     void Shutdown();
-
-    void SetSampleRate(int32_t sampleRate);
-    void SetBufferSize(int32_t bufferSize);
-    void SetVolume(float volume);
-
-    bool WriteAudio(const float* data, int32_t numFrames);
-    bool WriteAudioToStream(const float* data, int32_t numFrames, int stream_id);
-    void ClearBuffer();
-
+    
+    // 直接写入PCM16数据，避免格式转换问题
+    bool WriteAudio(const int16_t* data, int32_t num_frames);
+    
     // 状态查询
-    bool IsInitialized() const;
-    bool IsPlaying() const;
+    bool IsInitialized() const { return m_initialized.load(); }
+    bool IsPlaying() const { return m_stream && m_stream->getState() == oboe::StreamState::Started; }
     int32_t GetBufferedFrames() const;
-    uint32_t GetSampleRate() const;
-    uint32_t GetChannelCount() const;
-    int64_t GetTotalFramesWritten() const;
-    int64_t GetTotalFramesPlayed() const;
+    
+    // 音量控制
+    void SetVolume(float volume);
+    float GetVolume() const { return m_volume.load(); }
 
-    // 多流管理
-    bool CreateAdditionalStream();
-    bool SwitchToStream(int stream_id);
-    int GetCurrentStreamId() const { return m_current_stream_id; }
-    int GetStreamCount() const { return m_stream_count; }
+    // 重置音频流
+    void Reset();
 
 private:
     OboeAudioRenderer();
     ~OboeAudioRenderer();
 
-    std::vector<std::unique_ptr<OboeSinkStream>> m_sink_streams;
-    std::mutex m_init_mutex;
+    class SimpleAudioCallback : public oboe::AudioStreamDataCallback {
+    public:
+        explicit SimpleAudioCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
+        
+        oboe::DataCallbackResult onAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) override;
+
+    private:
+        OboeAudioRenderer* m_renderer;
+    };
+
+    class SimpleErrorCallback : public oboe::AudioStreamErrorCallback {
+    public:
+        explicit SimpleErrorCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
+        
+        void onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) override;
+        void onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) override;
+
+    private:
+        OboeAudioRenderer* m_renderer;
+    };
+
+    // 简单的环形缓冲区，避免复杂的锁机制
+    class SimpleRingBuffer {
+    public:
+        explicit SimpleRingBuffer(size_t capacity);
+        ~SimpleRingBuffer();
+        
+        bool Write(const int16_t* data, size_t frames, int32_t channels);
+        size_t Read(int16_t* output, size_t frames, int32_t channels);
+        size_t Available() const;
+        void Clear();
+        
+    private:
+        std::vector<int16_t> m_buffer;
+        std::atomic<size_t> m_read_pos{0};
+        std::atomic<size_t> m_write_pos{0};
+        size_t m_capacity;
+        int32_t m_channels{2};
+    };
+
+    bool OpenStream();
+    void CloseStream();
+
+    std::shared_ptr<oboe::AudioStream> m_stream;
+    std::unique_ptr<SimpleRingBuffer> m_ring_buffer;
+    std::unique_ptr<SimpleAudioCallback> m_audio_callback;
+    std::unique_ptr<SimpleErrorCallback> m_error_callback;
+    
+    std::mutex m_stream_mutex;
     std::atomic<bool> m_initialized{false};
-    uint32_t m_current_sample_rate{48000};
-    int m_current_stream_id{0};
-    int m_stream_count{1};
+    std::atomic<bool> m_stream_started{false};
+    
+    std::atomic<int32_t> m_sample_rate{48000};
+    std::atomic<int32_t> m_channel_count{2};
+    std::atomic<float> m_volume{1.0f};
+    
+    std::atomic<int64_t> m_frames_written{0};
+    std::atomic<int64_t> m_frames_played{0};
+    
+    static constexpr size_t BUFFER_DURATION_MS = 100; // 100ms缓冲区
+    static constexpr int32_t TARGET_FRAMES_PER_CALLBACK = 256;
 };
 
 } // namespace RyujinxOboe

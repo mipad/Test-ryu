@@ -25,7 +25,20 @@
 #include <stdarg.h>
 #include <sys/system_properties.h>
 
+// Global variables
+JavaVM* _vm = nullptr;
+jobject _mainActivity = nullptr;
+jclass _mainActivityClass = nullptr;
+pthread_t _renderingThreadId;
 std::chrono::time_point<std::chrono::steady_clock, std::chrono::nanoseconds> _currentTimePoint;
+bool isInitialOrientationFlipped = true;
+
+// Vulkan helper macro
+#define VK_CHECK(result) \
+    if (result != VK_SUCCESS) { \
+        __android_log_print(ANDROID_LOG_ERROR, "Ryuijinx", "Vulkan error: %d", result); \
+        return -1; \
+    }
 
 extern "C"
 {
@@ -99,25 +112,23 @@ jstring createStringFromStdString(
     return str;
 }
 }
+
 extern "C"
 void setRenderingThread() {
     auto currentId = pthread_self();
-
     _renderingThreadId = currentId;
-
     _currentTimePoint = std::chrono::high_resolution_clock::now();
 }
+
 extern "C"
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_MainActivity_initVm(JNIEnv *env, jobject thiz) {
     JavaVM *vm = nullptr;
     auto success = env->GetJavaVM(&vm);
     _vm = vm;
-    _mainActivity = thiz;
-    _mainActivityClass = env->GetObjectClass(thiz);
+    _mainActivity = env->NewGlobalRef(thiz);
+    _mainActivityClass = (jclass)env->NewGlobalRef(env->GetObjectClass(thiz));
 }
-
-bool isInitialOrientationFlipped = true;
 
 extern "C"
 void setCurrentTransform(long native_window, int transform) {
@@ -215,7 +226,6 @@ JNIEXPORT jint JNICALL
 Java_org_ryujinx_android_NativeHelpers_getMaxSwapInterval(JNIEnv *env, jobject thiz,
                                                           jlong native_window) {
     auto nativeWindow = (ANativeWindow *) native_window;
-
     return nativeWindow->maxSwapInterval;
 }
 
@@ -224,7 +234,6 @@ JNIEXPORT jint JNICALL
 Java_org_ryujinx_android_NativeHelpers_getMinSwapInterval(JNIEnv *env, jobject thiz,
                                                           jlong native_window) {
     auto nativeWindow = (ANativeWindow *) native_window;
-
     return nativeWindow->minSwapInterval;
 }
 
@@ -233,7 +242,6 @@ JNIEXPORT jint JNICALL
 Java_org_ryujinx_android_NativeHelpers_setSwapInterval(JNIEnv *env, jobject thiz,
                                                        jlong native_window, jint swap_interval) {
     auto nativeWindow = (ANativeWindow *) native_window;
-
     return nativeWindow->setSwapInterval(nativeWindow, swap_interval);
 }
 
@@ -252,9 +260,9 @@ Java_org_ryujinx_android_NativeHelpers_setIsInitialOrientationFlipped(JNIEnv *en
 
 // =============== Oboe Audio JNI 接口 (双音频流共享模式) ===============
 extern "C"
-JNIEXPORT void JNICALL
-Java_org_ryujinx_android_NativeHelpers_initOboeAudio(JNIEnv *env, jobject thiz) {
-    RyujinxOboe::OboeAudioRenderer::GetInstance().Initialize();
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_initOboeAudio(JNIEnv *env, jobject thiz, jint sample_rate, jint channel_count) {
+    return RyujinxOboe::OboeAudioRenderer::GetInstance().Initialize(sample_rate, channel_count) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C"
@@ -265,20 +273,20 @@ Java_org_ryujinx_android_NativeHelpers_shutdownOboeAudio(JNIEnv *env, jobject th
 
 extern "C"
 JNIEXPORT jboolean JNICALL
-Java_org_ryujinx_android_NativeHelpers_writeOboeAudio(JNIEnv *env, jobject thiz, jfloatArray audio_data, jint num_frames) {
+Java_org_ryujinx_android_NativeHelpers_writeOboeAudio(JNIEnv *env, jobject thiz, jshortArray audio_data, jint num_frames) {
     if (!audio_data || num_frames <= 0) {
         return JNI_FALSE;
     }
 
     jsize length = env->GetArrayLength(audio_data);
-    if (length < num_frames) {
+    if (length < num_frames * 2) { // 假设2声道
         return JNI_FALSE;
     }
 
-    jfloat* data = env->GetFloatArrayElements(audio_data, nullptr);
+    jshort* data = env->GetShortArrayElements(audio_data, nullptr);
     if (data) {
-        bool success = RyujinxOboe::OboeAudioRenderer::GetInstance().WriteAudio(data, num_frames);
-        env->ReleaseFloatArrayElements(audio_data, data, JNI_ABORT);
+        bool success = RyujinxOboe::OboeAudioRenderer::GetInstance().WriteAudio(reinterpret_cast<int16_t*>(data), num_frames);
+        env->ReleaseShortArrayElements(audio_data, data, JNI_ABORT);
         return success ? JNI_TRUE : JNI_FALSE;
     }
     
@@ -349,6 +357,12 @@ Java_org_ryujinx_android_NativeHelpers_getOboeBufferedFrames(JNIEnv *env, jobjec
     return static_cast<jint>(RyujinxOboe::OboeAudioRenderer::GetInstance().GetBufferedFrames());
 }
 
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_resetOboeAudio(JNIEnv *env, jobject thiz) {
+    RyujinxOboe::OboeAudioRenderer::GetInstance().Reset();
+}
+
 // =============== 多流管理 JNI 接口 ===============
 extern "C"
 JNIEXPORT jboolean JNICALL
@@ -393,8 +407,8 @@ Java_org_ryujinx_android_NativeHelpers_getAndroidDeviceBrand(JNIEnv *env, jobjec
 
 // =============== Oboe Audio C 接口 (for C# P/Invoke) ===============
 extern "C"
-void initOboeAudio() {
-    RyujinxOboe::OboeAudioRenderer::GetInstance().Initialize();
+bool initOboeAudio(int sample_rate, int channel_count) {
+    return RyujinxOboe::OboeAudioRenderer::GetInstance().Initialize(sample_rate, channel_count);
 }
 
 extern "C"
@@ -403,7 +417,7 @@ void shutdownOboeAudio() {
 }
 
 extern "C"
-bool writeOboeAudio(const float* data, int32_t num_frames) {
+bool writeOboeAudio(const int16_t* data, int32_t num_frames) {
     if (!data || num_frames <= 0) {
         return false;
     }
@@ -452,6 +466,11 @@ bool isOboePlaying() {
 extern "C"
 int32_t getOboeBufferedFrames() {
     return static_cast<int32_t>(RyujinxOboe::OboeAudioRenderer::GetInstance().GetBufferedFrames());
+}
+
+extern "C"
+void resetOboeAudio() {
+    RyujinxOboe::OboeAudioRenderer::GetInstance().Reset();
 }
 
 // =============== 多流管理 C 接口 ===============
