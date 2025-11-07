@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (彻底修复耳鸣版本)
+// OboeHardwareDeviceDriver.cs (双音频流共享模式)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -24,6 +24,9 @@ namespace Ryujinx.Audio.Backends.Oboe
         [DllImport("libryujinxjni", EntryPoint = "writeOboeAudio")]
         private static extern bool writeOboeAudio(float[] audioData, int num_frames);
 
+        [DllImport("libryujinxjni", EntryPoint = "writeOboeAudioToStream")]
+        private static extern bool writeOboeAudioToStream(float[] audioData, int num_frames, int stream_id);
+
         [DllImport("libryujinxjni", EntryPoint = "setOboeSampleRate")]
         private static extern void setOboeSampleRate(int sample_rate);
 
@@ -33,11 +36,24 @@ namespace Ryujinx.Audio.Backends.Oboe
         [DllImport("libryujinxjni", EntryPoint = "isOboeInitialized")]
         private static extern bool isOboeInitialized();
 
+        [DllImport("libryujinxjni", EntryPoint = "isOboePlaying")]
+        private static extern bool isOboePlaying();
+
         [DllImport("libryujinxjni", EntryPoint = "getOboeBufferedFrames")]
         private static extern int getOboeBufferedFrames();
 
-        [DllImport("libryujinxjni", EntryPoint = "isOboePlaying")]
-        private static extern bool isOboePlaying();
+        // ========== 多流管理 P/Invoke 声明 ==========
+        [DllImport("libryujinxjni", EntryPoint = "createAdditionalOboeStream")]
+        private static extern bool createAdditionalOboeStream();
+
+        [DllImport("libryujinxjni", EntryPoint = "switchToOboeStream")]
+        private static extern bool switchToOboeStream(int stream_id);
+
+        [DllImport("libryujinxjni", EntryPoint = "getCurrentOboeStreamId")]
+        private static extern int getCurrentOboeStreamId();
+
+        [DllImport("libryujinxjni", EntryPoint = "getOboeStreamCount")]
+        private static extern int getOboeStreamCount();
 
         // ========== 设备信息 P/Invoke 声明 ===============
         [DllImport("libryujinxjni", EntryPoint = "getAndroidDeviceModel")]
@@ -61,11 +77,19 @@ namespace Ryujinx.Audio.Backends.Oboe
         private readonly object _initLock = new object();
         private readonly object _bufferLock = new object();
 
+        // 多流管理
+        private int _currentStreamId = 0;
+        private int _streamCount = 1;
+        private bool _useMultipleStreams = false;
+        private int _streamSwitchCounter = 0;
+        private const int STREAM_SWITCH_INTERVAL = 1000; // 每1000帧切换一次流
+
         // 统计信息
         private long _totalFramesWritten = 0;
         private long _totalFramesPlayed = 0;
         private int _underrunCount = 0;
         private int _overflowCount = 0;
+        private int _streamFailoverCount = 0;
 
         public float Volume
         {
@@ -81,8 +105,48 @@ namespace Ryujinx.Audio.Backends.Oboe
         // ========== 构造与生命周期 ==========
         public OboeHardwareDeviceDriver()
         {
+            // 检测是否需要使用多流模式
+            _useMultipleStreams = ShouldUseMultipleStreams();
             StartUpdateThread();
-            Logger.Info?.Print(LogClass.Audio, "OboeHardwareDeviceDriver initialized");
+            Logger.Info?.Print(LogClass.Audio, $"OboeHardwareDeviceDriver initialized, MultiStream: {_useMultipleStreams}");
+        }
+
+        private bool ShouldUseMultipleStreams()
+        {
+            try
+            {
+                // Android 11+ 建议使用多流共享模式
+                string device = Marshal.PtrToStringAnsi(GetAndroidDeviceModel())?.ToLower() ?? "";
+                string brand = Marshal.PtrToStringAnsi(GetAndroidDeviceBrand())?.ToLower() ?? "";
+                
+                // 在高性能设备上启用多流模式
+                if (IsHighPerformanceDevice())
+                {
+                    Logger.Info?.Print(LogClass.Audio, "High performance device detected, enabling multi-stream mode");
+                    return true;
+                }
+                
+                // 在已知有音频问题的设备上启用多流模式
+                string[] problematicDevices = {
+                    "pixel", "samsung", "oneplus", "xiaomi", "huawei"
+                };
+                
+                foreach (string deviceName in problematicDevices)
+                {
+                    if (device.Contains(deviceName) || brand.Contains(deviceName))
+                    {
+                        Logger.Info?.Print(LogClass.Audio, $"Problematic device detected ({deviceName}), enabling multi-stream mode");
+                        return true;
+                    }
+                }
+                
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Audio, $"Error detecting device type: {ex.Message}");
+                return false; // 默认不使用多流
+            }
         }
 
         private void StartUpdateThread()
@@ -100,6 +164,9 @@ namespace Ryujinx.Audio.Backends.Oboe
                         
                         if (_isOboeInitialized)
                         {
+                            // 定期检查流状态
+                            CheckStreamHealth();
+                            
                             foreach (var session in _sessions.Keys)
                             {
                                 int bufferedFrames = getOboeBufferedFrames();
@@ -131,6 +198,34 @@ namespace Ryujinx.Audio.Backends.Oboe
             _updateThread.Start();
         }
 
+        private void CheckStreamHealth()
+        {
+            if (!_useMultipleStreams) return;
+
+            try
+            {
+                bool isPlaying = isOboePlaying();
+                int currentStreamId = getCurrentOboeStreamId();
+                int streamCount = getOboeStreamCount();
+
+                // 如果当前流没有播放，尝试切换到另一个流
+                if (!isPlaying && streamCount > 1)
+                {
+                    int newStreamId = (currentStreamId + 1) % streamCount;
+                    if (switchToOboeStream(newStreamId))
+                    {
+                        _currentStreamId = newStreamId;
+                        _streamFailoverCount++;
+                        Logger.Warning?.Print(LogClass.Audio, $"Stream failover: switched to stream {newStreamId} (total failovers: {_streamFailoverCount})");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Audio, $"Error checking stream health: {ex.Message}");
+            }
+        }
+
         public void Dispose()
         {
             Dispose(true);
@@ -155,7 +250,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                     
                     Logger.Info?.Print(LogClass.Audio, 
                         $"Oboe statistics: Frames written={_totalFramesWritten}, played={_totalFramesPlayed}, " +
-                        $"underruns={_underrunCount}, overflows={_overflowCount}");
+                        $"underruns={_underrunCount}, overflows={_overflowCount}, stream failovers={_streamFailoverCount}");
                 }
                 _disposed = true;
             }
@@ -203,7 +298,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                     try
                     {
                         Logger.Info?.Print(LogClass.Audio, 
-                            $"Initializing Oboe audio: sampleRate={sampleRate}, channels={channelCount}");
+                            $"Initializing Oboe audio: sampleRate={sampleRate}, channels={channelCount}, MultiStream={_useMultipleStreams}");
 
                         setOboeSampleRate((int)sampleRate);
                         setOboeVolume(_volume);
@@ -223,6 +318,21 @@ namespace Ryujinx.Audio.Backends.Oboe
 
                         if (!_isOboeInitialized)
                             throw new Exception("Oboe audio failed to initialize within timeout");
+
+                        // 如果启用多流模式，创建额外的音频流
+                        if (_useMultipleStreams)
+                        {
+                            if (createAdditionalOboeStream())
+                            {
+                                _streamCount = getOboeStreamCount();
+                                Logger.Info?.Print(LogClass.Audio, $"Created additional audio streams, total: {_streamCount}");
+                            }
+                            else
+                            {
+                                Logger.Warning?.Print(LogClass.Audio, "Failed to create additional audio streams, using single stream mode");
+                                _useMultipleStreams = false;
+                            }
+                        }
 
                         Logger.Info?.Print(LogClass.Audio, "Oboe audio initialized successfully");
                     }
@@ -245,6 +355,39 @@ namespace Ryujinx.Audio.Backends.Oboe
         {
             Logger.Info?.Print(LogClass.Audio, $"Oboe audio session unregistered: {session.GetHashCode()}");
             return _sessions.TryRemove(session, out _);
+        }
+
+        private bool IsHighPerformanceDevice()
+        {
+            try
+            {
+                string device = Marshal.PtrToStringAnsi(GetAndroidDeviceModel())?.ToLower() ?? "";
+                string brand = Marshal.PtrToStringAnsi(GetAndroidDeviceBrand())?.ToLower() ?? "";
+                
+                if (device.Contains("mt6893") || device.Contains("dimensity8100") || brand.Contains("mediatek"))
+                {
+                    return true;
+                }
+                
+                string[] highPerfDevices = {
+                    "sdm845", "sdm855", "sdm865", "sdm888", "sm8350", "sm8450", "sm8550",
+                    "kirin980", "kirin990", "kirin9000", "dimensity9000", "dimensity9200",
+                    "exynos9820", "exynos990", "exynos2100", "exynos2200",
+                    "starqlte", "beyond1", "dreamlte", "raphael", "cepheus", "vangogh"
+                };
+                
+                foreach (string perfDevice in highPerfDevices) {
+                    if (device.Contains(perfDevice) || brand.Contains(perfDevice)) {
+                        return true;
+                    }
+                }
+                
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         // ========== 音频会话类 ==========
@@ -399,8 +542,8 @@ namespace Ryujinx.Audio.Backends.Oboe
                     // 转换音频格式
                     ConvertToFloatOptimized(buffer.Data, _driver._tempFloatBuffer, sampleCount, _volume);
                     
-                    // 写入音频数据
-                    bool writeSuccess = writeOboeAudio(_driver._tempFloatBuffer, sampleCount / _channelCount);
+                    // 写入音频数据（支持多流模式）
+                    bool writeSuccess = WriteAudioWithStreamManagement(_driver._tempFloatBuffer, sampleCount / _channelCount);
                     
                     if (writeSuccess)
                     {
@@ -417,16 +560,62 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
             }
 
+            private bool WriteAudioWithStreamManagement(float[] audioData, int numFrames)
+            {
+                if (!_driver._useMultipleStreams)
+                {
+                    // 单流模式
+                    return writeOboeAudio(audioData, numFrames);
+                }
+                else
+                {
+                    // 多流模式：轮换使用不同的流
+                    _driver._streamSwitchCounter++;
+                    if (_driver._streamSwitchCounter >= STREAM_SWITCH_INTERVAL)
+                    {
+                        _driver._streamSwitchCounter = 0;
+                        int nextStreamId = (_driver._currentStreamId + 1) % _driver._streamCount;
+                        if (switchToOboeStream(nextStreamId))
+                        {
+                            _driver._currentStreamId = nextStreamId;
+                            Logger.Debug?.Print(LogClass.Audio, $"Switched to audio stream {nextStreamId}");
+                        }
+                    }
+
+                    // 尝试写入当前流
+                    bool success = writeOboeAudioToStream(audioData, numFrames, _driver._currentStreamId);
+                    
+                    // 如果失败且有多流，尝试其他流
+                    if (!success && _driver._streamCount > 1)
+                    {
+                        for (int i = 1; i < _driver._streamCount; i++)
+                        {
+                            int alternateStreamId = (_driver._currentStreamId + i) % _driver._streamCount;
+                            success = writeOboeAudioToStream(audioData, numFrames, alternateStreamId);
+                            if (success)
+                            {
+                                _driver._currentStreamId = alternateStreamId;
+                                _driver._streamFailoverCount++;
+                                Logger.Warning?.Print(LogClass.Audio, 
+                                    $"Stream failover: switched to stream {alternateStreamId} due to write failure");
+                                break;
+                            }
+                        }
+                    }
+                    
+                    return success;
+                }
+            }
+
             private int CalculateOptimalBufferSize()
             {
                 // 基于采样率动态计算最佳缓冲区大小
-                int baseBufferMs = IsLowLatencyDevice() ? 60 : 100; // 低延迟设备用更小的缓冲区
+                int baseBufferMs = IsLowLatencyDevice() ? 60 : 100;
                 return (int)(_sampleRate * baseBufferMs / 1000);
             }
 
             private bool IsLowLatencyDevice()
             {
-                // 简单判断是否为低延迟设备
                 try
                 {
                     string device = Marshal.PtrToStringAnsi(GetAndroidDeviceModel())?.ToLower() ?? "";
