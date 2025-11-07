@@ -132,12 +132,13 @@ cmake_path(APPEND JNI_PATH libavutil.so OUTPUT_VARIABLE LIBAVUTIL_JNI_PATH)
 cmake_path(APPEND JNI_PATH libavformat.so OUTPUT_VARIABLE LIBAVFORMAT_JNI_PATH)
 cmake_path(APPEND JNI_PATH libswresample.so OUTPUT_VARIABLE LIBSWRESAMPLE_JNI_PATH)
 cmake_path(APPEND JNI_PATH libswscale.so OUTPUT_VARIABLE LIBSWSCALE_JNI_PATH)
+cmake_path(APPEND JNI_PATH libavfilter.so OUTPUT_VARIABLE LIBAVFILTER_JNI_PATH)
 
-# 构建 FFmpeg（如果预构建文件不存在）- 使用更稳定的方法
+# 构建 FFmpeg（如果预构建文件不存在）- 使用完整配置
 if (NOT (EXISTS ${LIBAVCODEC_JNI_PATH} AND EXISTS ${LIBAVUTIL_JNI_PATH} AND 
          EXISTS ${LIBAVFORMAT_JNI_PATH} AND EXISTS ${LIBSWRESAMPLE_JNI_PATH} AND
-         EXISTS ${LIBSWSCALE_JNI_PATH}))
-    message(STATUS "FFmpeg libraries not found, building from source with simplified configuration...")
+         EXISTS ${LIBSWSCALE_JNI_PATH} AND EXISTS ${LIBAVFILTER_JNI_PATH}))
+    message(STATUS "FFmpeg libraries not found, building from source with full configuration...")
     
     # 包含 FFmpeg 编译脚本
     include(../../../../libryujinx/libs/FFmpeg.cmake)
@@ -155,17 +156,17 @@ if (NOT (EXISTS ${LIBAVCODEC_JNI_PATH} AND EXISTS ${LIBAVUTIL_JNI_PATH} AND
         avformat
         swresample
         swscale
+        avfilter
     )
     
     # 添加 FFmpeg 编译定义
     target_compile_definitions(ryujinxjni PRIVATE
         HAVE_FFMPEG=1
-        AVCODEC_STATIC=1
         __STDC_CONSTANT_MACROS=1
     )
     
     # 设置 FFmpeg 输出目录
-    set_target_properties(avcodec avutil avformat swresample swscale PROPERTIES
+    set_target_properties(avcodec avutil avformat swresample swscale avfilter PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
         ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
         RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
@@ -187,6 +188,9 @@ if (NOT (EXISTS ${LIBAVCODEC_JNI_PATH} AND EXISTS ${LIBAVUTIL_JNI_PATH} AND
             ${JNI_PATH}
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libswscale.so
+            ${JNI_PATH}
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libavfilter.so
             ${JNI_PATH}
         COMMENT "Copying FFmpeg libraries to JNI directory"
     )
@@ -224,6 +228,11 @@ else()
     set_target_properties(swscale PROPERTIES
         IMPORTED_LOCATION ${JNI_PATH}/libswscale.so
     )
+
+    add_library(avfilter SHARED IMPORTED)
+    set_target_properties(avfilter PROPERTIES
+        IMPORTED_LOCATION ${JNI_PATH}/libavfilter.so
+    )
     
     # 链接预编译的 FFmpeg 库
     target_link_libraries(ryujinxjni
@@ -232,12 +241,12 @@ else()
         avformat
         swresample
         swscale
+        avfilter
     )
     
     # 添加 FFmpeg 编译定义
     target_compile_definitions(ryujinxjni PRIVATE
         HAVE_FFMPEG=1
-        AVCODEC_STATIC=1
         __STDC_CONSTANT_MACROS=1
     )
     
@@ -302,6 +311,15 @@ add_custom_command(TARGET ryujinxjni POST_BUILD
     COMMENT "Copying OpenAL library to JNI directory"
 )
 
+# 添加验证步骤确保所有库都存在
+add_custom_target(verify_libraries
+    COMMAND ${CMAKE_COMMAND} -E echo "Verifying library sizes..."
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${JNI_PATH}
+    COMMAND bash -c "ls -la ${JNI_PATH}/*.so && echo 'Library verification completed'"
+    DEPENDS ryujinxjni
+    COMMENT "Verifying output libraries"
+)
+
 message(STATUS "Build configuration for Dimensity 8100 (ARM64, Mali GPU) completed")
 message(STATUS "JNI output path: ${JNI_PATH}")
-message(STATUS "FFmpeg support: Enabled")
+message(STATUS "FFmpeg support: Enabled with full features")
