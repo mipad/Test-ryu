@@ -5,7 +5,7 @@ set(PROJECT_ENV "ANDROID_NDK_ROOT=${CMAKE_ANDROID_NDK}")
 # 设置 Android 工具链路径
 set(ANDROID_TOOLCHAIN_ROOT ${CMAKE_ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64)
 set(ANDROID_SYSROOT ${ANDROID_TOOLCHAIN_ROOT}/sysroot)
-set(ANDROID_PLATFORM aarch64-linux-android21)
+set(ANDROID_PLATFORM aarch64-linux-android)
 
 if (CMAKE_HOST_WIN32)
     set(ProgramFiles_x86 "$ENV{ProgramFiles\(x86\)}")
@@ -34,11 +34,11 @@ else ()
     list(APPEND PROJECT_ENV "PATH=${ANDROID_TOOLCHAIN_ROOT}/bin:$ENV{PATH}")
 endif ()
 
-# 设置 FFmpeg 配置选项 - 简化配置，移除有问题的依赖
+# 设置 FFmpeg 配置选项 - 修复编译器路径
 set(FFMPEG_CONFIGURE_COMMAND
     <SOURCE_DIR>/configure
     --prefix=${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install
-    --cross-prefix=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}-
+    --cross-prefix=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}21-
     --target-os=android
     --arch=aarch64
     --cpu=cortex-a78
@@ -94,7 +94,7 @@ set(FFMPEG_CONFIGURE_COMMAND
     --pkg-config=pkg-config
 )
 
-# 移除有问题的依赖，简化配置
+# 添加配置验证步骤
 ExternalProject_Add(
     ffmpeg
     GIT_REPOSITORY              https://github.com/FFmpeg/FFmpeg.git
