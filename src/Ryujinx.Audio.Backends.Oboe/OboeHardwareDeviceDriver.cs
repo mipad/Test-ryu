@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (彻底解决耳鸣版本)
+// OboeHardwareDeviceDriver.cs (完整修复版本)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -55,6 +55,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         // 统计信息
         private long _totalFramesWritten = 0;
         private int _underrunCount = 0;
+        private int _currentChannelCount = 2;
 
         public float Volume
         {
@@ -186,6 +187,7 @@ namespace Ryujinx.Audio.Backends.Oboe
 
                         setOboeVolume(_volume);
                         _isOboeInitialized = true;
+                        _currentChannelCount = (int)channelCount;
 
                         Logger.Info?.Print(LogClass.Audio, "Oboe audio initialized successfully");
                     }
@@ -193,6 +195,25 @@ namespace Ryujinx.Audio.Backends.Oboe
                     {
                         Logger.Error?.Print(LogClass.Audio, $"Oboe audio initialization failed: {ex}");
                         throw;
+                    }
+                }
+                else
+                {
+                    // 如果已经初始化但参数不同，需要重新初始化
+                    if (_currentChannelCount != channelCount)
+                    {
+                        Logger.Info?.Print(LogClass.Audio, 
+                            $"Reinitializing Oboe audio: channel count changed {_currentChannelCount} -> {channelCount}");
+                        
+                        shutdownOboeAudio();
+                        
+                        if (!initOboeAudio((int)sampleRate, (int)channelCount))
+                        {
+                            throw new Exception("Oboe audio reinitialization failed");
+                        }
+                        
+                        setOboeVolume(_volume);
+                        _currentChannelCount = (int)channelCount;
                     }
                 }
             }
@@ -203,7 +224,19 @@ namespace Ryujinx.Audio.Backends.Oboe
             return session;
         }
 
-        private bool Unregister(OboeAudioSession session) => _sessions.TryRemove(session, out _);
+        private bool Unregister(OboeAudioSession session) 
+        {
+            bool removed = _sessions.TryRemove(session, out _);
+            
+            // 如果没有会话了，关闭音频
+            if (_sessions.IsEmpty && _isOboeInitialized)
+            {
+                shutdownOboeAudio();
+                _isOboeInitialized = false;
+            }
+            
+            return removed;
+        }
 
         // ========== 音频会话类 ==========
         private class OboeAudioSession : HardwareDeviceSessionOutputBase
