@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (音频拉伸版本)
+// oboe_audio_renderer.cpp (优化6声道版本)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
@@ -8,20 +8,20 @@
 
 namespace RyujinxOboe {
 
-// =============== AudioStretchBuffer Implementation ===============
-OboeAudioRenderer::AudioStretchBuffer::AudioStretchBuffer(size_t capacity, int32_t channels) 
+// =============== OptimizedRingBuffer Implementation ===============
+OboeAudioRenderer::OptimizedRingBuffer::OptimizedRingBuffer(size_t capacity, int32_t channels) 
     : m_samples_capacity(capacity * channels),
       m_buffer(m_samples_capacity),
       m_capacity(capacity),
-      m_channels(channels),
-      m_stretch_history(m_history_size * channels, 0) {
+      m_channels(channels) {
+    // 禁用详细日志
 }
 
-OboeAudioRenderer::AudioStretchBuffer::~AudioStretchBuffer() {
+OboeAudioRenderer::OptimizedRingBuffer::~OptimizedRingBuffer() {
     Clear();
 }
 
-bool OboeAudioRenderer::AudioStretchBuffer::Write(const int16_t* data, size_t frames) {
+bool OboeAudioRenderer::OptimizedRingBuffer::Write(const int16_t* data, size_t frames) {
     if (!data || frames == 0) return false;
     
     size_t samples_needed = frames * m_channels;
@@ -47,7 +47,7 @@ bool OboeAudioRenderer::AudioStretchBuffer::Write(const int16_t* data, size_t fr
     return true;
 }
 
-size_t OboeAudioRenderer::AudioStretchBuffer::Read(int16_t* output, size_t frames) {
+size_t OboeAudioRenderer::OptimizedRingBuffer::Read(int16_t* output, size_t frames) {
     if (!output || frames == 0) return 0;
     
     size_t samples_requested = frames * m_channels;
@@ -80,93 +80,7 @@ size_t OboeAudioRenderer::AudioStretchBuffer::Read(int16_t* output, size_t frame
     return samples_to_read / m_channels;
 }
 
-size_t OboeAudioRenderer::AudioStretchBuffer::ReadWithStretch(int16_t* output, size_t requested_frames, float stretch_factor) {
-    if (!output || requested_frames == 0) return 0;
-    
-    size_t available = Available();
-    
-    if (available >= requested_frames || !m_stretch_enabled) {
-        // 数据充足或拉伸禁用，正常读取
-        m_stretch_active = false;
-        return Read(output, requested_frames);
-    }
-    
-    // 启用音频拉伸
-    m_stretch_active = true;
-    return ApplyTimeStretch(output, requested_frames, stretch_factor);
-}
-
-size_t OboeAudioRenderer::AudioStretchBuffer::ApplyTimeStretch(int16_t* output, size_t requested_frames, float stretch_factor) {
-    // 简单的重叠相加时间拉伸算法
-    // 这个实现会降低音频播放速度来避免卡顿
-    
-    size_t available = Available();
-    if (available == 0) {
-        // 完全没有数据，输出静音
-        std::memset(output, 0, requested_frames * m_channels * sizeof(int16_t));
-        return 0;
-    }
-    
-    // 计算实际可以读取的帧数（减少读取以降低播放速度）
-    size_t frames_to_read = static_cast<size_t>(available * stretch_factor);
-    frames_to_read = std::min(frames_to_read, available);
-    frames_to_read = std::min(frames_to_read, requested_frames);
-    
-    if (frames_to_read == 0) {
-        std::memset(output, 0, requested_frames * m_channels * sizeof(int16_t));
-        return 0;
-    }
-    
-    // 正常读取部分数据
-    size_t actual_read = Read(output, frames_to_read);
-    
-    if (actual_read < requested_frames) {
-        // 如果读取的帧数不足，使用重叠相加填充剩余部分
-        size_t remaining_frames = requested_frames - actual_read;
-        
-        if (actual_read > 0) {
-            // 使用最后几帧进行重叠相加
-            size_t overlap_frames = std::min(actual_read, remaining_frames);
-            size_t overlap_samples = overlap_frames * m_channels;
-            
-            // 简单的淡入淡出重叠
-            for (size_t i = 0; i < overlap_samples; i++) {
-                size_t output_idx = actual_read * m_channels + i;
-                size_t source_idx = (actual_read - overlap_frames) * m_channels + i;
-                
-                if (output_idx < requested_frames * m_channels) {
-                    float fade_out = 1.0f - (static_cast<float>(i) / overlap_samples);
-                    float fade_in = static_cast<float>(i) / overlap_samples;
-                    
-                    output[output_idx] = static_cast<int16_t>(
-                        output[source_idx] * fade_out + 
-                        output[output_idx - overlap_samples] * fade_in
-                    );
-                }
-            }
-            
-            // 如果还有剩余，重复最后一帧
-            if (remaining_frames > overlap_frames) {
-                size_t repeat_start = actual_read * m_channels + overlap_samples;
-                size_t repeat_from = (actual_read - 1) * m_channels;
-                size_t repeat_count = remaining_frames - overlap_frames;
-                
-                for (size_t i = 0; i < repeat_count * m_channels; i++) {
-                    if (repeat_start + i < requested_frames * m_channels) {
-                        output[repeat_start + i] = output[repeat_from + (i % m_channels)];
-                    }
-                }
-            }
-        } else {
-            // 完全没有读取到数据，输出静音
-            std::memset(output, 0, requested_frames * m_channels * sizeof(int16_t));
-        }
-    }
-    
-    return requested_frames; // 总是返回请求的帧数
-}
-
-size_t OboeAudioRenderer::AudioStretchBuffer::Available() const {
+size_t OboeAudioRenderer::OptimizedRingBuffer::Available() const {
     size_t write_pos = m_write_pos.load(std::memory_order_acquire);
     size_t read_pos = m_read_pos.load(std::memory_order_acquire);
     
@@ -177,39 +91,37 @@ size_t OboeAudioRenderer::AudioStretchBuffer::Available() const {
     }
 }
 
-size_t OboeAudioRenderer::AudioStretchBuffer::GetFreeSpace() const {
+size_t OboeAudioRenderer::OptimizedRingBuffer::GetFreeSpace() const {
     size_t available = Available();
     return m_capacity - available - 1; // 保留一个样本避免完全填满
 }
 
-void OboeAudioRenderer::AudioStretchBuffer::Clear() {
+void OboeAudioRenderer::OptimizedRingBuffer::Clear() {
     m_read_pos.store(0, std::memory_order_release);
     m_write_pos.store(0, std::memory_order_release);
-    m_stretch_active = false;
-    m_current_stretch = 1.0f;
-    m_stretch_position = 0;
-    std::fill(m_stretch_history.begin(), m_stretch_history.end(), 0);
 }
 
 // =============== Audio Callback Implementation ===============
-oboe::DataCallbackResult OboeAudioRenderer::StretchAudioCallback::onAudioReady(
+oboe::DataCallbackResult OboeAudioRenderer::OptimizedAudioCallback::onAudioReady(
     oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) {
     
     return m_renderer->OnAudioReady(audioStream, audioData, num_frames);
 }
 
-void OboeAudioRenderer::StretchErrorCallback::onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) {
+void OboeAudioRenderer::OptimizedErrorCallback::onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) {
+    LOGW("Audio stream closed with error: %d", error);
     m_renderer->OnStreamError(error);
 }
 
-void OboeAudioRenderer::StretchErrorCallback::onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) {
+void OboeAudioRenderer::OptimizedErrorCallback::onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) {
+    LOGE("Audio stream error before close: %d", error);
     m_renderer->OnStreamError(error);
 }
 
 // =============== OboeAudioRenderer Implementation ===============
 OboeAudioRenderer::OboeAudioRenderer() {
-    m_audio_callback = std::make_unique<StretchAudioCallback>(this);
-    m_error_callback = std::make_unique<StretchErrorCallback>(this);
+    m_audio_callback = std::make_unique<OptimizedAudioCallback>(this);
+    m_error_callback = std::make_unique<OptimizedErrorCallback>(this);
 }
 
 OboeAudioRenderer::~OboeAudioRenderer() {
@@ -238,20 +150,15 @@ bool OboeAudioRenderer::Initialize(int32_t sampleRate, int32_t channelCount) {
     
     // 根据声道数选择模式
     if (channelCount == 6) {
-        m_current_mode = "Stretch-Mode (6-channel)";
+        m_current_mode = "Ultra-Performance (6-channel)";
     } else {
         m_current_mode = "Stable Mode";
     }
     
     // 根据模式计算缓冲区大小
-    size_t buffer_duration_ms = (channelCount == 6) ? BUFFER_DURATION_STRETCH_MS : BUFFER_DURATION_STABLE_MS;
+    size_t buffer_duration_ms = (channelCount == 6) ? BUFFER_DURATION_HIGH_PERF_MS : BUFFER_DURATION_STABLE_MS;
     size_t buffer_capacity = (sampleRate * buffer_duration_ms) / 1000;
-    m_stretch_buffer = std::make_unique<AudioStretchBuffer>(buffer_capacity, channelCount);
-    
-    // 6声道启用音频拉伸
-    if (channelCount == 6) {
-        m_stretch_buffer->SetStretchEnabled(true);
-    }
+    m_ring_buffer = std::make_unique<OptimizedRingBuffer>(buffer_capacity, channelCount);
     
     if (!ConfigureAndOpenStream()) {
         return false;
@@ -266,16 +173,16 @@ void OboeAudioRenderer::Shutdown() {
     
     CloseStream();
     
-    if (m_stretch_buffer) {
-        m_stretch_buffer->Clear();
-        m_stretch_buffer.reset();
+    if (m_ring_buffer) {
+        m_ring_buffer->Clear();
+        m_ring_buffer.reset();
     }
     
     m_initialized.store(false);
     m_stream_started.store(false);
 }
 
-void OboeAudioRenderer::ConfigureForStretchMode(oboe::AudioStreamBuilder& builder) {
+void OboeAudioRenderer::ConfigureForOptimizedMode(oboe::AudioStreamBuilder& builder) {
     int32_t channelCount = m_channel_count.load();
     
     // 始终使用AAudio
@@ -290,9 +197,9 @@ void OboeAudioRenderer::ConfigureForStretchMode(oboe::AudioStreamBuilder& builde
     
     // 根据声道数调整参数
     if (channelCount == 6) {
-        // 6声道: 拉伸模式 - 独占模式，优化的回调大小
+        // 6声道: 超高性能模式 - 独占模式，优化的回调大小
         builder.setSharingMode(oboe::SharingMode::Exclusive)
-               ->setFramesPerCallback(TARGET_FRAMES_PER_CALLBACK_STRETCH);
+               ->setFramesPerCallback(TARGET_FRAMES_PER_CALLBACK_HIGH_PERF);
     } else {
         // 其他声道: 稳定模式 - 共享模式，较大的回调
         builder.setSharingMode(oboe::SharingMode::Shared)
@@ -303,8 +210,8 @@ void OboeAudioRenderer::ConfigureForStretchMode(oboe::AudioStreamBuilder& builde
 bool OboeAudioRenderer::ConfigureAndOpenStream() {
     oboe::AudioStreamBuilder builder;
     
-    // 配置拉伸模式参数
-    ConfigureForStretchMode(builder);
+    // 配置优化模式参数
+    ConfigureForOptimizedMode(builder);
     builder.setDataCallback(m_audio_callback.get())
            ->setErrorCallback(m_error_callback.get());
     
@@ -318,7 +225,7 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() {
     // 根据模式设置缓冲区大小
     int32_t channelCount = m_channel_count.load();
     int32_t target_frames_per_callback = (channelCount == 6) ? 
-        TARGET_FRAMES_PER_CALLBACK_STRETCH : TARGET_FRAMES_PER_CALLBACK_STABLE;
+        TARGET_FRAMES_PER_CALLBACK_HIGH_PERF : TARGET_FRAMES_PER_CALLBACK_STABLE;
     
     int32_t desired_buffer_size = target_frames_per_callback * 4;
     m_stream->setBufferSizeInFrames(desired_buffer_size);
@@ -350,42 +257,19 @@ void OboeAudioRenderer::CloseStream() {
     }
 }
 
-float OboeAudioRenderer::CalculateStretchFactor(size_t available_frames, size_t requested_frames) {
-    if (available_frames >= requested_frames) {
-        return MIN_STRETCH_FACTOR; // 正常速度
-    }
-    
-    if (available_frames == 0) {
-        return MAX_STRETCH_FACTOR; // 最大拉伸
-    }
-    
-    // 根据可用帧数计算拉伸系数
-    float ratio = static_cast<float>(available_frames) / requested_frames;
-    float stretch = MAX_STRETCH_FACTOR + (1.0f - MAX_STRETCH_FACTOR) * ratio;
-    
-    return std::max(MAX_STRETCH_FACTOR, std::min(MIN_STRETCH_FACTOR, stretch));
-}
-
-void OboeAudioRenderer::UpdateStretchState() {
-    // 更新拉伸统计
-    if (m_stretch_buffer && m_stretch_buffer->IsStretchActive()) {
-        m_stretch_activations++;
-    }
-}
-
 bool OboeAudioRenderer::WriteAudio(const int16_t* data, int32_t num_frames) {
     if (!m_initialized.load() || !data || num_frames <= 0) {
         m_write_failures++;
         return false;
     }
     
-    if (!m_stretch_buffer) {
+    if (!m_ring_buffer) {
         m_write_failures++;
         return false;
     }
     
     // 检查是否有足够空间
-    if (m_stretch_buffer->GetFreeSpace() < static_cast<size_t>(num_frames)) {
+    if (m_ring_buffer->GetFreeSpace() < static_cast<size_t>(num_frames)) {
         m_buffer_overflows++;
         return false;
     }
@@ -404,10 +288,10 @@ bool OboeAudioRenderer::WriteAudio(const int16_t* data, int32_t num_frames) {
         for (int32_t i = 0; i < num_frames * channelCount; i++) {
             volume_adjusted[i] = static_cast<int16_t>(data[i] * volume);
         }
-        success = m_stretch_buffer->Write(volume_adjusted.data(), num_frames);
+        success = m_ring_buffer->Write(volume_adjusted.data(), num_frames);
     } else {
         // 直接写入，无音量调整
-        success = m_stretch_buffer->Write(data, num_frames);
+        success = m_ring_buffer->Write(data, num_frames);
     }
     
     if (success) {
@@ -420,7 +304,7 @@ bool OboeAudioRenderer::WriteAudio(const int16_t* data, int32_t num_frames) {
 }
 
 int32_t OboeAudioRenderer::GetBufferedFrames() const {
-    return m_stretch_buffer ? static_cast<int32_t>(m_stretch_buffer->Available()) : 0;
+    return m_ring_buffer ? static_cast<int32_t>(m_ring_buffer->Available()) : 0;
 }
 
 void OboeAudioRenderer::SetVolume(float volume) {
@@ -430,8 +314,8 @@ void OboeAudioRenderer::SetVolume(float volume) {
 void OboeAudioRenderer::Reset() {
     std::lock_guard<std::mutex> lock(m_stream_mutex);
     
-    if (m_stretch_buffer) {
-        m_stretch_buffer->Clear();
+    if (m_ring_buffer) {
+        m_ring_buffer->Clear();
     }
     
     // 重新配置和打开流
@@ -442,7 +326,7 @@ void OboeAudioRenderer::Reset() {
 }
 
 oboe::DataCallbackResult OboeAudioRenderer::OnAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) {
-    if (!m_initialized.load() || !m_stretch_buffer) {
+    if (!m_initialized.load() || !m_ring_buffer) {
         // 输出静音
         int32_t channels = m_channel_count.load();
         std::memset(audioData, 0, num_frames * channels * sizeof(int16_t));
@@ -452,23 +336,13 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReady(oboe::AudioStream* audi
     int16_t* output = static_cast<int16_t*>(audioData);
     int32_t channels = m_channel_count.load();
     
-    size_t available_frames = m_stretch_buffer->Available();
+    // 从环形缓冲区读取数据
+    size_t frames_read = m_ring_buffer->Read(output, num_frames);
     
-    if (channels == 6 && m_stretch_buffer->IsStretchActive()) {
-        // 6声道模式使用音频拉伸
-        float stretch_factor = CalculateStretchFactor(available_frames, num_frames);
-        size_t frames_read = m_stretch_buffer->ReadWithStretch(output, num_frames, stretch_factor);
-        
-        UpdateStretchState();
-    } else {
-        // 其他声道或数据充足时正常读取
-        size_t frames_read = m_stretch_buffer->Read(output, num_frames);
-        
-        // 如果数据不足，填充静音
-        if (frames_read < static_cast<size_t>(num_frames)) {
-            size_t samples_remaining = (num_frames - frames_read) * channels;
-            std::memset(output + (frames_read * channels), 0, samples_remaining * sizeof(int16_t));
-        }
+    // 如果数据不足，填充静音
+    if (frames_read < static_cast<size_t>(num_frames)) {
+        size_t samples_remaining = (num_frames - frames_read) * channels;
+        std::memset(output + (frames_read * channels), 0, samples_remaining * sizeof(int16_t));
     }
     
     m_frames_played += num_frames;
@@ -476,7 +350,7 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReady(oboe::AudioStream* audi
 }
 
 void OboeAudioRenderer::OnStreamError(oboe::Result error) {
-    // 在拉伸模式下，我们让上层逻辑决定何时重置
+    // 在优化模式下，我们让上层逻辑决定何时重置
 }
 
 OboeAudioRenderer::PerformanceStats OboeAudioRenderer::GetStats() const {
@@ -486,7 +360,6 @@ OboeAudioRenderer::PerformanceStats OboeAudioRenderer::GetStats() const {
     stats.write_failures = m_write_failures.load();
     stats.stream_restart_count = m_stream_restart_count.load();
     stats.buffer_overflows = m_buffer_overflows.load();
-    stats.stretch_activations = m_stretch_activations.load();
     stats.mode = m_current_mode;
     return stats;
 }
