@@ -110,8 +110,8 @@ set(FFMPEG_CONFIGURE_COMMAND
     --disable-inline-asm
     --pkg-config=pkg-config
     --disable-symver
-    --disable-jni  # 暂时禁用 JNI
-    --disable-mediacodec  # 暂时禁用 MediaCodec
+    --enable-jni  # 暂时禁用 JNI
+    --enable-mediacodec  # 暂时禁用 MediaCodec
 )
 
 ExternalProject_Add(
