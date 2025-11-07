@@ -2,10 +2,10 @@ include(ExternalProject)
 
 set(PROJECT_ENV "ANDROID_NDK_ROOT=${CMAKE_ANDROID_NDK}")
 
-# 设置 Android 工具链路径
+# 设置 Android 工具链路径 - 使用 bionic 而不是 android
 set(ANDROID_TOOLCHAIN_ROOT ${CMAKE_ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64)
 set(ANDROID_SYSROOT ${ANDROID_TOOLCHAIN_ROOT}/sysroot)
-set(ANDROID_TOOLCHAIN_PREFIX ${ANDROID_TOOLCHAIN_ROOT}/bin/aarch64-linux-android21-)
+set(ANDROID_PLATFORM aarch64-linux-android21)
 
 if (CMAKE_HOST_WIN32)
     set(ProgramFiles_x86 "$ENV{ProgramFiles\(x86\)}")
@@ -34,23 +34,33 @@ else ()
     list(APPEND PROJECT_ENV "PATH=${ANDROID_TOOLCHAIN_ROOT}/bin:$ENV{PATH}")
 endif ()
 
-# 设置 FFmpeg 配置选项 - 修正配置问题
+# 设置 FFmpeg 配置选项 - 使用 linux-bionic 并针对天玑8100优化
 set(FFMPEG_CONFIGURE_FLAGS
-    --target-os=android
+    --prefix=${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install
+    --cross-prefix=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}-
+    --target-os=linux  # 使用 linux 而不是 android
     --arch=aarch64
-    --enable-cross-compile
-    --cross-prefix=${ANDROID_TOOLCHAIN_PREFIX}
-    --sysroot=${ANDROID_SYSROOT}
-    --cc=${ANDROID_TOOLCHAIN_ROOT}/bin/aarch64-linux-android21-clang
-    --cxx=${ANDROID_TOOLCHAIN_ROOT}/bin/aarch64-linux-android21-clang++
-    --ar=${ANDROID_TOOLCHAIN_ROOT}/bin/llvm-ar
-    --as=${ANDROID_TOOLCHAIN_ROOT}/bin/clang
+    --cpu=cortex-a78  # 天玑8100大核
+    --cc=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}-clang
+    --cxx=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}-clang++
     --nm=${ANDROID_TOOLCHAIN_ROOT}/bin/llvm-nm
     --strip=${ANDROID_TOOLCHAIN_ROOT}/bin/llvm-strip
-    --enable-shared
+    --enable-cross-compile
+    --sysroot=${ANDROID_SYSROOT}
+    --extra-cflags="-O3 -fPIC -march=armv8.2-a+fp16+dotprod -mtune=cortex-a78 -DANDROID -D__ANDROID__ -I${ANDROID_SYSROOT}/usr/include"
+    --extra-ldflags="-Wl,--hash-style=both -L${ANDROID_SYSROOT}/usr/lib"
+    --extra-ldexeflags=-pie
+    --enable-runtime-cpudetect  # 启用运行时CPU检测
     --disable-static
-    --disable-programs
+    --enable-shared
+    --disable-ffprobe
+    --disable-ffplay
+    --disable-ffmpeg
+    --disable-debug
     --disable-doc
+    --enable-avfilter
+    --enable-decoders
+    --disable-programs
     --disable-avdevice
     --disable-network
     --disable-everything
@@ -65,19 +75,15 @@ set(FFMPEG_CONFIGURE_FLAGS
     --enable-small
     --enable-neon
     --enable-asm
-    --disable-inline-asm
-    --extra-cflags="-O3 -fPIC -march=armv8.2-a+fp16+dotprod -mcpu=cortex-a78 -mtune=cortex-a78 -DANDROID -D__ANDROID__"
-    --extra-ldflags="-Wl,--hash-style=both"
-    --prefix=${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install
+    --disable-inline-asm  # 禁用内联汇编避免问题
     --pkg-config=pkg-config
     --disable-symver
-    --disable-stripping
 )
 
-# 根据 Android API 级别设置
+# 针对 Mali GPU 添加硬件加速支持
 if(CMAKE_SYSTEM_VERSION)
-    list(APPEND FFMPEG_CONFIGURE_FLAGS --enable-jni)
     list(APPEND FFMPEG_CONFIGURE_FLAGS --enable-mediacodec)
+    list(APPEND FFMPEG_CONFIGURE_FLAGS --enable-jni)
 endif()
 
 ExternalProject_Add(
