@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (修复版本)
+// oboe_audio_renderer.h (稳定版本)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -45,8 +45,9 @@ public:
     struct PerformanceStats {
         int64_t frames_written = 0;
         int64_t frames_played = 0;
-        int32_t underrun_count = 0;
+        int32_t write_failures = 0;
         int32_t stream_restart_count = 0;
+        int32_t buffer_overflows = 0;
     };
     
     PerformanceStats GetStats() const;
@@ -55,9 +56,9 @@ private:
     OboeAudioRenderer();
     ~OboeAudioRenderer();
 
-    class HighPerformanceAudioCallback : public oboe::AudioStreamDataCallback {
+    class StableAudioCallback : public oboe::AudioStreamDataCallback {
     public:
-        explicit HighPerformanceAudioCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
+        explicit StableAudioCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
         
         oboe::DataCallbackResult onAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) override;
 
@@ -65,9 +66,9 @@ private:
         OboeAudioRenderer* m_renderer;
     };
 
-    class HighPerformanceErrorCallback : public oboe::AudioStreamErrorCallback {
+    class StableErrorCallback : public oboe::AudioStreamErrorCallback {
     public:
-        explicit HighPerformanceErrorCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
+        explicit StableErrorCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
         
         void onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) override;
         void onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) override;
@@ -76,22 +77,23 @@ private:
         OboeAudioRenderer* m_renderer;
     };
 
-    // 高性能环形缓冲区 - 无锁设计
-    class LockFreeRingBuffer {
+    // 稳定的环形缓冲区
+    class StableRingBuffer {
     public:
-        explicit LockFreeRingBuffer(size_t capacity, int32_t channels);
-        ~LockFreeRingBuffer();
+        explicit StableRingBuffer(size_t capacity, int32_t channels);
+        ~StableRingBuffer();
         
         bool Write(const int16_t* data, size_t frames);
         size_t Read(int16_t* output, size_t frames);
         size_t Available() const;
         void Clear();
+        size_t GetFreeSpace() const;
         
         size_t GetCapacity() const { return m_capacity; }
         size_t GetBufferSize() const { return m_buffer.size(); }
         
     private:
-        size_t m_samples_capacity;  // 先声明 samples_capacity
+        size_t m_samples_capacity;
         std::vector<int16_t> m_buffer;
         std::atomic<size_t> m_read_pos{0};
         std::atomic<size_t> m_write_pos{0};
@@ -103,17 +105,17 @@ private:
     void CloseStream();
     bool ConfigureAndOpenStream();
 
-    // 高性能配置 - 修改为返回void，直接修改传入的builder
-    void ConfigureForPerformance(oboe::AudioStreamBuilder& builder);
+    // 稳定配置
+    void ConfigureForStability(oboe::AudioStreamBuilder& builder);
 
     // 回调处理函数
     oboe::DataCallbackResult OnAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames);
     void OnStreamError(oboe::Result error);
 
     std::shared_ptr<oboe::AudioStream> m_stream;
-    std::unique_ptr<LockFreeRingBuffer> m_ring_buffer;
-    std::unique_ptr<HighPerformanceAudioCallback> m_audio_callback;
-    std::unique_ptr<HighPerformanceErrorCallback> m_error_callback;
+    std::unique_ptr<StableRingBuffer> m_ring_buffer;
+    std::unique_ptr<StableAudioCallback> m_audio_callback;
+    std::unique_ptr<StableErrorCallback> m_error_callback;
     
     std::mutex m_stream_mutex;
     std::atomic<bool> m_initialized{false};
@@ -126,17 +128,17 @@ private:
     // 性能统计
     std::atomic<int64_t> m_frames_written{0};
     std::atomic<int64_t> m_frames_played{0};
-    std::atomic<int32_t> m_underrun_count{0};
+    std::atomic<int32_t> m_write_failures{0};
     std::atomic<int32_t> m_stream_restart_count{0};
+    std::atomic<int32_t> m_buffer_overflows{0};
     
-    // 性能优化参数
-    static constexpr size_t BUFFER_DURATION_MS = 50; // 减少到50ms，降低延迟
-    static constexpr int32_t TARGET_FRAMES_PER_CALLBACK = 192; // 优化帧数，更好的CPU缓存利用
-    static constexpr int32_t TARGET_SAMPLE_RATE = 48000;
+    // 稳定性优化参数 - 增加缓冲区大小，降低性能要求
+    static constexpr size_t BUFFER_DURATION_MS = 200; // 增加到200ms，提供更大缓冲
+    static constexpr int32_t TARGET_FRAMES_PER_CALLBACK = 512; // 增加帧数，减少回调频率
     
-    // AAudio 性能参数
+    // 使用共享模式提高兼容性
     static constexpr oboe::PerformanceMode PERFORMANCE_MODE = oboe::PerformanceMode::LowLatency;
-    static constexpr oboe::SharingMode SHARING_MODE = oboe::SharingMode::Exclusive; // 独占模式，更好性能
+    static constexpr oboe::SharingMode SHARING_MODE = oboe::SharingMode::Shared; // 改为共享模式
 };
 
 } // namespace RyujinxOboe
