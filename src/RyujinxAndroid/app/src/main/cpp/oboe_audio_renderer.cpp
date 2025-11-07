@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (性能优化版本)
+// oboe_audio_renderer.cpp (修复编译错误版本)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
@@ -10,8 +10,10 @@ namespace RyujinxOboe {
 
 // =============== LockFreeRingBuffer Implementation ===============
 OboeAudioRenderer::LockFreeRingBuffer::LockFreeRingBuffer(size_t capacity, int32_t channels) 
-    : m_capacity(capacity), m_channels(channels), m_samples_capacity(capacity * channels), 
-      m_buffer(m_samples_capacity) {
+    : m_capacity(capacity), 
+      m_channels(channels), 
+      m_samples_capacity(capacity * channels), // 先初始化 m_samples_capacity
+      m_buffer(m_samples_capacity) {           // 然后使用它初始化 m_buffer
     LOGI("LockFreeRingBuffer: %zu frames, %d channels, %zu samples", 
          capacity, channels, m_samples_capacity);
 }
@@ -194,17 +196,17 @@ void OboeAudioRenderer::Shutdown() {
     LOGI("OboeAudioRenderer shutdown");
 }
 
-oboe::AudioStreamBuilder* OboeAudioRenderer::ConfigureForPerformance(oboe::AudioStreamBuilder& builder) {
+oboe::AudioStreamBuilder& OboeAudioRenderer::ConfigureForPerformance(oboe::AudioStreamBuilder& builder) {
     // 高性能配置 - 优先使用AAudio，独占模式
     return builder.setPerformanceMode(PERFORMANCE_MODE)
-           ->setSharingMode(SHARING_MODE)  // 独占模式，更好性能
-           ->setFormat(oboe::AudioFormat::I16)
-           ->setChannelCount(m_channel_count.load())
-           ->setSampleRate(m_sample_rate.load())
-           ->setFramesPerCallback(TARGET_FRAMES_PER_CALLBACK)
-           ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium) // 平衡质量和性能
-           ->setFormatConversionAllowed(true)
-           ->setChannelConversionAllowed(true);
+           .setSharingMode(SHARING_MODE)  // 独占模式，更好性能
+           .setFormat(oboe::AudioFormat::I16)
+           .setChannelCount(m_channel_count.load())
+           .setSampleRate(m_sample_rate.load())
+           .setFramesPerCallback(TARGET_FRAMES_PER_CALLBACK)
+           .setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium) // 平衡质量和性能
+           .setFormatConversionAllowed(true)
+           .setChannelConversionAllowed(true);
 }
 
 bool OboeAudioRenderer::ConfigureAndOpenStream() {
@@ -212,8 +214,8 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() {
     
     // 配置高性能参数
     ConfigureForPerformance(builder)
-           ->setDataCallback(m_audio_callback.get())
-           ->setErrorCallback(m_error_callback.get());
+           .setDataCallback(m_audio_callback.get())
+           .setErrorCallback(m_error_callback.get());
     
     // 策略：优先尝试AAudio独占模式，如果失败则回退
     bool success = false;
