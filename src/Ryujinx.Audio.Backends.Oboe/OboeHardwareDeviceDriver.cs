@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (性能优化版本)
+// OboeHardwareDeviceDriver.cs (稳定版本)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -52,11 +52,12 @@ namespace Ryujinx.Audio.Backends.Oboe
         private bool _stillRunning = true;
         private readonly object _initLock = new object();
 
-        // 性能统计
+        // 稳定性改进
         private long _totalFramesWritten = 0;
-        private int _underrunCount = 0;
+        private int _writeFailures = 0;
         private int _currentChannelCount = 2;
-        private DateTime _lastStatsLogTime = DateTime.Now;
+        private DateTime _lastResetTime = DateTime.MinValue;
+        private readonly TimeSpan _resetCooldown = TimeSpan.FromSeconds(2); // 2秒冷却时间
 
         public float Volume
         {
@@ -73,7 +74,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         public OboeHardwareDeviceDriver()
         {
             StartUpdateThread();
-            Logger.Info?.Print(LogClass.Audio, "OboeHardwareDeviceDriver initialized (Performance Optimized)");
+            Logger.Info?.Print(LogClass.Audio, "OboeHardwareDeviceDriver initialized (Stability Focus)");
         }
 
         private void StartUpdateThread()
@@ -81,12 +82,13 @@ namespace Ryujinx.Audio.Backends.Oboe
             _updateThread = new Thread(() =>
             {
                 int updateCounter = 0;
+                int failureStreak = 0;
                 
                 while (_stillRunning)
                 {
                     try
                     {
-                        Thread.Sleep(5); // 更快的更新频率，减少延迟
+                        Thread.Sleep(10); // 适中的更新频率
                         updateCounter++;
                         
                         if (_isOboeInitialized)
@@ -98,35 +100,60 @@ namespace Ryujinx.Audio.Backends.Oboe
                                 session.UpdatePlaybackStatus(bufferedFrames);
                             }
                             
-                            // 每100次更新记录一次统计信息（约0.5秒）
-                            if (updateCounter % 100 == 0)
+                            // 每50次更新记录一次统计信息
+                            if (updateCounter % 50 == 0)
                             {
-                                LogPerformanceStats(bufferedFrames);
+                                LogStabilityStats(bufferedFrames);
+                            }
+                            
+                            // 检查是否需要重置
+                            if (_writeFailures > 0 && failureStreak > 10)
+                            {
+                                AttemptControlledReset();
+                                failureStreak = 0;
                             }
                         }
                     }
                     catch (Exception ex)
                     {
                         Logger.Error?.Print(LogClass.Audio, $"Update thread error: {ex.Message}");
+                        failureStreak++;
                     }
                 }
             })
             {
-                Name = "Audio.Oboe.HighPerfThread",
+                Name = "Audio.Oboe.StableThread",
                 IsBackground = true,
-                Priority = ThreadPriority.Highest // 提高线程优先级
+                Priority = ThreadPriority.Normal // 正常优先级
             };
             _updateThread.Start();
         }
 
-        private void LogPerformanceStats(int bufferedFrames)
+        private void LogStabilityStats(int bufferedFrames)
         {
-            var now = DateTime.Now;
-            if ((now - _lastStatsLogTime).TotalSeconds >= 10) // 每10秒记录一次详细统计
+            Logger.Info?.Print(LogClass.Audio, 
+                $"Oboe Stability: Buffered={bufferedFrames} frames, TotalWritten={_totalFramesWritten}, Failures={_writeFailures}");
+        }
+
+        private void AttemptControlledReset()
+        {
+            // 检查冷却时间
+            if (DateTime.Now - _lastResetTime < _resetCooldown)
             {
-                Logger.Info?.Print(LogClass.Audio, 
-                    $"Oboe Stats: Buffered={bufferedFrames} frames, TotalWritten={_totalFramesWritten}, Underruns={_underrunCount}");
-                _lastStatsLogTime = now;
+                Logger.Warning?.Print(LogClass.Audio, "Reset on cooldown, skipping");
+                return;
+            }
+
+            try
+            {
+                Logger.Warning?.Print(LogClass.Audio, "Performing controlled audio reset due to failures");
+                resetOboeAudio();
+                _lastResetTime = DateTime.Now;
+                _writeFailures = 0; // 重置失败计数
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Audio, $"Controlled reset failed: {ex.Message}");
             }
         }
 
@@ -153,7 +180,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                     _updateRequiredEvent?.Dispose();
                     
                     Logger.Info?.Print(LogClass.Audio, 
-                        $"Oboe Final Stats: Frames written={_totalFramesWritten}, underruns={_underrunCount}");
+                        $"Oboe Final Stats: Frames written={_totalFramesWritten}, failures={_writeFailures}");
                 }
                 _disposed = true;
             }
@@ -230,7 +257,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 _isOboeInitialized = true;
                 _currentChannelCount = (int)channelCount;
 
-                Logger.Info?.Print(LogClass.Audio, "Oboe audio initialized successfully (Performance Optimized)");
+                Logger.Info?.Print(LogClass.Audio, "Oboe audio initialized successfully (Stability Focus)");
             }
             catch (Exception ex)
             {
@@ -378,16 +405,17 @@ namespace Ryujinx.Audio.Backends.Oboe
                     _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, (ulong)sampleCount));
                     _totalWrittenSamples += (ulong)sampleCount;
                     _driver._totalFramesWritten += frameCount;
+                    _driver._writeFailures = 0; // 重置连续失败计数
                 }
                 else
                 {
-                    _driver._underrunCount++;
+                    _driver._writeFailures++;
                     
-                    // 减少重置频率，避免性能影响
-                    if (_driver._underrunCount % 50 == 0) // 每50次underflow重置一次
+                    // 只在连续多次失败时记录警告
+                    if (_driver._writeFailures % 20 == 0)
                     {
-                        Logger.Warning?.Print(LogClass.Audio, "Multiple audio write failures, resetting audio system");
-                        resetOboeAudio();
+                        Logger.Warning?.Print(LogClass.Audio, 
+                            $"Audio write failures: {_driver._writeFailures}. Buffered frames: {getOboeBufferedFrames()}");
                     }
                 }
             }
