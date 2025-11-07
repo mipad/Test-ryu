@@ -34,80 +34,81 @@ else ()
     list(APPEND PROJECT_ENV "PATH=${ANDROID_TOOLCHAIN_ROOT}/bin:$ENV{PATH}")
 endif ()
 
-# 创建配置命令 - 使用更稳定的方法
-set(CONFIGURE_CMD ${CMAKE_COMMAND} -E env ${PROJECT_ENV}
+# 设置 FFmpeg 配置选项 - 完整功能配置
+set(FFMPEG_CONFIGURE_COMMAND
     <SOURCE_DIR>/configure
     --prefix=${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install
     --cross-prefix=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}-
     --target-os=android
     --arch=aarch64
-    --enable-cross-compile
-    --sysroot=${ANDROID_SYSROOT}
+    --cpu=cortex-a78
     --cc=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}-clang
     --cxx=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}-clang++
     --nm=${ANDROID_TOOLCHAIN_ROOT}/bin/llvm-nm
     --strip=${ANDROID_TOOLCHAIN_ROOT}/bin/llvm-strip
-    --enable-shared
+    --enable-cross-compile
+    --sysroot=${ANDROID_SYSROOT}
+    --extra-cflags=-O3
+    --extra-cflags=-fPIC
+    --extra-cflags=-march=armv8.2-a+fp16+dotprod
+    --extra-cflags=-mtune=cortex-a78
+    --extra-cflags=-DANDROID
+    --extra-cflags=-D__ANDROID__
+    --extra-ldflags=-Wl,--hash-style=both
+    --extra-ldexeflags=-pie
+    --enable-runtime-cpudetect
     --disable-static
-    --disable-programs
+    --enable-shared
+    --disable-ffprobe
+    --disable-ffplay
+    --disable-ffmpeg
     --disable-doc
-    --disable-avdevice
-    --disable-postproc
-    --disable-network
-    --disable-everything
-    --enable-decoder=aac
-    --enable-decoder=mp3  
-    --enable-decoder=ac3
-    --enable-decoder=flac
-    --enable-decoder=opus
-    --enable-decoder=vorbis
-    --enable-decoder=h264
-    --enable-decoder=hevc
-    --enable-decoder=vp8
-    --enable-decoder=vp9
-    --enable-demuxer=aac
-    --enable-demuxer=mp3
-    --enable-demuxer=ac3
-    --enable-demuxer=flac
-    --enable-demuxer=ogg
-    --enable-demuxer=opus
-    --enable-demuxer=matroska
-    --enable-demuxer=mov
-    --enable-demuxer=avi
-    --enable-parser=aac
-    --enable-parser=mp3
-    --enable-parser=ac3
-    --enable-parser=flac
-    --enable-parser=opus
-    --enable-parser=vorbis
-    --enable-parser=h264
-    --enable-parser=hevc
-    --enable-parser=vp8
-    --enable-parser=vp9
-    --enable-swresample
-    --enable-swscale
+    --enable-avfilter
     --enable-avcodec
     --enable-avformat
     --enable-avutil
-    --enable-small
+    --enable-swresample
+    --enable-swscale
+    --enable-network
+    --enable-protocols
+    --enable-filters
+    --enable-asm
     --enable-neon
-    --disable-asm
-    --disable-inline-asm
-    --extra-cflags=-O3
-    --extra-cflags=-fPIC
-    --extra-cflags=-DANDROID
-    --extra-ldflags=-Wl,--hash-style=both
+    --enable-inline-asm
+    --enable-jni
+    --enable-mediacodec
+    --enable-decoder=*
+    --enable-encoder=*
+    --enable-demuxer=*
+    --enable-muxer=*
+    --enable-parser=*
+    --enable-bsf=*
+    --enable-hwaccels
+    --enable-zlib
+    --enable-small
+    --enable-optimizations
+    --disable-debug
+    --disable-stripping
     --pkg-config=pkg-config
 )
+
+# 对于天玑8100的特定优化
+if(CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
+    list(APPEND FFMPEG_CONFIGURE_COMMAND
+        --enable-v4l2-m2m
+        --enable-libdrm
+    )
+endif()
 
 ExternalProject_Add(
     ffmpeg
     GIT_REPOSITORY              https://github.com/FFmpeg/FFmpeg.git
-    GIT_TAG                     master  #  master
+    GIT_TAG                     master
     GIT_PROGRESS                1
     GIT_SHALLOW                 1
     UPDATE_COMMAND              ""
-    CONFIGURE_COMMAND           ${CONFIGURE_CMD}
+    CONFIGURE_COMMAND           ${CMAKE_COMMAND} -E env ${PROJECT_ENV}
+                                ${FFMPEG_CONFIGURE_COMMAND}
     BUILD_COMMAND               ${CMAKE_COMMAND} -E env ${PROJECT_ENV}
                                 ${MAKE_COMMAND} -j${CMAKE_BUILD_PARALLEL_LEVEL}
     INSTALL_COMMAND             ${MAKE_COMMAND} install
@@ -118,6 +119,7 @@ ExternalProject_Add(
         ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libavformat.so
         ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libswresample.so
         ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libswscale.so
+        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libavfilter.so
 )
 
 # 创建导入目标
@@ -150,6 +152,12 @@ set_target_properties(swscale PROPERTIES
     IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libswscale.so
 )
 add_dependencies(swscale ffmpeg)
+
+add_library(avfilter SHARED IMPORTED GLOBAL)
+set_target_properties(avfilter PROPERTIES
+    IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libavfilter.so
+)
+add_dependencies(avfilter ffmpeg)
 
 # 添加头文件目录
 set(FFMPEG_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/include)
