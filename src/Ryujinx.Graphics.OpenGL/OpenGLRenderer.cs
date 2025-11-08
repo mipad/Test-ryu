@@ -190,6 +190,10 @@ namespace Ryujinx.Graphics.OpenGL
                 supportsDepthClipControl: true,
                 supportsFragmentDensityMap: false, // OpenGL does not support fragment density mapping
                 supportsFragmentDensityMap2: false, // OpenGL does not support fragment density mapping 2
+                // 新增：动态状态支持参数
+                supportsExtendedDynamicState: false,
+                supportsExtendedDynamicState2: false,
+                supportsExtendedDynamicState3: false,
                 uniformBufferSetIndex: 0,
                 storageBufferSetIndex: 1,
                 textureSetIndex: 2,
