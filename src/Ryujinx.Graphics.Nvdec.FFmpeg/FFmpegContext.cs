@@ -40,20 +40,40 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         {
             Logger.Info?.Print(LogClass.FFmpeg, $"Initializing FFmpeg decoder for {codecId}, Hardware preference: {preferHardware}");
 
+            // 直接初始化只读字段，而不是通过方法
             string hardwareDecoderName = null;
             bool useHardwareDecoder = false;
-            string decoderType = "Software";
             AVCodec* codec = null;
 
             // 尝试硬件解码器（如果启用且可用）
             if (preferHardware)
             {
-                codec = FindHardwareDecoder(codecId, out hardwareDecoderName);
+                if (AndroidHardwareDecoders.TryGetValue(codecId, out string[] decoderNames))
+                {
+                    foreach (string decoderName in decoderNames)
+                    {
+                        codec = FFmpegApi.avcodec_find_decoder_by_name(decoderName);
+                        if (codec != null)
+                        {
+                            hardwareDecoderName = decoderName;
+                            useHardwareDecoder = true;
+                            Logger.Debug?.Print(LogClass.FFmpeg, $"Found hardware decoder: {decoderName}");
+                            break;
+                        }
+                        else
+                        {
+                            Logger.Debug?.Print(LogClass.FFmpeg, $"Hardware decoder not available: {decoderName}");
+                        }
+                    }
+                }
+
                 if (codec != null)
                 {
-                    useHardwareDecoder = true;
-                    decoderType = "Hardware";
                     Logger.Info?.Print(LogClass.FFmpeg, $"Selected hardware decoder: {hardwareDecoderName}");
+                }
+                else
+                {
+                    Logger.Debug?.Print(LogClass.FFmpeg, $"No compatible hardware decoder found for {codecId}");
                 }
             }
 
@@ -62,7 +82,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             {
                 codec = FFmpegApi.avcodec_find_decoder(codecId);
                 useHardwareDecoder = false;
-                decoderType = "Software";
                 
                 if (codec != null)
                 {
@@ -79,7 +98,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             // 设置只读字段
             _codec = codec;
             _useHardwareDecoder = useHardwareDecoder;
-            _decoderType = decoderType;
+            _decoderType = useHardwareDecoder ? "Hardware" : "Software";
             _hardwareDecoderName = hardwareDecoderName;
 
             _context = FFmpegApi.avcodec_alloc_context3(_codec);
@@ -157,35 +176,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             }
 
             Logger.Info?.Print(LogClass.FFmpeg, $"FFmpeg {_decoderType} decoder initialized successfully (API: {(_useNewApi ? "New" : "Old")}, Codec: {GetCodecName(_codec)})");
-        }
-
-        private AVCodec* FindHardwareDecoder(AVCodecID codecId, out string hardwareDecoderName)
-        {
-            hardwareDecoderName = null;
-
-            if (!AndroidHardwareDecoders.TryGetValue(codecId, out string[] decoderNames))
-            {
-                Logger.Debug?.Print(LogClass.FFmpeg, $"No hardware decoder mapping for {codecId}");
-                return null;
-            }
-
-            foreach (string decoderName in decoderNames)
-            {
-                AVCodec* codec = FFmpegApi.avcodec_find_decoder_by_name(decoderName);
-                if (codec != null)
-                {
-                    hardwareDecoderName = decoderName;
-                    Logger.Debug?.Print(LogClass.FFmpeg, $"Found hardware decoder: {decoderName}");
-                    return codec;
-                }
-                else
-                {
-                    Logger.Debug?.Print(LogClass.FFmpeg, $"Hardware decoder not available: {decoderName}");
-                }
-            }
-
-            Logger.Debug?.Print(LogClass.FFmpeg, $"No compatible hardware decoder found for {codecId}");
-            return null;
         }
 
         private void ConfigureDecoderContext()
