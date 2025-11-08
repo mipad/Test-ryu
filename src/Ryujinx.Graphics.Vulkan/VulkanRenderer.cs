@@ -15,14 +15,133 @@ using System.Runtime.InteropServices;
 using Format = Ryujinx.Graphics.GAL.Format;
 using PrimitiveTopology = Ryujinx.Graphics.GAL.PrimitiveTopology;
 using SamplerCreateInfo = Ryujinx.Graphics.GAL.SamplerCreateInfo;
-using VkCompareOp = Silk.NET.Vulkan.CompareOp; // 解决 CompareOp 歧义
-using VkStencilOp = Silk.NET.Vulkan.StencilOp; // 解决 StencilOp 歧义
-using GALCompareOp = Ryujinx.Graphics.GAL.CompareOp; // GAL CompareOp 别名
-using GALStencilOp = Ryujinx.Graphics.GAL.StencilOp; // GAL StencilOp 别名
+using VkCompareOp = Silk.NET.Vulkan.CompareOp;
+using VkStencilOp = Silk.NET.Vulkan.StencilOp;
+using GALCompareOp = Ryujinx.Graphics.GAL.CompareOp;
+using GALStencilOp = Ryujinx.Graphics.GAL.StencilOp;
 
 namespace Ryujinx.Graphics.Vulkan
 {
-    // 新增：缺失的类型定义 - 在 Ryujinx.Graphics.GAL 中不存在，需要自定义
+    // 扩展方法：GAL 到 Vulkan 枚举转换
+    internal static class EnumConversionExtensions
+    {
+        public static VkCompareOp Convert(this GALCompareOp op)
+        {
+            return op switch
+            {
+                GALCompareOp.Never => VkCompareOp.Never,
+                GALCompareOp.Less => VkCompareOp.Less,
+                GALCompareOp.Equal => VkCompareOp.Equal,
+                GALCompareOp.LessOrEqual => VkCompareOp.LessOrEqual,
+                GALCompareOp.Greater => VkCompareOp.Greater,
+                GALCompareOp.NotEqual => VkCompareOp.NotEqual,
+                GALCompareOp.GreaterOrEqual => VkCompareOp.GreaterOrEqual,
+                GALCompareOp.Always => VkCompareOp.Always,
+                _ => VkCompareOp.Never
+            };
+        }
+
+        public static VkStencilOp Convert(this GALStencilOp op)
+        {
+            return op switch
+            {
+                GALStencilOp.Keep => VkStencilOp.Keep,
+                GALStencilOp.Zero => VkStencilOp.Zero,
+                GALStencilOp.Replace => VkStencilOp.Replace,
+                GALStencilOp.IncrementAndClamp => VkStencilOp.IncrementAndClamp,
+                GALStencilOp.DecrementAndClamp => VkStencilOp.DecrementAndClamp,
+                GALStencilOp.Invert => VkStencilOp.Invert,
+                GALStencilOp.IncrementAndWrap => VkStencilOp.IncrementAndWrap,
+                GALStencilOp.DecrementAndWrap => VkStencilOp.DecrementAndWrap,
+                _ => VkStencilOp.Keep
+            };
+        }
+
+        public static CullModeFlags Convert(this CullMode mode)
+        {
+            return mode switch
+            {
+                CullMode.Front => CullModeFlags.FrontBit,
+                CullMode.Back => CullModeFlags.BackBit,
+                CullMode.FrontAndBack => CullModeFlags.FrontAndBack,
+                _ => CullModeFlags.None
+            };
+        }
+
+        public static FrontFace Convert(this Ryujinx.Graphics.GAL.FrontFace face)
+        {
+            return face switch
+            {
+                Ryujinx.Graphics.GAL.FrontFace.Clockwise => FrontFace.Clockwise,
+                Ryujinx.Graphics.GAL.FrontFace.CounterClockwise => FrontFace.CounterClockwise,
+                _ => FrontFace.CounterClockwise
+            };
+        }
+
+        public static LogicOp Convert(this Ryujinx.Graphics.GAL.LogicOp op)
+        {
+            return op switch
+            {
+                Ryujinx.Graphics.GAL.LogicOp.Clear => LogicOp.Clear,
+                Ryujinx.Graphics.GAL.LogicOp.And => LogicOp.And,
+                Ryujinx.Graphics.GAL.LogicOp.AndReverse => LogicOp.AndReverse,
+                Ryujinx.Graphics.GAL.LogicOp.Copy => LogicOp.Copy,
+                Ryujinx.Graphics.GAL.LogicOp.AndInverted => LogicOp.AndInverted,
+                Ryujinx.Graphics.GAL.LogicOp.NoOp => LogicOp.NoOp,
+                Ryujinx.Graphics.GAL.LogicOp.Xor => LogicOp.Xor,
+                Ryujinx.Graphics.GAL.LogicOp.Or => LogicOp.Or,
+                Ryujinx.Graphics.GAL.LogicOp.Nor => LogicOp.Nor,
+                Ryujinx.Graphics.GAL.LogicOp.Equivalent => LogicOp.Equivalent,
+                Ryujinx.Graphics.GAL.LogicOp.Invert => LogicOp.Invert,
+                Ryujinx.Graphics.GAL.LogicOp.OrReverse => LogicOp.OrReverse,
+                Ryujinx.Graphics.GAL.LogicOp.CopyInverted => LogicOp.CopyInverted,
+                Ryujinx.Graphics.GAL.LogicOp.OrInverted => LogicOp.OrInverted,
+                Ryujinx.Graphics.GAL.LogicOp.Nand => LogicOp.Nand,
+                Ryujinx.Graphics.GAL.LogicOp.Set => LogicOp.Set,
+                _ => LogicOp.Copy
+            };
+        }
+    }
+
+    // 状态结构定义
+    internal struct DynamicState
+    {
+        public bool CullEnable { get; set; }
+        public CullMode CullMode { get; set; }
+        public bool DepthTestEnable { get; set; }
+        public bool DepthWriteEnable { get; set; }
+        public GALCompareOp DepthCompareOp { get; set; }
+        public bool StencilTestEnable { get; set; }
+        public StencilOpState FrontStencilOps { get; set; }
+        public StencilOpState BackStencilOps { get; set; }
+        public bool DepthBoundsTestEnable { get; set; }
+        public bool PrimitiveRestartEnable { get; set; }
+        public bool RasterizerDiscardEnable { get; set; }
+        public bool DepthBiasEnable { get; set; }
+        public bool LogicOpEnable { get; set; }
+        public Ryujinx.Graphics.GAL.LogicOp LogicOp { get; set; }
+        public bool DepthClampEnable { get; set; }
+        public Ryujinx.Graphics.GAL.FrontFace FrontFace { get; set; }
+        public float LineWidth { get; set; }
+        public float DepthBiasConstant { get; set; }
+        public float DepthBiasClamp { get; set; }
+        public float DepthBiasSlope { get; set; }
+        public (float Min, float Max) DepthBounds { get; set; }
+        public (float R, float G, float B, float A) BlendConstants { get; set; }
+        
+        // 视口和剪刀状态
+        public Viewport[] Viewports { get; set; }
+        public Rect2D[] Scissors { get; set; }
+        
+        // 模板状态
+        public uint StencilFrontReference { get; set; }
+        public uint StencilBackReference { get; set; }
+        public uint StencilFrontCompareMask { get; set; }
+        public uint StencilBackCompareMask { get; set; }
+        public uint StencilFrontWriteMask { get; set; }
+        public uint StencilBackWriteMask { get; set; }
+    }
+
     internal enum CullMode
     {
         None = 0,
@@ -134,30 +253,260 @@ namespace Ryujinx.Graphics.Vulkan
         }
     }
 
-    // 新增：状态结构定义 - 使用自定义类型
-    internal struct State
+    // 动态状态跟踪器类
+    internal class DynamicStateTracker
     {
-        public bool CullEnable { get; set; }
-        public CullMode CullMode { get; set; }
-        public bool DepthTestEnable { get; set; }
-        public GALCompareOp DepthCompareOp { get; set; } // 使用 GALCompareOp 别名
-        public bool StencilTestEnable { get; set; }
-        public StencilOpState StencilOps { get; set; }
-        // 可以添加更多状态字段
-    }
+        // 基础动态状态
+        private CullModeFlags _lastCullMode;
+        private bool _lastCullEnable;
+        private bool _lastDepthTestEnable;
+        private bool _lastDepthWriteEnable;
+        private VkCompareOp _lastDepthCompareOp;
+        private bool _lastStencilTestEnable;
+        private StencilOpState _lastFrontStencilOps;
+        private StencilOpState _lastBackStencilOps;
+        private bool _lastDepthBoundsTestEnable;
+        private bool _lastPrimitiveRestartEnable;
+        private bool _lastRasterizerDiscardEnable;
+        private bool _lastDepthBiasEnable;
+        private bool _lastLogicOpEnable;
+        private LogicOp _lastLogicOp;
+        private bool _lastDepthClampEnable;
+        private FrontFace _lastFrontFace;
+        private float _lastLineWidth;
+        private float _lastDepthBiasConstant;
+        private float _lastDepthBiasClamp;
+        private float _lastDepthBiasSlope;
+        private (float Min, float Max) _lastDepthBounds;
+        private (float R, float G, float B, float A) _lastBlendConstants;
 
-    // 扩展 CullMode 以添加 Convert 方法
-    internal static class CullModeExtensions
-    {
-        public static CullModeFlags Convert(this CullMode mode)
+        // 视口和剪刀状态
+        private Viewport[] _lastViewports;
+        private Rect2D[] _lastScissors;
+
+        // 模板状态
+        private uint _lastStencilFrontReference;
+        private uint _lastStencilBackReference;
+        private uint _lastStencilFrontCompareMask;
+        private uint _lastStencilBackCompareMask;
+        private uint _lastStencilFrontWriteMask;
+        private uint _lastStencilBackWriteMask;
+
+        public DynamicStateTracker()
         {
-            return mode switch
+            Reset();
+        }
+
+        public void Reset()
+        {
+            _lastCullMode = CullModeFlags.None;
+            _lastCullEnable = false;
+            _lastDepthTestEnable = false;
+            _lastDepthWriteEnable = false;
+            _lastDepthCompareOp = VkCompareOp.Never;
+            _lastStencilTestEnable = false;
+            _lastFrontStencilOps = default;
+            _lastBackStencilOps = default;
+            _lastDepthBoundsTestEnable = false;
+            _lastPrimitiveRestartEnable = false;
+            _lastRasterizerDiscardEnable = false;
+            _lastDepthBiasEnable = false;
+            _lastLogicOpEnable = false;
+            _lastLogicOp = LogicOp.Copy;
+            _lastDepthClampEnable = false;
+            _lastFrontFace = FrontFace.CounterClockwise;
+            _lastLineWidth = 1.0f;
+            _lastDepthBiasConstant = 0.0f;
+            _lastDepthBiasClamp = 0.0f;
+            _lastDepthBiasSlope = 0.0f;
+            _lastDepthBounds = (0.0f, 1.0f);
+            _lastBlendConstants = (0.0f, 0.0f, 0.0f, 0.0f);
+
+            _lastViewports = Array.Empty<Viewport>();
+            _lastScissors = Array.Empty<Rect2D>();
+
+            _lastStencilFrontReference = 0;
+            _lastStencilBackReference = 0;
+            _lastStencilFrontCompareMask = 0xFFFFFFFF;
+            _lastStencilBackCompareMask = 0xFFFFFFFF;
+            _lastStencilFrontWriteMask = 0xFFFFFFFF;
+            _lastStencilBackWriteMask = 0xFFFFFFFF;
+        }
+
+        public void ResetDirtyFlags()
+        {
+            // 保留当前状态但清除脏标志，用于帧开始
+            // 这里我们不需要做任何事情，因为脏检测是基于比较的
+        }
+
+        // 状态变化检测方法
+        public bool ShouldUpdateCullMode(CullModeFlags newMode, bool newEnable)
+        {
+            bool shouldUpdate = _lastCullMode != newMode || _lastCullEnable != newEnable;
+            if (shouldUpdate)
             {
-                CullMode.Front => CullModeFlags.FrontBit,
-                CullMode.Back => CullModeFlags.BackBit,
-                CullMode.FrontAndBack => CullModeFlags.FrontAndBack,
-                _ => CullModeFlags.None
-            };
+                _lastCullMode = newMode;
+                _lastCullEnable = newEnable;
+            }
+            return shouldUpdate;
+        }
+
+        public bool ShouldUpdateDepthTest(bool newEnable, bool newWriteEnable, GALCompareOp newCompareOp)
+        {
+            VkCompareOp vkCompareOp = newCompareOp.Convert();
+            bool shouldUpdate = _lastDepthTestEnable != newEnable || 
+                               _lastDepthWriteEnable != newWriteEnable || 
+                               _lastDepthCompareOp != vkCompareOp;
+            if (shouldUpdate)
+            {
+                _lastDepthTestEnable = newEnable;
+                _lastDepthWriteEnable = newWriteEnable;
+                _lastDepthCompareOp = vkCompareOp;
+            }
+            return shouldUpdate;
+        }
+
+        public bool ShouldUpdateStencil(bool newEnable, StencilOpState newFrontOps, StencilOpState newBackOps)
+        {
+            bool shouldUpdate = _lastStencilTestEnable != newEnable || 
+                               !_lastFrontStencilOps.Equals(newFrontOps) || 
+                               !_lastBackStencilOps.Equals(newBackOps);
+            if (shouldUpdate)
+            {
+                _lastStencilTestEnable = newEnable;
+                _lastFrontStencilOps = newFrontOps;
+                _lastBackStencilOps = newBackOps;
+            }
+            return shouldUpdate;
+        }
+
+        public bool ShouldUpdateDepthBounds(bool newEnable, (float Min, float Max) newBounds)
+        {
+            bool shouldUpdate = _lastDepthBoundsTestEnable != newEnable || 
+                               _lastDepthBounds != newBounds;
+            if (shouldUpdate)
+            {
+                _lastDepthBoundsTestEnable = newEnable;
+                _lastDepthBounds = newBounds;
+            }
+            return shouldUpdate;
+        }
+
+        public bool ShouldUpdatePrimitiveRestart(bool newEnable)
+        {
+            bool shouldUpdate = _lastPrimitiveRestartEnable != newEnable;
+            if (shouldUpdate) _lastPrimitiveRestartEnable = newEnable;
+            return shouldUpdate;
+        }
+
+        public bool ShouldUpdateRasterizerDiscard(bool newEnable)
+        {
+            bool shouldUpdate = _lastRasterizerDiscardEnable != newEnable;
+            if (shouldUpdate) _lastRasterizerDiscardEnable = newEnable;
+            return shouldUpdate;
+        }
+
+        public bool ShouldUpdateDepthBias(bool newEnable, float constant, float clamp, float slope)
+        {
+            bool shouldUpdate = _lastDepthBiasEnable != newEnable || 
+                               _lastDepthBiasConstant != constant || 
+                               _lastDepthBiasClamp != clamp || 
+                               _lastDepthBiasSlope != slope;
+            if (shouldUpdate)
+            {
+                _lastDepthBiasEnable = newEnable;
+                _lastDepthBiasConstant = constant;
+                _lastDepthBiasClamp = clamp;
+                _lastDepthBiasSlope = slope;
+            }
+            return shouldUpdate;
+        }
+
+        public bool ShouldUpdateLogicOp(bool newEnable, Ryujinx.Graphics.GAL.LogicOp newOp)
+        {
+            LogicOp vkOp = newOp.Convert();
+            bool shouldUpdate = _lastLogicOpEnable != newEnable || _lastLogicOp != vkOp;
+            if (shouldUpdate)
+            {
+                _lastLogicOpEnable = newEnable;
+                _lastLogicOp = vkOp;
+            }
+            return shouldUpdate;
+        }
+
+        public bool ShouldUpdateDepthClamp(bool newEnable)
+        {
+            bool shouldUpdate = _lastDepthClampEnable != newEnable;
+            if (shouldUpdate) _lastDepthClampEnable = newEnable;
+            return shouldUpdate;
+        }
+
+        public bool ShouldUpdateFrontFace(Ryujinx.Graphics.GAL.FrontFace newFace)
+        {
+            FrontFace vkFace = newFace.Convert();
+            bool shouldUpdate = _lastFrontFace != vkFace;
+            if (shouldUpdate) _lastFrontFace = vkFace;
+            return shouldUpdate;
+        }
+
+        public bool ShouldUpdateLineWidth(float newWidth)
+        {
+            bool shouldUpdate = Math.Abs(_lastLineWidth - newWidth) > float.Epsilon;
+            if (shouldUpdate) _lastLineWidth = newWidth;
+            return shouldUpdate;
+        }
+
+        public bool ShouldUpdateBlendConstants((float R, float G, float B, float A) newConstants)
+        {
+            bool shouldUpdate = _lastBlendConstants != newConstants;
+            if (shouldUpdate) _lastBlendConstants = newConstants;
+            return shouldUpdate;
+        }
+
+        public bool ShouldUpdateViewports(Viewport[] newViewports)
+        {
+            bool shouldUpdate = !ArraysEqual(_lastViewports, newViewports);
+            if (shouldUpdate) _lastViewports = newViewports;
+            return shouldUpdate;
+        }
+
+        public bool ShouldUpdateScissors(Rect2D[] newScissors)
+        {
+            bool shouldUpdate = !ArraysEqual(_lastScissors, newScissors);
+            if (shouldUpdate) _lastScissors = newScissors;
+            return shouldUpdate;
+        }
+
+        public bool ShouldUpdateStencilReferences(uint frontRef, uint backRef, uint frontCompareMask, uint backCompareMask, uint frontWriteMask, uint backWriteMask)
+        {
+            bool shouldUpdate = _lastStencilFrontReference != frontRef ||
+                               _lastStencilBackReference != backRef ||
+                               _lastStencilFrontCompareMask != frontCompareMask ||
+                               _lastStencilBackCompareMask != backCompareMask ||
+                               _lastStencilFrontWriteMask != frontWriteMask ||
+                               _lastStencilBackWriteMask != backWriteMask;
+            if (shouldUpdate)
+            {
+                _lastStencilFrontReference = frontRef;
+                _lastStencilBackReference = backRef;
+                _lastStencilFrontCompareMask = frontCompareMask;
+                _lastStencilBackCompareMask = backCompareMask;
+                _lastStencilFrontWriteMask = frontWriteMask;
+                _lastStencilBackWriteMask = backWriteMask;
+            }
+            return shouldUpdate;
+        }
+
+        private static bool ArraysEqual<T>(T[] a, T[] b) where T : IEquatable<T>
+        {
+            if (a == null && b == null) return true;
+            if (a == null || b == null) return false;
+            if (a.Length != b.Length) return false;
+            for (int i = 0; i < a.Length; i++)
+            {
+                if (!a[i].Equals(b[i])) return false;
+            }
+            return true;
         }
     }
 
@@ -176,9 +525,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         public uint ProgramCount { get; set; } = 0;
 
-        // 新增：绘制计数器，借鉴 yuzu 的智能批处理机制
+        // 智能批处理机制
         private int _drawCounter = 0;
-        private const int DRAWS_TO_DISPATCH = 2048; // 可调参数，针对不同平台优化
+        private const int DRAWS_TO_DISPATCH = 2048;
         private const int DRAWS_TO_FLUSH = 4096;
 
         internal KhrTimelineSemaphore TimelineSemaphoreApi { get; private set; }
@@ -191,11 +540,11 @@ namespace Ryujinx.Graphics.Vulkan
         internal ExtConditionalRendering ConditionalRenderingApi { get; private set; }
         internal ExtExtendedDynamicState ExtendedDynamicStateApi { get; private set; }
         internal ExtExtendedDynamicState2 ExtendedDynamicState2Api { get; private set; }
+        internal ExtExtendedDynamicState3 ExtendedDynamicState3Api { get; private set; }
         internal KhrPushDescriptor PushDescriptorApi { get; private set; }
         internal ExtTransformFeedback TransformFeedbackApi { get; private set; }
         internal KhrDrawIndirectCount DrawIndirectCountApi { get; private set; }
         internal ExtAttachmentFeedbackLoopDynamicState DynamicFeedbackLoopApi { get; private set; }
-        internal ExtExtendedDynamicState3 ExtendedDynamicState3Api { get; private set; } // 新增：动态状态3扩展
         
         internal bool SupportsFragmentDensityMap { get; private set; }
         internal bool SupportsFragmentDensityMap2 { get; private set; }
@@ -206,7 +555,7 @@ namespace Ryujinx.Graphics.Vulkan
         internal object BackgroundQueueLock { get; private set; }
         internal object QueueLock { get; private set; }
 
-        // 新增：动态状态跟踪器，借鉴 yuzu 的细粒度状态管理
+        // 动态状态跟踪器
         private DynamicStateTracker _dynamicStateTracker;
 
         // NEU: SurfaceLock, um Create/Destroy/Queries zu serialisieren
@@ -222,7 +571,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         internal BufferManager BufferManager { get; private set; }
 
-        // 新增：DMA 加速器，借鉴 yuzu 的 AccelerateDMA
+        // 新增：DMA 加速器
         internal DmaAccelerator DmaAccelerator { get; private set; }
 
         internal HashSet<ShaderCollection> Shaders { get; }
@@ -286,7 +635,7 @@ namespace Ryujinx.Graphics.Vulkan
             Textures = new HashSet<ITexture>();
             Samplers = new HashSet<SamplerHolder>();
 
-            // 新增：初始化动态状态跟踪器
+            // 初始化动态状态跟踪器
             _dynamicStateTracker = new DynamicStateTracker();
 
             if (OperatingSystem.IsMacOS() || OperatingSystem.IsIOS())
@@ -296,10 +645,240 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        // 修复：智能命令缓冲区刷新机制
+        // 完整的动态状态更新管道
+        internal void UpdateDynamicStates(ref DynamicState state, CommandBufferScoped cbs)
+        {
+            var cmdbuf = cbs.CommandBuffer;
+
+            // 基础动态状态 (VK_EXT_extended_dynamic_state)
+            if (ExtendedDynamicStateApi != null)
+            {
+                // 视口状态
+                if (_dynamicStateTracker.ShouldUpdateViewports(state.Viewports))
+                {
+                    fixed (Viewport* viewportsPtr = state.Viewports)
+                    {
+                        ExtendedDynamicStateApi.CmdSetViewport(cmdbuf, 0, (uint)state.Viewports.Length, viewportsPtr);
+                    }
+                }
+
+                // 剪刀状态
+                if (_dynamicStateTracker.ShouldUpdateScissors(state.Scissors))
+                {
+                    fixed (Rect2D* scissorsPtr = state.Scissors)
+                    {
+                        ExtendedDynamicStateApi.CmdSetScissor(cmdbuf, 0, (uint)state.Scissors.Length, scissorsPtr);
+                    }
+                }
+
+                // 线宽
+                if (_dynamicStateTracker.ShouldUpdateLineWidth(state.LineWidth))
+                {
+                    ExtendedDynamicStateApi.CmdSetLineWidth(cmdbuf, state.LineWidth);
+                }
+
+                // 深度偏移
+                if (_dynamicStateTracker.ShouldUpdateDepthBias(state.DepthBiasEnable, state.DepthBiasConstant, state.DepthBiasClamp, state.DepthBiasSlope))
+                {
+                    ExtendedDynamicStateApi.CmdSetDepthBias(cmdbuf, state.DepthBiasConstant, state.DepthBiasClamp, state.DepthBiasSlope);
+                }
+
+                // 混合常量
+                if (_dynamicStateTracker.ShouldUpdateBlendConstants(state.BlendConstants))
+                {
+                    var constants = stackalloc float[4] { state.BlendConstants.R, state.BlendConstants.G, state.BlendConstants.B, state.BlendConstants.A };
+                    ExtendedDynamicStateApi.CmdSetBlendConstants(cmdbuf, constants);
+                }
+
+                // 深度边界
+                if (_dynamicStateTracker.ShouldUpdateDepthBounds(state.DepthBoundsTestEnable, state.DepthBounds))
+                {
+                    ExtendedDynamicStateApi.CmdSetDepthBounds(cmdbuf, state.DepthBounds.Min, state.DepthBounds.Max);
+                }
+
+                // 模板参考值和掩码
+                if (_dynamicStateTracker.ShouldUpdateStencilReferences(
+                    state.StencilFrontReference, state.StencilBackReference,
+                    state.StencilFrontCompareMask, state.StencilBackCompareMask,
+                    state.StencilFrontWriteMask, state.StencilBackWriteMask))
+                {
+                    ExtendedDynamicStateApi.CmdSetStencilReference(cmdbuf, StencilFaceFlags.FrontBit, state.StencilFrontReference);
+                    ExtendedDynamicStateApi.CmdSetStencilReference(cmdbuf, StencilFaceFlags.BackBit, state.StencilBackReference);
+                    
+                    ExtendedDynamicStateApi.CmdSetStencilCompareMask(cmdbuf, StencilFaceFlags.FrontBit, state.StencilFrontCompareMask);
+                    ExtendedDynamicStateApi.CmdSetStencilCompareMask(cmdbuf, StencilFaceFlags.BackBit, state.StencilBackCompareMask);
+                    
+                    ExtendedDynamicStateApi.CmdSetStencilWriteMask(cmdbuf, StencilFaceFlags.FrontBit, state.StencilFrontWriteMask);
+                    ExtendedDynamicStateApi.CmdSetStencilWriteMask(cmdbuf, StencilFaceFlags.BackBit, state.StencilBackWriteMask);
+                }
+            }
+
+            // 扩展动态状态2 (VK_EXT_extended_dynamic_state2)
+            if (ExtendedDynamicState2Api != null)
+            {
+                // 图元重启
+                if (_dynamicStateTracker.ShouldUpdatePrimitiveRestart(state.PrimitiveRestartEnable))
+                {
+                    ExtendedDynamicState2Api.CmdSetPrimitiveRestartEnable(cmdbuf, state.PrimitiveRestartEnable);
+                }
+
+                // 光栅化器丢弃
+                if (_dynamicStateTracker.ShouldUpdateRasterizerDiscard(state.RasterizerDiscardEnable))
+                {
+                    ExtendedDynamicState2Api.CmdSetRasterizerDiscardEnable(cmdbuf, state.RasterizerDiscardEnable);
+                }
+
+                // 深度偏移启用
+                if (_dynamicStateTracker.ShouldUpdateDepthBias(state.DepthBiasEnable, state.DepthBiasConstant, state.DepthBiasClamp, state.DepthBiasSlope))
+                {
+                    ExtendedDynamicState2Api.CmdSetDepthBiasEnable(cmdbuf, state.DepthBiasEnable);
+                }
+
+                // 面剔除
+                if (_dynamicStateTracker.ShouldUpdateCullMode(state.CullMode.Convert(), state.CullEnable))
+                {
+                    ExtendedDynamicState2Api.CmdSetCullMode(cmdbuf, state.CullEnable ? state.CullMode.Convert() : CullModeFlags.None);
+                }
+
+                // 前表面
+                if (_dynamicStateTracker.ShouldUpdateFrontFace(state.FrontFace))
+                {
+                    ExtendedDynamicState2Api.CmdSetFrontFace(cmdbuf, state.FrontFace.Convert());
+                }
+
+                // 深度测试
+                if (_dynamicStateTracker.ShouldUpdateDepthTest(state.DepthTestEnable, state.DepthWriteEnable, state.DepthCompareOp))
+                {
+                    ExtendedDynamicState2Api.CmdSetDepthTestEnable(cmdbuf, state.DepthTestEnable);
+                    ExtendedDynamicState2Api.CmdSetDepthWriteEnable(cmdbuf, state.DepthWriteEnable);
+                    ExtendedDynamicState2Api.CmdSetDepthCompareOp(cmdbuf, state.DepthCompareOp.Convert());
+                }
+
+                // 模板测试
+                if (_dynamicStateTracker.ShouldUpdateStencil(state.StencilTestEnable, state.FrontStencilOps, state.BackStencilOps))
+                {
+                    ExtendedDynamicState2Api.CmdSetStencilTestEnable(cmdbuf, state.StencilTestEnable);
+                    
+                    if (state.StencilTestEnable)
+                    {
+                        ExtendedDynamicState2Api.CmdSetStencilOp(
+                            cmdbuf, 
+                            StencilFaceFlags.FrontBit,
+                            state.FrontStencilOps.Fail.Convert(),
+                            state.FrontStencilOps.Pass.Convert(),
+                            state.FrontStencilOps.DepthFail.Convert(),
+                            state.FrontStencilOps.Compare.Convert());
+                            
+                        ExtendedDynamicState2Api.CmdSetStencilOp(
+                            cmdbuf,
+                            StencilFaceFlags.BackBit,
+                            state.BackStencilOps.Fail.Convert(),
+                            state.BackStencilOps.Pass.Convert(),
+                            state.BackStencilOps.DepthFail.Convert(),
+                            state.BackStencilOps.Compare.Convert());
+                    }
+                }
+            }
+
+            // 扩展动态状态3 (VK_EXT_extended_dynamic_state3)
+            if (ExtendedDynamicState3Api != null)
+            {
+                // 逻辑操作
+                if (_dynamicStateTracker.ShouldUpdateLogicOp(state.LogicOpEnable, state.LogicOp))
+                {
+                    ExtendedDynamicState3Api.CmdSetLogicOpEnable(cmdbuf, state.LogicOpEnable);
+                    if (state.LogicOpEnable)
+                    {
+                        ExtendedDynamicState3Api.CmdSetLogicOp(cmdbuf, state.LogicOp.Convert());
+                    }
+                }
+
+                // 深度裁剪
+                if (_dynamicStateTracker.ShouldUpdateDepthClamp(state.DepthClampEnable))
+                {
+                    ExtendedDynamicState3Api.CmdSetDepthClampEnable(cmdbuf, state.DepthClampEnable);
+                }
+
+                // 注意：这里可以添加更多动态状态3的特性，如：
+                // - 颜色混合启用和方程
+                // - 颜色写入掩码
+                // - 保守光栅化模式
+                // - 等等...
+            }
+
+            // 回退到传统管线状态设置（如果没有动态状态扩展）
+            if (ExtendedDynamicStateApi == null)
+            {
+                UpdateTraditionalPipelineStates(ref state, cmdbuf);
+            }
+        }
+
+        // 传统管线状态设置（回退方案）
+        private void UpdateTraditionalPipelineStates(ref DynamicState state, CommandBuffer cmdbuf)
+        {
+            // 视口
+            if (_dynamicStateTracker.ShouldUpdateViewports(state.Viewports))
+            {
+                fixed (Viewport* viewportsPtr = state.Viewports)
+                {
+                    Api.CmdSetViewport(cmdbuf, 0, (uint)state.Viewports.Length, viewportsPtr);
+                }
+            }
+
+            // 剪刀
+            if (_dynamicStateTracker.ShouldUpdateScissors(state.Scissors))
+            {
+                fixed (Rect2D* scissorsPtr = state.Scissors)
+                {
+                    Api.CmdSetScissor(cmdbuf, 0, (uint)state.Scissors.Length, scissorsPtr);
+                }
+            }
+
+            // 线宽
+            if (_dynamicStateTracker.ShouldUpdateLineWidth(state.LineWidth))
+            {
+                Api.CmdSetLineWidth(cmdbuf, state.LineWidth);
+            }
+
+            // 深度偏移
+            if (_dynamicStateTracker.ShouldUpdateDepthBias(state.DepthBiasEnable, state.DepthBiasConstant, state.DepthBiasClamp, state.DepthBiasSlope))
+            {
+                Api.CmdSetDepthBias(cmdbuf, state.DepthBiasConstant, state.DepthBiasClamp, state.DepthBiasSlope);
+            }
+
+            // 混合常量
+            if (_dynamicStateTracker.ShouldUpdateBlendConstants(state.BlendConstants))
+            {
+                var constants = stackalloc float[4] { state.BlendConstants.R, state.BlendConstants.G, state.BlendConstants.B, state.BlendConstants.A };
+                Api.CmdSetBlendConstants(cmdbuf, constants);
+            }
+
+            // 深度边界
+            if (_dynamicStateTracker.ShouldUpdateDepthBounds(state.DepthBoundsTestEnable, state.DepthBounds))
+            {
+                Api.CmdSetDepthBounds(cmdbuf, state.DepthBounds.Min, state.DepthBounds.Max);
+            }
+
+            // 模板参考值和掩码
+            if (_dynamicStateTracker.ShouldUpdateStencilReferences(
+                state.StencilFrontReference, state.StencilBackReference,
+                state.StencilFrontCompareMask, state.StencilBackCompareMask,
+                state.StencilFrontWriteMask, state.StencilBackWriteMask))
+            {
+                Api.CmdSetStencilReference(cmdbuf, StencilFaceFlags.FrontBit, state.StencilFrontReference);
+                Api.CmdSetStencilReference(cmdbuf, StencilFaceFlags.BackBit, state.StencilBackReference);
+                
+                Api.CmdSetStencilCompareMask(cmdbuf, StencilFaceFlags.FrontBit, state.StencilFrontCompareMask);
+                Api.CmdSetStencilCompareMask(cmdbuf, StencilFaceFlags.BackBit, state.StencilBackCompareMask);
+                
+                Api.CmdSetStencilWriteMask(cmdbuf, StencilFaceFlags.FrontBit, state.StencilFrontWriteMask);
+                Api.CmdSetStencilWriteMask(cmdbuf, StencilFaceFlags.BackBit, state.StencilBackWriteMask);
+            }
+        }
+
+        // 智能命令缓冲区刷新机制
         internal void FlushWork()
         {
-            // 只在特定绘制计数时检查刷新
             if ((++_drawCounter & 0x7) != 0x7) return;
 
             if (_drawCounter >= DRAWS_TO_FLUSH)
@@ -309,25 +888,30 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else if (_drawCounter >= DRAWS_TO_DISPATCH)
             {
-                // 只提交到工作线程，不立即刷新
-                CommandBufferPool?.SubmitWork();
+                CommandBufferPool?.DispatchWork();
             }
         }
 
-        // 新增：注册绘制调用
+        // 注册绘制调用
         internal void RegisterDraw()
         {
             FlushWork();
         }
 
-        // 修复：动态状态更新方法 - 移除不存在的参数
-        internal void UpdateDynamicStates()
+        // 重置动态状态跟踪器（用于通道或管线更改）
+        internal void ResetDynamicState()
         {
-            // 这个方法需要根据实际的状态参数来实现
-            // 暂时留空，等待实际的状态参数
+            _dynamicStateTracker.Reset();
         }
 
-        // 修复：变换反馈处理方法 - 使用正确的参数
+        // 简化的动态状态更新（用于现有代码的兼容性）
+        internal void UpdateDynamicStates()
+        {
+            // 这个简化版本供现有代码调用
+            // 实际实现应该使用完整的 UpdateDynamicStates(ref DynamicState, CommandBufferScoped)
+        }
+
+        // 变换反馈处理方法
         internal void HandleTransformFeedback(bool enabled)
         {
             if (TransformFeedbackApi == null || !Capabilities.SupportsTransformFeedback) return;
@@ -343,7 +927,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        // 修复：条件渲染加速方法 - 使用正确的参数
+        // 条件渲染加速方法
         public bool AccelerateConditionalRendering(BufferHandle buffer, int offset, bool isEqual)
         {
             if (ConditionalRenderingApi == null) return false;
@@ -355,7 +939,7 @@ namespace Ryujinx.Graphics.Vulkan
             return false; // _counters?.AccelerateHostConditionalRendering(buffer, offset, isEqual) ?? false;
         }
 
-        // 修复：DMA 加速方法 - 使用正确的参数
+        // DMA 加速方法
         public bool AccelerateDmaBufferClear(BufferHandle buffer, int offset, int size, uint value)
         {
             return DmaAccelerator?.BufferClear((ulong)offset, (ulong)size, value) ?? false;
@@ -1023,7 +1607,7 @@ namespace Ryujinx.Graphics.Vulkan
             BufferManager?.TickFrame();
             
             // 动态状态跟踪器重置
-            _dynamicStateTracker?.Reset();
+            _dynamicStateTracker?.ResetDirtyFlags();
             
             // 动态调整批处理大小（基于性能指标）
             AdjustBatchSizes();
@@ -1604,72 +2188,6 @@ namespace Ryujinx.Graphics.Vulkan
         {
             return Capabilities.SupportsHostImportedMemory &&
                 HostMemoryAllocator.TryImport(BufferManager.HostImportedBufferMemoryRequirements, BufferManager.DefaultBufferMemoryFlags, address, size);
-        }
-    }
-
-    // 新增：动态状态跟踪器类
-    internal class DynamicStateTracker
-    {
-        private CullModeFlags _lastCullMode;
-        private bool _lastCullEnable;
-        private bool _lastDepthTestEnable;
-        private VkCompareOp _lastDepthCompareOp; // 使用 VkCompareOp 解决歧义
-        private bool _lastStencilTestEnable;
-        private StencilOpState _lastStencilOps;
-
-        public DynamicStateTracker()
-        {
-            Reset();
-        }
-
-        public void Reset()
-        {
-            _lastCullMode = CullModeFlags.None;
-            _lastCullEnable = false;
-            _lastDepthTestEnable = false;
-            _lastDepthCompareOp = VkCompareOp.Never; // 使用 VkCompareOp
-            _lastStencilTestEnable = false;
-            _lastStencilOps = default;
-        }
-
-        public void ResetDirtyFlags()
-        {
-            // 保留当前状态但清除脏标志，用于帧开始
-        }
-
-        public bool ShouldUpdateCullMode(CullModeFlags newMode, bool newEnable)
-        {
-            bool shouldUpdate = _lastCullMode != newMode || _lastCullEnable != newEnable;
-            if (shouldUpdate)
-            {
-                _lastCullMode = newMode;
-                _lastCullEnable = newEnable;
-            }
-            return shouldUpdate;
-        }
-
-        public bool ShouldUpdateDepthTest(bool newEnable, GALCompareOp newCompareOp) // 使用 GALCompareOp
-        {
-            // 修复：使用现有的 EnumConversion 扩展方法
-            VkCompareOp vkCompareOp = newCompareOp.Convert();
-            bool shouldUpdate = _lastDepthTestEnable != newEnable || _lastDepthCompareOp != vkCompareOp;
-            if (shouldUpdate)
-            {
-                _lastDepthTestEnable = newEnable;
-                _lastDepthCompareOp = vkCompareOp;
-            }
-            return shouldUpdate;
-        }
-
-        public bool ShouldUpdateStencil(bool newEnable, StencilOpState newOps)
-        {
-            bool shouldUpdate = _lastStencilTestEnable != newEnable || !_lastStencilOps.Equals(newOps);
-            if (shouldUpdate)
-            {
-                _lastStencilTestEnable = newEnable;
-                _lastStencilOps = newOps;
-            }
-            return shouldUpdate;
         }
     }
 }
