@@ -41,7 +41,7 @@ namespace Ryujinx.Graphics.Vulkan
                 AnisotropyEnable = info.MaxAnisotropy != 1f,
                 MaxAnisotropy = info.MaxAnisotropy,
                 CompareEnable = info.CompareMode == CompareMode.CompareRToTexture,
-                CompareOp = info.CompareOp.Convert(),
+                CompareOp = EnumConversion.Convert(info.CompareOp), // 修复：使用 EnumConversion 解决歧义
                 MinLod = minLod,
                 MaxLod = maxLod,
                 BorderColor = borderColor,
@@ -118,3 +118,4 @@ namespace Ryujinx.Graphics.Vulkan
         }
     }
 }
+

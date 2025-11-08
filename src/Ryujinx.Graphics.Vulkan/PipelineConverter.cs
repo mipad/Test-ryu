@@ -166,7 +166,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             pipeline.DepthTestEnable = state.DepthTest.TestEnable;
             pipeline.DepthWriteEnable = state.DepthTest.WriteEnable;
-            pipeline.DepthCompareOp = state.DepthTest.Func.Convert();
+            pipeline.DepthCompareOp = EnumConversion.Convert(state.DepthTest.Func); // 修复：使用 EnumConversion 解决歧义
             pipeline.DepthMode = state.DepthMode == DepthMode.MinusOneToOne;
 
             pipeline.FrontFace = state.FrontFace.Convert();
@@ -197,15 +197,15 @@ namespace Ryujinx.Graphics.Vulkan
 
             // Stencil masks and ref are dynamic, so are 0 in the Vulkan pipeline.
 
-            pipeline.StencilFrontFailOp = state.StencilTest.FrontSFail.Convert();
-            pipeline.StencilFrontPassOp = state.StencilTest.FrontDpPass.Convert();
-            pipeline.StencilFrontDepthFailOp = state.StencilTest.FrontDpFail.Convert();
-            pipeline.StencilFrontCompareOp = state.StencilTest.FrontFunc.Convert();
+            pipeline.StencilFrontFailOp = EnumConversion.Convert(state.StencilTest.FrontSFail); // 修复：使用 EnumConversion 解决歧义
+            pipeline.StencilFrontPassOp = EnumConversion.Convert(state.StencilTest.FrontDpPass); // 修复：使用 EnumConversion 解决歧义
+            pipeline.StencilFrontDepthFailOp = EnumConversion.Convert(state.StencilTest.FrontDpFail); // 修复：使用 EnumConversion 解决歧义
+            pipeline.StencilFrontCompareOp = EnumConversion.Convert(state.StencilTest.FrontFunc); // 修复：使用 EnumConversion 解决歧义
 
-            pipeline.StencilBackFailOp = state.StencilTest.BackSFail.Convert();
-            pipeline.StencilBackPassOp = state.StencilTest.BackDpPass.Convert();
-            pipeline.StencilBackDepthFailOp = state.StencilTest.BackDpFail.Convert();
-            pipeline.StencilBackCompareOp = state.StencilTest.BackFunc.Convert();
+            pipeline.StencilBackFailOp = EnumConversion.Convert(state.StencilTest.BackSFail); // 修复：使用 EnumConversion 解决歧义
+            pipeline.StencilBackPassOp = EnumConversion.Convert(state.StencilTest.BackDpPass); // 修复：使用 EnumConversion 解决歧义
+            pipeline.StencilBackDepthFailOp = EnumConversion.Convert(state.StencilTest.BackDpFail); // 修复：使用 EnumConversion 解决歧义
+            pipeline.StencilBackCompareOp = EnumConversion.Convert(state.StencilTest.BackFunc); // 修复：使用 EnumConversion 解决歧义
 
             pipeline.StencilTestEnable = state.StencilTest.TestEnable;
 

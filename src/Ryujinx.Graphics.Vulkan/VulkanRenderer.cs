@@ -162,9 +162,10 @@ namespace Ryujinx.Graphics.Vulkan
     }
 
     // 扩展 CompareOp 以添加 Convert 方法 - 使用 GALCompareOp
-    internal static class CompareOpExtensions
+    // 注意：移除与 EnumConversion 冲突的方法，使用全限定名解决歧义
+    internal static class GALCompareOpExtensions
     {
-        public static VkCompareOp Convert(this GALCompareOp op)
+        public static VkCompareOp ConvertToVulkan(this GALCompareOp op)
         {
             return op switch
             {
@@ -181,10 +182,11 @@ namespace Ryujinx.Graphics.Vulkan
         }
     }
 
-    // 扩展 StencilOp 以添加 Convert 方法 - 使用 GALStencilOp
-    internal static class StencilOpExtensions
+    // 扩展 StencilOp 以添加 Convert 方法 - 使用 GALStencilOp  
+    // 注意：移除与 EnumConversion 冲突的方法，使用全限定名解决歧义
+    internal static class GALStencilOpExtensions
     {
-        public static VkStencilOp Convert(this GALStencilOp op)
+        public static VkStencilOp ConvertToVulkan(this GALStencilOp op)
         {
             return op switch
             {
@@ -769,6 +771,7 @@ namespace Ryujinx.Graphics.Vulkan
                 properties.Limits.FramebufferStencilSampleCounts;
 
             // 修复：更新能力集构造函数调用，添加缺失的 SupportsExtendedDynamicState3 参数
+            // 注意：ExtendedDynamicState3 字段在较新版本的Silk.NET中可能名称不同，这里使用正确的字段名
             bool supportsExtendedDynamicState3Feature = supportsExtendedDynamicState3 && featuresExtendedDynamicState3.ExtendedDynamicState3;
 
             Capabilities = new HardwareCapabilities(
@@ -1654,8 +1657,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         public bool ShouldUpdateDepthTest(bool newEnable, GALCompareOp newCompareOp) // 使用 GALCompareOp
         {
-            // 修复：使用明确的 CompareOpExtensions.Convert 方法解决歧义
-            VkCompareOp vkCompareOp = CompareOpExtensions.Convert(newCompareOp);
+            // 修复：使用明确的 EnumConversion.Convert 方法解决歧义
+            VkCompareOp vkCompareOp = EnumConversion.Convert(newCompareOp);
             bool shouldUpdate = _lastDepthTestEnable != newEnable || _lastDepthCompareOp != vkCompareOp;
             if (shouldUpdate)
             {
