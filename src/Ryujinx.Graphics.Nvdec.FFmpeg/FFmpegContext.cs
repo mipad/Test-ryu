@@ -10,7 +10,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
     {
         private unsafe delegate int AVCodec_decode(AVCodecContext* avctx, void* outdata, int* got_frame_ptr, AVPacket* avpkt);
 
-        private readonly AVCodec_decode _decodeFrame;
+        private AVCodec_decode _decodeFrame; // 移除了 readonly
         private static readonly FFmpegApi.av_log_set_callback_callback _logFunc;
         private readonly AVCodec* _codec;
         private readonly AVPacket* _packet;
@@ -171,8 +171,22 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
             if (!_useNewApi)
             {
-                // 旧版 API 路径
-                SetupLegacyDecodeDelegate(avCodecMajorVersion, avCodecMinorVersion);
+                // 旧版 API 路径 - 直接在构造函数中设置 _decodeFrame
+                // libavcodec 59.24 changed AvCodec to move its private API
+                if (avCodecMajorVersion > 59 || (avCodecMajorVersion == 59 && avCodecMinorVersion > 24))
+                {
+                    _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodec<AVCodec>*)_codec)->CodecCallback);
+                }
+                // libavcodec 59.x changed AvCodec private API layout.
+                else if (avCodecMajorVersion == 59)
+                {
+                    _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec501>*)_codec)->Decode);
+                }
+                // libavcodec 58.x and lower
+                else
+                {
+                    _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec>*)_codec)->Decode);
+                }
             }
 
             Logger.Info?.Print(LogClass.FFmpeg, $"FFmpeg {_decoderType} decoder initialized successfully (API: {(_useNewApi ? "New" : "Old")}, Codec: {GetCodecName(_codec)})");
@@ -203,25 +217,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 _context->Refs = 3; // 限制参考帧数量
                 
                 Logger.Debug?.Print(LogClass.FFmpeg, $"Configured for software decoding ({_context->ThreadCount} threads)");
-            }
-        }
-
-        private void SetupLegacyDecodeDelegate(int majorVersion, int minorVersion)
-        {
-            // libavcodec 59.24 changed AvCodec to move its private API
-            if (majorVersion > 59 || (majorVersion == 59 && minorVersion > 24))
-            {
-                _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodec<AVCodec>*)_codec)->CodecCallback);
-            }
-            // libavcodec 59.x changed AvCodec private API layout.
-            else if (majorVersion == 59)
-            {
-                _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec501>*)_codec)->Decode);
-            }
-            // libavcodec 58.x and lower
-            else
-            {
-                _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec>*)_codec)->Decode);
             }
         }
 
