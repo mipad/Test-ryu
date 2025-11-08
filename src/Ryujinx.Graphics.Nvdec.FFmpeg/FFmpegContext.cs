@@ -22,14 +22,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private int _frameCount = 0;
         private readonly bool _useHardwareDecoder;
         private readonly string _decoderType;
-        private AVBufferRef* _hwDeviceContext = null;
         private readonly string _hardwareDecoderName;
-
-        // 硬件帧格式回调委托
-        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        private unsafe delegate AVPixelFormat GetHwFormatDelegate(AVCodecContext* ctx, AVPixelFormat* pix_fmts);
-
-        private GetHwFormatDelegate _getHwFormatCallback;
 
         // Android 硬件解码器映射
         private static readonly Dictionary<AVCodecID, string[]> AndroidHardwareDecoders = new()
@@ -85,12 +78,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return;
             }
 
-            // 配置硬件设备上下文
-            if (_useHardwareDecoder)
-            {
-                ConfigureHardwareContext();
-            }
-
             // 设置解码器参数
             ConfigureDecoderContext();
 
@@ -102,8 +89,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 // 如果硬件解码器打开失败，尝试软件解码器
                 if (_useHardwareDecoder)
                 {
-                    CleanupHardwareContext();
-                    
                     // 回退到软件解码器
                     _codec = FFmpegApi.avcodec_find_decoder(codecId);
                     if (_codec != null)
@@ -188,41 +173,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
             Logger.Debug?.Print(LogClass.FFmpeg, $"No compatible hardware decoder found for {codecId}");
             return null;
-        }
-
-        private void ConfigureHardwareContext()
-        {
-            if (_hardwareDecoderName.Contains("mediacodec"))
-            {
-                // 配置 Android MediaCodec 硬件上下文
-                Logger.Debug?.Print(LogClass.FFmpeg, "Configuring MediaCodec hardware context");
-                
-                // 设置硬件帧格式回调
-                _getHwFormatCallback = GetHwFormat;
-                _context->GetFormat = Marshal.GetFunctionPointerForDelegate(_getHwFormatCallback);
-                
-                // 对于 MediaCodec，通常不需要显式创建硬件设备上下文
-                // FFmpeg 会自动处理
-            }
-        }
-
-        private unsafe AVPixelFormat GetHwFormat(AVCodecContext* ctx, AVPixelFormat* pix_fmts)
-        {
-            // 查找硬件支持的像素格式
-            AVPixelFormat* current = pix_fmts;
-            while (*current != AVPixelFormat.AV_PIX_FMT_NONE)
-            {
-                if (_hardwareDecoderName.Contains("mediacodec") && *current == AVPixelFormat.AV_PIX_FMT_MEDIACODEC)
-                {
-                    Logger.Debug?.Print(LogClass.FFmpeg, "Selected MediaCodec pixel format for hardware decoding");
-                    return *current;
-                }
-                current++;
-            }
-
-            // 如果没有找到硬件格式，回退到软件格式
-            Logger.Debug?.Print(LogClass.FFmpeg, "No hardware pixel format found, using software fallback");
-            return AVPixelFormat.AV_PIX_FMT_YUV420P;
         }
 
         private void ConfigureDecoderContext()
@@ -484,18 +434,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             }
         }
 
-        private void CleanupHardwareContext()
-        {
-            if (_hwDeviceContext != null)
-            {
-                fixed (AVBufferRef** ppRef = &_hwDeviceContext)
-                {
-                    FFmpegApi.av_buffer_unref(ppRef);
-                }
-                _hwDeviceContext = null;
-            }
-        }
-
         // 公开属性用于查询解码器状态
         public bool IsHardwareDecoder => _useHardwareDecoder;
         public string DecoderType => _decoderType;
@@ -512,9 +450,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     FFmpegApi.av_packet_free(ppPacket);
                 }
             }
-
-            // 清理硬件上下文
-            CleanupHardwareContext();
 
             // 刷新解码器缓冲区
             if (_useNewApi && _context != null)
