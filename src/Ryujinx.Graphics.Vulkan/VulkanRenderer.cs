@@ -17,6 +17,8 @@ using PrimitiveTopology = Ryujinx.Graphics.GAL.PrimitiveTopology;
 using SamplerCreateInfo = Ryujinx.Graphics.GAL.SamplerCreateInfo;
 using VkCompareOp = Silk.NET.Vulkan.CompareOp; // 解决 CompareOp 歧义
 using VkStencilOp = Silk.NET.Vulkan.StencilOp; // 解决 StencilOp 歧义
+using GALCompareOp = Ryujinx.Graphics.GAL.CompareOp; // GAL CompareOp 别名
+using GALStencilOp = Ryujinx.Graphics.GAL.StencilOp; // GAL StencilOp 别名
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -100,9 +102,9 @@ namespace Ryujinx.Graphics.Vulkan
     internal struct State
     {
         public bool CullEnable { get; set; }
-        public CullMode CullMode { get; set; } // 使用 Ryujinx.Graphics.GAL.CullMode
+        public CullMode CullMode { get; set; }
         public bool DepthTestEnable { get; set; }
-        public CompareOp DepthCompareOp { get; set; } // 使用 Ryujinx.Graphics.GAL.CompareOp
+        public GALCompareOp DepthCompareOp { get; set; } // 使用 GALCompareOp 别名
         public bool StencilTestEnable { get; set; }
         public StencilOpState StencilOps { get; set; }
         // 可以添加更多状态字段
@@ -123,41 +125,41 @@ namespace Ryujinx.Graphics.Vulkan
         }
     }
 
-    // 扩展 CompareOp 以添加 Convert 方法
+    // 扩展 CompareOp 以添加 Convert 方法 - 使用 GALCompareOp
     internal static class CompareOpExtensions
     {
-        public static VkCompareOp Convert(this CompareOp op)
+        public static VkCompareOp Convert(this GALCompareOp op)
         {
             return op switch
             {
-                CompareOp.Never => VkCompareOp.Never,
-                CompareOp.Less => VkCompareOp.Less,
-                CompareOp.Equal => VkCompareOp.Equal,
-                CompareOp.LessOrEqual => VkCompareOp.LessOrEqual,
-                CompareOp.Greater => VkCompareOp.Greater,
-                CompareOp.NotEqual => VkCompareOp.NotEqual,
-                CompareOp.GreaterOrEqual => VkCompareOp.GreaterOrEqual,
-                CompareOp.Always => VkCompareOp.Always,
+                GALCompareOp.Never => VkCompareOp.Never,
+                GALCompareOp.Less => VkCompareOp.Less,
+                GALCompareOp.Equal => VkCompareOp.Equal,
+                GALCompareOp.LessOrEqual => VkCompareOp.LessOrEqual,
+                GALCompareOp.Greater => VkCompareOp.Greater,
+                GALCompareOp.NotEqual => VkCompareOp.NotEqual,
+                GALCompareOp.GreaterOrEqual => VkCompareOp.GreaterOrEqual,
+                GALCompareOp.Always => VkCompareOp.Always,
                 _ => VkCompareOp.Never
             };
         }
     }
 
-    // 扩展 StencilOp 以添加 Convert 方法 - 使用 VkStencilOp 解决歧义
+    // 扩展 StencilOp 以添加 Convert 方法 - 使用 GALStencilOp
     internal static class StencilOpExtensions
     {
-        public static VkStencilOp Convert(this StencilOp op)
+        public static VkStencilOp Convert(this GALStencilOp op)
         {
             return op switch
             {
-                StencilOp.Keep => VkStencilOp.Keep,
-                StencilOp.Zero => VkStencilOp.Zero,
-                StencilOp.Replace => VkStencilOp.Replace,
-                StencilOp.IncrementAndClamp => VkStencilOp.IncrementAndClamp,
-                StencilOp.DecrementAndClamp => VkStencilOp.DecrementAndClamp,
-                StencilOp.Invert => VkStencilOp.Invert,
-                StencilOp.IncrementAndWrap => VkStencilOp.IncrementAndWrap,
-                StencilOp.DecrementAndWrap => VkStencilOp.DecrementAndWrap,
+                GALStencilOp.Keep => VkStencilOp.Keep,
+                GALStencilOp.Zero => VkStencilOp.Zero,
+                GALStencilOp.Replace => VkStencilOp.Replace,
+                GALStencilOp.IncrementAndClamp => VkStencilOp.IncrementAndClamp,
+                GALStencilOp.DecrementAndClamp => VkStencilOp.DecrementAndClamp,
+                GALStencilOp.Invert => VkStencilOp.Invert,
+                GALStencilOp.IncrementAndWrap => VkStencilOp.IncrementAndWrap,
+                GALStencilOp.DecrementAndWrap => VkStencilOp.DecrementAndWrap,
                 _ => VkStencilOp.Keep
             };
         }
@@ -1608,7 +1610,7 @@ namespace Ryujinx.Graphics.Vulkan
             return shouldUpdate;
         }
 
-        public bool ShouldUpdateDepthTest(bool newEnable, CompareOp newCompareOp)
+        public bool ShouldUpdateDepthTest(bool newEnable, GALCompareOp newCompareOp) // 使用 GALCompareOp
         {
             // 将 GAL CompareOp 转换为 VkCompareOp 进行比较
             VkCompareOp vkCompareOp = newCompareOp.Convert();
