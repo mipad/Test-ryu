@@ -34,7 +34,7 @@ else ()
     list(APPEND PROJECT_ENV "PATH=${ANDROID_TOOLCHAIN_ROOT}/bin:$ENV{PATH}")
 endif ()
 
-# 设置 FFmpeg 配置选项 - 简化配置，只启用必要的解码功能
+# 设置 FFmpeg 配置选项 - 增强解码器支持并添加硬件解码
 set(FFMPEG_CONFIGURE_COMMAND
     <SOURCE_DIR>/configure
     --prefix=${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install
@@ -79,16 +79,76 @@ set(FFMPEG_CONFIGURE_COMMAND
     --enable-inline-asm
     --enable-jni
     --enable-mediacodec
-    # 只启用必要的解码器，而不是所有
+    
+    # 硬件解码器支持 - 优先使用
+    --enable-decoder=h264_mediacodec
+    --enable-decoder=hevc_mediacodec
+    --enable-decoder=vp8_mediacodec
+    --enable-decoder=vp9_mediacodec
+    --enable-decoder=av1_mediacodec
+    --enable-decoder=mpeg4_mediacodec
+    --enable-decoder=mpeg2video_mediacodec
+    
+    # 软件解码器支持 - 作为回退
     --enable-decoder=h264
     --enable-decoder=hevc
+    --enable-decoder=vp8
+    --enable-decoder=vp9
+    --enable-decoder=av1
+    --enable-decoder=mpeg4
+    --enable-decoder=mpeg2video
+    --enable-decoder=mpeg1video
+    --enable-decoder=msmpeg4v1
+    --enable-decoder=msmpeg4v2
+    --enable-decoder=msmpeg4v3
+    --enable-decoder=wmv1
+    --enable-decoder=wmv2
+    --enable-decoder=wmv3
+    --enable-decoder=vc1
+    --enable-decoder=theora
+    --enable-decoder=rv10
+    --enable-decoder=rv20
+    --enable-decoder=rv30
+    --enable-decoder=rv40
+    --enable-decoder=flv
+    --enable-decoder=svq1
+    --enable-decoder=svq3
+    --enable-decoder=cinepak
+    --enable-decoder=indeo2
+    --enable-decoder=indeo3
+    --enable-decoder=indeo4
+    --enable-decoder=indeo5
+    
+    # 音频解码器支持
     --enable-decoder=aac
     --enable-decoder=mp3
     --enable-decoder=ac3
     --enable-decoder=eac3
+    --enable-decoder=dts
     --enable-decoder=flac
     --enable-decoder=vorbis
     --enable-decoder=opus
+    --enable-decoder=wmav1
+    --enable-decoder=wmav2
+    --enable-decoder=wmapro
+    --enable-decoder=pcm_s16le
+    --enable-decoder=pcm_s16be
+    --enable-decoder=pcm_s24le
+    --enable-decoder=pcm_s24be
+    --enable-decoder=pcm_s32le
+    --enable-decoder=pcm_s32be
+    --enable-decoder=pcm_f32le
+    --enable-decoder=pcm_f32be
+    --enable-decoder=pcm_u8
+    --enable-decoder=pcm_alaw
+    --enable-decoder=pcm_mulaw
+    --enable-decoder=adpcm_ms
+    --enable-decoder=adpcm_ima_wav
+    --enable-decoder=adpcm_ima_qt
+    --enable-decoder=adpcm_swf
+    --enable-decoder=adpcm_yamaha
+    
+    # 解复用器支持
     --enable-demuxer=h264
     --enable-demuxer=hevc
     --enable-demuxer=aac
@@ -99,15 +159,61 @@ set(FFMPEG_CONFIGURE_COMMAND
     --enable-demuxer=ogg
     --enable-demuxer=mov
     --enable-demuxer=matroska
+    --enable-demuxer=avi
+    --enable-demuxer=flv
+    --enable-demuxer=mpegts
+    --enable-demuxer=m4v
+    --enable-demuxer=mpegvideo
+    --enable-demuxer=mpegps
+    --enable-demuxer=wav
+    --enable-demuxer=aiff
+    --enable-demuxer=ape
+    --enable-demuxer=mpc
+    --enable-demuxer=mpc8
+    --enable-demuxer=asf
+    --enable-demuxer=wv
+    --enable-demuxer=tta
+    --enable-demuxer=rm
+    --enable-demuxer=voc
+    --enable-demuxer=film_cpk
+    --enable-demuxer=nsv
+    --enable-demuxer=flic
+    --enable-demuxer=4xm
+    --enable-demuxer=thp
+    
+    # 解析器支持
     --enable-parser=h264
     --enable-parser=hevc
     --enable-parser=aac
     --enable-parser=ac3
     --enable-parser=mpegaudio
+    --enable-parser=mpeg4video
+    --enable-parser=mpegvideo
+    --enable-parser=vp8
+    --enable-parser=vp9
+    --enable-parser=flac
+    --enable-parser=opus
+    --enable-parser=vorbis
+    --enable-parser=dca
+    --enable-parser=vc1
+    
+    # 比特流过滤器支持
     --enable-bsf=h264_mp4toannexb
     --enable-bsf=hevc_mp4toannexb
     --enable-bsf=aac_adtstoasc
-    --disable-hwaccels
+    --enable-bsf=extract_extradata
+    --enable-bsf=noise
+    --enable-bsf=remove_extradata
+    --enable-bsf=dump_extradata
+    --enable-bsf=vp9_superframe
+    --enable-bsf=vp9_superframe_split
+    
+    # 硬件加速相关
+    --enable-hwaccels
+    --enable-opengl
+    --enable-gpl
+    --enable-nonfree
+    
     --disable-zlib
     --enable-small
     --enable-optimizations
