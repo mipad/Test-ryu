@@ -14,7 +14,7 @@ if (CMAKE_HOST_WIN32)
             COMMAND ${VSWHERE_BIN} "-latest" "-find" "VC\\Tools\\MSVC\\*\\bin\\Hostx64\\x64\\nmake.exe"
             OUTPUT_VARIABLE NMAKE_PATHS_OUTPUT
             OUTPUT_STRIP_TRAILING_WHITESPACE
-            COMMAND_ERROR_IS_FATAL ANY
+            COMMAND_ERRORIS_FATAL ANY
     )
     string(REPLACE "\n" ";" NMAKE_PATH_LIST "${NMAKE_PATHS_OUTPUT}")
     list(GET NMAKE_PATH_LIST 0 NMAKE_PATH)
@@ -34,7 +34,7 @@ else ()
     list(APPEND PROJECT_ENV "PATH=${ANDROID_TOOLCHAIN_ROOT}/bin:$ENV{PATH}")
 endif ()
 
-# 设置 FFmpeg 配置选项 - 修复编译器路径
+# 设置 FFmpeg 配置选项 - 使用稳定版本并添加错误恢复支持
 set(FFMPEG_CONFIGURE_COMMAND
     <SOURCE_DIR>/configure
     --prefix=${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install
@@ -91,14 +91,23 @@ set(FFMPEG_CONFIGURE_COMMAND
     --enable-optimizations
     --disable-debug
     --disable-stripping
+    # 添加错误恢复和容错支持
+    --enable-error-resilience
+    --enable-hardcoded-tables
+    --enable-safe-bitstream-reader
+    # 针对 H.264 的特殊配置
+    --enable-libx264
+    --enable-gpl
+    --enable-nonfree
     --pkg-config=pkg-config
 )
 
 # 添加配置验证步骤
 ExternalProject_Add(
     ffmpeg
+    # 使用稳定版本而不是 master
     GIT_REPOSITORY              https://github.com/FFmpeg/FFmpeg.git
-    GIT_TAG                     master
+    GIT_TAG                     n5.1.3  # 使用稳定版本
     GIT_PROGRESS                1
     GIT_SHALLOW                 1
     UPDATE_COMMAND              ""
