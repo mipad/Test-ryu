@@ -142,5 +142,57 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
 
         [LibraryImport(AvCodecLibraryName)]
         internal static unsafe partial void avcodec_flush_buffers(AVCodecContext* avctx);
+
+        // 硬件解码支持
+        [LibraryImport(AvCodecLibraryName)]
+        internal static unsafe partial AVHWDeviceType av_hwdevice_find_type_by_name([MarshalAs(UnmanagedType.LPUTF8Str)] string name);
+
+        [LibraryImport(AvCodecLibraryName)]
+        internal static unsafe partial AVBufferRef* av_hwdevice_ctx_alloc(AVHWDeviceType type);
+
+        [LibraryImport(AvCodecLibraryName)]
+        internal static unsafe partial int av_hwdevice_ctx_create(AVBufferRef** device_ctx, AVHWDeviceType type, [MarshalAs(UnmanagedType.LPUTF8Str)] string device, void* opts, int flags);
+
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial AVBufferRef* av_buffer_ref(AVBufferRef* buf);
+
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial void av_buffer_unref(AVBufferRef** buf);
+    }
+
+    // 硬件解码相关类型定义
+    internal enum AVHWDeviceType
+    {
+        AV_HWDEVICE_TYPE_NONE,
+        AV_HWDEVICE_TYPE_VDPAU,
+        AV_HWDEVICE_TYPE_CUDA,
+        AV_HWDEVICE_TYPE_VAAPI,
+        AV_HWDEVICE_TYPE_DXVA2,
+        AV_HWDEVICE_TYPE_QSV,
+        AV_HWDEVICE_TYPE_VIDEOTOOLBOX,
+        AV_HWDEVICE_TYPE_D3D11VA,
+        AV_HWDEVICE_TYPE_DRM,
+        AV_HWDEVICE_TYPE_OPENCL,
+        AV_HWDEVICE_TYPE_MEDIACODEC,
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal unsafe struct AVBufferRef
+    {
+        public AVBuffer* Buffer;
+        public byte* Data;
+        public int Size;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal unsafe struct AVBuffer
+    {
+        // AVBuffer 内部结构，通常不需要直接访问
+        public byte* Data;
+        public int Size;
+        public int RefCount;
+        public void* Free;
+        public void* Opaque;
+        public void* FreeCallback;
     }
 }
