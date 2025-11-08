@@ -34,7 +34,7 @@ else ()
     list(APPEND PROJECT_ENV "PATH=${ANDROID_TOOLCHAIN_ROOT}/bin:$ENV{PATH}")
 endif ()
 
-# 设置优化的 FFmpeg 配置选项 - 针对天玑8100优化
+# 设置 FFmpeg 配置选项 - 修复编译器路径
 set(FFMPEG_CONFIGURE_COMMAND
     <SOURCE_DIR>/configure
     --prefix=${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install
@@ -54,8 +54,6 @@ set(FFMPEG_CONFIGURE_COMMAND
     --extra-cflags=-mtune=cortex-a78
     --extra-cflags=-DANDROID
     --extra-cflags=-D__ANDROID_API__=21
-    --extra-cflags=-ffast-math
-    --extra-cflags=-funroll-loops
     --extra-ldflags=-Wl,--hash-style=both
     --extra-ldexeflags=-pie
     --enable-runtime-cpudetect
@@ -67,7 +65,6 @@ set(FFMPEG_CONFIGURE_COMMAND
     --disable-manpages
     --disable-podpages
     --disable-txtpages
-    # 启用必要的组件
     --enable-avfilter
     --enable-avcodec
     --enable-avformat
@@ -82,24 +79,18 @@ set(FFMPEG_CONFIGURE_COMMAND
     --enable-inline-asm
     --enable-jni
     --enable-mediacodec
-    # 只启用常用解码器以减少开销
-    --enable-decoder=h264,hevc,mpeg4,aac,mp3,ac3
-    --enable-encoder=mpeg4,aac
-    --enable-demuxer=mov,mp4,matroska,avi,mpegts
-    --enable-muxer=mp4,matroska
-    --enable-parser=h264,hevc,aac,mpeg4video
-    --enable-bsf=h264_mp4toannexb,hevc_mp4toannexb
+    --enable-decoder=*
+    --enable-encoder=*
+    --enable-demuxer=*
+    --enable-muxer=*
+    --enable-parser=*
+    --enable-bsf=*
     --enable-hwaccels
-    --enable-hwaccel=h264_mediacodec,hevc_mediacodec
     --enable-zlib
     --enable-small
     --enable-optimizations
     --disable-debug
     --disable-stripping
-    # 性能优化选项
-    --enable-pthreads
-    --extra-cflags=-pthread
-    --extra-ldflags=-pthread
     --pkg-config=pkg-config
 )
 
@@ -107,7 +98,7 @@ set(FFMPEG_CONFIGURE_COMMAND
 ExternalProject_Add(
     ffmpeg
     GIT_REPOSITORY              https://github.com/FFmpeg/FFmpeg.git
-    GIT_TAG                     master  # 使用稳定版本而不是master
+    GIT_TAG                     master
     GIT_PROGRESS                1
     GIT_SHALLOW                 1
     UPDATE_COMMAND              ""
@@ -124,10 +115,6 @@ ExternalProject_Add(
         ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libswresample.so
         ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libswscale.so
         ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libavfilter.so
-    # 添加日志以帮助调试
-    LOG_CONFIGURE 1
-    LOG_BUILD 1
-    LOG_INSTALL 1
 )
 
 # 创建导入目标
@@ -169,11 +156,3 @@ add_dependencies(avfilter ffmpeg)
 
 # 添加头文件目录
 set(FFMPEG_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/include)
-
-# 添加性能优化验证
-message(STATUS "FFmpeg 配置优化完成")
-message(STATUS "目标 CPU: cortex-a78 (天玑8100)")
-message(STATUS "硬件加速: MediaCodec 启用")
-message(STATUS "NEON 优化: 启用")
-message(STATUS "指令集: armv8.2-a+fp16+dotprod")
-message(STATUS "线程优化: pthread 启用")
