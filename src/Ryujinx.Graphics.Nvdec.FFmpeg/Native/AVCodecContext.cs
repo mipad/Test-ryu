@@ -3,6 +3,26 @@ using System;
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
 {
+    // 添加 AVDiscard 枚举
+    public enum AVDiscard
+    {
+        None = -16,
+        Default = 0,
+        NonRef = 8,
+        Bidir = 16,
+        NonKey = 32,
+        All = 48,
+    }
+
+    // 添加错误恢复标志
+    public enum AVErrorRecovery
+    {
+        Careful = 1,
+        Compliant = 2,
+        Aggressive = 3,
+        VeryAggressive = 4,
+    }
+
     struct AVCodecContext
     {
 #pragma warning disable CS0649 // Field is never assigned to
@@ -166,6 +186,71 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         public long MaxSamples;
         public int ExportSideData;
         public IntPtr GetEncodeBuffer;
+        
+        // 添加缺失的字段
+        public int ErrRecognition2;
+        public int RefCountedFrames;
+        public int Qscale;
+        public int RcBufferAggressivity;
+        public int RcInitialCpbratio;
+        public int RcMaxRate2;
+        public int RcMinRate2;
+        public int RcMinVbvOverflowUse;
+        public int RcMaxAvailableVbvUse;
+        public int RcMinVbvFullness;
+        public int RcMaxVbvFullness;
+        public int RcMinVbvSize;
+        public int RcMaxVbvSize;
+        public int RcMinCompression;
+        public int RcMaxCompression;
+        public int RcMinQuantizer;
+        public int RcMaxQuantizer;
+        public int RcMinInterQuantizer;
+        public int RcMaxInterQuantizer;
+        public int RcMinGopQuantizer;
+        public int RcMaxGopQuantizer;
+        public int RcMinTempQuantizer;
+        public int RcMaxTempQuantizer;
+        public int RcMinPFQuantizer;
+        public int RcMaxPFQuantizer;
+        public int RcMinBFQuantizer;
+        public int RcMaxBFQuantizer;
+        public int RcMinIQP;
+        public int RcMaxIQP;
+        public int RcMinPQP;
+        public int RcMaxPQP;
+        public int RcMinBQP;
+        public int RcMaxBQP;
+        public int RcMinAQP;
+        public int RcMaxAQP;
+        public int RcMinCQP;
+        public int RcMaxCQP;
+        public int RcMinDQP;
+        public int RcMaxDQP;
+        public int RcMinEpsilon;
+        public int RcMaxEpsilon;
+        public int RcMinLambda;
+        public int RcMaxLambda;
+        public int RcMinVbvDelay;
+        public int RcMaxVbvDelay;
+        public int RcMinVbvDelay2;
+        public int RcMaxVbvDelay2;
+        public int RcMinVbvDelay3;
+        public int RcMaxVbvDelay3;
+        public int RcMinVbvDelay4;
+        public int RcMaxVbvDelay4;
+        public int RcMinVbvDelay5;
+        public int RcMaxVbvDelay5;
+        public int RcMinVbvDelay6;
+        public int RcMaxVbvDelay6;
+        public int RcMinVbvDelay7;
+        public int RcMaxVbvDelay7;
+        public int RcMinVbvDelay8;
+        public int RcMaxVbvDelay8;
+        public int RcMinVbvDelay9;
+        public int RcMaxVbvDelay9;
+        public int RcMinVbvDelay10;
+        public int RcMaxVbvDelay10;
 #pragma warning restore CS0649
     }
 }
