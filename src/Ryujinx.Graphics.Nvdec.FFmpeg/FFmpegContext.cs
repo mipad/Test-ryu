@@ -24,11 +24,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private readonly string _decoderType;
         private AVBufferRef* _hwDeviceContext = null;
         private readonly string _hardwareDecoderName;
-        private GetHwFormatDelegate _getHwFormatCallback;
 
         // 硬件帧格式回调委托
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private unsafe delegate AVPixelFormat GetHwFormatDelegate(AVCodecContext* ctx, AVPixelFormat* pix_fmts);
+
+        private GetHwFormatDelegate _getHwFormatCallback;
 
         // Android 硬件解码器映射
         private static readonly Dictionary<AVCodecID, string[]> AndroidHardwareDecoders = new()
