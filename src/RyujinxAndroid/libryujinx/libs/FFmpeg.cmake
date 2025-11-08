@@ -34,7 +34,7 @@ else ()
     list(APPEND PROJECT_ENV "PATH=${ANDROID_TOOLCHAIN_ROOT}/bin:$ENV{PATH}")
 endif ()
 
-# 设置 FFmpeg 配置选项 - 简化配置，移除 OpenGL
+# 设置 FFmpeg 配置选项 - 增强硬件解码支持
 set(FFMPEG_CONFIGURE_COMMAND
     <SOURCE_DIR>/configure
     --prefix=${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install
@@ -79,14 +79,16 @@ set(FFMPEG_CONFIGURE_COMMAND
     --enable-inline-asm
     --enable-jni
     --enable-mediacodec
+    --enable-decoder=mediacodec
     
-    # 硬件解码器支持
+    # 硬件解码器支持 - 增强配置
     --enable-decoder=h264_mediacodec
     --enable-decoder=hevc_mediacodec
     --enable-decoder=vp8_mediacodec
     --enable-decoder=vp9_mediacodec
     --enable-decoder=av1_mediacodec
     --enable-decoder=mpeg4_mediacodec
+    --enable-decoder=mpeg2_mediacodec
     
     # 核心软件解码器支持
     --enable-decoder=h264
@@ -152,8 +154,13 @@ set(FFMPEG_CONFIGURE_COMMAND
     --enable-bsf=aac_adtstoasc
     --enable-bsf=extract_extradata
     
-    # 硬件加速相关（移除有问题的选项）
+    # 硬件加速相关
     --enable-hwaccels
+    --enable-hwaccel=h264_mediacodec
+    --enable-hwaccel=hevc_mediacodec
+    --enable-hwaccel=vp8_mediacodec
+    --enable-hwaccel=vp9_mediacodec
+    --enable-hwaccel=av1_mediacodec
     
     --disable-zlib
     --enable-small
