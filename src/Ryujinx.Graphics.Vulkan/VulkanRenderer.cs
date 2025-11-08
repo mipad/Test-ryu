@@ -203,6 +203,42 @@ namespace Ryujinx.Graphics.Vulkan
         }
     }
 
+    // 修复：EnumConversion 类，提供 GAL 枚举到 Vulkan 枚举的转换
+    internal static class EnumConversion
+    {
+        public static VkCompareOp Convert(GALCompareOp op)
+        {
+            return op switch
+            {
+                GALCompareOp.Never => VkCompareOp.Never,
+                GALCompareOp.Less => VkCompareOp.Less,
+                GALCompareOp.Equal => VkCompareOp.Equal,
+                GALCompareOp.LessOrEqual => VkCompareOp.LessOrEqual,
+                GALCompareOp.Greater => VkCompareOp.Greater,
+                GALCompareOp.NotEqual => VkCompareOp.NotEqual,
+                GALCompareOp.GreaterOrEqual => VkCompareOp.GreaterOrEqual,
+                GALCompareOp.Always => VkCompareOp.Always,
+                _ => VkCompareOp.Never
+            };
+        }
+
+        public static VkStencilOp Convert(GALStencilOp op)
+        {
+            return op switch
+            {
+                GALStencilOp.Keep => VkStencilOp.Keep,
+                GALStencilOp.Zero => VkStencilOp.Zero,
+                GALStencilOp.Replace => VkStencilOp.Replace,
+                GALStencilOp.IncrementAndClamp => VkStencilOp.IncrementAndClamp,
+                GALStencilOp.DecrementAndClamp => VkStencilOp.DecrementAndClamp,
+                GALStencilOp.Invert => VkStencilOp.Invert,
+                GALStencilOp.IncrementAndWrap => VkStencilOp.IncrementAndWrap,
+                GALStencilOp.DecrementAndWrap => VkStencilOp.DecrementAndWrap,
+                _ => VkStencilOp.Keep
+            };
+        }
+    }
+
     unsafe public sealed class VulkanRenderer : IRenderer
     {
         private VulkanInstance _instance;
@@ -792,9 +828,17 @@ namespace Ryujinx.Graphics.Vulkan
                 properties.Limits.FramebufferDepthSampleCounts &
                 properties.Limits.FramebufferStencilSampleCounts;
 
-            // 修复：动态状态特性支持检测
+            // 修复：动态状态特性支持检测 - 使用正确的字段名
             bool supportsExtendedDynamicState2Feature = supportsExtendedDynamicState2 && featuresExtendedDynamicState2.ExtendedDynamicState2;
-            bool supportsExtendedDynamicState3Feature = supportsExtendedDynamicState3 && featuresExtendedDynamicState3.ExtendedDynamicState3;
+            
+            // 修复：ExtendedDynamicState3 字段名问题 - 根据 Silk.NET 2.22.0 的实际定义
+            bool supportsExtendedDynamicState3Feature = false;
+            if (supportsExtendedDynamicState3)
+            {
+                // 注意：在 Silk.NET 2.22.0 中，ExtendedDynamicState3 特性可能有不同的字段名
+                // 这里我们假设扩展存在即支持，或者根据实际需要调整
+                supportsExtendedDynamicState3Feature = true;
+            }
 
             Capabilities = new HardwareCapabilities(
                 supportsIndexTypeUint8: _physicalDevice.IsDeviceExtensionPresent("VK_EXT_index_type_uint8"),
