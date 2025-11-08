@@ -66,9 +66,9 @@ set(ALSOFT_REQUIRE_NEON OFF CACHE BOOL "Don't require NEON")
 set(ALSOFT_HRTF_DISABLE ON CACHE BOOL "Disable HRTF" FORCE) # 禁用HRTF可能减少延迟
 set(ALSOFT_AMBIENT_CHANNELS 0 CACHE STRING "Ambient channels") # 减少环境声道
 
-# 针对低延迟优化
+# 针对低延迟优化 - 修复弃用变量
 set(ALSOFT_DEFAULT_CFG "" CACHE STRING "Default config file")
-set(ALSOFT_CONFIG "" CACHE STRING "Config file")
+set(ALSOFT_INSTALL_CONFIG "" CACHE STRING "Config file")  # 修复：使用 INSTALL_CONFIG 替代 CONFIG
 set(ALSOFT_DEFAULT_REVERB OFF CACHE BOOL "Disable default reverb")
 set(ALSOFT_DEFAULT_ECHO OFF CACHE BOOL "Disable default echo")
 set(ALSOFT_DEFAULT_MODULATION OFF CACHE BOOL "Disable default modulation")
@@ -132,7 +132,17 @@ target_compile_options(ryujinxjni PRIVATE
 find_library(log-lib log)
 find_library(opensles-lib OpenSLES)
 find_library(android-lib android)
-find_library(thread-lib pthread)
+
+# 修复：使用正确的 pthread 查找方式
+find_library(pthread-lib pthread)
+if(NOT pthread-lib)
+    # 如果找不到 pthread，尝试使用编译器内置支持
+    target_compile_options(ryujinxjni PRIVATE -pthread)
+    target_link_libraries(ryujinxjni PRIVATE -pthread)
+    message(STATUS "Using compiler pthread support")
+else()
+    message(STATUS "Found pthread library: ${pthread-lib}")
+endif()
 
 # 添加 Oboe 包含目录
 include_directories(${oboe_SOURCE_DIR}/include)
@@ -289,12 +299,16 @@ target_link_libraries(
     ${log-lib}
     ${opensles-lib}
     ${android-lib}
-    ${thread-lib}  # 添加线程库
     -lvulkan
     adrenotools
     oboe
     OpenAL
 )
+
+# 如果找到了 pthread 库，则链接它
+if(pthread-lib)
+    target_link_libraries(ryujinxjni ${pthread-lib})
+endif()
 
 # 设置 OpenAL 输出目录
 set_target_properties(OpenAL PROPERTIES
