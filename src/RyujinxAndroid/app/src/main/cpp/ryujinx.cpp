@@ -491,3 +491,79 @@ const char* GetAndroidDeviceBrand() {
     }
     return brand;
 }
+
+// =============== 硬件解码器 JNI 接口 ===============
+extern "C"
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_media_HardwareDecoder_nativeInitializeHardwareDecoder(
+        JNIEnv *env,
+        jobject thiz,
+        jstring codec_mime,
+        jint width,
+        jint height) {
+    const char* mime = env->GetStringUTFChars(codec_mime, nullptr);
+    __android_log_print(ANDROID_LOG_INFO, "RyujinxHardware", "Native: Initialize hardware decoder: %s, %dx%d", mime, width, height);
+    env->ReleaseStringUTFChars(codec_mime, mime);
+    return JNI_TRUE;
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_media_HardwareDecoder_nativeDecodeFrame(
+        JNIEnv *env,
+        jobject thiz,
+        jbyteArray frame_data,
+        jint frame_size) {
+    jbyte* data = env->GetByteArrayElements(frame_data, nullptr);
+    if (data) {
+        __android_log_print(ANDROID_LOG_DEBUG, "RyujinxHardware", "Native: Decode frame, size: %d", frame_size);
+        // 这里可以添加实际的硬件解码逻辑
+        env->ReleaseByteArrayElements(frame_data, data, JNI_ABORT);
+    }
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_media_HardwareDecoder_nativeReleaseHardwareDecoder(
+        JNIEnv *env,
+        jobject thiz) {
+    __android_log_print(ANDROID_LOG_INFO, "RyujinxHardware", "Native: Release hardware decoder");
+}
+
+extern "C"
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_media_HardwareDecoder_nativeIsCodecSupported(
+        JNIEnv *env,
+        jobject thiz,
+        jstring codec_mime) {
+    const char* mime = env->GetStringUTFChars(codec_mime, nullptr);
+    __android_log_print(ANDROID_LOG_INFO, "RyujinxHardware", "Native: Check codec support: %s", mime);
+    // 这里应该检查实际的硬件支持
+    jboolean supported = JNI_TRUE; // 临时返回true
+    env->ReleaseStringUTFChars(codec_mime, mime);
+    return supported;
+}
+
+// =============== C# 调用的硬件解码接口 ===============
+extern "C"
+bool initializeHardwareDecoder(const char* codecMime, int width, int height) {
+    __android_log_print(ANDROID_LOG_INFO, "RyujinxHardware", "C: Initialize hardware decoder: %s, %dx%d", codecMime, width, height);
+    return true;
+}
+
+extern "C"
+bool decodeHardwareFrame(const uint8_t* data, int size) {
+    __android_log_print(ANDROID_LOG_DEBUG, "RyujinxHardware", "C: Decode hardware frame, size: %d", size);
+    return true;
+}
+
+extern "C"
+void releaseHardwareDecoder() {
+    __android_log_print(ANDROID_LOG_INFO, "RyujinxHardware", "C: Release hardware decoder");
+}
+
+extern "C"
+bool isHardwareCodecSupported(const char* codecMime) {
+    __android_log_print(ANDROID_LOG_INFO, "RyujinxHardware", "C: Check hardware codec support: %s", codecMime);
+    return true;
+}
