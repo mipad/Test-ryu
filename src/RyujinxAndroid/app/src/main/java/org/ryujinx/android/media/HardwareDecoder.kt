@@ -85,16 +85,17 @@ class HardwareDecoder {
      * 配置MediaFormat参数
      */
     private fun configureMediaFormat(format: MediaFormat, codecMime: String) {
+        // 使用常量值而不是 MediaCodecInfo 引用
         when (codecMime) {
             CODEC_H264 -> {
-                // H.264特定配置
-                format.setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileHigh)
-                format.setInteger(MediaFormat.KEY_LEVEL, MediaCodecInfo.CodecProfileLevel.AVCLevel52)
+                // H.264特定配置 - 使用常量值
+                format.setInteger(MediaFormat.KEY_PROFILE, 8) // AVCProfileHigh = 8
+                format.setInteger(MediaFormat.KEY_LEVEL, 512) // AVCLevel52 = 512
             }
             CODEC_H265 -> {
-                // H.265特定配置
-                format.setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.HEVCProfileMain)
-                format.setInteger(MediaFormat.KEY_LEVEL, MediaCodecInfo.CodecProfileLevel.HEVCHighTierLevel51)
+                // H.265特定配置 - 使用常量值
+                format.setInteger(MediaFormat.KEY_PROFILE, 1) // HEVCProfileMain = 1
+                format.setInteger(MediaFormat.KEY_LEVEL, 32768) // HEVCHighTierLevel51 = 32768
             }
         }
         
@@ -103,7 +104,7 @@ class HardwareDecoder {
         format.setInteger(MediaFormat.KEY_FRAME_RATE, 60) // 帧率
         format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1) // I帧间隔
         format.setInteger(MediaFormat.KEY_BIT_RATE, 8000000) // 比特率
-        format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible)
+        format.setInteger(MediaFormat.KEY_COLOR_FORMAT, 2135033992) // COLOR_FormatYUV420Flexible = 2135033992
     }
     
     /**
