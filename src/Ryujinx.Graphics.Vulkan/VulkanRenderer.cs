@@ -161,84 +161,6 @@ namespace Ryujinx.Graphics.Vulkan
         }
     }
 
-    // 扩展 CompareOp 以添加 Convert 方法 - 使用 GALCompareOp
-    // 注意：移除与 EnumConversion 冲突的方法，使用全限定名解决歧义
-    internal static class GALCompareOpExtensions
-    {
-        public static VkCompareOp ConvertToVulkan(this GALCompareOp op)
-        {
-            return op switch
-            {
-                GALCompareOp.Never => VkCompareOp.Never,
-                GALCompareOp.Less => VkCompareOp.Less,
-                GALCompareOp.Equal => VkCompareOp.Equal,
-                GALCompareOp.LessOrEqual => VkCompareOp.LessOrEqual,
-                GALCompareOp.Greater => VkCompareOp.Greater,
-                GALCompareOp.NotEqual => VkCompareOp.NotEqual,
-                GALCompareOp.GreaterOrEqual => VkCompareOp.GreaterOrEqual,
-                GALCompareOp.Always => VkCompareOp.Always,
-                _ => VkCompareOp.Never
-            };
-        }
-    }
-
-    // 扩展 StencilOp 以添加 Convert 方法 - 使用 GALStencilOp  
-    // 注意：移除与 EnumConversion 冲突的方法，使用全限定名解决歧义
-    internal static class GALStencilOpExtensions
-    {
-        public static VkStencilOp ConvertToVulkan(this GALStencilOp op)
-        {
-            return op switch
-            {
-                GALStencilOp.Keep => VkStencilOp.Keep,
-                GALStencilOp.Zero => VkStencilOp.Zero,
-                GALStencilOp.Replace => VkStencilOp.Replace,
-                GALStencilOp.IncrementAndClamp => VkStencilOp.IncrementAndClamp,
-                GALStencilOp.DecrementAndClamp => VkStencilOp.DecrementAndClamp,
-                GALStencilOp.Invert => VkStencilOp.Invert,
-                GALStencilOp.IncrementAndWrap => VkStencilOp.IncrementAndWrap,
-                GALStencilOp.DecrementAndWrap => VkStencilOp.DecrementAndWrap,
-                _ => VkStencilOp.Keep
-            };
-        }
-    }
-
-    // 修复：EnumConversion 类，提供 GAL 枚举到 Vulkan 枚举的转换
-    internal static class EnumConversion
-    {
-        public static VkCompareOp Convert(GALCompareOp op)
-        {
-            return op switch
-            {
-                GALCompareOp.Never => VkCompareOp.Never,
-                GALCompareOp.Less => VkCompareOp.Less,
-                GALCompareOp.Equal => VkCompareOp.Equal,
-                GALCompareOp.LessOrEqual => VkCompareOp.LessOrEqual,
-                GALCompareOp.Greater => VkCompareOp.Greater,
-                GALCompareOp.NotEqual => VkCompareOp.NotEqual,
-                GALCompareOp.GreaterOrEqual => VkCompareOp.GreaterOrEqual,
-                GALCompareOp.Always => VkCompareOp.Always,
-                _ => VkCompareOp.Never
-            };
-        }
-
-        public static VkStencilOp Convert(GALStencilOp op)
-        {
-            return op switch
-            {
-                GALStencilOp.Keep => VkStencilOp.Keep,
-                GALStencilOp.Zero => VkStencilOp.Zero,
-                GALStencilOp.Replace => VkStencilOp.Replace,
-                GALStencilOp.IncrementAndClamp => VkStencilOp.IncrementAndClamp,
-                GALStencilOp.DecrementAndClamp => VkStencilOp.DecrementAndClamp,
-                GALStencilOp.Invert => VkStencilOp.Invert,
-                GALStencilOp.IncrementAndWrap => VkStencilOp.IncrementAndWrap,
-                GALStencilOp.DecrementAndWrap => VkStencilOp.DecrementAndWrap,
-                _ => VkStencilOp.Keep
-            };
-        }
-    }
-
     unsafe public sealed class VulkanRenderer : IRenderer
     {
         private VulkanInstance _instance;
@@ -1728,8 +1650,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         public bool ShouldUpdateDepthTest(bool newEnable, GALCompareOp newCompareOp) // 使用 GALCompareOp
         {
-            // 修复：使用明确的 EnumConversion.Convert 方法解决歧义
-            VkCompareOp vkCompareOp = EnumConversion.Convert(newCompareOp);
+            // 修复：使用现有的 EnumConversion 扩展方法
+            VkCompareOp vkCompareOp = newCompareOp.Convert();
             bool shouldUpdate = _lastDepthTestEnable != newEnable || _lastDepthCompareOp != vkCompareOp;
             if (shouldUpdate)
             {
