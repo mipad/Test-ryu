@@ -15,6 +15,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private readonly AVPacket* _packet;
         private readonly AVCodecContext* _context;
         private readonly bool _useNewApi;
+        private bool _isFirstFrame = true;
 
         public FFmpegContext(AVCodecID codecId)
         {
@@ -33,6 +34,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
                 return;
             }
+
+            // 设置更宽松的错误恢复选项
+            _context->ErrorRecovery = 1; // FF_ER_CAREFUL
+            _context->SkipFrame = AVDiscard.Default;
+            _context->SkipIdct = AVDiscard.Default;
+            _context->SkipLoopFilter = AVDiscard.Default;
 
             if (FFmpegApi.avcodec_open2(_context, _codec, null) != 0)
             {
@@ -154,6 +161,14 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 result = FFmpegApi.avcodec_send_packet(_context, _packet);
                 if (result < 0 && result != FFmpegApi.EAGAIN && result != FFmpegApi.EOF)
                 {
+                    // 如果是第一个帧且出错，尝试刷新解码器
+                    if (_isFirstFrame)
+                    {
+                        FFmpegApi.avcodec_flush_buffers(_context);
+                        _isFirstFrame = false;
+                        FFmpegApi.av_packet_unref(_packet);
+                        return -1; // 跳过这个帧
+                    }
                     FFmpegApi.av_packet_unref(_packet);
                     return result;
                 }
@@ -163,12 +178,23 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 if (result >= 0)
                 {
                     gotFrame = 1;
+                    _isFirstFrame = false;
                 }
                 else if (result == FFmpegApi.EAGAIN || result == FFmpegApi.EOF)
                 {
                     // 需要更多输入数据或到达流结尾
                     gotFrame = 0;
                     result = 0; // 这些不是错误，只是状态
+                    _isFirstFrame = false;
+                }
+                else
+                {
+                    // 解码错误，尝试恢复
+                    if (_isFirstFrame)
+                    {
+                        FFmpegApi.avcodec_flush_buffers(_context);
+                    }
+                    gotFrame = 0;
                 }
             }
 
@@ -195,6 +221,16 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 result = _decodeFrame(_context, output.Frame, &gotFrame, _packet);
             }
 
+            if (result < 0 && _isFirstFrame)
+            {
+                // 第一个帧解码失败，尝试恢复
+                FFmpegApi.avcodec_flush_buffers(_context);
+                _isFirstFrame = false;
+                FFmpegApi.av_packet_unref(_packet);
+                FFmpegApi.av_frame_unref(output.Frame);
+                return -1;
+            }
+
             if (gotFrame == 0)
             {
                 FFmpegApi.av_frame_unref(output.Frame);
@@ -218,6 +254,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return -1;
             }
 
+            _isFirstFrame = false;
             return result < 0 ? result : 0;
         }
 
@@ -242,5 +279,3 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         }
     }
 }
-
-            
