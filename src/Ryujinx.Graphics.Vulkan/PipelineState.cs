@@ -502,17 +502,22 @@ namespace Ryujinx.Graphics.Vulkan
                     AlphaToOneEnable = AlphaToOneEnable,
                 };
 
-                var stencilFront = new StencilOpState(
-                    StencilFrontFailOp,
-                    StencilFrontPassOp,
-                    StencilFrontDepthFailOp,
-                    StencilFrontCompareOp);
+                // 修复：使用对象初始化语法而不是构造函数
+                var stencilFront = new Silk.NET.Vulkan.StencilOpState
+                {
+                    FailOp = StencilFrontFailOp,
+                    PassOp = StencilFrontPassOp,
+                    DepthFailOp = StencilFrontDepthFailOp,
+                    CompareOp = StencilFrontCompareOp
+                };
 
-                var stencilBack = new StencilOpState(
-                    StencilBackFailOp,
-                    StencilBackPassOp,
-                    StencilBackDepthFailOp,
-                    StencilBackCompareOp);
+                var stencilBack = new Silk.NET.Vulkan.StencilOpState
+                {
+                    FailOp = StencilBackFailOp,
+                    PassOp = StencilBackPassOp,
+                    DepthFailOp = StencilBackDepthFailOp,
+                    CompareOp = StencilBackCompareOp
+                };
 
                 var depthStencilState = new PipelineDepthStencilStateCreateInfo
                 {
