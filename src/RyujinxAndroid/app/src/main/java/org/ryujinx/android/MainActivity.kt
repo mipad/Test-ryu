@@ -33,6 +33,8 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
 import androidx.activity.result.contract.ActivityResultContracts
+import org.ryujinx.android.media.HardwareDecoderManager
+import org.ryujinx.android.media.HardwareDecoder
 
 class MainActivity : BaseActivity() {
     private var physicalControllerManager: PhysicalControllerManager =
