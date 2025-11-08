@@ -98,11 +98,11 @@ namespace Ryujinx.Graphics.Vulkan
         }
     }
 
-    // 新增：状态结构定义 - 使用 Ryujinx 的实际类型
+    // 修复：使用 GAL 中实际存在的类型
     internal struct State
     {
         public bool CullEnable { get; set; }
-        public CullMode CullMode { get; set; }
+        public GAL.FrontFace FrontFace { get; set; } // 使用 GAL.FrontFace
         public bool DepthTestEnable { get; set; }
         public GALCompareOp DepthCompareOp { get; set; } // 使用 GALCompareOp 别名
         public bool StencilTestEnable { get; set; }
@@ -110,17 +110,16 @@ namespace Ryujinx.Graphics.Vulkan
         // 可以添加更多状态字段
     }
 
-    // 扩展 CullMode 以添加 Convert 方法
-    internal static class CullModeExtensions
+    // 扩展 FrontFace 以添加 Convert 方法 - 使用 GAL.FrontFace
+    internal static class FrontFaceExtensions
     {
-        public static CullModeFlags Convert(this CullMode mode)
+        public static FrontFace Convert(this GAL.FrontFace face)
         {
-            return mode switch
+            return face switch
             {
-                CullMode.Front => CullModeFlags.FrontBit,
-                CullMode.Back => CullModeFlags.BackBit,
-                CullMode.FrontAndBack => CullModeFlags.FrontAndBack,
-                _ => CullModeFlags.None
+                GAL.FrontFace.Clockwise => FrontFace.Clockwise,
+                GAL.FrontFace.CounterClockwise => FrontFace.CounterClockwise,
+                _ => FrontFace.CounterClockwise
             };
         }
     }
@@ -1569,10 +1568,10 @@ namespace Ryujinx.Graphics.Vulkan
         }
     }
 
-    // 新增：动态状态跟踪器类
+    // 修复：动态状态跟踪器类，移除对 CullMode 的依赖
     internal class DynamicStateTracker
     {
-        private CullModeFlags _lastCullMode;
+        private FrontFace _lastFrontFace;
         private bool _lastCullEnable;
         private bool _lastDepthTestEnable;
         private VkCompareOp _lastDepthCompareOp; // 使用 VkCompareOp 解决歧义
@@ -1586,7 +1585,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void Reset()
         {
-            _lastCullMode = CullModeFlags.None;
+            _lastFrontFace = FrontFace.CounterClockwise;
             _lastCullEnable = false;
             _lastDepthTestEnable = false;
             _lastDepthCompareOp = VkCompareOp.Never; // 使用 VkCompareOp
@@ -1599,12 +1598,12 @@ namespace Ryujinx.Graphics.Vulkan
             // 保留当前状态但清除脏标志，用于帧开始
         }
 
-        public bool ShouldUpdateCullMode(CullModeFlags newMode, bool newEnable)
+        public bool ShouldUpdateFrontFace(FrontFace newFace, bool newEnable)
         {
-            bool shouldUpdate = _lastCullMode != newMode || _lastCullEnable != newEnable;
+            bool shouldUpdate = _lastFrontFace != newFace || _lastCullEnable != newEnable;
             if (shouldUpdate)
             {
-                _lastCullMode = newMode;
+                _lastFrontFace = newFace;
                 _lastCullEnable = newEnable;
             }
             return shouldUpdate;
@@ -1635,3 +1634,4 @@ namespace Ryujinx.Graphics.Vulkan
         }
     }
 }
+
