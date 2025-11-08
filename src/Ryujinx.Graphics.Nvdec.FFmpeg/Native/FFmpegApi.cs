@@ -158,6 +158,13 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
 
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial void av_buffer_unref(AVBufferRef** buf);
+
+        // JNI 支持函数
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial void av_jni_set_java_vm(void* vm, void* log_ctx);
+
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial int av_jni_get_java_vm(void** vm);
     }
 
     // 像素格式枚举定义
