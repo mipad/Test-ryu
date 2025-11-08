@@ -24,6 +24,21 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             }
         }
 
+        // 新增：条件渲染加速方法
+        public bool AccelerateHostConditionalRendering(BufferHandle buffer, int offset, bool isEqual)
+        {
+            // 这里可以实现主机条件渲染加速逻辑
+            // 暂时返回 false，需要实际实现
+            return false;
+        }
+
+        // 新增：启用变换反馈方法
+        public void EnableTransformFeedback(bool enabled)
+        {
+            // 这里可以实现变换反馈启用/禁用逻辑
+            // 暂时留空，需要实际实现
+        }
+
         public void ResetCounterPool()
         {
             foreach (var queue in _counterQueues)
