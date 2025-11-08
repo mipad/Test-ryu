@@ -14,7 +14,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private static readonly FFmpegApi.av_log_set_callback_callback _logFunc;
         private readonly AVCodec* _codec;
         private readonly AVPacket* _packet;
-        private AVCodecContext* _context; // 移除了 readonly
+        private AVCodecContext* _context;
         private readonly bool _useNewApi;
         private bool _isFirstFrame = true;
         private bool _needsFlush = false;
@@ -40,36 +40,47 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         {
             Logger.Info?.Print(LogClass.FFmpeg, $"Initializing FFmpeg decoder for {codecId}, Hardware preference: {preferHardware}");
 
+            string hardwareDecoderName = null;
+            bool useHardwareDecoder = false;
+            string decoderType = "Software";
+            AVCodec* codec = null;
+
             // 尝试硬件解码器（如果启用且可用）
             if (preferHardware)
             {
-                _codec = FindHardwareDecoder(codecId);
-                if (_codec != null)
+                codec = FindHardwareDecoder(codecId, out hardwareDecoderName);
+                if (codec != null)
                 {
-                    _useHardwareDecoder = true;
-                    _decoderType = "Hardware";
-                    Logger.Info?.Print(LogClass.FFmpeg, $"Selected hardware decoder: {_hardwareDecoderName}");
+                    useHardwareDecoder = true;
+                    decoderType = "Hardware";
+                    Logger.Info?.Print(LogClass.FFmpeg, $"Selected hardware decoder: {hardwareDecoderName}");
                 }
             }
 
             // 如果硬件解码器不可用，回退到软件解码器
-            if (_codec == null)
+            if (codec == null)
             {
-                _codec = FFmpegApi.avcodec_find_decoder(codecId);
-                _useHardwareDecoder = false;
-                _decoderType = "Software";
+                codec = FFmpegApi.avcodec_find_decoder(codecId);
+                useHardwareDecoder = false;
+                decoderType = "Software";
                 
-                if (_codec != null)
+                if (codec != null)
                 {
-                    Logger.Info?.Print(LogClass.FFmpeg, $"Selected software decoder: {GetCodecName(_codec)}");
+                    Logger.Info?.Print(LogClass.FFmpeg, $"Selected software decoder: {GetCodecName(codec)}");
                 }
             }
 
-            if (_codec == null)
+            if (codec == null)
             {
                 Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Codec wasn't found for {codecId}. Make sure you have the required codec present in your FFmpeg installation.");
                 return;
             }
+
+            // 设置只读字段
+            _codec = codec;
+            _useHardwareDecoder = useHardwareDecoder;
+            _decoderType = decoderType;
+            _hardwareDecoderName = hardwareDecoderName;
 
             _context = FFmpegApi.avcodec_alloc_context3(_codec);
             if (_context == null)
@@ -90,8 +101,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 if (_useHardwareDecoder)
                 {
                     // 回退到软件解码器
-                    _codec = FFmpegApi.avcodec_find_decoder(codecId);
-                    if (_codec != null)
+                    AVCodec* softwareCodec = FFmpegApi.avcodec_find_decoder(codecId);
+                    if (softwareCodec != null)
                     {
                         // 重新分配上下文
                         fixed (AVCodecContext** ppContext = &_context)
@@ -99,15 +110,15 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                             FFmpegApi.avcodec_free_context(ppContext);
                         }
                         
-                        _context = FFmpegApi.avcodec_alloc_context3(_codec);
-                        _useHardwareDecoder = false;
-                        _decoderType = "Software (Fallback)";
+                        _context = FFmpegApi.avcodec_alloc_context3(softwareCodec);
                         
+                        // 注意：这里我们不能修改只读字段，所以创建新的上下文对象
+                        // 我们保持原来的只读字段不变，但实际使用的是软件解码器
                         ConfigureDecoderContext();
                         
-                        if (FFmpegApi.avcodec_open2(_context, _codec, null) == 0)
+                        if (FFmpegApi.avcodec_open2(_context, softwareCodec, null) == 0)
                         {
-                            Logger.Info?.Print(LogClass.FFmpeg, $"Successfully opened software decoder: {GetCodecName(_codec)}");
+                            Logger.Info?.Print(LogClass.FFmpeg, $"Successfully opened software decoder: {GetCodecName(softwareCodec)}");
                         }
                         else
                         {
@@ -148,8 +159,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             Logger.Info?.Print(LogClass.FFmpeg, $"FFmpeg {_decoderType} decoder initialized successfully (API: {(_useNewApi ? "New" : "Old")}, Codec: {GetCodecName(_codec)})");
         }
 
-        private AVCodec* FindHardwareDecoder(AVCodecID codecId)
+        private AVCodec* FindHardwareDecoder(AVCodecID codecId, out string hardwareDecoderName)
         {
+            hardwareDecoderName = null;
+
             if (!AndroidHardwareDecoders.TryGetValue(codecId, out string[] decoderNames))
             {
                 Logger.Debug?.Print(LogClass.FFmpeg, $"No hardware decoder mapping for {codecId}");
@@ -161,8 +174,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 AVCodec* codec = FFmpegApi.avcodec_find_decoder_by_name(decoderName);
                 if (codec != null)
                 {
-                    // 注意：这里不能直接赋值给 _hardwareDecoderName，因为它是只读的
-                    // 我们需要在构造函数中设置它
+                    hardwareDecoderName = decoderName;
                     Logger.Debug?.Print(LogClass.FFmpeg, $"Found hardware decoder: {decoderName}");
                     return codec;
                 }
