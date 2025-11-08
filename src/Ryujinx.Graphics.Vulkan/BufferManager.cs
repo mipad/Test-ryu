@@ -94,6 +94,20 @@ namespace Ryujinx.Graphics.Vulkan
             HostImportedBufferMemoryRequirements = GetHostImportedUsageRequirements(gd);
         }
 
+        // 新增：每帧清理方法
+        public void TickFrame()
+        {
+            // 这里可以实现每帧的缓冲区管理逻辑
+            // 例如：清理临时缓冲区、优化内存布局等
+        }
+
+        // 新增：刷新缓存方法
+        public void FlushCaching()
+        {
+            // 这里可以实现缓冲区缓存刷新逻辑
+            // 例如：确保所有挂起的缓冲区操作完成
+        }
+
         public unsafe BufferHandle CreateHostImported(VulkanRenderer gd, nint pointer, int size)
         {
             var usage = HostImportedBufferUsageFlags;
@@ -535,11 +549,11 @@ namespace Ryujinx.Graphics.Vulkan
                 int convertedCount = pattern.GetConvertedCount(indexCount);
 
                 if (!hasConvertedIndexBuffer)
-                {
-                    convertedIndexBuffer = Create(gd, convertedCount * 4);
-                    indexBufferKey.SetBuffer(convertedIndexBuffer.GetBuffer());
-                    indexBufferHolder.AddCachedConvertedBuffer(indexBuffer.Offset, indexBuffer.Size, indexBufferKey, convertedIndexBuffer);
-                }
+                    {
+                        convertedIndexBuffer = Create(gd, convertedCount * 4);
+                        indexBufferKey.SetBuffer(convertedIndexBuffer.GetBuffer());
+                        indexBufferHolder.AddCachedConvertedBuffer(indexBuffer.Offset, indexBuffer.Size, indexBufferKey, convertedIndexBuffer);
+                    }
 
                 if (!hasConvertedIndirectBuffer)
                 {

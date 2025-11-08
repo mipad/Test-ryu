@@ -31,6 +31,7 @@ namespace Ryujinx.Graphics.Vulkan
         public readonly bool SupportsShaderStorageImageMultisample;
         public readonly bool SupportsConditionalRendering;
         public readonly bool SupportsExtendedDynamicState;
+        public readonly bool SupportsExtendedDynamicState3; // 新增：扩展动态状态3支持
         public readonly bool SupportsMultiView;
         public readonly bool SupportsNullDescriptors;
         public readonly bool SupportsPushDescriptors;
@@ -71,6 +72,7 @@ namespace Ryujinx.Graphics.Vulkan
             bool supportsShaderStorageImageMultisample,
             bool supportsConditionalRendering,
             bool supportsExtendedDynamicState,
+            bool supportsExtendedDynamicState3, // 新增：扩展动态状态3支持
             bool supportsMultiView,
             bool supportsNullDescriptors,
             bool supportsPushDescriptors,
@@ -110,6 +112,7 @@ namespace Ryujinx.Graphics.Vulkan
             SupportsShaderStorageImageMultisample = supportsShaderStorageImageMultisample;
             SupportsConditionalRendering = supportsConditionalRendering;
             SupportsExtendedDynamicState = supportsExtendedDynamicState;
+            SupportsExtendedDynamicState3 = supportsExtendedDynamicState3; // 新增：扩展动态状态3支持
             SupportsMultiView = supportsMultiView;
             SupportsNullDescriptors = supportsNullDescriptors;
             SupportsPushDescriptors = supportsPushDescriptors;

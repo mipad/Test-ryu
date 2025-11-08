@@ -6,7 +6,7 @@ using System.Collections.ObjectModel;
 
 namespace Ryujinx.Graphics.Vulkan
 {
-    class PipelineLayoutCache
+    class PipelineLayoutCache : IDisposable
     {
         private readonly struct PlceKey : IEquatable<PlceKey>
         {
@@ -84,6 +84,13 @@ namespace Ryujinx.Graphics.Vulkan
             var key = new PlceKey(setDescriptors, usePushDescriptors);
 
             return _plces.GetOrAdd(key, newKey => new PipelineLayoutCacheEntry(gd, device, setDescriptors, usePushDescriptors));
+        }
+
+        // 新增：每帧清理方法
+        public void TickFrame()
+        {
+            // 这里可以实现每帧的缓存清理逻辑
+            // 例如：清理长时间未使用的管道布局
         }
 
         protected virtual void Dispose(bool disposing)

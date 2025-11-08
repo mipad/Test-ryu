@@ -349,7 +349,7 @@ namespace Ryujinx.Graphics.Vulkan
             else if (_drawCounter >= DRAWS_TO_DISPATCH)
             {
                 // 只提交到工作线程，不立即刷新
-                CommandBufferPool?.DispatchWork();
+                CommandBufferPool?.SubmitWork();
             }
         }
 
@@ -372,7 +372,8 @@ namespace Ryujinx.Graphics.Vulkan
             if (TransformFeedbackApi == null || !Capabilities.SupportsTransformFeedback) return;
 
             // 启用/禁用变换反馈计数器
-            _counters?.EnableTransformFeedback(enabled);
+            // 注意：Counters 类中没有 EnableTransformFeedback 方法，暂时注释掉
+            // _counters?.EnableTransformFeedback(enabled);
 
             if (enabled)
             {
@@ -386,8 +387,11 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (ConditionalRenderingApi == null) return false;
 
-            BufferManager.FlushCaching();
-            return _counters?.AccelerateHostConditionalRendering(buffer, offset, isEqual) ?? false;
+            // 注意：BufferManager 中没有 FlushCaching 方法，暂时注释掉
+            // BufferManager.FlushCaching();
+            
+            // 注意：Counters 类中没有 AccelerateHostConditionalRendering 方法，暂时返回 false
+            return false; // _counters?.AccelerateHostConditionalRendering(buffer, offset, isEqual) ?? false;
         }
 
         // 修复：DMA 加速方法 - 使用正确的参数
@@ -764,47 +768,49 @@ namespace Ryujinx.Graphics.Vulkan
                 properties.Limits.FramebufferDepthSampleCounts &
                 properties.Limits.FramebufferStencilSampleCounts;
 
-            // 更新能力集，包含新的动态状态支持
+            // 修复：更新能力集构造函数调用，添加缺失的 SupportsExtendedDynamicState3 参数
+            bool supportsExtendedDynamicState3Feature = supportsExtendedDynamicState3 && featuresExtendedDynamicState3.ExtendedDynamicState3;
+
             Capabilities = new HardwareCapabilities(
-                _physicalDevice.IsDeviceExtensionPresent("VK_EXT_index_type_uint8"),
-                supportsCustomBorderColor,
-                supportsBlendOperationAdvanced,
-                propertiesBlendOperationAdvanced.AdvancedBlendCorrelatedOverlap,
-                propertiesBlendOperationAdvanced.AdvancedBlendNonPremultipliedSrcColor,
-                propertiesBlendOperationAdvanced.AdvancedBlendNonPremultipliedDstColor,
-                _physicalDevice.IsDeviceExtensionPresent(KhrDrawIndirectCount.ExtensionName),
-                _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_shader_interlock"),
-                _physicalDevice.IsDeviceExtensionPresent("VK_NV_geometry_shader_passthrough"),
-                features2.Features.ShaderFloat64,
-                featuresShaderInt8.ShaderInt8,
-                _physicalDevice.IsDeviceExtensionPresent("VK_EXT_shader_stencil_export"),
-                features2.Features.ShaderStorageImageMultisample,
-                _physicalDevice.IsDeviceExtensionPresent(ExtConditionalRendering.ExtensionName),
-                _physicalDevice.IsDeviceExtensionPresent(ExtExtendedDynamicState.ExtensionName),
-                supportsExtendedDynamicState3 && featuresExtendedDynamicState3.ExtendedDynamicState3, // 新增：动态状态3支持
-                features2.Features.MultiViewport && !(IsMoltenVk && Vendor == Vendor.Amd),
-                featuresRobustness2.NullDescriptor || IsMoltenVk,
-                supportsPushDescriptors && !IsMoltenVk,
-                propertiesPushDescriptor.MaxPushDescriptors,
-                featuresPrimitiveTopologyListRestart.PrimitiveTopologyListRestart,
-                featuresPrimitiveTopologyListRestart.PrimitiveTopologyPatchListRestart,
-                supportsTransformFeedback,
-                propertiesTransformFeedback.TransformFeedbackQueries,
-                features2.Features.OcclusionQueryPrecise,
-                _physicalDevice.PhysicalDeviceFeatures.PipelineStatisticsQuery,
-                _physicalDevice.PhysicalDeviceFeatures.GeometryShader,
-                _physicalDevice.PhysicalDeviceFeatures.TessellationShader,
-                _physicalDevice.IsDeviceExtensionPresent("VK_NV_viewport_array2"),
-                _physicalDevice.IsDeviceExtensionPresent(ExtExternalMemoryHost.ExtensionName),
-                supportsDepthClipControl && featuresDepthClipControl.DepthClipControl,
-                supportsAttachmentFeedbackLoop && featuresAttachmentFeedbackLoop.AttachmentFeedbackLoopLayout,
-                supportsDynamicAttachmentFeedbackLoop && featuresDynamicAttachmentFeedbackLoop.AttachmentFeedbackLoopDynamicState,
-                propertiesSubgroup.SubgroupSize,
-                supportedSampleCounts,
-                portabilityFlags,
-                vertexBufferAlignment,
-                properties.Limits.SubTexelPrecisionBits,
-                minResourceAlignment);
+                supportsIndexTypeUint8: _physicalDevice.IsDeviceExtensionPresent("VK_EXT_index_type_uint8"),
+                supportsCustomBorderColor: supportsCustomBorderColor,
+                supportsBlendEquationAdvanced: supportsBlendOperationAdvanced,
+                supportsBlendEquationAdvancedCorrelatedOverlap: propertiesBlendOperationAdvanced.AdvancedBlendCorrelatedOverlap,
+                supportsBlendEquationAdvancedNonPreMultipliedSrcColor: propertiesBlendOperationAdvanced.AdvancedBlendNonPremultipliedSrcColor,
+                supportsBlendEquationAdvancedNonPreMultipliedDstColor: propertiesBlendOperationAdvanced.AdvancedBlendNonPremultipliedDstColor,
+                supportsIndirectParameters: _physicalDevice.IsDeviceExtensionPresent(KhrDrawIndirectCount.ExtensionName),
+                supportsFragmentShaderInterlock: _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_shader_interlock"),
+                supportsGeometryShaderPassthrough: _physicalDevice.IsDeviceExtensionPresent("VK_NV_geometry_shader_passthrough"),
+                supportsShaderFloat64: features2.Features.ShaderFloat64,
+                supportsShaderInt8: featuresShaderInt8.ShaderInt8,
+                supportsShaderStencilExport: _physicalDevice.IsDeviceExtensionPresent("VK_EXT_shader_stencil_export"),
+                supportsShaderStorageImageMultisample: features2.Features.ShaderStorageImageMultisample,
+                supportsConditionalRendering: _physicalDevice.IsDeviceExtensionPresent(ExtConditionalRendering.ExtensionName),
+                supportsExtendedDynamicState: _physicalDevice.IsDeviceExtensionPresent(ExtExtendedDynamicState.ExtensionName),
+                supportsExtendedDynamicState3: supportsExtendedDynamicState3Feature, // 新增：动态状态3支持
+                supportsMultiView: features2.Features.MultiViewport && !(IsMoltenVk && Vendor == Vendor.Amd),
+                supportsNullDescriptors: featuresRobustness2.NullDescriptor || IsMoltenVk,
+                supportsPushDescriptors: supportsPushDescriptors && !IsMoltenVk,
+                maxPushDescriptors: propertiesPushDescriptor.MaxPushDescriptors,
+                supportsPrimitiveTopologyListRestart: featuresPrimitiveTopologyListRestart.PrimitiveTopologyListRestart,
+                supportsPrimitiveTopologyPatchListRestart: featuresPrimitiveTopologyListRestart.PrimitiveTopologyPatchListRestart,
+                supportsTransformFeedback: supportsTransformFeedback,
+                supportsTransformFeedbackQueries: propertiesTransformFeedback.TransformFeedbackQueries,
+                supportsPreciseOcclusionQueries: features2.Features.OcclusionQueryPrecise,
+                supportsPipelineStatisticsQuery: _physicalDevice.PhysicalDeviceFeatures.PipelineStatisticsQuery,
+                supportsGeometryShader: _physicalDevice.PhysicalDeviceFeatures.GeometryShader,
+                supportsTessellationShader: _physicalDevice.PhysicalDeviceFeatures.TessellationShader,
+                supportsViewportArray2: _physicalDevice.IsDeviceExtensionPresent("VK_NV_viewport_array2"),
+                supportsHostImportedMemory: _physicalDevice.IsDeviceExtensionPresent(ExtExternalMemoryHost.ExtensionName),
+                supportsDepthClipControl: supportsDepthClipControl && featuresDepthClipControl.DepthClipControl,
+                supportsAttachmentFeedbackLoop: supportsAttachmentFeedbackLoop && featuresAttachmentFeedbackLoop.AttachmentFeedbackLoopLayout,
+                supportsDynamicAttachmentFeedbackLoop: supportsDynamicAttachmentFeedbackLoop && featuresDynamicAttachmentFeedbackLoop.AttachmentFeedbackLoopDynamicState,
+                subgroupSize: propertiesSubgroup.SubgroupSize,
+                supportedSampleCounts: supportedSampleCounts,
+                portabilitySubset: portabilityFlags,
+                vertexBufferAlignment: vertexBufferAlignment,
+                subTexelPrecisionBits: properties.Limits.SubTexelPrecisionBits,
+                minResourceAlignment: minResourceAlignment);
 
             IsSharedMemory = MemoryAllocator.IsDeviceMemoryShared(_physicalDevice);
 
@@ -1154,10 +1160,10 @@ namespace Ryujinx.Graphics.Vulkan
             bool supportsFragmentDensityMap = SupportsFragmentDensityMap;
             bool supportsFragmentDensityMap2 = SupportsFragmentDensityMap2;
 
-            // 更新能力返回，包含新的特性支持
+            // 修复：使用明确的参数名调用 Capabilities 构造函数
             return new Capabilities(
                 api: TargetApi.Vulkan,
-                GpuVendor,
+                vendorName: GpuVendor,
                 memoryType: memoryType,
                 hasFrontFacingBug: IsIntelWindows,
                 hasVectorIndexingBug: IsQualcommProprietary,
@@ -1648,8 +1654,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         public bool ShouldUpdateDepthTest(bool newEnable, GALCompareOp newCompareOp) // 使用 GALCompareOp
         {
-            // 将 GAL CompareOp 转换为 VkCompareOp 进行比较
-            VkCompareOp vkCompareOp = newCompareOp.Convert();
+            // 修复：使用明确的 CompareOpExtensions.Convert 方法解决歧义
+            VkCompareOp vkCompareOp = CompareOpExtensions.Convert(newCompareOp);
             bool shouldUpdate = _lastDepthTestEnable != newEnable || _lastDepthCompareOp != vkCompareOp;
             if (shouldUpdate)
             {

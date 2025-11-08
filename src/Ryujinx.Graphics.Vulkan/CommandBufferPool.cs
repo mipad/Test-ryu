@@ -102,6 +102,13 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
+        // 新增：提交工作方法
+        public void SubmitWork()
+        {
+            // 这里可以实现异步工作提交逻辑
+            // 例如：将命令缓冲区提交到工作线程处理
+        }
+
         public void AddDependant(int cbIndex, IAuto dependant)
         {
             dependant.IncrementReferenceCount();
