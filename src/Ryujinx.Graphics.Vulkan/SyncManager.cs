@@ -8,12 +8,17 @@ namespace Ryujinx.Graphics.Vulkan
 {
     class SyncManager
     {
-        private class SyncHandle
+        internal class SyncHandle
         {
             public ulong ID;
             public MultiFenceHolder Waitable;
             public ulong FlushId;
             public bool Signalled;
+
+            public bool NeedsFlush(ulong currentFlushId)
+            {
+                return (long)(FlushId - currentFlushId) >= 0;
+            }
         }
 
         private ulong _firstHandle;
@@ -226,15 +231,6 @@ namespace Ryujinx.Graphics.Vulkan
             _waitTicks = 0;
 
             return result;
-        }
-    }
-
-    // 新增：为 SyncHandle 添加扩展方法
-    internal static class SyncHandleExtensions
-    {
-        public static bool NeedsFlush(this SyncManager.SyncHandle handle, ulong currentFlushId)
-        {
-            return (long)(handle.FlushId - currentFlushId) >= 0;
         }
     }
 }
