@@ -1,8 +1,10 @@
-namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
+public enum AVCodecID
 {
-    enum AVCodecID
-    {
-        AV_CODEC_ID_H264 = 27,
-        AV_CODEC_ID_VP8 = 139,
-    }
+    AV_CODEC_ID_H264 = 27,
+    AV_CODEC_ID_HEVC = 173,
+    AV_CODEC_ID_VP9 = 167,
+    AV_CODEC_ID_AV1 = 227,
+    AV_CODEC_ID_MPEG4 = 13,
+    AV_CODEC_ID_MPEG2VIDEO = 15,
+    AV_CODEC_ID_VP8 = 139,
 }
