@@ -232,6 +232,7 @@ namespace Ryujinx.Graphics.Vulkan
         internal KhrSwapchain SwapchainApi { get; private set; }
         internal ExtConditionalRendering ConditionalRenderingApi { get; private set; }
         internal ExtExtendedDynamicState ExtendedDynamicStateApi { get; private set; }
+        internal ExtExtendedDynamicState2 ExtendedDynamicState2Api { get; private set; }
         internal KhrPushDescriptor PushDescriptorApi { get; private set; }
         internal ExtTransformFeedback TransformFeedbackApi { get; private set; }
         internal KhrDrawIndirectCount DrawIndirectCountApi { get; private set; }
@@ -475,6 +476,12 @@ namespace Ryujinx.Graphics.Vulkan
                 ExtendedDynamicStateApi = extendedDynamicStateApi;
             }
 
+            // 新增：扩展动态状态2支持
+            if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtExtendedDynamicState2 extendedDynamicState2Api))
+            {
+                ExtendedDynamicState2Api = extendedDynamicState2Api;
+            }
+
             // 新增：扩展动态状态3支持
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtExtendedDynamicState3 extendedDynamicState3Api))
             {
@@ -613,6 +620,12 @@ namespace Ryujinx.Graphics.Vulkan
                 SType = StructureType.PhysicalDevicePortabilitySubsetFeaturesKhr,
             };
 
+            // 新增：扩展动态状态2特性
+            PhysicalDeviceExtendedDynamicState2FeaturesEXT featuresExtendedDynamicState2 = new()
+            {
+                SType = StructureType.PhysicalDeviceExtendedDynamicState2FeaturesExt,
+            };
+
             // 新增：扩展动态状态3特性
             PhysicalDeviceExtendedDynamicState3FeaturesEXT featuresExtendedDynamicState3 = new()
             {
@@ -664,6 +677,15 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 featuresDynamicAttachmentFeedbackLoop.PNext = features2.PNext;
                 features2.PNext = &featuresDynamicAttachmentFeedbackLoop;
+            }
+
+            // 新增：扩展动态状态2支持检测
+            bool supportsExtendedDynamicState2 = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_extended_dynamic_state2");
+
+            if (supportsExtendedDynamicState2)
+            {
+                featuresExtendedDynamicState2.PNext = features2.PNext;
+                features2.PNext = &featuresExtendedDynamicState2;
             }
 
             // 新增：扩展动态状态3支持检测
@@ -770,8 +792,8 @@ namespace Ryujinx.Graphics.Vulkan
                 properties.Limits.FramebufferDepthSampleCounts &
                 properties.Limits.FramebufferStencilSampleCounts;
 
-            // 修复：更新能力集构造函数调用，添加缺失的 SupportsExtendedDynamicState3 参数
-            // 注意：ExtendedDynamicState3 字段在较新版本的Silk.NET中可能名称不同，这里使用正确的字段名
+            // 修复：动态状态特性支持检测
+            bool supportsExtendedDynamicState2Feature = supportsExtendedDynamicState2 && featuresExtendedDynamicState2.ExtendedDynamicState2;
             bool supportsExtendedDynamicState3Feature = supportsExtendedDynamicState3 && featuresExtendedDynamicState3.ExtendedDynamicState3;
 
             Capabilities = new HardwareCapabilities(
@@ -1163,7 +1185,7 @@ namespace Ryujinx.Graphics.Vulkan
             bool supportsFragmentDensityMap = SupportsFragmentDensityMap;
             bool supportsFragmentDensityMap2 = SupportsFragmentDensityMap2;
 
-            // 修复：使用明确的参数名调用 Capabilities 构造函数
+            // 修复：添加动态状态支持参数
             return new Capabilities(
                 api: TargetApi.Vulkan,
                 vendorName: GpuVendor,
@@ -1214,6 +1236,7 @@ namespace Ryujinx.Graphics.Vulkan
                 supportsFragmentDensityMap2: supportsFragmentDensityMap2,
                 // 新增：动态状态支持
                 supportsExtendedDynamicState: Capabilities.SupportsExtendedDynamicState,
+                supportsExtendedDynamicState2: ExtendedDynamicState2Api != null,
                 supportsExtendedDynamicState3: Capabilities.SupportsExtendedDynamicState3,
                 uniformBufferSetIndex: PipelineBase.UniformSetIndex,
                 storageBufferSetIndex: PipelineBase.StorageSetIndex,
@@ -1331,6 +1354,10 @@ namespace Ryujinx.Graphics.Vulkan
             if (Capabilities.SupportsExtendedDynamicState)
             {
                 Logger.Notice.Print(LogClass.Gpu, "Extended Dynamic State: Supported");
+            }
+            if (ExtendedDynamicState2Api != null)
+            {
+                Logger.Notice.Print(LogClass.Gpu, "Extended Dynamic State 2: Supported");
             }
             if (Capabilities.SupportsExtendedDynamicState3)
             {
