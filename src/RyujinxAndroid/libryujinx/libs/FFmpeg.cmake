@@ -14,7 +14,7 @@ if (CMAKE_HOST_WIN32)
             COMMAND ${VSWHERE_BIN} "-latest" "-find" "VC\\Tools\\MSVC\\*\\bin\\Hostx64\\x64\\nmake.exe"
             OUTPUT_VARIABLE NMAKE_PATHS_OUTPUT
             OUTPUT_STRIP_TRAILING_WHITESPACE
-            COMMAND_ERRORIS_FATAL ANY
+            COMMAND_ERROR_IS_FATAL ANY
     )
     string(REPLACE "\n" ";" NMAKE_PATH_LIST "${NMAKE_PATHS_OUTPUT}")
     list(GET NMAKE_PATH_LIST 0 NMAKE_PATH)
@@ -34,7 +34,7 @@ else ()
     list(APPEND PROJECT_ENV "PATH=${ANDROID_TOOLCHAIN_ROOT}/bin:$ENV{PATH}")
 endif ()
 
-# 设置 FFmpeg 配置选项 - 使用稳定版本并添加错误恢复支持
+# 设置 FFmpeg 配置选项 - 简化配置，只启用必要的解码功能
 set(FFMPEG_CONFIGURE_COMMAND
     <SOURCE_DIR>/configure
     --prefix=${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install
@@ -71,35 +71,54 @@ set(FFMPEG_CONFIGURE_COMMAND
     --enable-avutil
     --enable-swresample
     --enable-swscale
-    --enable-network
-    --enable-protocols
-    --enable-filters
+    --disable-network
+    --disable-protocols
+    --disable-filters
     --enable-asm
     --enable-neon
     --enable-inline-asm
     --enable-jni
     --enable-mediacodec
-    --enable-decoder=*
-    --enable-encoder=*
-    --enable-demuxer=*
-    --enable-muxer=*
-    --enable-parser=*
-    --enable-bsf=*
-    --enable-hwaccels
-    --enable-zlib
+    # 只启用必要的解码器，而不是所有
+    --enable-decoder=h264
+    --enable-decoder=hevc
+    --enable-decoder=aac
+    --enable-decoder=mp3
+    --enable-decoder=ac3
+    --enable-decoder=eac3
+    --enable-decoder=flac
+    --enable-decoder=vorbis
+    --enable-decoder=opus
+    --enable-demuxer=h264
+    --enable-demuxer=hevc
+    --enable-demuxer=aac
+    --enable-demuxer=mp3
+    --enable-demuxer=ac3
+    --enable-demuxer=eac3
+    --enable-demuxer=flac
+    --enable-demuxer=ogg
+    --enable-demuxer=mov
+    --enable-demuxer=matroska
+    --enable-parser=h264
+    --enable-parser=hevc
+    --enable-parser=aac
+    --enable-parser=ac3
+    --enable-parser=mpegaudio
+    --enable-bsf=h264_mp4toannexb
+    --enable-bsf=hevc_mp4toannexb
+    --enable-bsf=aac_adtstoasc
+    --disable-hwaccels
+    --disable-zlib
     --enable-small
     --enable-optimizations
     --disable-debug
     --disable-stripping
-    # 添加错误恢复和容错支持
+    # 添加错误恢复支持
     --enable-error-resilience
     --enable-hardcoded-tables
     --enable-safe-bitstream-reader
-    # 针对 H.264 的特殊配置
-    --enable-libx264
-    --enable-gpl
-    --enable-nonfree
-    --pkg-config=pkg-config
+    # 移除 pkg-config 依赖
+    --pkg-config=false
 )
 
 # 添加配置验证步骤
