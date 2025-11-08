@@ -1,6 +1,7 @@
 using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.Nvdec.FFmpeg.Native;
 using System;
+using Ryujinx.Graphics.Nvdec;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
