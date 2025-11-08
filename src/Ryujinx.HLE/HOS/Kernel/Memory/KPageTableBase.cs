@@ -98,6 +98,10 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             _reservedAddressSpaceSize = reservedAddressSpaceSize;
         }
 
+        // 添加的区域大小获取方法
+        public ulong GetHeapRegionSize() => HeapRegionEnd - HeapRegionStart;
+        public ulong GetAliasRegionSize() => AliasRegionEnd - AliasRegionStart;
+
         public Result InitializeForProcess(
             ProcessCreationFlags flags,
             bool fromBack,
