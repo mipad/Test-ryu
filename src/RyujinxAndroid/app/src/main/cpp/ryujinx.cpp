@@ -1,4 +1,4 @@
-// ryujinx.cpp (完整修复版本)
+// ryujinx.cpp (增强调试版本)
 #include "ryuijnx.h"
 #include <chrono>
 #include <csignal>
@@ -7,7 +7,7 @@
 #include <stdarg.h>
 #include <sys/system_properties.h>
 
-// 全局变量定义 (在cpp文件中定义)
+// 全局变量定义
 long _renderingThreadId = 0;
 JavaVM *_vm = nullptr;
 jobject _mainActivity = nullptr;
@@ -21,6 +21,9 @@ extern "C" {
     // FFmpeg MediaCodec 需要的 JNI 函数
     void av_jni_set_java_vm(void *vm, void *log_ctx);
     int av_jni_get_java_vm(void **vm);
+    
+    // FFmpeg 错误处理函数
+    char* av_err2str(int errnum);
 }
 
 extern "C"
@@ -256,19 +259,47 @@ JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setupFFmpegJNI(JNIEnv *env, jobject thiz) {
     // 确保 FFmpeg 可以使用 JNI
     void* vm = nullptr;
-    av_jni_get_java_vm(&vm);
+    int result = av_jni_get_java_vm(&vm);
+    __android_log_print(ANDROID_LOG_INFO, "Ryujinx", "av_jni_get_java_vm result: %d, vm: %p", result, vm);
+    
     if (vm == nullptr) {
         // 如果 FFmpeg 没有获取到 JVM，重新设置
         JavaVM* jvm = nullptr;
         env->GetJavaVM(&jvm);
         if (jvm != nullptr) {
             av_jni_set_java_vm(jvm, nullptr);
-            __android_log_print(ANDROID_LOG_INFO, "Ryujinx", "FFmpeg JNI setup completed");
+            __android_log_print(ANDROID_LOG_INFO, "Ryujinx", "FFmpeg JNI setup completed - JVM set manually");
+            
+            // 验证设置
+            void* verify_vm = nullptr;
+            int verify_result = av_jni_get_java_vm(&verify_vm);
+            __android_log_print(ANDROID_LOG_INFO, "Ryujinx", "JNI setup verification - result: %d, vm: %p", verify_result, verify_vm);
+        } else {
+            __android_log_print(ANDROID_LOG_ERROR, "Ryujinx", "Failed to get JVM for FFmpeg");
         }
+    } else {
+        __android_log_print(ANDROID_LOG_INFO, "Ryujinx", "FFmpeg JNI already setup - using existing JVM");
     }
 }
 
-// =============== Oboe Audio JNI 接口 (修复版本) ===============
+// =============== FFmpeg 硬件解码器检测 ===============
+extern "C"
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_isFFmpegHardwareDecoderAvailable(JNIEnv *env, jobject thiz, jstring codec_name) {
+    const char* codec_name_str = env->GetStringUTFChars(codec_name, nullptr);
+    if (!codec_name_str) {
+        return JNI_FALSE;
+    }
+    
+    // 这里需要链接 FFmpeg 库来检测解码器
+    // 由于链接问题，我们暂时返回 true，让上层代码自己检测
+    __android_log_print(ANDROID_LOG_INFO, "Ryujinx", "Checking hardware decoder: %s", codec_name_str);
+    
+    env->ReleaseStringUTFChars(codec_name, codec_name_str);
+    return JNI_TRUE;
+}
+
+// =============== Oboe Audio JNI 接口 ===============
 extern "C"
 JNIEXPORT jboolean JNICALL
 Java_org_ryujinx_android_NativeHelpers_initOboeAudio(JNIEnv *env, jobject thiz, jint sample_rate, jint channel_count) {
@@ -361,7 +392,7 @@ Java_org_ryujinx_android_NativeHelpers_getAndroidDeviceBrand(JNIEnv *env, jobjec
     return env->NewStringUTF(brand);
 }
 
-// =============== Oboe Audio C 接口 (for C# P/Invoke) ===============
+// =============== Oboe Audio C 接口 ===============
 extern "C"
 bool initOboeAudio(int sample_rate, int channel_count) {
     bool result = RyujinxOboe::OboeAudioRenderer::GetInstance().Initialize(sample_rate, channel_count);
@@ -421,13 +452,24 @@ extern "C"
 void setupFFmpegJNI() {
     // 确保 FFmpeg 可以使用 JNI
     void* vm = nullptr;
-    av_jni_get_java_vm(&vm);
+    int result = av_jni_get_java_vm(&vm);
+    __android_log_print(ANDROID_LOG_INFO, "Ryujinx", "C setupFFmpegJNI - av_jni_get_java_vm result: %d, vm: %p", result, vm);
+    
     if (vm == nullptr) {
         // 如果 FFmpeg 没有获取到 JVM，使用全局的 _vm
         if (_vm != nullptr) {
             av_jni_set_java_vm(_vm, nullptr);
             __android_log_print(ANDROID_LOG_INFO, "Ryujinx", "FFmpeg JNI setup completed from C");
+            
+            // 验证设置
+            void* verify_vm = nullptr;
+            int verify_result = av_jni_get_java_vm(&verify_vm);
+            __android_log_print(ANDROID_LOG_INFO, "Ryujinx", "C JNI setup verification - result: %d, vm: %p", verify_result, verify_vm);
+        } else {
+            __android_log_print(ANDROID_LOG_ERROR, "Ryujinx", "C setupFFmpegJNI failed: _vm is null");
         }
+    } else {
+        __android_log_print(ANDROID_LOG_INFO, "Ryujinx", "FFmpeg JNI already set from C, vm: %p", vm);
     }
 }
 
