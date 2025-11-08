@@ -106,6 +106,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         internal static unsafe partial AVCodec* avcodec_find_decoder(AVCodecID id);
 
         [LibraryImport(AvCodecLibraryName)]
+        internal static unsafe partial AVCodec* avcodec_find_decoder_by_name([MarshalAs(UnmanagedType.LPUTF8Str)] string name);
+
+        [LibraryImport(AvCodecLibraryName)]
         internal static unsafe partial AVCodecContext* avcodec_alloc_context3(AVCodec* codec);
 
         [LibraryImport(AvCodecLibraryName)]
