@@ -32,6 +32,9 @@ class NativeHelpers {
     // 新增：FFmpeg JNI 支持
     external fun setupFFmpegJNI()
     
+    // 新增：硬件解码器检测
+    external fun isFFmpegHardwareDecoderAvailable(codecName: String): Boolean
+    
     // 新增：Oboe 音频支持
     external fun initOboeAudio(sampleRate: Int, channelCount: Int): Boolean
     external fun shutdownOboeAudio()
