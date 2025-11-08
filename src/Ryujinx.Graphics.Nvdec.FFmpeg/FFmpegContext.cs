@@ -36,9 +36,24 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             { AVCodecID.AV_CODEC_ID_MPEG2VIDEO, new[] { "mpeg2_mediacodec" } },
         };
 
+        // 导入设置 FFmpeg JNI 的 Native 函数
+        [DllImport("ryujinxjni", CallingConvention = CallingConvention.Cdecl)]
+        private static extern void setupFFmpegJNI();
+
         public FFmpegContext(AVCodecID codecId, bool preferHardware = true)
         {
             Logger.Info?.Print(LogClass.FFmpeg, $"Initializing FFmpeg decoder for {codecId}, Hardware preference: {preferHardware}");
+
+            // 确保 FFmpeg JNI 环境已设置
+            try
+            {
+                setupFFmpegJNI();
+                Logger.Debug?.Print(LogClass.FFmpeg, "FFmpeg JNI environment setup completed");
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.FFmpeg, $"Failed to setup FFmpeg JNI: {ex.Message}");
+            }
 
             // 直接初始化只读字段，而不是通过方法
             string hardwareDecoderName = null;
