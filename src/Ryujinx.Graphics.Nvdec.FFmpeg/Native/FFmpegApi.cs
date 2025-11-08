@@ -199,8 +199,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         AV_PIX_FMT_VIDEOTOOLBOX = 157,
         AV_PIX_FMT_MEDIACODEC = 165,
         AV_PIX_FMT_CUDA = 166,
-        
-        // 更多格式可以按需添加
     }
 
     // 硬件解码相关类型定义
@@ -238,20 +236,5 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         public void* FreeCallback;
     }
 
-    // 添加 AVCodecContext 中需要的字段定义
-    [StructLayout(LayoutKind.Sequential)]
-    internal unsafe struct AVCodecContext
-    {
-        // 这里只定义我们实际使用的字段
-        public IntPtr GetFormat; // 函数指针
-        public AVBufferRef* HwDeviceCtx;
-        public int ErrRecognition;
-        public int ErrorConcealment;
-        public int WorkaroundBugs;
-        public int Flags2;
-        public int ThreadCount;
-        public int Refs;
-        public int HasBFrames;
-        // 其他字段...
-    }
+    // 移除重复的 AVCodecContext 定义，使用 AVCodecContext.cs 中的定义
 }
