@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (修复版本 - 基于yuzu实现)
+// OboeHardwareDeviceDriver.cs 
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -86,7 +86,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 {
                     try
                     {
-                        Thread.Sleep(10); // 调整为10ms更新频率，与yuzu保持一致
+                        Thread.Sleep(10); // 调整为10ms更新频率
                         updateCounter++;
                         
                         if (_isOboeInitialized)
@@ -161,7 +161,7 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         // ========== 设备能力查询 ==========
         public bool SupportsSampleRate(uint sampleRate) =>
-            sampleRate == 48000; // 只支持48000Hz，与yuzu保持一致
+            sampleRate == 48000; // 只支持48000Hz
 
         public bool SupportsSampleFormat(SampleFormat sampleFormat) =>
             sampleFormat == SampleFormat.PcmInt16;
