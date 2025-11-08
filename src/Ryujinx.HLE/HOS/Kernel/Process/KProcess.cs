@@ -72,6 +72,9 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
         private ulong _mainThreadStackSize;
         private ulong _memoryUsageCapacity;
 
+        // 改进1: 添加ASLR偏移常量
+        private const ulong AslrOffset32Bit = 0x500000;
+
         public KHandleTable HandleTable { get; private set; }
 
         public ulong UserExceptionContextAddress { get; private set; }
@@ -243,7 +246,13 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
 
             InitializeMemoryManager(creationInfo.Flags);
 
+            // 改进3: 为32位进程添加ASLR偏移
             ulong codeAddress = creationInfo.CodeAddress + Context.ReservedSize;
+            if ((creationInfo.Flags & ProcessCreationFlags.AddressSpaceMask) == ProcessCreationFlags.AddressSpace32Bit ||
+                (creationInfo.Flags & ProcessCreationFlags.AddressSpaceMask) == ProcessCreationFlags.AddressSpace32BitWithoutAlias)
+            {
+                codeAddress += AslrOffset32Bit;
+            }
 
             ulong codeSize = codePagesCount * KPageTableBase.PageSize;
 
@@ -346,23 +355,28 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
 
             Flags = creationInfo.Flags;
             TitleId = creationInfo.TitleId;
+            
+            // 改进1: 为32位地址空间添加ASLR偏移
             _entrypoint = creationInfo.CodeAddress + Context.ReservedSize;
+            if ((Flags & ProcessCreationFlags.AddressSpaceMask) == ProcessCreationFlags.AddressSpace32Bit ||
+                (Flags & ProcessCreationFlags.AddressSpaceMask) == ProcessCreationFlags.AddressSpace32BitWithoutAlias)
+            {
+                _entrypoint += AslrOffset32Bit;
+            }
+            
             _imageSize = (ulong)creationInfo.CodePagesCount * KPageTableBase.PageSize;
 
+            // 改进2: 使用区域大小计算内存容量
             switch (Flags & ProcessCreationFlags.AddressSpaceMask)
             {
                 case ProcessCreationFlags.AddressSpace32Bit:
                 case ProcessCreationFlags.AddressSpace64BitDeprecated:
                 case ProcessCreationFlags.AddressSpace64Bit:
-                    _memoryUsageCapacity = MemoryManager.HeapRegionEnd -
-                                           MemoryManager.HeapRegionStart;
+                    _memoryUsageCapacity = MemoryManager.GetHeapRegionSize();
                     break;
 
                 case ProcessCreationFlags.AddressSpace32BitWithoutAlias:
-                    _memoryUsageCapacity = MemoryManager.HeapRegionEnd -
-                                           MemoryManager.HeapRegionStart +
-                                           MemoryManager.AliasRegionEnd -
-                                           MemoryManager.AliasRegionStart;
+                    _memoryUsageCapacity = MemoryManager.GetHeapRegionSize() + MemoryManager.GetAliasRegionSize();
                     break;
                 default:
                     throw new InvalidOperationException($"Invalid MMU flags value 0x{Flags:x2}.");
