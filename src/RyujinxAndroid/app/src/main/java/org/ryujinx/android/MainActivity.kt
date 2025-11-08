@@ -156,6 +156,9 @@ class MainActivity : BaseActivity() {
 
         var quickSettings = QuickSettings(this)
         
+        // 设置 FFmpeg JNI 环境
+        NativeHelpers.instance.setupFFmpegJNI()
+        
         RyujinxNative.jnaInstance.loggingSetEnabled(
             LogLevel.Debug.ordinal,
             quickSettings.enableDebugLogs
