@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (AAudio + 独占模式)
+// oboe_audio_renderer.cpp (兼容Oboe 1.10版本)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
@@ -181,7 +181,7 @@ void OboeAudioRenderer::Shutdown() {
 }
 
 void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& builder) {
-    // AAudio 独占模式配置 - 最佳性能
+    // AAudio 独占模式配置 - 兼容Oboe 1.10
     builder.setPerformanceMode(oboe::PerformanceMode::LowLatency)
            ->setAudioApi(oboe::AudioApi::AAudio)
            ->setSharingMode(oboe::SharingMode::Exclusive)  // 独占模式
@@ -190,9 +190,13 @@ void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& bu
            ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium) // 中等质量，更好的性能
            ->setFormat(oboe::AudioFormat::I16)
            ->setFormatConversionAllowed(true)
-           ->setUsage(oboe::Usage::Game)
-           ->setContentType(oboe::ContentType::Game)
-           ->setFramesPerCallback(oboe::FramesPerCallback::Unspecified); // 让系统选择最佳值
+           ->setUsage(oboe::Usage::Game);
+    
+    // 在Oboe 1.10中，ContentType可能不可用，所以移除这行
+    // ->setContentType(oboe::ContentType::Game);
+    
+    // 设置固定的回调帧数，而不是使用FramesPerCallback枚举
+    builder.setFramesPerCallback(240); // 使用固定值
     
     // 设置声道配置
     auto channel_count = m_channel_count.load();
