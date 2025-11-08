@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (修复版本)
+// oboe_audio_renderer.h (基于yuzu样本实现)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -51,11 +51,11 @@ private:
     OboeAudioRenderer();
     ~OboeAudioRenderer();
 
-    // 基于yuzu的音频缓冲区结构
-    struct AudioBuffer {
-        std::vector<int16_t> data;
-        size_t frames = 0;
-        size_t frames_played = 0;
+    // 基于yuzu的样本缓冲区结构
+    struct SampleBuffer {
+        std::vector<int16_t> samples;
+        size_t sample_count = 0;
+        size_t samples_played = 0;
         bool consumed = true;
     };
 
@@ -80,19 +80,19 @@ private:
         OboeAudioRenderer* m_renderer;
     };
 
-    // 基于yuzu的简单缓冲区队列
-    class SimpleBufferQueue {
+    // 基于yuzu的样本缓冲区队列
+    class SampleBufferQueue {
     public:
-        explicit SimpleBufferQueue(size_t max_buffers = 32) : m_max_buffers(max_buffers) {}
+        explicit SampleBufferQueue(size_t max_buffers = 32) : m_max_buffers(max_buffers) {}
         
-        bool Write(const int16_t* data, size_t frames, int32_t channels);
-        size_t Read(int16_t* output, size_t frames, int32_t channels);
+        bool Write(const int16_t* samples, size_t sample_count);
+        size_t Read(int16_t* output, size_t samples_requested);
         size_t Available() const;
         void Clear();
         
     private:
-        std::queue<AudioBuffer> m_buffers;
-        AudioBuffer m_playing_buffer;
+        std::queue<SampleBuffer> m_buffers;
+        SampleBuffer m_playing_buffer;
         size_t m_max_buffers;
         mutable std::mutex m_mutex;
     };
@@ -107,7 +107,7 @@ private:
     void OnStreamErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error);
 
     std::shared_ptr<oboe::AudioStream> m_stream;
-    std::unique_ptr<SimpleBufferQueue> m_buffer_queue;
+    std::unique_ptr<SampleBufferQueue> m_sample_queue;
     std::unique_ptr<YuzuStyleAudioCallback> m_audio_callback;
     std::unique_ptr<YuzuStyleErrorCallback> m_error_callback;
     
@@ -119,7 +119,7 @@ private:
     std::atomic<int32_t> m_channel_count{2};
     std::atomic<float> m_volume{1.0f};
     
-    int32_t device_channels = 2;
+    int32_t m_device_channels = 2;
     
     std::atomic<int64_t> m_frames_written{0};
     std::atomic<int64_t> m_frames_played{0};
