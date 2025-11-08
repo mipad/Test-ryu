@@ -16,6 +16,13 @@ pthread_t _renderingThreadIdNative;
 
 std::chrono::time_point<std::chrono::steady_clock, std::chrono::nanoseconds> _currentTimePoint;
 
+// FFmpeg JNI 相关函数声明
+extern "C" {
+    // FFmpeg MediaCodec 需要的 JNI 函数
+    void av_jni_set_java_vm(void *vm, void *log_ctx);
+    int av_jni_get_java_vm(void **vm);
+}
+
 extern "C"
 {
 JNIEXPORT jlong JNICALL
@@ -104,6 +111,10 @@ Java_org_ryujinx_android_MainActivity_initVm(JNIEnv *env, jobject thiz) {
     _vm = vm;
     _mainActivity = thiz;
     _mainActivityClass = env->GetObjectClass(thiz);
+    
+    // 设置 FFmpeg 的 Java VM
+    av_jni_set_java_vm(vm, nullptr);
+    __android_log_print(ANDROID_LOG_INFO, "Ryujinx", "JVM set for FFmpeg MediaCodec");
 }
 
 bool isInitialOrientationFlipped = true;
@@ -237,6 +248,24 @@ JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setIsInitialOrientationFlipped(JNIEnv *env, jobject thiz,
                                                                       jboolean is_flipped) {
     isInitialOrientationFlipped = is_flipped;
+}
+
+// =============== FFmpeg JNI 支持 ===============
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_setupFFmpegJNI(JNIEnv *env, jobject thiz) {
+    // 确保 FFmpeg 可以使用 JNI
+    void* vm = nullptr;
+    av_jni_get_java_vm(&vm);
+    if (vm == nullptr) {
+        // 如果 FFmpeg 没有获取到 JVM，重新设置
+        JavaVM* jvm = nullptr;
+        env->GetJavaVM(&jvm);
+        if (jvm != nullptr) {
+            av_jni_set_java_vm(jvm, nullptr);
+            __android_log_print(ANDROID_LOG_INFO, "Ryujinx", "FFmpeg JNI setup completed");
+        }
+    }
 }
 
 // =============== Oboe Audio JNI 接口 (修复版本) ===============
@@ -385,6 +414,21 @@ extern "C"
 void resetOboeAudio() {
     __android_log_print(ANDROID_LOG_INFO, "RyujinxOboe", "C resetOboeAudio");
     RyujinxOboe::OboeAudioRenderer::GetInstance().Reset();
+}
+
+// =============== FFmpeg C 接口 ===============
+extern "C"
+void setupFFmpegJNI() {
+    // 确保 FFmpeg 可以使用 JNI
+    void* vm = nullptr;
+    av_jni_get_java_vm(&vm);
+    if (vm == nullptr) {
+        // 如果 FFmpeg 没有获取到 JVM，使用全局的 _vm
+        if (_vm != nullptr) {
+            av_jni_set_java_vm(_vm, nullptr);
+            __android_log_print(ANDROID_LOG_INFO, "Ryujinx", "FFmpeg JNI setup completed from C");
+        }
+    }
 }
 
 // =============== 设备信息获取 C 接口 ===============

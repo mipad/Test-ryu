@@ -1,7 +1,3 @@
-//
-// Created by Emmanuel Hansen on 6/19/2023.
-//
-
 #ifndef RYUJINXNATIVE_RYUIJNX_H
 #define RYUJINXNATIVE_RYUIJNX_H
 
@@ -49,6 +45,13 @@ extern jobject _mainActivity;
 extern jclass _mainActivityClass;
 extern pthread_t _renderingThreadIdNative;
 
+// FFmpeg JNI 相关函数声明
+extern "C" {
+    // FFmpeg MediaCodec 需要的 JNI 函数
+    void av_jni_set_java_vm(void *vm, void *log_ctx);
+    int av_jni_get_java_vm(void **vm);
+}
+
 // 简化 Oboe 音频函数声明
 extern "C" {
     bool initOboeAudio(int sample_rate, int channel_count);
@@ -63,6 +66,9 @@ extern "C" {
     // 设备信息函数
     const char* GetAndroidDeviceModel();
     const char* GetAndroidDeviceBrand();
+    
+    // FFmpeg JNI 支持
+    void setupFFmpegJNI();
 }
 
 #endif //RYUJINXNATIVE_RYUIJNX_H
