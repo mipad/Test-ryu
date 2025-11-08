@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (基于yuzu样本实现)
+// oboe_audio_renderer.h (AAudio + 独占模式)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -43,6 +43,8 @@ public:
         int64_t frames_played = 0;
         int32_t underrun_count = 0;
         int32_t stream_restart_count = 0;
+        std::string audio_api = "Unknown";
+        std::string sharing_mode = "Unknown";
     };
     
     PerformanceStats GetStats() const;
@@ -59,9 +61,9 @@ private:
         bool consumed = true;
     };
 
-    class YuzuStyleAudioCallback : public oboe::AudioStreamDataCallback {
+    class AAudioExclusiveCallback : public oboe::AudioStreamDataCallback {
     public:
-        explicit YuzuStyleAudioCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
+        explicit AAudioExclusiveCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
         
         oboe::DataCallbackResult onAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) override;
 
@@ -69,9 +71,9 @@ private:
         OboeAudioRenderer* m_renderer;
     };
 
-    class YuzuStyleErrorCallback : public oboe::AudioStreamErrorCallback {
+    class AAudioExclusiveErrorCallback : public oboe::AudioStreamErrorCallback {
     public:
-        explicit YuzuStyleErrorCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
+        explicit AAudioExclusiveErrorCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
         
         void onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) override;
         void onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) override;
@@ -100,7 +102,7 @@ private:
     bool OpenStream();
     void CloseStream();
     bool ConfigureAndOpenStream();
-    void ConfigureForYuzuStyle(oboe::AudioStreamBuilder& builder);
+    void ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& builder);
 
     oboe::DataCallbackResult OnAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames);
     void OnStreamErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error);
@@ -108,8 +110,8 @@ private:
 
     std::shared_ptr<oboe::AudioStream> m_stream;
     std::unique_ptr<SampleBufferQueue> m_sample_queue;
-    std::unique_ptr<YuzuStyleAudioCallback> m_audio_callback;
-    std::unique_ptr<YuzuStyleErrorCallback> m_error_callback;
+    std::unique_ptr<AAudioExclusiveCallback> m_audio_callback;
+    std::unique_ptr<AAudioExclusiveErrorCallback> m_error_callback;
     
     std::mutex m_stream_mutex;
     std::atomic<bool> m_initialized{false};
@@ -125,6 +127,10 @@ private:
     std::atomic<int64_t> m_frames_played{0};
     std::atomic<int32_t> m_underrun_count{0};
     std::atomic<int32_t> m_stream_restart_count{0};
+    
+    // 性能统计
+    std::string m_current_audio_api = "Unknown";
+    std::string m_current_sharing_mode = "Unknown";
     
     static constexpr int32_t TARGET_SAMPLE_COUNT = 240;
     static constexpr int32_t TARGET_SAMPLE_RATE = 48000;
