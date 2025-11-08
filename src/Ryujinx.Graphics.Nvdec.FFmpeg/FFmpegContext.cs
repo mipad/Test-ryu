@@ -1,7 +1,7 @@
 using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.Nvdec.FFmpeg.Native;
 using System;
-using Ryujinx.Graphics.Nvdec;  // 添加这个 using 指令
+using Ryujinx.Graphics.Nvdec;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
@@ -13,17 +13,17 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
         private AVCodec_decode _decodeFrame;
         private static readonly FFmpegApi.av_log_set_callback_callback _logFunc;
-        private readonly AVCodec* _codec;
-        private readonly AVPacket* _packet;
+        private AVCodec* _codec;  // 移除了 readonly
+        private AVPacket* _packet;  // 移除了 readonly
         private AVCodecContext* _context;
-        private readonly bool _useNewApi;
+        private bool _useNewApi;  // 移除了 readonly
         private bool _isFirstFrame = true;
         private bool _needsFlush = false;
         private System.Diagnostics.Stopwatch _decodeTimer = new System.Diagnostics.Stopwatch();
         private int _frameCount = 0;
-        private readonly bool _useHardwareDecoder;
-        private readonly string _decoderType;
-        private readonly string _hardwareDecoderName;
+        private bool _useHardwareDecoder;  // 移除了 readonly
+        private string _decoderType;  // 移除了 readonly
+        private string _hardwareDecoderName;  // 移除了 readonly
 
         // 硬件解码器实例
         private HardwareDecoder _hardwareDecoder;
@@ -184,7 +184,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return;
             }
 
-            // 设置只读字段
+            // 设置字段（不再有 readonly 限制）
             _codec = codec;
             _useHardwareDecoder = useHardwareDecoder;
             _decoderType = useHardwareDecoder ? "Hardware" : "Software";

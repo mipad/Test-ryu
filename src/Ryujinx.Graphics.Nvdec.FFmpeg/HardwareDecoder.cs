@@ -35,7 +35,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             _width = width;
             _height = height;
 
-            Logger.Info?.Print(LogClass.Nvdec, $"Creating hardware decoder: {codecMime}, {width}x{height}");
+            Logger.Info?.Print(LogClass.FFmpeg, $"Creating hardware decoder: {codecMime}, {width}x{height}");
             
             if (!Initialize())
             {
@@ -50,18 +50,18 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 bool success = initializeHardwareDecoder(_codecMime, _width, _height);
                 if (success)
                 {
-                    Logger.Info?.Print(LogClass.Nvdec, $"Hardware decoder initialized successfully: {_codecMime}");
+                    Logger.Info?.Print(LogClass.FFmpeg, $"Hardware decoder initialized successfully: {_codecMime}");
                     return true;
                 }
                 else
                 {
-                    Logger.Error?.Print(LogClass.Nvdec, $"Failed to initialize hardware decoder: {_codecMime}");
+                    Logger.Error?.Print(LogClass.FFmpeg, $"Failed to initialize hardware decoder: {_codecMime}");
                     return false;
                 }
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Nvdec, $"Exception initializing hardware decoder: {ex.Message}");
+                Logger.Error?.Print(LogClass.FFmpeg, $"Exception initializing hardware decoder: {ex.Message}");
                 return false;
             }
         }
@@ -73,7 +73,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         {
             if (_disposed)
             {
-                Logger.Warning?.Print(LogClass.Nvdec, "Hardware decoder is disposed");
+                Logger.Warning?.Print(LogClass.FFmpeg, "Hardware decoder is disposed");
                 return false;
             }
 
@@ -84,14 +84,14 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 
                 if (!success)
                 {
-                    Logger.Warning?.Print(LogClass.Nvdec, "Hardware decode frame failed");
+                    Logger.Warning?.Print(LogClass.FFmpeg, "Hardware decode frame failed");
                 }
                 
                 return success;
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Nvdec, $"Exception decoding frame with hardware decoder: {ex.Message}");
+                Logger.Error?.Print(LogClass.FFmpeg, $"Exception decoding frame with hardware decoder: {ex.Message}");
                 return false;
             }
         }
@@ -107,7 +107,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Nvdec, $"Exception checking codec support: {ex.Message}");
+                Logger.Error?.Print(LogClass.FFmpeg, $"Exception checking codec support: {ex.Message}");
                 return false;
             }
         }
@@ -118,7 +118,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         public void Flush()
         {
             // 硬件解码器刷新逻辑
-            Logger.Debug?.Print(LogClass.Nvdec, "Flushing hardware decoder");
+            Logger.Debug?.Print(LogClass.FFmpeg, "Flushing hardware decoder");
         }
 
         public void Dispose()
@@ -128,11 +128,11 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 try
                 {
                     releaseHardwareDecoder();
-                    Logger.Info?.Print(LogClass.Nvdec, "Hardware decoder released");
+                    Logger.Info?.Print(LogClass.FFmpeg, "Hardware decoder released");
                 }
                 catch (Exception ex)
                 {
-                    Logger.Error?.Print(LogClass.Nvdec, $"Exception releasing hardware decoder: {ex.Message}");
+                    Logger.Error?.Print(LogClass.FFmpeg, $"Exception releasing hardware decoder: {ex.Message}");
                 }
                 finally
                 {
