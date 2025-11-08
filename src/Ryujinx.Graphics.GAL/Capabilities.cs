@@ -52,7 +52,11 @@ namespace Ryujinx.Graphics.GAL
         public readonly bool SupportsIndirectParameters;
         public readonly bool SupportsDepthClipControl;
         public readonly bool SupportsFragmentDensityMap;
-        public readonly bool SupportsFragmentDensityMap2; // 新增
+        public readonly bool SupportsFragmentDensityMap2;
+        // 新增：动态状态支持
+        public readonly bool SupportsExtendedDynamicState;
+        public readonly bool SupportsExtendedDynamicState2;
+        public readonly bool SupportsExtendedDynamicState3;
 
         public readonly int UniformBufferSetIndex;
         public readonly int StorageBufferSetIndex;
@@ -123,7 +127,11 @@ namespace Ryujinx.Graphics.GAL
             bool supportsIndirectParameters,
             bool supportsDepthClipControl,
             bool supportsFragmentDensityMap,
-            bool supportsFragmentDensityMap2, // 新增参数
+            bool supportsFragmentDensityMap2,
+            // 新增：动态状态支持参数
+            bool supportsExtendedDynamicState,
+            bool supportsExtendedDynamicState2,
+            bool supportsExtendedDynamicState3,
             int uniformBufferSetIndex,
             int storageBufferSetIndex,
             int textureSetIndex,
@@ -188,7 +196,11 @@ namespace Ryujinx.Graphics.GAL
             SupportsIndirectParameters = supportsIndirectParameters;
             SupportsDepthClipControl = supportsDepthClipControl;
             SupportsFragmentDensityMap = supportsFragmentDensityMap;
-            SupportsFragmentDensityMap2 = supportsFragmentDensityMap2; // 新增赋值
+            SupportsFragmentDensityMap2 = supportsFragmentDensityMap2;
+            // 新增：动态状态支持赋值
+            SupportsExtendedDynamicState = supportsExtendedDynamicState;
+            SupportsExtendedDynamicState2 = supportsExtendedDynamicState2;
+            SupportsExtendedDynamicState3 = supportsExtendedDynamicState3;
             UniformBufferSetIndex = uniformBufferSetIndex;
             StorageBufferSetIndex = storageBufferSetIndex;
             TextureSetIndex = textureSetIndex;
@@ -209,3 +221,4 @@ namespace Ryujinx.Graphics.GAL
         }
     }
 }
+
