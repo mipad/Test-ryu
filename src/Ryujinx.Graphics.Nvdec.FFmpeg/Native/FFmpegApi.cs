@@ -10,14 +10,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         public const string AvCodecLibraryName = "avcodec";
         public const string AvUtilLibraryName = "avutil";
 
-        // FFmpeg 错误码常量
-        internal const int EAGAIN = -11;  // 资源暂时不可用，需要重试
-        internal const int EOF = -541478725; // 文件结束
-
         private static readonly Dictionary<string, (int, int)> _librariesWhitelist = new()
         {
-            { AvCodecLibraryName, (59, 61) },  // 扩展版本范围到 61
-            { AvUtilLibraryName, (57, 59) },   // 扩展版本范围到 59
+            { AvCodecLibraryName, (59, 60) },
+            { AvUtilLibraryName, (57, 58) },
         };
 
         private static string FormatLibraryNameForCurrentOs(string libraryName, int version)
@@ -111,9 +107,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         [LibraryImport(AvCodecLibraryName)]
         internal static unsafe partial int avcodec_open2(AVCodecContext* avctx, AVCodec* codec, void** options);
 
-        // 注释掉已弃用的 avcodec_close，使用 avcodec_free_context 替代
-        // [LibraryImport(AvCodecLibraryName)]
-        // internal static unsafe partial int avcodec_close(AVCodecContext* avctx);
+        [LibraryImport(AvCodecLibraryName)]
+        internal static unsafe partial int avcodec_close(AVCodecContext* avctx);
 
         [LibraryImport(AvCodecLibraryName)]
         internal static unsafe partial void avcodec_free_context(AVCodecContext** avctx);
@@ -129,15 +124,5 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
 
         [LibraryImport(AvCodecLibraryName)]
         internal static unsafe partial int avcodec_version();
-
-        // 添加新 API 支持
-        [LibraryImport(AvCodecLibraryName)]
-        internal static unsafe partial int avcodec_send_packet(AVCodecContext* avctx, AVPacket* avpkt);
-
-        [LibraryImport(AvCodecLibraryName)]
-        internal static unsafe partial int avcodec_receive_frame(AVCodecContext* avctx, AVFrame* frame);
-
-        [LibraryImport(AvCodecLibraryName)]
-        internal static unsafe partial void avcodec_flush_buffers(AVCodecContext* avctx);
     }
 }
