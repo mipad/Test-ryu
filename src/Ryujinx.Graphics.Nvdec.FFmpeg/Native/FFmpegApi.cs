@@ -10,6 +10,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         public const string AvCodecLibraryName = "avcodec";
         public const string AvUtilLibraryName = "avutil";
 
+        // FFmpeg 错误码常量
+        internal const int EAGAIN = -11;  // 资源暂时不可用，需要重试
+        internal const int EOF = -541478725; // 文件结束
+
         private static readonly Dictionary<string, (int, int)> _librariesWhitelist = new()
         {
             { AvCodecLibraryName, (59, 61) },  // 扩展版本范围到 61
