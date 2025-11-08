@@ -35,11 +35,11 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return;
             }
 
-            // 设置更宽松的错误恢复选项
-            _context->ErrorRecovery = 1; // FF_ER_CAREFUL
-            _context->SkipFrame = AVDiscard.Default;
-            _context->SkipIdct = AVDiscard.Default;
-            _context->SkipLoopFilter = AVDiscard.Default;
+            // 使用正确的字段名设置错误恢复选项
+            _context->ErrRecognition = 1; // 使用现有的 ErrRecognition 字段
+            _context->SkipFrame = (int)AVDiscard.Default;
+            _context->SkipIdct = (int)AVDiscard.Default;
+            _context->SkipLoopFilter = (int)AVDiscard.Default;
 
             if (FFmpegApi.avcodec_open2(_context, _codec, null) != 0)
             {
