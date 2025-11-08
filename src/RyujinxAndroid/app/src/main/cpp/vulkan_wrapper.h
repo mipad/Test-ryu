@@ -362,9 +362,6 @@ extern PFN_vkCmdBeginQueryIndexedEXT vkCmdBeginQueryIndexedEXT;
 extern PFN_vkCmdEndQueryIndexedEXT vkCmdEndQueryIndexedEXT;
 extern PFN_vkCmdDrawIndirectByteCountEXT vkCmdDrawIndirectByteCountEXT;
 
-// VK_EXT_descriptor_indexing
-extern PFN_vkGetDescriptorSetLayoutSupportEXT vkGetDescriptorSetLayoutSupportEXT;
-
 #ifdef __cplusplus
 }
 #endif

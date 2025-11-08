@@ -398,9 +398,6 @@ int LoadDeviceFunctions(VkDevice device) {
     LOAD_DEVICE_FUNC(device, CmdEndQueryIndexedEXT);
     LOAD_DEVICE_FUNC(device, CmdDrawIndirectByteCountEXT);
 
-    // Load descriptor indexing functions
-    LOAD_DEVICE_FUNC(device, GetDescriptorSetLayoutSupportEXT);
-
     return 1;
 }
 
@@ -727,6 +724,3 @@ PFN_vkCmdEndTransformFeedbackEXT vkCmdEndTransformFeedbackEXT = nullptr;
 PFN_vkCmdBeginQueryIndexedEXT vkCmdBeginQueryIndexedEXT = nullptr;
 PFN_vkCmdEndQueryIndexedEXT vkCmdEndQueryIndexedEXT = nullptr;
 PFN_vkCmdDrawIndirectByteCountEXT vkCmdDrawIndirectByteCountEXT = nullptr;
-
-// VK_EXT_descriptor_indexing
-PFN_vkGetDescriptorSetLayoutSupportEXT vkGetDescriptorSetLayoutSupportEXT = nullptr;
