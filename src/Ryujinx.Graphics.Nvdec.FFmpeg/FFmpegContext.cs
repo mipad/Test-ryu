@@ -14,7 +14,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private static readonly FFmpegApi.av_log_set_callback_callback _logFunc;
         private readonly AVCodec* _codec;
         private readonly AVPacket* _packet;
-        private readonly AVCodecContext* _context;
+        private AVCodecContext* _context; // 移除了 readonly
         private readonly bool _useNewApi;
         private bool _isFirstFrame = true;
         private bool _needsFlush = false;
@@ -161,7 +161,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 AVCodec* codec = FFmpegApi.avcodec_find_decoder_by_name(decoderName);
                 if (codec != null)
                 {
-                    _hardwareDecoderName = decoderName;
+                    // 注意：这里不能直接赋值给 _hardwareDecoderName，因为它是只读的
+                    // 我们需要在构造函数中设置它
                     Logger.Debug?.Print(LogClass.FFmpeg, $"Found hardware decoder: {decoderName}");
                     return codec;
                 }
@@ -379,48 +380,61 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             int result;
             int gotFrame;
 
-            fixed (byte* ptr = bitstream)
+            // 创建临时数据包用于解码
+            AVPacket* tempPacket = FFmpegApi.av_packet_alloc();
+            if (tempPacket == null)
             {
-                _packet->Data = ptr;
-                _packet->Size = bitstream.Length;
-                result = _decodeFrame(_context, output.Frame, &gotFrame, _packet);
-            }
-
-            if (result < 0)
-            {
-                LogDecodeError("DecodeFrame", result);
-                
-                if (_isFirstFrame || result == -1094995529) // AVERROR_INVALIDDATA
-                {
-                    _needsFlush = true;
-                    _isFirstFrame = false;
-                    FFmpegApi.av_packet_unref(_packet);
-                    FFmpegApi.av_frame_unref(output.Frame);
-                    return -1;
-                }
-            }
-
-            if (gotFrame == 0)
-            {
-                FFmpegApi.av_frame_unref(output.Frame);
-
-                // 尝试获取延迟帧
-                _packet->Data = null;
-                _packet->Size = 0;
-                result = _decodeFrame(_context, output.Frame, &gotFrame, _packet);
-                _context->HasBFrames = 0; // 重置 B 帧计数
-            }
-
-            FFmpegApi.av_packet_unref(_packet);
-
-            if (gotFrame == 0)
-            {
-                FFmpegApi.av_frame_unref(output.Frame);
+                Logger.Error?.Print(LogClass.FFmpeg, "Failed to allocate temporary packet");
                 return -1;
             }
 
-            _isFirstFrame = false;
-            return result < 0 ? result : 0;
+            try
+            {
+                fixed (byte* ptr = bitstream)
+                {
+                    tempPacket->Data = ptr;
+                    tempPacket->Size = bitstream.Length;
+                    result = _decodeFrame(_context, output.Frame, &gotFrame, tempPacket);
+                }
+
+                if (result < 0)
+                {
+                    LogDecodeError("DecodeFrame", result);
+                    
+                    if (_isFirstFrame || result == -1094995529) // AVERROR_INVALIDDATA
+                    {
+                        _needsFlush = true;
+                        _isFirstFrame = false;
+                        FFmpegApi.av_frame_unref(output.Frame);
+                        return -1;
+                    }
+                }
+
+                if (gotFrame == 0)
+                {
+                    FFmpegApi.av_frame_unref(output.Frame);
+
+                    // 尝试获取延迟帧
+                    tempPacket->Data = null;
+                    tempPacket->Size = 0;
+                    result = _decodeFrame(_context, output.Frame, &gotFrame, tempPacket);
+                    _context->HasBFrames = 0; // 重置 B 帧计数
+                }
+
+                if (gotFrame == 0)
+                {
+                    FFmpegApi.av_frame_unref(output.Frame);
+                    return -1;
+                }
+
+                _isFirstFrame = false;
+                return result < 0 ? result : 0;
+            }
+            finally
+            {
+                FFmpegApi.av_packet_unref(tempPacket);
+                FFmpegApi.av_packet_free(&tempPacket);
+            }
         }
 
         private void LogDecodeError(string operation, int errorCode)
@@ -466,7 +480,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 }
             }
             
-            Logger.Debug?.Print(LogClass.FFmpeg, $"{_decoderType} decoder disposed (Hardware: {_hardwareDecoderName ?? "None"})");
+            Logger.Debug?.Print(LogClass.FFmpeg, $"{_decoderType} decoder disposed");
         }
     }
 }
