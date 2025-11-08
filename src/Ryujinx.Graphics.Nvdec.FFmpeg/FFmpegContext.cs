@@ -152,7 +152,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 
                 // 发送 packet 到解码器
                 result = FFmpegApi.avcodec_send_packet(_context, _packet);
-                if (result < 0)
+                if (result < 0 && result != FFmpegApi.EAGAIN && result != FFmpegApi.EOF)
                 {
                     FFmpegApi.av_packet_unref(_packet);
                     return result;
@@ -164,10 +164,11 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 {
                     gotFrame = 1;
                 }
-                else if (result == -FFmpegApi.EAGAIN)
+                else if (result == FFmpegApi.EAGAIN || result == FFmpegApi.EOF)
                 {
-                    // 需要更多输入数据
+                    // 需要更多输入数据或到达流结尾
                     gotFrame = 0;
+                    result = 0; // 这些不是错误，只是状态
                 }
             }
 
@@ -241,3 +242,5 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         }
     }
 }
+
+            
