@@ -160,6 +160,49 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         internal static unsafe partial void av_buffer_unref(AVBufferRef** buf);
     }
 
+    // 像素格式枚举定义
+    internal enum AVPixelFormat
+    {
+        AV_PIX_FMT_NONE = -1,
+        AV_PIX_FMT_YUV420P = 0,
+        AV_PIX_FMT_YUYV422 = 1,
+        AV_PIX_FMT_RGB24 = 2,
+        AV_PIX_FMT_BGR24 = 3,
+        AV_PIX_FMT_YUV422P = 4,
+        AV_PIX_FMT_YUV444P = 5,
+        AV_PIX_FMT_YUV410P = 6,
+        AV_PIX_FMT_YUV411P = 7,
+        AV_PIX_FMT_GRAY8 = 8,
+        AV_PIX_FMT_MONOWHITE = 9,
+        AV_PIX_FMT_MONOBLACK = 10,
+        AV_PIX_FMT_PAL8 = 11,
+        AV_PIX_FMT_YUVJ420P = 12,
+        AV_PIX_FMT_YUVJ422P = 13,
+        AV_PIX_FMT_YUVJ444P = 14,
+        AV_PIX_FMT_XVMC_MPEG2_MC = 15,
+        AV_PIX_FMT_XVMC_MPEG2_IDCT = 16,
+        AV_PIX_FMT_UYVY422 = 17,
+        AV_PIX_FMT_UYYVYY411 = 18,
+        AV_PIX_FMT_BGR8 = 19,
+        AV_PIX_FMT_BGR4 = 20,
+        AV_PIX_FMT_BGR4_BYTE = 21,
+        AV_PIX_FMT_RGB8 = 22,
+        AV_PIX_FMT_RGB4 = 23,
+        AV_PIX_FMT_RGB4_BYTE = 24,
+        AV_PIX_FMT_NV12 = 25,
+        AV_PIX_FMT_NV21 = 26,
+        
+        // 硬件加速格式
+        AV_PIX_FMT_VDPAU = 50,
+        AV_PIX_FMT_VAAPI = 52,
+        AV_PIX_FMT_DXVA2_VLD = 53,
+        AV_PIX_FMT_VIDEOTOOLBOX = 157,
+        AV_PIX_FMT_MEDIACODEC = 165,
+        AV_PIX_FMT_CUDA = 166,
+        
+        // 更多格式可以按需添加
+    }
+
     // 硬件解码相关类型定义
     internal enum AVHWDeviceType
     {
@@ -187,12 +230,28 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
     [StructLayout(LayoutKind.Sequential)]
     internal unsafe struct AVBuffer
     {
-        // AVBuffer 内部结构，通常不需要直接访问
         public byte* Data;
         public int Size;
         public int RefCount;
         public void* Free;
         public void* Opaque;
         public void* FreeCallback;
+    }
+
+    // 添加 AVCodecContext 中需要的字段定义
+    [StructLayout(LayoutKind.Sequential)]
+    internal unsafe struct AVCodecContext
+    {
+        // 这里只定义我们实际使用的字段
+        public IntPtr GetFormat; // 函数指针
+        public AVBufferRef* HwDeviceCtx;
+        public int ErrRecognition;
+        public int ErrorConcealment;
+        public int WorkaroundBugs;
+        public int Flags2;
+        public int ThreadCount;
+        public int Refs;
+        public int HasBFrames;
+        // 其他字段...
     }
 }
