@@ -10,7 +10,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
     {
         private unsafe delegate int AVCodec_decode(AVCodecContext* avctx, void* outdata, int* got_frame_ptr, AVPacket* avpkt);
 
-        private AVCodec_decode _decodeFrame;
+        private AVCodec_decode _decodeFrame; // 移除了 readonly
         private static readonly FFmpegApi.av_log_set_callback_callback _logFunc;
         private readonly AVCodec* _codec;
         private readonly AVPacket* _packet;
@@ -109,7 +109,11 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             }
 
             // 设置解码器参数
-            ConfigureDecoderContext();
+            if (!ConfigureDecoderContext())
+            {
+                Logger.Error?.PrintMsg(LogClass.FFmpeg, "Failed to configure decoder context.");
+                return;
+            }
 
             int openResult = FFmpegApi.avcodec_open2(_context, _codec, null);
             if (openResult != 0)
@@ -133,7 +137,11 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                         
                         // 注意：这里我们不能修改只读字段，所以创建新的上下文对象
                         // 我们保持原来的只读字段不变，但实际使用的是软件解码器
-                        ConfigureDecoderContext();
+                        if (!ConfigureDecoderContext())
+                        {
+                            Logger.Error?.PrintMsg(LogClass.FFmpeg, "Failed to configure software decoder context.");
+                            return;
+                        }
                         
                         if (FFmpegApi.avcodec_open2(_context, softwareCodec, null) == 0)
                         {
@@ -192,44 +200,50 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             Logger.Info?.Print(LogClass.FFmpeg, $"FFmpeg {_decoderType} decoder initialized successfully (API: {(_useNewApi ? "New" : "Old")}, Codec: {GetCodecName(_codec)})");
         }
 
-        private void ConfigureDecoderContext()
+        private bool ConfigureDecoderContext()
         {
-            // 基本解码器配置
-            _context->ErrRecognition = 0x0001 | 0x0002 | 0x0004; // 多种错误识别标志
-            _context->ErrorConcealment = 0x0001 | 0x0002; // 帧和边界错误隐藏
-            _context->WorkaroundBugs = 1; // 启用bug规避
+            try
+            {
+                // 基本解码器配置
+                _context->ErrRecognition = 0x0001 | 0x0002 | 0x0004; // 多种错误识别标志
+                _context->ErrorConcealment = 0x0001 | 0x0002; // 帧和边界错误隐藏
+                _context->WorkaroundBugs = 1; // 启用bug规避
 
-            if (_useHardwareDecoder)
-            {
-                // 硬件解码器优化设置 - 修复配置
-                _context->Flags2 |= 0x00000001; // CODEC_FLAG2_FAST - 快速解码
-                _context->ThreadCount = 1; // 硬件解码器通常单线程
+                if (_useHardwareDecoder)
+                {
+                    // 硬件解码器优化设置 - 更保守的配置
+                    _context->Flags2 |= 0x00000001; // CODEC_FLAG2_FAST - 快速解码
+                    _context->ThreadCount = 1; // 硬件解码器通常单线程
+                    
+                    // 减少错误恢复，硬件解码器通常更稳定
+                    _context->ErrRecognition = 0x0001;
+                    
+                    // 添加硬件解码器特定的配置
+                    _context->Refs = 1; // 限制参考帧数量
+                    _context->MaxBFrames = 0; // 禁用B帧，硬件解码器可能不支持
+                    _context->HasBFrames = 0; // 重置B帧计数
+                    
+                    Logger.Debug?.Print(LogClass.FFmpeg, "Configured for hardware decoding with optimized settings");
+                    
+                    // 对于硬件解码器，尝试设置更保守的缓冲区大小
+                    _context->Delay = 0;
+                    _context->Flags |= 0x00000001; // CODEC_FLAG_LOW_DELAY
+                }
+                else
+                {
+                    // 软件解码器优化
+                    _context->ThreadCount = Math.Min(Environment.ProcessorCount, 4);
+                    _context->Refs = 3; // 限制参考帧数量
+                    
+                    Logger.Debug?.Print(LogClass.FFmpeg, $"Configured for software decoding ({_context->ThreadCount} threads)");
+                }
                 
-                // 减少错误恢复，硬件解码器通常更稳定
-                _context->ErrRecognition = 0x0001;
-                
-                // 设置像素格式为硬件解码器支持的格式
-                _context->PixFmt = (int)AVPixelFormat.AV_PIX_FMT_MEDIACODEC;
-                
-                // 禁用 B 帧以简化硬件解码
-                _context->MaxBFrames = 0;
-                _context->HasBFrames = 0;
-                
-                // 设置更简单的 GOP 结构
-                _context->GopSize = 30;
-                
-                // 禁用复杂的解码器特性
-                _context->Refs = 1; // 只使用一个参考帧
-                
-                Logger.Debug?.Print(LogClass.FFmpeg, "Configured for hardware decoding with optimized settings");
+                return true;
             }
-            else
+            catch (Exception ex)
             {
-                // 软件解码器优化
-                _context->ThreadCount = Math.Min(Environment.ProcessorCount, 4);
-                _context->Refs = 3; // 限制参考帧数量
-                
-                Logger.Debug?.Print(LogClass.FFmpeg, $"Configured for software decoding ({_context->ThreadCount} threads)");
+                Logger.Error?.Print(LogClass.FFmpeg, $"Error configuring decoder context: {ex.Message}");
+                return false;
             }
         }
 
@@ -456,6 +470,20 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             {
                 Logger.Warning?.Print(LogClass.FFmpeg, "Hardware decoder specific error, consider using software fallback");
             }
+            
+            // 记录常见的错误代码
+            switch (errorCode)
+            {
+                case -22: // EINVAL
+                    Logger.Warning?.Print(LogClass.FFmpeg, "Invalid parameter error - check decoder configuration");
+                    break;
+                case -1094995529: // AVERROR_INVALIDDATA
+                    Logger.Warning?.Print(LogClass.FFmpeg, "Invalid data encountered during decoding");
+                    break;
+                case -541478725: // AVERROR_EOF
+                    Logger.Debug?.Print(LogClass.FFmpeg, "End of stream reached");
+                    break;
+            }
         }
 
         // 公开属性用于查询解码器状态
@@ -587,6 +615,33 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         {
             _frameCount = 0;
             _decodeTimer.Reset();
+        }
+        
+        // 新增方法：尝试重新初始化硬件解码器
+        public bool TryReinitializeHardwareDecoder()
+        {
+            if (!_useHardwareDecoder || _context == null)
+                return false;
+                
+            try
+            {
+                Logger.Info?.Print(LogClass.FFmpeg, "Attempting to reinitialize hardware decoder");
+                
+                // 刷新解码器
+                FFmpegApi.avcodec_flush_buffers(_context);
+                
+                // 重置状态
+                _isFirstFrame = true;
+                _needsFlush = false;
+                
+                Logger.Info?.Print(LogClass.FFmpeg, "Hardware decoder reinitialized successfully");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.FFmpeg, $"Failed to reinitialize hardware decoder: {ex.Message}");
+                return false;
+            }
         }
     }
 }
