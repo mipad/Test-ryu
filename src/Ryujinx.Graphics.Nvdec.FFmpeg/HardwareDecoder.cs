@@ -2,7 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using Ryujinx.Common.Logging;
 
-namespace Ryujinx.Graphics.Nvdec.FFmpeg
+namespace Ryujinx.Graphics.Nvdec
 {
     /// <summary>
     /// 硬件解码器包装类 - 用于C#层调用硬件解码功能
@@ -29,13 +29,31 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
         private static extern bool isHardwareCodecSupported([MarshalAs(UnmanagedType.LPStr)] string codecMime);
 
+        // 新增：获取解码后的帧数据
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        private static extern bool getDecodedFrame(out IntPtr yData, out IntPtr uData, out IntPtr vData, out int width, out int height, out int yStride, out int uvStride);
+
+        // 新增：帧数据回调
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        private static extern void setFrameCallback(FrameCallback callback);
+
+        // 帧数据回调委托
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate void FrameCallback(IntPtr yData, IntPtr uData, IntPtr vData, int width, int height, int yStride, int uvStride);
+
+        private FrameCallback _frameCallback;
+
         public HardwareDecoder(string codecMime, int width, int height)
         {
             _codecMime = codecMime;
             _width = width;
             _height = height;
 
-            Logger.Info?.Print(LogClass.FFmpeg, $"Creating hardware decoder: {codecMime}, {width}x{height}");
+            Logger.Info?.Print(LogClass.Nvdec, $"Creating hardware decoder: {codecMime}, {width}x{height}");
+            
+            // 设置帧数据回调
+            _frameCallback = new FrameCallback(OnFrameDecoded);
+            setFrameCallback(_frameCallback);
             
             if (!Initialize())
             {
@@ -50,18 +68,18 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 bool success = initializeHardwareDecoder(_codecMime, _width, _height);
                 if (success)
                 {
-                    Logger.Info?.Print(LogClass.FFmpeg, $"Hardware decoder initialized successfully: {_codecMime}");
+                    Logger.Info?.Print(LogClass.Nvdec, $"Hardware decoder initialized successfully: {_codecMime}");
                     return true;
                 }
                 else
                 {
-                    Logger.Error?.Print(LogClass.FFmpeg, $"Failed to initialize hardware decoder: {_codecMime}");
+                    Logger.Error?.Print(LogClass.Nvdec, $"Failed to initialize hardware decoder: {_codecMime}");
                     return false;
                 }
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.FFmpeg, $"Exception initializing hardware decoder: {ex.Message}");
+                Logger.Error?.Print(LogClass.Nvdec, $"Exception initializing hardware decoder: {ex.Message}");
                 return false;
             }
         }
@@ -95,6 +113,16 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 if (success)
                 {
                     Logger.Debug?.Print(LogClass.Nvdec, "Hardware decode frame success");
+                    
+                    // 尝试获取解码后的帧数据
+                    if (TryGetDecodedFrame())
+                    {
+                        Logger.Debug?.Print(LogClass.Nvdec, "Successfully retrieved decoded frame data");
+                    }
+                    else
+                    {
+                        Logger.Warning?.Print(LogClass.Nvdec, "Failed to retrieve decoded frame data");
+                    }
                 }
                 else
                 {
@@ -111,6 +139,51 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         }
 
         /// <summary>
+        /// 尝试获取解码后的帧数据
+        /// </summary>
+        private bool TryGetDecodedFrame()
+        {
+            try
+            {
+                IntPtr yData, uData, vData;
+                int width, height, yStride, uvStride;
+                
+                bool success = getDecodedFrame(out yData, out uData, out vData, out width, out height, out yStride, out uvStride);
+                
+                if (success && yData != IntPtr.Zero && uData != IntPtr.Zero && vData != IntPtr.Zero)
+                {
+                    Logger.Debug?.Print(LogClass.Nvdec, $"Retrieved decoded frame: {width}x{height}, strides: Y={yStride}, UV={uvStride}");
+                    return true;
+                }
+                
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Nvdec, $"Error getting decoded frame: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 帧数据回调
+        /// </summary>
+        private void OnFrameDecoded(IntPtr yData, IntPtr uData, IntPtr vData, int width, int height, int yStride, int uvStride)
+        {
+            try
+            {
+                Logger.Debug?.Print(LogClass.Nvdec, $"Frame decoded callback: {width}x{height}, strides: Y={yStride}, UV={uvStride}");
+                
+                // 这里可以处理解码后的帧数据
+                // 目前我们只是记录，实际实现需要将数据复制到Surface
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Nvdec, $"Error in frame callback: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// 检查编解码器是否支持硬件解码
         /// </summary>
         public static bool IsCodecSupported(string codecMime)
@@ -121,7 +194,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.FFmpeg, $"Exception checking codec support: {ex.Message}");
+                Logger.Error?.Print(LogClass.Nvdec, $"Exception checking codec support: {ex.Message}");
                 return false;
             }
         }
@@ -132,7 +205,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         public void Flush()
         {
             // 硬件解码器刷新逻辑
-            Logger.Debug?.Print(LogClass.FFmpeg, "Flushing hardware decoder");
+            Logger.Debug?.Print(LogClass.Nvdec, "Flushing hardware decoder");
         }
 
         public void Dispose()
@@ -142,11 +215,11 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 try
                 {
                     releaseHardwareDecoder();
-                    Logger.Info?.Print(LogClass.FFmpeg, "Hardware decoder released");
+                    Logger.Info?.Print(LogClass.Nvdec, "Hardware decoder released");
                 }
                 catch (Exception ex)
                 {
-                    Logger.Error?.Print(LogClass.FFmpeg, $"Exception releasing hardware decoder: {ex.Message}");
+                    Logger.Error?.Print(LogClass.Nvdec, $"Exception releasing hardware decoder: {ex.Message}");
                 }
                 finally
                 {
