@@ -12,7 +12,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         public int Width;
         public int Height;
         public int NumSamples;
-        public int Format;
+        public int Format;  // 像素格式或样本格式
         public int KeyFrame;
         public int PictureType;
         public AVRational SampleAspectRatio;
@@ -30,6 +30,15 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         public long ReorderedOpaque;
         public int SampleRate;
         public ulong ChannelLayout;
+        public int Colorspace;
+        public int ColorRange;
+        public IntPtr HwFramesCtx;
+        public IntPtr OpaqueRef;
+        public long CropTop;
+        public long CropBottom;
+        public long CropLeft;
+        public long CropRight;
+        public IntPtr PrivateRef;
 #pragma warning restore CS0649
 
         // NOTE: There is more after, but the layout kind of changed a bit and we don't need more than this. This is safe as we only manipulate this behind a reference.
