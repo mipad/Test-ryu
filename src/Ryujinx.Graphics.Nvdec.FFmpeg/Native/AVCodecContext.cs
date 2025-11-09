@@ -53,7 +53,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         public int GopSize;
         public int PixFmt;  // 像素格式
         public IntPtr DrawHorizBand;
-        public IntPtr GetFormat;
+        public IntPtr GetFormat;  // get_format 回调
         public int MaxBFrames;
         public float BQuantFactor;
         public float BQuantOffset;
@@ -92,7 +92,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         public int Refs;
         public int Mv0Threshold;
         public int ColorPrimaries;
-        public int ColorPrc;
+        public int ColorTrc;
         public int Colorspace;
         public int ColorRange;
         public int ChromaSampleLocation;
@@ -120,8 +120,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         public IntPtr RcOverride;
         public long RcMaxRate;
         public long RcMinRate;
-        public float RcMax_available_vbv_use;
-        public float RcMin_vbv_overflow_use;
+        public float RcMaxAvailableVbvUse;
+        public float RcMinVbvOverflowUse;
         public int RcInitialBufferOccupancy;
         public int Trellis;
         public IntPtr StatsOut;
@@ -180,7 +180,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         public long MaxPixels;
         public IntPtr HwDeviceCtx;  // 硬件设备上下文
         public int HwAccelFlags;
-        public int applyCropping;
+        public int ApplyCropping;
         public int ExtraHwFrames;
         public int DiscardDamagedPercentage;
         public long MaxSamples;
@@ -251,6 +251,52 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         public int RcMaxVbvDelay9;
         public int RcMinVbvDelay10;
         public int RcMaxVbvDelay10;
+
+        // 新增字段以支持更多功能
+        public int CodecFlags;
+        public int CodecFlags2;
+        public IntPtr HwaccelFlags;
+        public int SkipLoopFilterDisabled;
+        public int SkipIdctDisabled;
+        public int SkipFrameDisabled;
+        public int SubCharencToGsm;
+        public int RequestChannels;
+        public int AudioVolume;
+        public int AudioBalance;
+        public int AudioPan;
+        public int AudioBass;
+        public int AudioTreble;
+        public int AudioLfe;
+        public int AudioCenter;
+        public int AudioFront;
+        public int AudioSurround;
+        public int AudioBack;
+        public int AudioLfeMix;
+        public int AudioMatrixEncoding;
+        public int AudioDownmixMode;
+        public int AudioChLayout;
+        public int AudioServiceType2;
+        public int AudioFrameSize;
+        public int AudioSampleSize;
+        public int AudioBlockAlign;
+        public int AudioCodecId;
+        public int AudioCodecTag;
+        public int AudioSeekPreroll;
+        public int AudioReplayGainTrackGain;
+        public int AudioReplayGainTrackPeak;
+        public int AudioReplayGainAlbumGain;
+        public int AudioReplayGainAlbumPeak;
+        public int AudioInitialPadding;
+        public int AudioTrailingPadding;
+        public int AudioSeekPreRoll2;
+        public int AudioSeekPreRoll3;
+        public int AudioSeekPreRoll4;
+        public int AudioSeekPreRoll5;
+        public int AudioSeekPreRoll6;
+        public int AudioSeekPreRoll7;
+        public int AudioSeekPreRoll8;
+        public int AudioSeekPreRoll9;
+        public int AudioSeekPreRoll10;
 #pragma warning restore CS0649
     }
 }
