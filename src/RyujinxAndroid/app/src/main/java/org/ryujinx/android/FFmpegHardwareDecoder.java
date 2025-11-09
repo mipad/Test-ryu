@@ -173,23 +173,24 @@ public class FFmpegHardwareDecoder {
         
         public FrameInfo getFrameInfo() {
             if (!initialized) return null;
-            int[] info = getFrameInfo(decoderContextId);
+            // 修复：明确调用外部类的静态方法
+            int[] info = FFmpegHardwareDecoder.getFrameInfo(decoderContextId);
             return info != null ? new FrameInfo(info) : null;
         }
         
         public void flush() {
             if (initialized) {
-                flushDecoder(decoderContextId);
+                FFmpegHardwareDecoder.flushDecoder(decoderContextId);
             }
         }
         
         public void release() {
             if (decoderContextId != 0) {
-                destroyHardwareDecoder(decoderContextId);
+                FFmpegHardwareDecoder.destroyHardwareDecoder(decoderContextId);
                 decoderContextId = 0;
             }
             if (deviceContextPtr != 0) {
-                freeHardwareDeviceContext(deviceContextPtr);
+                FFmpegHardwareDecoder.freeHardwareDeviceContext(deviceContextPtr);
                 deviceContextPtr = 0;
             }
             initialized = false;
