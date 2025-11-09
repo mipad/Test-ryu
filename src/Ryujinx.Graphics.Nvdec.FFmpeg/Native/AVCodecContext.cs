@@ -51,7 +51,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         public int CodedWidth;
         public int CodedHeight;
         public int GopSize;
-        public int PixFmt;
+        public int PixFmt;  // 像素格式
         public IntPtr DrawHorizBand;
         public IntPtr GetFormat;
         public int MaxBFrames;
@@ -178,7 +178,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         public int SubTextFormat;
         public int TrailingPadding;
         public long MaxPixels;
-        public IntPtr HwDeviceCtx;
+        public IntPtr HwDeviceCtx;  // 硬件设备上下文
         public int HwAccelFlags;
         public int applyCropping;
         public int ExtraHwFrames;
