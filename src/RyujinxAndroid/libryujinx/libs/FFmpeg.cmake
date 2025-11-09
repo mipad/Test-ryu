@@ -180,7 +180,7 @@ ExternalProject_Add(
     ffmpeg
     # 使用稳定版本而不是 master
     GIT_REPOSITORY              https://github.com/FFmpeg/FFmpeg.git
-    GIT_TAG                     n5.1.3  # 使用稳定版本
+    GIT_TAG                     master  # 使用稳定版本
     GIT_PROGRESS                1
     GIT_SHALLOW                 1
     UPDATE_COMMAND              ""
