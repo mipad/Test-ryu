@@ -10,7 +10,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
     {
         private unsafe delegate int AVCodec_decode(AVCodecContext* avctx, void* outdata, int* got_frame_ptr, AVPacket* avpkt);
 
-        private AVCodec_decode _decodeFrame; // 移除了 readonly
+        private AVCodec_decode _decodeFrame;
         private static readonly FFmpegApi.av_log_set_callback_callback _logFunc;
         private readonly AVCodec* _codec;
         private readonly AVPacket* _packet;
@@ -201,14 +201,27 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
             if (_useHardwareDecoder)
             {
-                // 硬件解码器优化设置
+                // 硬件解码器优化设置 - 修复配置
                 _context->Flags2 |= 0x00000001; // CODEC_FLAG2_FAST - 快速解码
                 _context->ThreadCount = 1; // 硬件解码器通常单线程
                 
                 // 减少错误恢复，硬件解码器通常更稳定
                 _context->ErrRecognition = 0x0001;
                 
-                Logger.Debug?.Print(LogClass.FFmpeg, "Configured for hardware decoding");
+                // 设置像素格式为硬件解码器支持的格式
+                _context->PixFmt = (int)AVPixelFormat.AV_PIX_FMT_MEDIACODEC;
+                
+                // 禁用 B 帧以简化硬件解码
+                _context->MaxBFrames = 0;
+                _context->HasBFrames = 0;
+                
+                // 设置更简单的 GOP 结构
+                _context->GopSize = 30;
+                
+                // 禁用复杂的解码器特性
+                _context->Refs = 1; // 只使用一个参考帧
+                
+                Logger.Debug?.Print(LogClass.FFmpeg, "Configured for hardware decoding with optimized settings");
             }
             else
             {
