@@ -25,6 +25,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private readonly string _hardwareDecoderName;
         private AVBufferRef* _hwDeviceContext;
         private AVPixelFormat _hwPixelFormat;
+        private bool _isInitialized = false;
 
         // Android 硬件解码器映射
         private static readonly Dictionary<AVCodecID, string[]> AndroidHardwareDecoders = new()
@@ -114,17 +115,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             if (!ConfigureDecoderContext())
             {
                 Logger.Error?.PrintMsg(LogClass.FFmpeg, "Failed to configure decoder context.");
-                return;
-            }
-
-            int openResult = FFmpegApi.avcodec_open2(_context, _codec, null);
-            if (openResult != 0)
-            {
-                Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Codec couldn't be opened (Error: {openResult}). Falling back to software decoder.");
                 
-                // 如果硬件解码器打开失败，尝试软件解码器
+                // 如果硬件解码器配置失败，尝试回退到软件解码器
                 if (_useHardwareDecoder)
                 {
+                    Logger.Info?.Print(LogClass.FFmpeg, "Hardware decoder configuration failed, falling back to software decoder");
+                    
                     // 清理硬件设备上下文
                     if (_hwDeviceContext != null)
                     {
@@ -154,15 +150,23 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                         _hardwareDecoderName = null;
                         
                         // 配置软件解码器
-                        ConfigureDecoderContext();
-                        
-                        if (FFmpegApi.avcodec_open2(_context, softwareCodec, null) == 0)
+                        if (ConfigureDecoderContext())
                         {
-                            Logger.Info?.Print(LogClass.FFmpeg, $"Successfully opened software decoder: {GetCodecName(softwareCodec)}");
+                            int openResult = FFmpegApi.avcodec_open2(_context, softwareCodec, null);
+                            if (openResult == 0)
+                            {
+                                Logger.Info?.Print(LogClass.FFmpeg, $"Successfully opened software decoder: {GetCodecName(softwareCodec)}");
+                                _isInitialized = true;
+                            }
+                            else
+                            {
+                                Logger.Error?.PrintMsg(LogClass.FFmpeg, "Software decoder also failed to open.");
+                                return;
+                            }
                         }
                         else
                         {
-                            Logger.Error?.PrintMsg(LogClass.FFmpeg, "Software decoder also failed to open.");
+                            Logger.Error?.PrintMsg(LogClass.FFmpeg, "Software decoder configuration failed.");
                             return;
                         }
                     }
@@ -170,6 +174,77 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 else
                 {
                     return;
+                }
+            }
+            else
+            {
+                int openResult = FFmpegApi.avcodec_open2(_context, _codec, null);
+                if (openResult != 0)
+                {
+                    Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Codec couldn't be opened (Error: {openResult}).");
+                    
+                    // 如果硬件解码器打开失败，尝试软件解码器
+                    if (_useHardwareDecoder)
+                    {
+                        Logger.Info?.Print(LogClass.FFmpeg, "Hardware decoder open failed, falling back to software decoder");
+                        
+                        // 清理硬件设备上下文
+                        if (_hwDeviceContext != null)
+                        {
+                            fixed (AVBufferRef** ppHwDeviceContext = &_hwDeviceContext)
+                            {
+                                FFmpegApi.av_buffer_unref(ppHwDeviceContext);
+                            }
+                            _hwDeviceContext = null;
+                        }
+                        
+                        // 回退到软件解码器
+                        AVCodec* softwareCodec = FFmpegApi.avcodec_find_decoder(codecId);
+                        if (softwareCodec != null)
+                        {
+                            // 重新分配上下文
+                            fixed (AVCodecContext** ppContext = &_context)
+                            {
+                                FFmpegApi.avcodec_free_context(ppContext);
+                            }
+                            
+                            _context = FFmpegApi.avcodec_alloc_context3(softwareCodec);
+                            
+                            // 更新字段为软件解码器
+                            _codec = softwareCodec;
+                            _useHardwareDecoder = false;
+                            _decoderType = "Software";
+                            _hardwareDecoderName = null;
+                            
+                            // 配置软件解码器
+                            if (ConfigureDecoderContext())
+                            {
+                                if (FFmpegApi.avcodec_open2(_context, softwareCodec, null) == 0)
+                                {
+                                    Logger.Info?.Print(LogClass.FFmpeg, $"Successfully opened software decoder: {GetCodecName(softwareCodec)}");
+                                    _isInitialized = true;
+                                }
+                                else
+                                {
+                                    Logger.Error?.PrintMsg(LogClass.FFmpeg, "Software decoder also failed to open.");
+                                    return;
+                                }
+                            }
+                            else
+                            {
+                                Logger.Error?.PrintMsg(LogClass.FFmpeg, "Software decoder configuration failed.");
+                                return;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        return;
+                    }
+                }
+                else
+                {
+                    _isInitialized = true;
                 }
             }
 
@@ -210,7 +285,14 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 }
             }
 
-            Logger.Info?.Print(LogClass.FFmpeg, $"FFmpeg {_decoderType} decoder initialized successfully (API: {(_useNewApi ? "New" : "Old")}, Codec: {GetCodecName(_codec)})");
+            if (_isInitialized)
+            {
+                Logger.Info?.Print(LogClass.FFmpeg, $"FFmpeg {_decoderType} decoder initialized successfully (API: {(_useNewApi ? "New" : "Old")}, Codec: {GetCodecName(_codec)})");
+            }
+            else
+            {
+                Logger.Error?.PrintMsg(LogClass.FFmpeg, "FFmpeg decoder initialization failed");
+            }
         }
 
         private bool ConfigureDecoderContext()
@@ -256,7 +338,17 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     if (_hwPixelFormat == AVPixelFormat.AV_PIX_FMT_NONE)
                     {
                         Logger.Warning?.Print(LogClass.FFmpeg, "Failed to get hardware pixel format for decoder");
-                        return false;
+                        
+                        // 对于 MediaCodec，尝试使用已知的像素格式
+                        if (deviceType == AVHWDeviceType.AV_HWDEVICE_TYPE_MEDIACODEC)
+                        {
+                            _hwPixelFormat = AVPixelFormat.AV_PIX_FMT_MEDIACODEC;
+                            Logger.Info?.Print(LogClass.FFmpeg, $"Using default MediaCodec pixel format: {_hwPixelFormat}");
+                        }
+                        else
+                        {
+                            return false;
+                        }
                     }
 
                     Logger.Debug?.Print(LogClass.FFmpeg, $"Hardware pixel format: {_hwPixelFormat}");
@@ -383,6 +475,13 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
         public int DecodeFrame(Surface output, ReadOnlySpan<byte> bitstream)
         {
+            // 检查是否已初始化
+            if (!_isInitialized || _context == null)
+            {
+                Logger.Error?.Print(LogClass.FFmpeg, "Decoder not initialized, cannot decode frame");
+                return -1;
+            }
+
             _decodeTimer.Start();
             
             FFmpegApi.av_frame_unref(output.Frame);
@@ -485,6 +584,13 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
         private int DecodeFrameOldApi(Surface output, ReadOnlySpan<byte> bitstream)
         {
+            // 安全检查
+            if (_context == null || output.Frame == null || _decodeFrame == null)
+            {
+                Logger.Error?.Print(LogClass.FFmpeg, "Invalid state in DecodeFrameOldApi");
+                return -1;
+            }
+
             int result;
             int gotFrame;
 
@@ -561,6 +667,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         public string DecoderType => _decoderType;
         public string CodecName => GetCodecName(_codec);
         public string HardwareDecoderName => _hardwareDecoderName ?? "None";
+        public bool IsInitialized => _isInitialized;
 
         public void Dispose()
         {
