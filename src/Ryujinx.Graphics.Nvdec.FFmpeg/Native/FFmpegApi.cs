@@ -14,6 +14,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         internal const int EAGAIN = -11;  // 资源暂时不可用，需要重试
         internal const int EOF = -541478725; // 文件结束
 
+        // 硬件配置方法标志
+        internal const int AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX = 0x01;
+        internal const int AV_CODEC_HW_CONFIG_METHOD_HW_FRAMES_CTX = 0x02;
+        internal const int AV_CODEC_HW_CONFIG_METHOD_INTERNAL = 0x04;
+        internal const int AV_CODEC_HW_CONFIG_METHOD_AD_HOC = 0x08;
+
         private static readonly Dictionary<string, (int, int)> _librariesWhitelist = new()
         {
             { AvCodecLibraryName, (59, 61) },  // 扩展版本范围到 61
@@ -249,15 +255,4 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         public int methods;
         public int device_caps;
     }
-
-    // 硬件配置方法标志
-    internal static class AV_CODEC_HW_CONFIG_METHOD
-    {
-        public const int HW_DEVICE_CTX = 0x01;
-        public const int HW_FRAMES_CTX = 0x02;
-        public const int INTERNAL = 0x04;
-        public const int AD_HOC = 0x08;
-    }
-
-    // 移除重复的 AVCodecContext 定义，使用 AVCodecContext.cs 中的定义
 }
