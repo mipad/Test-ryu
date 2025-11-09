@@ -141,7 +141,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             try
             {
                 // Y 平面（亮度） - 填充灰度渐变
-                byte* yPlane = Frame->Data[0];
+                byte* yPlane = (byte*)Frame->Data[0];
                 for (int y = 0; y < Height; y++)
                 {
                     for (int x = 0; x < Width; x++)
@@ -152,8 +152,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 }
 
                 // U 和 V 平面（色度） - 填充中性灰色（无颜色）
-                byte* uPlane = Frame->Data[1];
-                byte* vPlane = Frame->Data[2];
+                byte* uPlane = (byte*)Frame->Data[1];
+                byte* vPlane = (byte*)Frame->Data[2];
                 for (int y = 0; y < UvHeight; y++)
                 {
                     for (int x = 0; x < UvWidth; x++)
@@ -223,7 +223,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             try
             {
                 // Y 平面填充黑色
-                byte* yPlane = Frame->Data[0];
+                byte* yPlane = (byte*)Frame->Data[0];
                 for (int y = 0; y < Height; y++)
                 {
                     for (int x = 0; x < Width; x++)
@@ -233,8 +233,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 }
 
                 // U 和 V 平面填充中性色
-                byte* uPlane = Frame->Data[1];
-                byte* vPlane = Frame->Data[2];
+                byte* uPlane = (byte*)Frame->Data[1];
+                byte* vPlane = (byte*)Frame->Data[2];
                 for (int y = 0; y < UvHeight; y++)
                 {
                     for (int x = 0; x < UvWidth; x++)
@@ -270,7 +270,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     FFmpegApi.av_frame_unref(Frame);
                     
                     // 然后释放帧本身
-                    FFmpegApi.av_frame_free(&Frame);
+                    AVFrame* framePtr = Frame;
+                    FFmpegApi.av_frame_free(&framePtr);
                 }
 
                 _isDisposed = true;
