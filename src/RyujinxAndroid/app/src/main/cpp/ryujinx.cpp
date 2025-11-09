@@ -15,7 +15,7 @@ extern "C" {
 #include <libavutil/hwcontext.h>
 #include <libavutil/opt.h>
 #include <libavutil/imgutils.h>
-#include <libavutil/jni.h>  // 添加 JNI 支持头文件
+// 移除不存在的 jni.h
 }
 
 // 全局变量定义 (在cpp文件中定义)
@@ -155,10 +155,9 @@ void setRenderingThread() {
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
     g_jvm = vm;
     
-    // 设置 JavaVM 给 FFmpeg - 使用正确的函数名
-    av_jni_set_java_vm(vm, nullptr);
-    
-    LOGI_NATIVE("FFmpeg JNI_OnLoad called, JavaVM set for FFmpeg");
+    // FFmpeg 7.1.2 不再需要显式设置 JavaVM
+    // 硬件解码器会自动使用 Android 的 JNI 环境
+    LOGI_NATIVE("FFmpeg JNI_OnLoad called");
     
     // 初始化 FFmpeg
     avformat_network_init();
@@ -688,7 +687,7 @@ Java_org_ryujinx_android_NativeHelpers_createHardwareDecoder(
             break;
         }
         if (config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) {
-            // 直接比较设备类型，不使用 av_hwdevice_get_type
+            // 直接使用第一个找到的硬件配置
             hw_pix_fmt = config->pix_fmt;
             break;
         }
