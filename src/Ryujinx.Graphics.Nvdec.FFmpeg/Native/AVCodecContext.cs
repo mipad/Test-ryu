@@ -51,7 +51,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         public int CodedWidth;
         public int CodedHeight;
         public int GopSize;
-        public int PixFmt;  // 像素格式
+        public int PixFmt;  // 像素格式 - 注意这是 int 类型
         public IntPtr DrawHorizBand;
         public IntPtr GetFormat;  // get_format 回调
         public int MaxBFrames;
