@@ -158,9 +158,19 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
 
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial void av_buffer_unref(AVBufferRef** buf);
+
+        // 新增 Vulkan 相关 API
+        [LibraryImport(AvCodecLibraryName)]
+        internal static unsafe partial int avcodec_get_hw_config(AVCodec* codec, int index);
+
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial int av_hwdevice_ctx_init(AVBufferRef* ref_);
+
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial int av_hwframe_ctx_init(AVBufferRef* ref_);
     }
 
-    // 像素格式枚举定义
+    // 像素格式枚举定义 - 添加 Vulkan 支持
     internal enum AVPixelFormat
     {
         AV_PIX_FMT_NONE = -1,
@@ -199,9 +209,25 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         AV_PIX_FMT_VIDEOTOOLBOX = 157,
         AV_PIX_FMT_MEDIACODEC = 165,
         AV_PIX_FMT_CUDA = 166,
+        AV_PIX_FMT_VULKAN = 175,
+        
+        // 更多格式...
+        AV_PIX_FMT_YUV420P10LE = 54,
+        AV_PIX_FMT_YUV420P10BE = 55,
+        AV_PIX_FMT_YUV422P10LE = 56,
+        AV_PIX_FMT_YUV422P10BE = 57,
+        AV_PIX_FMT_YUV444P10LE = 58,
+        AV_PIX_FMT_YUV444P10BE = 59,
+        AV_PIX_FMT_YUV420P12LE = 60,
+        AV_PIX_FMT_YUV420P12BE = 61,
+        AV_PIX_FMT_YUV422P12LE = 62,
+        AV_PIX_FMT_YUV422P12BE = 63,
+        AV_PIX_FMT_YUV444P12LE = 64,
+        AV_PIX_FMT_YUV444P12BE = 65,
+        AV_PIX_FMT_GBRP = 66,
     }
 
-    // 硬件解码相关类型定义
+    // 硬件解码相关类型定义 - 添加 Vulkan 支持
     internal enum AVHWDeviceType
     {
         AV_HWDEVICE_TYPE_NONE,
@@ -215,6 +241,28 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         AV_HWDEVICE_TYPE_DRM,
         AV_HWDEVICE_TYPE_OPENCL,
         AV_HWDEVICE_TYPE_MEDIACODEC,
+        AV_HWDEVICE_TYPE_VULKAN,
+    }
+
+    // 硬件配置方法
+    internal enum AVCodecHWConfigMethod
+    {
+        AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX = 0x01,
+        AV_CODEC_HW_CONFIG_METHOD_HW_FRAMES_CTX = 0x02,
+        AV_CODEC_HW_CONFIG_METHOD_INTERNAL = 0x04,
+        AV_CODEC_HW_CONFIG_METHOD_AD_HOC = 0x08,
+    }
+
+    // 硬件帧约束
+    [StructLayout(LayoutKind.Sequential)]
+    internal unsafe struct AVHWFramesConstraints
+    {
+        public AVPixelFormat* ValidHwFormats;
+        public AVPixelFormat* ValidSwFormats;
+        public int MinWidth;
+        public int MinHeight;
+        public int MaxWidth;
+        public int MaxHeight;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -236,5 +284,47 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         public void* FreeCallback;
     }
 
-    // 移除重复的 AVCodecContext 定义，使用 AVCodecContext.cs 中的定义
+    // 硬件帧上下文
+    [StructLayout(LayoutKind.Sequential)]
+    internal unsafe struct AVHWFramesContext
+    {
+        public void* AvClass;
+        public AVBufferRef* DeviceRef;
+        public AVPixelFormat Format;
+        public AVPixelFormat SwFormat;
+        public int Width;
+        public int Height;
+    }
+
+    // 硬件设备上下文
+    [StructLayout(LayoutKind.Sequential)]
+    internal unsafe struct AVHWDeviceContext
+    {
+        public void* AvClass;
+        public AVHWDeviceType Type;
+        public void* Hwctx;
+        public void* UserOpaque;
+        public void* Free;
+    }
+
+    // Vulkan 设备上下文
+    [StructLayout(LayoutKind.Sequential)]
+    internal unsafe struct AVVulkanDeviceContext
+    {
+        public void* Instance;
+        public void* PhysicalDevice;
+        public void* Device;
+        public void* Queue;
+        public int QueueFamilyIndex;
+        public void* GetProc;
+    }
+
+    // 硬件配置
+    [StructLayout(LayoutKind.Sequential)]
+    internal unsafe struct AVCodecHWConfig
+    {
+        public AVPixelFormat PixFmt;
+        public AVCodecHWConfigMethod Methods;
+        public AVHWDeviceType DeviceType;
+    }
 }
