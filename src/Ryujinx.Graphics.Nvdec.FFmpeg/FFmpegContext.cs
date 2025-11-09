@@ -42,7 +42,17 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             { AVCodecID.AV_CODEC_ID_VP8, new[] { "vp8_mediacodec" } },
             { AVCodecID.AV_CODEC_ID_VP9, new[] { "vp9_mediacodec" } },
             { AVCodecID.AV_CODEC_ID_AV1, new[] { "av1_mediacodec" } },
-            
+        };
+
+        // 已知的 Android 硬件像素格式
+        private static readonly AVPixelFormat[] AndroidHardwarePixelFormats = new[]
+        {
+            AVPixelFormat.AV_PIX_FMT_MEDIACODEC,
+            AVPixelFormat.AV_PIX_FMT_NV12,
+            AVPixelFormat.AV_PIX_FMT_YUV420P,
+            AVPixelFormat.AV_PIX_FMT_YUVJ420P,
+            AVPixelFormat.AV_PIX_FMT_YUV420P10LE,
+            AVPixelFormat.AV_PIX_FMT_YUV420P12LE,
         };
 
         public FFmpegContext(AVCodecID codecId, bool preferHardware = true)
@@ -199,6 +209,16 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
                     Logger.Debug?.Print(LogClass.FFmpeg, $"Found MediaCodec device type: {deviceType}");
 
+                    // 关键修复：先获取硬件像素格式
+                    _hwPixelFormat = FindHardwarePixelFormat(_codec, deviceType);
+                    if (_hwPixelFormat == AVPixelFormat.AV_PIX_FMT_NONE)
+                    {
+                        Logger.Warning?.Print(LogClass.FFmpeg, "Failed to find compatible hardware pixel format");
+                        return false;
+                    }
+
+                    Logger.Debug?.Print(LogClass.FFmpeg, $"Selected hardware pixel format: {_hwPixelFormat}");
+
                     // 创建硬件设备上下文
                     int result;
                     fixed (AVBufferRef** ppHwDeviceContext = &_hwDeviceContext)
@@ -214,16 +234,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
                     Logger.Debug?.Print(LogClass.FFmpeg, "Hardware device context created successfully");
 
-                    // 获取硬件解码器配置 - 参考案例中的方法
-                    _hwPixelFormat = FindHardwarePixelFormat(_codec, deviceType);
-                    if (_hwPixelFormat == AVPixelFormat.AV_PIX_FMT_NONE)
-                    {
-                        Logger.Warning?.Print(LogClass.FFmpeg, "Failed to find compatible hardware pixel format");
-                        return false;
-                    }
-
-                    Logger.Debug?.Print(LogClass.FFmpeg, $"Selected hardware pixel format: {_hwPixelFormat}");
-
                     // 设置硬件设备上下文到编解码器上下文
                     _context->HwDeviceCtx = (nint)FFmpegApi.av_buffer_ref(_hwDeviceContext);
                     if (_context->HwDeviceCtx == IntPtr.Zero)
@@ -232,7 +242,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                         return false;
                     }
 
-                    // 设置 get_format 回调 - 关键修复
+                    // 关键修复：直接设置像素格式，避免回调问题
+                    _context->PixFmt = _hwPixelFormat;
+                    
+                    // 仍然设置回调作为备用
                     _context->GetFormat = _getFormatCallbackPtr;
 
                     // 硬件解码器优化设置
@@ -288,8 +301,38 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 }
             }
 
-            Logger.Warning?.Print(LogClass.FFmpeg, "No compatible hardware configuration found");
+            // 如果没有找到兼容的配置，尝试使用已知的 Android 硬件格式
+            Logger.Warning?.Print(LogClass.FFmpeg, "No compatible hardware configuration found, trying known Android formats");
+            
+            foreach (var format in AndroidHardwarePixelFormats)
+            {
+                Logger.Debug?.Print(LogClass.FFmpeg, $"Trying known Android format: {format}");
+                // 检查格式是否可能被支持
+                if (IsPixelFormatLikelySupported(format))
+                {
+                    Logger.Info?.Print(LogClass.FFmpeg, $"Using fallback hardware pixel format: {format}");
+                    return format;
+                }
+            }
+
+            Logger.Warning?.Print(LogClass.FFmpeg, "No compatible hardware pixel format found");
             return AVPixelFormat.AV_PIX_FMT_NONE;
+        }
+
+        // 检查像素格式是否可能被支持
+        private bool IsPixelFormatLikelySupported(AVPixelFormat format)
+        {
+            // 对于 Android MediaCodec，这些格式通常被支持
+            switch (format)
+            {
+                case AVPixelFormat.AV_PIX_FMT_MEDIACODEC:
+                case AVPixelFormat.AV_PIX_FMT_NV12:
+                case AVPixelFormat.AV_PIX_FMT_YUV420P:
+                case AVPixelFormat.AV_PIX_FMT_YUVJ420P:
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         // get_format 回调函数 - 关键修复，参考案例
@@ -309,33 +352,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             }
 
             Logger.Error?.Print(LogClass.FFmpeg, "Failed to get HW surface format in callback");
-            return AVPixelFormat.AV_PIX_FMT_NONE;
-        }
-
-        private AVPixelFormat GetHardwarePixelFormat(AVCodec* codec, AVHWDeviceType deviceType)
-        {
-            // 遍历硬件配置，查找匹配的设备类型
-            for (int i = 0; ; i++)
-            {
-                AVCodecHWConfig* config = FFmpegApi.avcodec_get_hw_config(codec, i);
-                if (config == null)
-                {
-                    Logger.Debug?.Print(LogClass.FFmpeg, $"No hardware config found for decoder at index {i}");
-                    break;
-                }
-
-                Logger.Debug?.Print(LogClass.FFmpeg, $"Checking hardware config {i}: methods={config->methods}, device_type={config->device_type}, pix_fmt={config->pix_fmt}");
-
-                // 检查配置方法是否包含硬件设备上下文，并且设备类型匹配
-                if ((config->methods & FFmpegApi.AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) != 0 &&
-                    config->device_type == deviceType)
-                {
-                    Logger.Debug?.Print(LogClass.FFmpeg, $"Found compatible hardware config: pix_fmt={config->pix_fmt}");
-                    return (AVPixelFormat)config->pix_fmt;
-                }
-            }
-
-            return AVPixelFormat.AV_PIX_FMT_NONE;
+            
+            // 回调失败时返回已知的硬件格式
+            Logger.Info?.Print(LogClass.FFmpeg, $"Falling back to predefined hardware format: {_hwPixelFormat}");
+            return _hwPixelFormat;
         }
 
         private string GetCodecName(AVCodec* codec)
@@ -471,10 +491,16 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     gotFrame = 1;
                     _isFirstFrame = false;
 
-                    // 如果是硬件解码，可能需要转换帧格式
-                    if (_useHardwareDecoder && output.Frame->Format == (int)_hwPixelFormat)
+                    // 如果是硬件解码，检查帧格式
+                    if (_useHardwareDecoder)
                     {
-                        Logger.Debug?.Print(LogClass.FFmpeg, "Hardware frame decoded, may need format conversion");
+                        Logger.Debug?.Print(LogClass.FFmpeg, $"Hardware frame decoded, format: {output.Frame->Format}, expected: {(int)_hwPixelFormat}");
+                        
+                        // 如果格式不匹配，可能需要特殊处理
+                        if (output.Frame->Format != (int)_hwPixelFormat)
+                        {
+                            Logger.Warning?.Print(LogClass.FFmpeg, $"Frame format mismatch: got {output.Frame->Format}, expected {(int)_hwPixelFormat}");
+                        }
                     }
                 }
                 else if (result == FFmpegApi.EAGAIN || result == FFmpegApi.EOF)
