@@ -461,15 +461,43 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             {
                 Logger.Debug?.Print(LogClass.FFmpeg, $"Hardware decoding frame, size: {bitstream.Length}");
 
-                // 在硬件解码前填充测试图案以验证 Surface
-                if (_isFirstFrame)
+                // 验证硬件解码器状态
+                if (_hardwareDecoder == null)
                 {
-                    Logger.Debug?.Print(LogClass.FFmpeg, "First hardware decode frame - filling test pattern");
-                    output.FillTestPattern();
-                    _isFirstFrame = false;
-                    return 0; // 返回成功，显示测试图案
+                    Logger.Error?.Print(LogClass.FFmpeg, "Hardware decoder is null");
+                    return DecodeFrameSoftware(output, bitstream);
                 }
 
+                // 在硬件解码前确保 Surface 有效
+                if (!output.IsValid())
+                {
+                    Logger.Error?.Print(LogClass.FFmpeg, "Surface is invalid for hardware decode");
+                    if (!output.EnsureBuffersAllocated())
+                    {
+                        Logger.Error?.Print(LogClass.FFmpeg, "Failed to allocate surface buffers for hardware decode");
+                        return -1;
+                    }
+                }
+
+                // 如果是第一帧，填充测试图案来验证渲染管道
+                if (_isFirstFrame)
+                {
+                    Logger.Debug?.Print(LogClass.FFmpeg, "First hardware decode frame - filling diagnostic pattern");
+                    output.FillDiagnosticPattern(); // 使用新的诊断图案
+                    _isFirstFrame = false;
+                    
+                    // 验证 Surface 是否有效
+                    if (!output.IsValid())
+                    {
+                        Logger.Error?.Print(LogClass.FFmpeg, "Surface became invalid after diagnostic pattern fill");
+                        return -1;
+                    }
+                    
+                    Logger.Info?.Print(LogClass.FFmpeg, "Hardware decoder first frame test pattern displayed");
+                    return 0;
+                }
+
+                // 实际硬件解码
                 bool success = _hardwareDecoder.DecodeFrame(bitstream);
                 
                 if (success)
@@ -479,8 +507,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     // 硬件解码成功后，验证 Surface 数据
                     if (!output.IsValid())
                     {
-                        Logger.Warning?.Print(LogClass.FFmpeg, "Surface invalid after hardware decode, filling test pattern");
-                        output.FillTestPattern();
+                        Logger.Warning?.Print(LogClass.FFmpeg, "Surface invalid after hardware decode, using software fallback");
+                        return DecodeFrameSoftware(output, bitstream);
                     }
                     
                     return 0;
@@ -488,14 +516,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 else
                 {
                     Logger.Warning?.Print(LogClass.FFmpeg, "Hardware decode reported failure, falling back to software");
-                    // 硬件解码失败时回退到软件解码
                     return DecodeFrameSoftware(output, bitstream);
                 }
             }
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.FFmpeg, $"Hardware decode error: {ex.Message}");
-                // 发生异常时回退到软件解码
                 return DecodeFrameSoftware(output, bitstream);
             }
         }
