@@ -7,10 +7,6 @@ set(ANDROID_TOOLCHAIN_ROOT ${CMAKE_ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x
 set(ANDROID_SYSROOT ${ANDROID_TOOLCHAIN_ROOT}/sysroot)
 set(ANDROID_PLATFORM aarch64-linux-android)
 
-# 设置 Vulkan 相关路径
-set(VULKAN_INCLUDE_DIR ${ANDROID_NDK}/sources/third_party/vulkan/src/include)
-set(VULKAN_VALIDATION_LAYERS ${ANDROID_NDK}/sources/third_party/vulkan/src/layers)
-
 if (CMAKE_HOST_WIN32)
     set(ProgramFiles_x86 "$ENV{ProgramFiles\(x86\)}")
     cmake_path(APPEND VSWHERE_BIN "${ProgramFiles_x86}" "Microsoft Visual Studio" "Installer" "vswhere.exe")
@@ -38,7 +34,7 @@ else ()
     list(APPEND PROJECT_ENV "PATH=${ANDROID_TOOLCHAIN_ROOT}/bin:$ENV{PATH}")
 endif ()
 
-# 设置 FFmpeg 配置选项 - 增强硬件解码支持，包括 Vulkan
+# 设置 FFmpeg 配置选项 - 简化 Vulkan 配置
 set(FFMPEG_CONFIGURE_COMMAND
     <SOURCE_DIR>/configure
     --prefix=${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install
@@ -58,7 +54,6 @@ set(FFMPEG_CONFIGURE_COMMAND
     --extra-cflags=-mtune=cortex-a78
     --extra-cflags=-DANDROID
     --extra-cflags=-D__ANDROID_API__=21
-    --extra-cflags=-I${VULKAN_INCLUDE_DIR}
     --extra-ldflags=-Wl,--hash-style=both
     --extra-ldexeflags=-pie
     --enable-runtime-cpudetect
@@ -84,34 +79,23 @@ set(FFMPEG_CONFIGURE_COMMAND
     --enable-inline-asm
     --enable-jni
     
-    # Vulkan 硬件解码支持
+    # Vulkan 硬件解码支持（简化配置）
     --enable-vulkan
-    --enable-libvulkan
     --enable-decoder=h264_vulkan
-    --enable-decoder=hevc_vulkan
     --enable-decoder=vp8_vulkan
     --enable-decoder=vp9_vulkan
-    --enable-decoder=av1_vulkan
-    --enable-decoder=mpeg4_vulkan
-    --enable-decoder=mpeg2_vulkan
     
     # MediaCodec 硬件解码支持
     --enable-mediacodec
     --enable-decoder=mediacodec
     --enable-decoder=h264_mediacodec
-    --enable-decoder=hevc_mediacodec
     --enable-decoder=vp8_mediacodec
     --enable-decoder=vp9_mediacodec
-    --enable-decoder=av1_mediacodec
-    --enable-decoder=mpeg4_mediacodec
-    --enable-decoder=mpeg2_mediacodec
     
-    # 核心软件解码器支持
+    # 核心软件解码器支持（VP8, VP9, H264）
     --enable-decoder=h264
-    --enable-decoder=hevc
     --enable-decoder=vp8
     --enable-decoder=vp9
-    --enable-decoder=av1
     --enable-decoder=mpeg4
     --enable-decoder=mpeg2video
     --enable-decoder=mpeg1video
@@ -173,23 +157,11 @@ set(FFMPEG_CONFIGURE_COMMAND
     # 硬件加速相关
     --enable-hwaccels
     --enable-hwaccel=h264_vulkan
-    --enable-hwaccel=hevc_vulkan
     --enable-hwaccel=vp8_vulkan
     --enable-hwaccel=vp9_vulkan
-    --enable-hwaccel=av1_vulkan
     --enable-hwaccel=h264_mediacodec
-    --enable-hwaccel=hevc_mediacodec
     --enable-hwaccel=vp8_mediacodec
     --enable-hwaccel=vp9_mediacodec
-    --enable-hwaccel=av1_mediacodec
-    
-    # 其他硬件加速器（如果可用）
-    --enable-hwaccel=h264_vdpau
-    --enable-hwaccel=hevc_vdpau
-    --enable-hwaccel=h264_vaapi
-    --enable-hwaccel=hevc_vaapi
-    --enable-hwaccel=h264_dxva2
-    --enable-hwaccel=hevc_dxva2
     
     --disable-zlib
     --enable-small
@@ -209,7 +181,7 @@ ExternalProject_Add(
     ffmpeg
     # 使用支持 Vulkan 的 FFmpeg 版本
     GIT_REPOSITORY              https://github.com/FFmpeg/FFmpeg.git
-    GIT_TAG                     n8.0    # 使用支持 Vulkan 的较新版本
+    GIT_TAG                     n7.1.2    # 使用稳定版本，确保 Vulkan 支持
     GIT_PROGRESS                1
     GIT_SHALLOW                 1
     UPDATE_COMMAND              ""
@@ -267,15 +239,3 @@ add_dependencies(avfilter ffmpeg)
 
 # 添加头文件目录
 set(FFMPEG_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/include)
-
-# 添加 Vulkan 库查找（如果可用）
-find_library(VULKAN_LIBRARY vulkan PATHS ${ANDROID_NDK}/sources/third_party/vulkan/src/libs)
-if(VULKAN_LIBRARY)
-    message(STATUS "Found Vulkan library: ${VULKAN_LIBRARY}")
-    add_library(vulkan SHARED IMPORTED GLOBAL)
-    set_target_properties(vulkan PROPERTIES
-        IMPORTED_LOCATION ${VULKAN_LIBRARY}
-    )
-else()
-    message(WARNING "Vulkan library not found, Vulkan hardware decoding may not work")
-endif()
