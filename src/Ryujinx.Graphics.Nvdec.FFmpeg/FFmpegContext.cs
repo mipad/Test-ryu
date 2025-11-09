@@ -236,8 +236,13 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
                     Logger.Debug?.Print(LogClass.FFmpeg, $"Found MediaCodec device type: {deviceType}");
 
-                    // 创建硬件设备上下文
-                    int result = FFmpegApi.av_hwdevice_ctx_create(&_hwDeviceContext, deviceType, null, null, 0);
+                    // 创建硬件设备上下文 - 修复：使用 fixed 语句
+                    int result;
+                    fixed (AVBufferRef** ppHwDeviceContext = &_hwDeviceContext)
+                    {
+                        result = FFmpegApi.av_hwdevice_ctx_create(ppHwDeviceContext, deviceType, null, null, 0);
+                    }
+                    
                     if (result < 0)
                     {
                         Logger.Warning?.Print(LogClass.FFmpeg, $"Failed to create hardware device context: {result}");
@@ -256,9 +261,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
                     Logger.Debug?.Print(LogClass.FFmpeg, $"Hardware pixel format: {_hwPixelFormat}");
 
-                    // 设置硬件设备上下文到编解码器上下文
-                    _context->HwDeviceCtx = FFmpegApi.av_buffer_ref(_hwDeviceContext);
-                    if (_context->HwDeviceCtx == null)
+                    // 设置硬件设备上下文到编解码器上下文 - 修复：显式转换为 nint
+                    _context->HwDeviceCtx = (nint)FFmpegApi.av_buffer_ref(_hwDeviceContext);
+                    if (_context->HwDeviceCtx == IntPtr.Zero)
                     {
                         Logger.Warning?.Print(LogClass.FFmpeg, "Failed to set hardware device context");
                         return false;
