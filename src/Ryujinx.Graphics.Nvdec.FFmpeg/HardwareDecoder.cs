@@ -73,25 +73,39 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         {
             if (_disposed)
             {
-                Logger.Warning?.Print(LogClass.FFmpeg, "Hardware decoder is disposed");
+                Logger.Warning?.Print(LogClass.Nvdec, "Hardware decoder is disposed");
                 return false;
             }
 
             try
             {
+                if (bitstream.IsEmpty)
+                {
+                    Logger.Warning?.Print(LogClass.Nvdec, "Empty bitstream provided to hardware decoder");
+                    return false;
+                }
+
+                // 使用更高效的方式传递数据
                 byte[] data = bitstream.ToArray();
+                
+                Logger.Debug?.Print(LogClass.Nvdec, $"Hardware decode frame, size: {data.Length}");
+
                 bool success = decodeHardwareFrame(data, data.Length);
                 
-                if (!success)
+                if (success)
                 {
-                    Logger.Warning?.Print(LogClass.FFmpeg, "Hardware decode frame failed");
+                    Logger.Debug?.Print(LogClass.Nvdec, "Hardware decode frame success");
+                }
+                else
+                {
+                    Logger.Warning?.Print(LogClass.Nvdec, "Hardware decode frame failed");
                 }
                 
                 return success;
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.FFmpeg, $"Exception decoding frame with hardware decoder: {ex.Message}");
+                Logger.Error?.Print(LogClass.Nvdec, $"Exception decoding frame with hardware decoder: {ex.Message}");
                 return false;
             }
         }
