@@ -1,6 +1,7 @@
 using Ryujinx.Graphics.Nvdec.FFmpeg.Native;
 using Ryujinx.Graphics.Video;
 using System;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
 {
