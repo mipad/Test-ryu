@@ -195,8 +195,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         public int RcInitialCpbratio;
         public int RcMaxRate2;
         public int RcMinRate2;
-        public int RcMinVbvOverflowUse;
-        public int RcMaxAvailableVbvUse;
         public int RcMinVbvFullness;
         public int RcMaxVbvFullness;
         public int RcMinVbvSize;
