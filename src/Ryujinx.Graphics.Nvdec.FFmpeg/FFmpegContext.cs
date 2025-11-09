@@ -479,5 +479,101 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             
             Logger.Debug?.Print(LogClass.FFmpeg, $"{_decoderType} decoder disposed");
         }
+
+        // 新增方法：检查硬件解码器支持状态
+        public static bool CheckHardwareDecoderSupport(AVCodecID codecId)
+        {
+            try
+            {
+                if (AndroidHardwareDecoders.TryGetValue(codecId, out string[] decoderNames))
+                {
+                    foreach (string decoderName in decoderNames)
+                    {
+                        AVCodec* codec = FFmpegApi.avcodec_find_decoder_by_name(decoderName);
+                        if (codec != null)
+                        {
+                            Logger.Debug?.Print(LogClass.FFmpeg, $"Hardware decoder available: {decoderName}");
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.FFmpeg, $"Hardware decoder check failed: {ex.Message}");
+                return false;
+            }
+        }
+
+        // 新增方法：获取硬件解码器状态信息
+        public static string GetHardwareDecoderStatus()
+        {
+            var status = new System.Text.StringBuilder();
+            status.AppendLine("Hardware Decoder Status:");
+            
+            foreach (var pair in AndroidHardwareDecoders)
+            {
+                string codecName = pair.Key.ToString();
+                bool available = false;
+                
+                foreach (string decoderName in pair.Value)
+                {
+                    AVCodec* codec = FFmpegApi.avcodec_find_decoder_by_name(decoderName);
+                    if (codec != null)
+                    {
+                        available = true;
+                        status.AppendLine($"  {codecName}: {decoderName} - AVAILABLE");
+                        break;
+                    }
+                }
+                
+                if (!available)
+                {
+                    status.AppendLine($"  {codecName}: NOT AVAILABLE");
+                }
+            }
+            
+            return status.ToString();
+        }
+
+        // 新增方法：强制使用软件解码器
+        public void ForceSoftwareDecoder()
+        {
+            if (_useHardwareDecoder && _context != null)
+            {
+                Logger.Info?.Print(LogClass.FFmpeg, "Forcing software decoder usage");
+                
+                // 刷新解码器
+                if (_useNewApi)
+                {
+                    FFmpegApi.avcodec_flush_buffers(_context);
+                }
+                
+                // 重新配置为软件解码器设置
+                _context->ThreadCount = Math.Min(Environment.ProcessorCount, 4);
+                _context->Refs = 3;
+                _context->ErrRecognition = 0x0001 | 0x0002 | 0x0004;
+                
+                Logger.Debug?.Print(LogClass.FFmpeg, "Decoder reconfigured for software decoding");
+            }
+        }
+
+        // 新增方法：获取解码器性能统计
+        public (int frameCount, double averageTime, double fps) GetPerformanceStats()
+        {
+            double totalTime = _decodeTimer.Elapsed.TotalMilliseconds;
+            double avgTime = _frameCount > 0 ? totalTime / _frameCount : 0;
+            double fps = avgTime > 0 ? 1000.0 / avgTime : 0;
+            
+            return (_frameCount, avgTime, fps);
+        }
+
+        // 新增方法：重置性能统计
+        public void ResetPerformanceStats()
+        {
+            _frameCount = 0;
+            _decodeTimer.Reset();
+        }
     }
 }
