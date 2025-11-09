@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (兼容Oboe 1.10版本)
+// oboe_audio_renderer.cpp (兼容Oboe 1.10版本，修复LOG_TAG)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
@@ -6,6 +6,13 @@
 #include <chrono>
 #include <cmath>
 #include <array>
+
+// 在 cpp 文件中定义 LOG_TAG，避免头文件冲突
+#define LOG_TAG "RyujinxOboe"
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
+#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
 
 namespace RyujinxOboe {
 
