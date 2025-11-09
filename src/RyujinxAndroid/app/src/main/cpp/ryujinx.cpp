@@ -548,13 +548,130 @@ Java_org_ryujinx_android_media_HardwareDecoder_nativeIsCodecSupported(
 extern "C"
 bool initializeHardwareDecoder(const char* codecMime, int width, int height) {
     __android_log_print(ANDROID_LOG_INFO, "RyujinxHardware", "C: Initialize hardware decoder: %s, %dx%d", codecMime, width, height);
+    
+    JNIEnv* env = nullptr;
+    bool attached = false;
+    
+    if (_vm) {
+        int status = _vm->GetEnv((void**)&env, JNI_VERSION_1_6);
+        if (status == JNI_EDETACHED) {
+            if (_vm->AttachCurrentThread(&env, nullptr) == 0) {
+                attached = true;
+            }
+        }
+    }
+    
+    if (env && _mainActivityClass) {
+        jmethodID method = env->GetStaticMethodID(_mainActivityClass, "initializeHardwareDecoder", "(Ljava/lang/String;II)Z");
+        if (method) {
+            jstring jCodecMime = env->NewStringUTF(codecMime);
+            jboolean result = env->CallStaticBooleanMethod(_mainActivityClass, method, jCodecMime, width, height);
+            env->DeleteLocalRef(jCodecMime);
+            
+            __android_log_print(ANDROID_LOG_INFO, "RyujinxHardware", "C: Kotlin initialization result: %d", result);
+            
+            if (attached) {
+                _vm->DetachCurrentThread();
+            }
+            return result;
+        }
+    }
+    
+    if (attached) {
+        _vm->DetachCurrentThread();
+    }
     return true;
 }
 
 extern "C"
 bool decodeHardwareFrame(const uint8_t* data, int size) {
     __android_log_print(ANDROID_LOG_DEBUG, "RyujinxHardware", "C: Decode hardware frame, size: %d", size);
+    
+    JNIEnv* env = nullptr;
+    bool attached = false;
+    
+    if (_vm) {
+        int status = _vm->GetEnv((void**)&env, JNI_VERSION_1_6);
+        if (status == JNI_EDETACHED) {
+            if (_vm->AttachCurrentThread(&env, nullptr) == 0) {
+                attached = true;
+            }
+        }
+    }
+    
+    if (env && _mainActivityClass && data && size > 0) {
+        jbyteArray jData = env->NewByteArray(size);
+        env->SetByteArrayRegion(jData, 0, size, reinterpret_cast<const jbyte*>(data));
+        
+        jmethodID method = env->GetStaticMethodID(_mainActivityClass, "decodeHardwareFrame", "([BI)Z");
+        if (method) {
+            jboolean result = env->CallStaticBooleanMethod(_mainActivityClass, method, jData, size);
+            env->DeleteLocalRef(jData);
+            
+            __android_log_print(ANDROID_LOG_DEBUG, "RyujinxHardware", "C: Kotlin decode result: %d", result);
+            
+            if (attached) {
+                _vm->DetachCurrentThread();
+            }
+            return result;
+        }
+        env->DeleteLocalRef(jData);
+    }
+    
+    if (attached) {
+        _vm->DetachCurrentThread();
+    }
     return true;
+}
+
+extern "C"
+bool getDecodedFrame(/* out */ void** yData, /* out */ void** uData, /* out */ void** vData, 
+                    /* out */ int* width, /* out */ int* height, /* out */ int* yStride, /* out */ int* uvStride) {
+    __android_log_print(ANDROID_LOG_DEBUG, "RyujinxHardware", "C: Getting decoded frame");
+    
+    // 这里应该从硬件解码器获取实际的帧数据
+    // 目前返回模拟数据用于测试
+    
+    *width = 1920;
+    *height = 1080;
+    *yStride = 1920;
+    *uvStride = 960;
+    
+    // 分配测试数据
+    static uint8_t testYData[1920 * 1080];
+    static uint8_t testUData[960 * 540]; 
+    static uint8_t testVData[960 * 540];
+    
+    // 填充测试图案：棋盘格
+    for (int y = 0; y < 1080; y++) {
+        for (int x = 0; x < 1920; x++) {
+            bool isWhite = ((x / 64) + (y / 64)) % 2 == 0;
+            testYData[y * 1920 + x] = isWhite ? 255 : 64;
+        }
+    }
+    
+    for (int y = 0; y < 540; y++) {
+        for (int x = 0; x < 960; x++) {
+            testUData[y * 960 + x] = 128; // 中性 U
+            testVData[y * 960 + x] = 128; // 中性 V
+        }
+    }
+    
+    *yData = testYData;
+    *uData = testUData;
+    *vData = testVData;
+    
+    __android_log_print(ANDROID_LOG_DEBUG, "RyujinxHardware", "C: Returning test frame data");
+    return true;
+}
+
+// 帧回调函数指针
+static void (*_frameCallback)(void* yData, void* uData, void* vData, int width, int height, int yStride, int uvStride) = nullptr;
+
+extern "C"
+void setFrameCallback(void (*callback)(void* yData, void* uData, void* vData, int width, int height, int yStride, int uvStride)) {
+    _frameCallback = callback;
+    __android_log_print(ANDROID_LOG_INFO, "RyujinxHardware", "C: Frame callback set");
 }
 
 extern "C"
