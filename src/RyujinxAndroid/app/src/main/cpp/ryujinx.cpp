@@ -15,7 +15,7 @@ extern "C" {
 #include <libavutil/hwcontext.h>
 #include <libavutil/opt.h>
 #include <libavutil/imgutils.h>
-// 移除不存在的 jni.h
+#include <libavcodec/jni.h>  // 添加 JNI 支持头文件
 }
 
 // 全局变量定义 (在cpp文件中定义)
@@ -37,8 +37,6 @@ static std::unordered_map<std::string, std::string> HARDWARE_DECODERS = {
     {"vp8", "vp8_mediacodec"},
     {"vp9", "vp9_mediacodec"},
     {"av1", "av1_mediacodec"},
-    {"mpeg4", "mpeg4_mediacodec"},
-    {"mpeg2video", "mpeg2_mediacodec"}
 };
 
 // 硬件解码上下文结构
@@ -155,9 +153,16 @@ void setRenderingThread() {
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
     g_jvm = vm;
     
-    // FFmpeg 7.1.2 不再需要显式设置 JavaVM
-    // 硬件解码器会自动使用 Android 的 JNI 环境
-    LOGI_NATIVE("FFmpeg JNI_OnLoad called");
+    JNIEnv *env = NULL;
+    // 初始化JNIEnv
+    if (vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) != JNI_OK) {
+        return JNI_FALSE;
+    }
+    
+    // 设置JavaVM给FFmpeg，否则无法进行硬解码
+    av_jni_set_java_vm(vm, nullptr);
+    
+    LOGI_NATIVE("FFmpeg JNI_OnLoad called, JavaVM set for hardware decoding");
     
     // 初始化 FFmpeg
     avformat_network_init();
