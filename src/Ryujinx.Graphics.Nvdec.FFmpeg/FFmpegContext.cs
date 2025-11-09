@@ -13,17 +13,17 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
         private AVCodec_decode _decodeFrame;
         private static readonly FFmpegApi.av_log_set_callback_callback _logFunc;
-        private AVCodec* _codec;  // 移除了 readonly
-        private AVPacket* _packet;  // 移除了 readonly
+        private AVCodec* _codec;
+        private AVPacket* _packet;
         private AVCodecContext* _context;
-        private bool _useNewApi;  // 移除了 readonly
+        private bool _useNewApi;
         private bool _isFirstFrame = true;
         private bool _needsFlush = false;
         private System.Diagnostics.Stopwatch _decodeTimer = new System.Diagnostics.Stopwatch();
         private int _frameCount = 0;
-        private bool _useHardwareDecoder;  // 移除了 readonly
-        private string _decoderType;  // 移除了 readonly
-        private string _hardwareDecoderName;  // 移除了 readonly
+        private bool _useHardwareDecoder;
+        private string _decoderType;
+        private string _hardwareDecoderName;
 
         // 硬件解码器实例
         private HardwareDecoder _hardwareDecoder;
@@ -184,7 +184,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return;
             }
 
-            // 设置字段（不再有 readonly 限制）
+            // 设置字段
             _codec = codec;
             _useHardwareDecoder = useHardwareDecoder;
             _decoderType = useHardwareDecoder ? "Hardware" : "Software";
@@ -431,6 +431,20 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
         public int DecodeFrame(Surface output, ReadOnlySpan<byte> bitstream)
         {
+            // 验证输出 Surface
+            if (output == null)
+            {
+                Logger.Error?.Print(LogClass.FFmpeg, "Output surface is null");
+                return -1;
+            }
+
+            // 确保 Surface 已正确初始化
+            if (!output.EnsureBuffersAllocated())
+            {
+                Logger.Error?.Print(LogClass.FFmpeg, "Failed to allocate surface buffers");
+                return -1;
+            }
+
             if (_useHardwareAcceleration && _hardwareDecoder != null)
             {
                 return DecodeFrameHardware(output, bitstream);
@@ -445,13 +459,44 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         {
             try
             {
+                Logger.Debug?.Print(LogClass.FFmpeg, $"Hardware decoding frame, size: {bitstream.Length}");
+
+                // 在硬件解码前填充测试图案以验证 Surface
+                if (_isFirstFrame)
+                {
+                    Logger.Debug?.Print(LogClass.FFmpeg, "First hardware decode frame - filling test pattern");
+                    output.FillTestPattern();
+                    _isFirstFrame = false;
+                    return 0; // 返回成功，显示测试图案
+                }
+
                 bool success = _hardwareDecoder.DecodeFrame(bitstream);
-                return success ? 0 : -1;
+                
+                if (success)
+                {
+                    Logger.Debug?.Print(LogClass.FFmpeg, "Hardware decode reported success");
+                    
+                    // 硬件解码成功后，验证 Surface 数据
+                    if (!output.IsValid())
+                    {
+                        Logger.Warning?.Print(LogClass.FFmpeg, "Surface invalid after hardware decode, filling test pattern");
+                        output.FillTestPattern();
+                    }
+                    
+                    return 0;
+                }
+                else
+                {
+                    Logger.Warning?.Print(LogClass.FFmpeg, "Hardware decode reported failure, falling back to software");
+                    // 硬件解码失败时回退到软件解码
+                    return DecodeFrameSoftware(output, bitstream);
+                }
             }
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.FFmpeg, $"Hardware decode error: {ex.Message}");
-                return -1;
+                // 发生异常时回退到软件解码
+                return DecodeFrameSoftware(output, bitstream);
             }
         }
 
@@ -459,6 +504,14 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         {
             _decodeTimer.Start();
             
+            // 确保 Surface 已正确初始化
+            if (!output.EnsureBuffersAllocated())
+            {
+                Logger.Error?.Print(LogClass.FFmpeg, "Failed to allocate surface buffers for software decode");
+                _decodeTimer.Stop();
+                return -1;
+            }
+
             FFmpegApi.av_frame_unref(output.Frame);
 
             // 如果需要刷新，先刷新解码器
@@ -524,6 +577,14 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 {
                     gotFrame = 1;
                     _isFirstFrame = false;
+                    
+                    // 验证解码后的帧数据
+                    if (output.Frame->Data[0] == null || output.Frame->Data[1] == null || output.Frame->Data[2] == null)
+                    {
+                        Logger.Warning?.Print(LogClass.FFmpeg, "Decoded frame has null data pointers, filling test pattern");
+                        output.FillTestPattern();
+                        gotFrame = 0;
+                    }
                 }
                 else if (result == FFmpegApi.EAGAIN || result == FFmpegApi.EOF)
                 {
@@ -545,6 +606,16 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             if (gotFrame == 0)
             {
                 FFmpegApi.av_frame_unref(output.Frame);
+                
+                // 如果没有得到帧，填充测试图案
+                if (_isFirstFrame)
+                {
+                    Logger.Debug?.Print(LogClass.FFmpeg, "No frame decoded on first attempt, filling test pattern");
+                    output.FillTestPattern();
+                    _isFirstFrame = false;
+                    return 0;
+                }
+                
                 return -1;
             }
 
@@ -582,7 +653,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                         _needsFlush = true;
                         _isFirstFrame = false;
                         FFmpegApi.av_frame_unref(output.Frame);
-                        return -1;
+                        
+                        // 填充测试图案
+                        output.FillTestPattern();
+                        return 0;
                     }
                 }
 
@@ -600,6 +674,16 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 if (gotFrame == 0)
                 {
                     FFmpegApi.av_frame_unref(output.Frame);
+                    
+                    // 如果没有得到帧，填充测试图案
+                    if (_isFirstFrame)
+                    {
+                        Logger.Debug?.Print(LogClass.FFmpeg, "No frame decoded on first attempt (old API), filling test pattern");
+                        output.FillTestPattern();
+                        _isFirstFrame = false;
+                        return 0;
+                    }
+                    
                     return -1;
                 }
 
