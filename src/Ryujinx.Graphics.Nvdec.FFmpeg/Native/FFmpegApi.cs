@@ -91,6 +91,18 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         internal static unsafe partial void av_free(AVFrame* frame);
 
         [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial void av_frame_free(AVFrame** frame);
+
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial int av_frame_get_buffer(AVFrame* frame, int align);
+
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial int av_frame_copy(AVFrame* dst, AVFrame* src);
+
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial int av_frame_copy_props(AVFrame* dst, AVFrame* src);
+
+        [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial void av_log_set_level(AVLog level);
 
         [LibraryImport(AvUtilLibraryName)]
