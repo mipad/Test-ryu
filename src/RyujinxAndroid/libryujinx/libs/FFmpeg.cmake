@@ -34,20 +34,8 @@ else ()
     list(APPEND PROJECT_ENV "PATH=${ANDROID_TOOLCHAIN_ROOT}/bin:$ENV{PATH}")
 endif ()
 
-# 检查 Vulkan 可用性
-find_library(VULKAN_LIB vulkan PATHS ${ANDROID_NDK}/sources/third_party/vulkan/src/libs)
-if(VULKAN_LIB)
-    message(STATUS "Found Vulkan library: ${VULKAN_LIB}")
-    set(VULKAN_ENABLED ON)
-    set(VULKAN_CFLAGS "-I${ANDROID_NDK}/sources/third_party/vulkan/src/include")
-    set(VULKAN_LDFLAGS "-L${ANDROID_NDK}/sources/third_party/vulkan/src/libs -lvulkan")
-else()
-    message(WARNING "Vulkan library not found, disabling Vulkan hardware decoding")
-    set(VULKAN_ENABLED OFF)
-endif()
-
-# 设置 FFmpeg 配置选项 - 条件启用 Vulkan
-set(FFMPEG_BASE_CONFIGURE_COMMAND
+# 设置 FFmpeg 配置选项 - 增强硬件解码支持
+set(FFMPEG_CONFIGURE_COMMAND
     <SOURCE_DIR>/configure
     --prefix=${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install
     --cross-prefix=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}21-
@@ -90,45 +78,25 @@ set(FFMPEG_BASE_CONFIGURE_COMMAND
     --enable-neon
     --enable-inline-asm
     --enable-jni
-)
-
-# MediaCodec 硬件解码支持
-set(FFMPEG_MEDIACODEC_CONFIGURE_COMMAND
     --enable-mediacodec
     --enable-decoder=mediacodec
+    
+    # 硬件解码器支持 - 增强配置
     --enable-decoder=h264_mediacodec
+    --enable-decoder=hevc_mediacodec
     --enable-decoder=vp8_mediacodec
     --enable-decoder=vp9_mediacodec
-)
-
-# Vulkan 硬件解码支持（仅在找到 Vulkan 时启用）
-set(FFMPEG_VULKAN_CONFIGURE_COMMAND)
-if(VULKAN_ENABLED)
-    set(FFMPEG_VULKAN_CONFIGURE_COMMAND
-        --enable-vulkan
-        --enable-decoder=h264_vulkan
-        --enable-decoder=vp8_vulkan
-        --enable-decoder=vp9_vulkan
-        --enable-hwaccel=h264_vulkan
-        --enable-hwaccel=vp8_vulkan
-        --enable-hwaccel=vp9_vulkan
-    )
-    # 添加 Vulkan 特定的编译和链接标志
-    set(FFMPEG_BASE_CONFIGURE_COMMAND ${FFMPEG_BASE_CONFIGURE_COMMAND}
-        --extra-cflags=${VULKAN_CFLAGS}
-        --extra-ldflags=${VULKAN_LDFLAGS}
-    )
-endif()
-
-# 核心软件解码器支持
-set(FFMPEG_DECODER_CONFIGURE_COMMAND
+    --enable-decoder=av1_mediacodec
+    
+    # 核心软件解码器支持
     --enable-decoder=h264
+    --enable-decoder=hevc
     --enable-decoder=vp8
     --enable-decoder=vp9
-    --enable-decoder=mpeg4
-    --enable-decoder=mpeg2video
-    --enable-decoder=mpeg1video
+    --enable-decoder=av1
     --enable-decoder=vc1
+    
+    # 音频解码器支持
     --enable-decoder=aac
     --enable-decoder=mp3
     --enable-decoder=ac3
@@ -147,10 +115,8 @@ set(FFMPEG_DECODER_CONFIGURE_COMMAND
     --enable-decoder=pcm_u8
     --enable-decoder=pcm_alaw
     --enable-decoder=pcm_mulaw
-)
-
-# 解复用器和解析器支持
-set(FFMPEG_DEMUXER_PARSER_CONFIGURE_COMMAND
+    
+    # 必要的解复用器支持
     --enable-demuxer=h264
     --enable-demuxer=hevc
     --enable-demuxer=aac
@@ -165,54 +131,49 @@ set(FFMPEG_DEMUXER_PARSER_CONFIGURE_COMMAND
     --enable-demuxer=mpegts
     --enable-demuxer=m4v
     --enable-demuxer=wav
+    
+    # 解析器支持
     --enable-parser=h264
     --enable-parser=hevc
     --enable-parser=aac
     --enable-parser=ac3
     --enable-parser=mpegaudio
-    --enable-parser=mpeg4video
-    --enable-parser=mpegvideo
     --enable-parser=vp8
     --enable-parser=vp9
+    
+    # 比特流过滤器支持
     --enable-bsf=h264_mp4toannexb
     --enable-bsf=hevc_mp4toannexb
     --enable-bsf=aac_adtstoasc
     --enable-bsf=extract_extradata
-)
-
-# 其他配置选项
-set(FFMPEG_OTHER_CONFIGURE_COMMAND
+    
+    # 硬件加速相关
     --enable-hwaccels
     --enable-hwaccel=h264_mediacodec
+    --enable-hwaccel=hevc_mediacodec
     --enable-hwaccel=vp8_mediacodec
     --enable-hwaccel=vp9_mediacodec
+    --enable-hwaccel=av1_mediacodec
+    
     --disable-zlib
     --enable-small
     --enable-optimizations
     --disable-debug
     --disable-stripping
+    # 添加错误恢复支持
     --enable-error-resilience
     --enable-hardcoded-tables
     --enable-safe-bitstream-reader
+    # 移除 pkg-config 依赖
     --pkg-config=false
-)
-
-# 组合所有配置命令
-set(FFMPEG_CONFIGURE_COMMAND
-    ${FFMPEG_BASE_CONFIGURE_COMMAND}
-    ${FFMPEG_MEDIACODEC_CONFIGURE_COMMAND}
-    ${FFMPEG_VULKAN_CONFIGURE_COMMAND}
-    ${FFMPEG_DECODER_CONFIGURE_COMMAND}
-    ${FFMPEG_DEMUXER_PARSER_CONFIGURE_COMMAND}
-    ${FFMPEG_OTHER_CONFIGURE_COMMAND}
 )
 
 # 添加配置验证步骤
 ExternalProject_Add(
     ffmpeg
-    # 使用稳定版本
+    # 使用稳定版本而不是 master
     GIT_REPOSITORY              https://github.com/FFmpeg/FFmpeg.git
-    GIT_TAG                     n8.0    # 使用经过验证的稳定版本
+    GIT_TAG                     n7.1.2  # 使用稳定版本
     GIT_PROGRESS                1
     GIT_SHALLOW                 1
     UPDATE_COMMAND              ""
