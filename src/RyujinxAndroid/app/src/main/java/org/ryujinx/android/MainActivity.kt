@@ -35,6 +35,7 @@ import androidx.core.content.ContextCompat
 import androidx.activity.result.contract.ActivityResultContracts
 import org.ryujinx.android.media.HardwareDecoderManager
 import org.ryujinx.android.media.HardwareDecoder
+import android.util.Log
 
 class MainActivity : BaseActivity() {
     private var physicalControllerManager: PhysicalControllerManager =
@@ -83,6 +84,75 @@ class MainActivity : BaseActivity() {
         var AppPath: String = ""
         var StorageHelper: SimpleStorageHelper? = null
         val performanceMonitor = PerformanceMonitor()
+        
+        private var currentHardwareDecoder: HardwareDecoder? = null
+        
+        /**
+         * 从 Native 代码调用的硬件解码器初始化
+         */
+        @JvmStatic
+        fun initializeHardwareDecoder(codecMime: String, width: Int, height: Int): Boolean {
+            return try {
+                Log.i("HardwareDecoder", "Native->Kotlin: Initialize $codecMime, ${width}x$height")
+                
+                // 释放之前的解码器
+                currentHardwareDecoder?.release()
+                
+                // 使用 HardwareDecoderManager 创建解码器
+                val decoder = HardwareDecoderManager.createDecoder(codecMime, width, height, 
+                    object : HardwareDecoder.DecoderCallback {
+                        override fun onFrameDecoded(data: ByteArray, width: Int, height: Int, format: Int) {
+                            Log.d("HardwareDecoder", "Frame decoded in Kotlin: ${width}x${height}, size: ${data.size}")
+                            // 这里可以进一步处理解码后的数据
+                        }
+                        
+                        override fun onDecoderError(error: String) {
+                            Log.e("HardwareDecoder", "Decoder error in Kotlin: $error")
+                        }
+                        
+                        override fun onDecoderInitialized() {
+                            Log.i("HardwareDecoder", "Decoder initialized successfully in Kotlin")
+                        }
+                    })
+                
+                currentHardwareDecoder = decoder
+                decoder != null
+            } catch (e: Exception) {
+                Log.e("HardwareDecoder", "Failed to initialize from native: ${e.message}")
+                false
+            }
+        }
+        
+        /**
+         * 从 Native 代码调用的硬件解码
+         */
+        @JvmStatic
+        fun decodeHardwareFrame(frameData: ByteArray, frameSize: Int): Boolean {
+            return try {
+                Log.d("HardwareDecoder", "Native->Kotlin: Decode frame, size: $frameSize")
+                
+                // 使用当前的硬件解码器
+                val decoder = currentHardwareDecoder
+                if (decoder != null) {
+                    decoder.decodeFrame(frameData, frameSize)
+                    true
+                } else {
+                    Log.w("HardwareDecoder", "No decoder available, creating new one")
+                    // 如果没有解码器，尝试创建默认的 H.264 解码器
+                    val newDecoder = HardwareDecoderManager.createDecoder(HardwareDecoder.CODEC_H264, 1920, 1080, null)
+                    if (newDecoder != null) {
+                        currentHardwareDecoder = newDecoder
+                        newDecoder.decodeFrame(frameData, frameSize)
+                        true
+                    } else {
+                        false
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("HardwareDecoder", "Failed to decode from native: ${e.message}")
+                false
+            }
+        }
 
         @JvmStatic
         fun frameEnded() {
@@ -442,6 +512,11 @@ class MainActivity : BaseActivity() {
         handler.removeCallbacks(reattachWindowWhenReady)
         // 如果Activity死亡 → 保证解除绑定
         try { mainViewModel?.gameHost?.shutdownBinding() } catch (_: Throwable) {}
+        
+        // 释放硬件解码器
+        Companion.currentHardwareDecoder?.release()
+        Companion.currentHardwareDecoder = null
+        
         super.onDestroy()
     }
 
