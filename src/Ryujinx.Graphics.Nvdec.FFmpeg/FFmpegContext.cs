@@ -257,15 +257,15 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     Logger.Debug?.Print(LogClass.FFmpeg, $"Hardware pixel format: {_hwPixelFormat}");
 
                     // 设置硬件设备上下文到编解码器上下文
-                    _context->hw_device_ctx = FFmpegApi.av_buffer_ref(_hwDeviceContext);
-                    if (_context->hw_device_ctx == null)
+                    _context->HwDeviceCtx = FFmpegApi.av_buffer_ref(_hwDeviceContext);
+                    if (_context->HwDeviceCtx == null)
                     {
                         Logger.Warning?.Print(LogClass.FFmpeg, "Failed to set hardware device context");
                         return false;
                     }
 
                     // 设置像素格式为硬件格式
-                    _context->pix_fmt = _hwPixelFormat;
+                    _context->PixFmt = (int)_hwPixelFormat;
 
                     // 硬件解码器优化设置
                     _context->Flags2 |= 0x00000001; // CODEC_FLAG2_FAST - 快速解码
@@ -309,7 +309,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 Logger.Debug?.Print(LogClass.FFmpeg, $"Checking hardware config {i}: methods={config->methods}, device_type={config->device_type}, pix_fmt={config->pix_fmt}");
 
                 // 检查配置方法是否包含硬件设备上下文，并且设备类型匹配
-                if ((config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) != 0 &&
+                if ((config->methods & FFmpegApi.AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) != 0 &&
                     config->device_type == deviceType)
                 {
                     Logger.Debug?.Print(LogClass.FFmpeg, $"Found compatible hardware config: pix_fmt={config->pix_fmt}");
@@ -447,7 +447,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     _isFirstFrame = false;
 
                     // 如果是硬件解码，可能需要转换帧格式
-                    if (_useHardwareDecoder && output.Frame->format == (int)_hwPixelFormat)
+                    if (_useHardwareDecoder && output.Frame->Format == (int)_hwPixelFormat)
                     {
                         Logger.Debug?.Print(LogClass.FFmpeg, "Hardware frame decoded, may need format conversion");
                     }
@@ -621,7 +621,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                                 AVCodecHWConfig* config = FFmpegApi.avcodec_get_hw_config(codec, i);
                                 if (config == null) break;
                                 
-                                if ((config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) != 0 &&
+                                if ((config->methods & FFmpegApi.AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) != 0 &&
                                     config->device_type == deviceType)
                                 {
                                     Logger.Debug?.Print(LogClass.FFmpeg, $"Hardware decoder available: {decoderName} with pix_fmt {config->pix_fmt}");
@@ -667,7 +667,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                             AVCodecHWConfig* config = FFmpegApi.avcodec_get_hw_config(codec, i);
                             if (config == null) break;
                             
-                            if ((config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) != 0 &&
+                            if ((config->methods & FFmpegApi.AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) != 0 &&
                                 config->device_type == deviceType)
                             {
                                 available = true;
