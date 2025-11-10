@@ -13,9 +13,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private AVCodec_decode _decodeFrame;
         private static readonly FFmpegApi.av_log_set_callback_callback _logFunc;
         private AVCodec* _codec;
-        private readonly AVPacket* _packet;
+        private AVPacket* _packet; // 移除了 readonly
         private AVCodecContext* _context;
-        private readonly bool _useNewApi;
+        private bool _useNewApi; // 移除了 readonly
         private bool _isFirstFrame = true;
         private bool _needsFlush = false;
         private System.Diagnostics.Stopwatch _decodeTimer = new System.Diagnostics.Stopwatch();
@@ -329,6 +329,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 {
                     FFmpegApi.av_packet_free(ppPacket);
                 }
+                _packet = null; // 允许重新分配
             }
 
             if (_context != null)
@@ -381,6 +382,11 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 Logger.Error?.Print(LogClass.FFmpeg, "Packet couldn't be allocated during fallback.");
                 return false;
             }
+
+            // 重新检测 API 版本并设置 _useNewApi
+            int avCodecRawVersion = FFmpegApi.avcodec_version();
+            int avCodecMajorVersion = avCodecRawVersion >> 16;
+            _useNewApi = avCodecMajorVersion >= 58;
 
             _isInitialized = true;
             return true;
