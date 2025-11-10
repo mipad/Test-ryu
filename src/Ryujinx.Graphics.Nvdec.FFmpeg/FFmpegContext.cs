@@ -18,7 +18,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private AVCodec* _codec;
         private AVPacket* _packet;
         private AVCodecContext* _context;
-        private readonly bool _useNewApi;
+        private bool _useNewApi;
         private bool _isFirstFrame = true;
         private bool _needsFlush = false;
         private System.Diagnostics.Stopwatch _decodeTimer = new System.Diagnostics.Stopwatch();
