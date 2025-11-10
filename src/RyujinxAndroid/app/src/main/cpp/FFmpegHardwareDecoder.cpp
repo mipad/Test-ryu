@@ -385,13 +385,15 @@ bool FFmpegHardwareDecoder::TransferHardwareFrameToSoftware(HardwareDecoderConte
     // 复制其他帧信息
     ctx->sw_frame->width = ctx->hw_frame->width;
     ctx->sw_frame->height = ctx->hw_frame->height;
-    ctx->sw_frame->format = av_hwframe_transfer_get_formats(ctx->hw_device_ctx, 
-                                                           AV_HWFRAME_TRANSFER_DIRECTION_FROM);
+    ctx->sw_frame->pts = ctx->hw_frame->pts;
+    ctx->sw_frame->pkt_dts = ctx->hw_frame->pkt_dts;
+    
+    // 在 FFmpeg 7.12 中，格式会在传输过程中自动设置
+    // 不需要手动调用 av_hwframe_transfer_get_formats
     
     return true;
 }
 
-// 以下工具函数的实现...
 bool FFmpegHardwareDecoder::IsHardwareDecoderSupported(const char* decoderType) {
     AVHWDeviceType type = av_hwdevice_find_type_by_name(decoderType);
     return type != AV_HWDEVICE_TYPE_NONE;
