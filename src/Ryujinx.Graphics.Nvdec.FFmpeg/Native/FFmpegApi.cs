@@ -168,6 +168,14 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         // 添加硬件配置查询 API
         [LibraryImport(AvCodecLibraryName)]
         internal static unsafe partial AVCodecHWConfig* avcodec_get_hw_config(AVCodec* codec, int index);
+
+        // 新增：硬件帧转换API
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial int av_hwframe_transfer_data(AVFrame* dst, AVFrame* src, int flags);
+
+        // 新增：帧引用API
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial int av_frame_ref(AVFrame* dst, AVFrame* src);
     }
 
     // 像素格式枚举定义 - 扩展版本
