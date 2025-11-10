@@ -27,6 +27,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private AVPixelFormat _hwPixelFormat;
         private bool _isInitialized = false;
 
+        // 新增：软件帧用于硬件帧转换
+        private AVFrame* _swFrame;
+
         // get_format 回调委托
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate AVPixelFormat GetFormatDelegate(AVCodecContext* s, AVPixelFormat* pix_fmts);
@@ -129,6 +132,16 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             {
                 Logger.Error?.PrintMsg(LogClass.FFmpeg, "Codec context couldn't be allocated.");
                 return;
+            }
+
+            // 如果是硬件解码，分配软件帧用于转换
+            if (_useHardwareDecoder)
+            {
+                _swFrame = FFmpegApi.av_frame_alloc();
+                if (_swFrame == null)
+                {
+                    Logger.Warning?.Print(LogClass.FFmpeg, "Failed to allocate software frame for hardware decoding");
+                }
             }
 
             // 设置解码器参数
@@ -491,16 +504,55 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     gotFrame = 1;
                     _isFirstFrame = false;
 
-                    // 如果是硬件解码，检查帧格式
+                    // 关键修复：如果是硬件解码，处理硬件帧转换
                     if (_useHardwareDecoder)
                     {
-                        Logger.Debug?.Print(LogClass.FFmpeg, $"Hardware frame decoded, format: {output.Frame->Format}, expected: {(int)_hwPixelFormat}");
+                        Logger.Debug?.Print(LogClass.FFmpeg, $"Hardware frame decoded, format: {output.Format}, expected: {_hwPixelFormat}");
                         
-                        // 如果格式不匹配，可能需要特殊处理
-                        if (output.Frame->Format != (int)_hwPixelFormat)
+                        // 如果是硬件帧格式，需要转换到软件帧
+                        if (output.Format == AVPixelFormat.AV_PIX_FMT_MEDIACODEC)
                         {
-                            Logger.Warning?.Print(LogClass.FFmpeg, $"Frame format mismatch: got {output.Frame->Format}, expected {(int)_hwPixelFormat}");
+                            Logger.Info?.Print(LogClass.FFmpeg, "Converting hardware frame to software frame");
+                            
+                            // 使用硬件帧转换API
+                            if (_swFrame != null)
+                            {
+                                FFmpegApi.av_frame_unref(_swFrame);
+                                
+                                // 从硬件帧传输数据到软件帧
+                                int transferResult = FFmpegApi.av_hwframe_transfer_data(_swFrame, output.Frame, 0);
+                                if (transferResult < 0)
+                                {
+                                    Logger.Error?.Print(LogClass.FFmpeg, $"Failed to transfer hardware frame to software frame: {transferResult}");
+                                    FFmpegApi.av_frame_unref(output.Frame);
+                                    FFmpegApi.av_packet_unref(_packet);
+                                    return -1;
+                                }
+
+                                // 复制软件帧数据到输出帧
+                                FFmpegApi.av_frame_unref(output.Frame);
+                                int copyResult = FFmpegApi.av_frame_ref(output.Frame, _swFrame);
+                                if (copyResult < 0)
+                                {
+                                    Logger.Error?.Print(LogClass.FFmpeg, $"Failed to copy software frame to output: {copyResult}");
+                                    FFmpegApi.av_frame_unref(output.Frame);
+                                    FFmpegApi.av_packet_unref(_packet);
+                                    return -1;
+                                }
+
+                                Logger.Info?.Print(LogClass.FFmpeg, $"Hardware frame converted successfully to format: {output.Format}");
+                            }
+                            else
+                            {
+                                Logger.Error?.Print(LogClass.FFmpeg, "Software frame not allocated for hardware decoding");
+                                FFmpegApi.av_frame_unref(output.Frame);
+                                FFmpegApi.av_packet_unref(_packet);
+                                return -1;
+                            }
                         }
+                        
+                        // 记录详细的帧信息（参考案例）
+                        Logger.Debug?.Print(LogClass.FFmpeg, $"Decoded frame: {output.GetFrameInfo()}");
                     }
                 }
                 else if (result == FFmpegApi.EAGAIN || result == FFmpegApi.EOF)
@@ -618,6 +670,14 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
         public void Dispose()
         {
+            // 清理软件帧
+            if (_swFrame != null)
+            {
+                FFmpegApi.av_frame_unref(_swFrame);
+                FFmpegApi.av_free(_swFrame);
+                _swFrame = null;
+            }
+
             // 清理数据包
             if (_packet != null)
             {

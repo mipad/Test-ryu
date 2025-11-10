@@ -24,6 +24,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         public int UvHeight => (Height + 1) >> 1;
         public int UvStride => Frame->LineSize[1];
 
+        // 新增属性：帧格式
+        public AVPixelFormat Format => (AVPixelFormat)Frame->Format;
+
+        // 新增属性：检查是否为硬件帧
+        public bool IsHardwareFrame => Format == AVPixelFormat.AV_PIX_FMT_MEDIACODEC;
+
         public Surface(int width, int height)
         {
             RequestedWidth = width;
@@ -36,6 +42,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         {
             FFmpegApi.av_frame_unref(Frame);
             FFmpegApi.av_free(Frame);
+        }
+
+        // 新增方法：获取帧信息用于调试
+        public string GetFrameInfo()
+        {
+            return $"Format: {Format}, Width: {Width}, Height: {Height}, Stride: {Stride}, Linesize: [{Frame->LineSize[0]}, {Frame->LineSize[1]}, {Frame->LineSize[2]}]";
         }
     }
 }
