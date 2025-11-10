@@ -1,6 +1,6 @@
 using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.Nvdec.FFmpeg.Native;
-using System; 
+using System;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
 
@@ -25,7 +25,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         public const int PIX_FMT_NV12 = 23;
         public const int PIX_FMT_MEDIACODEC = 165;
 
-        // JNI 原生方法声明 - 修复：使用正确的库名 "ryujinxjni"
+        // JNI 原生方法声明
         [DllImport("ryujinxjni", EntryPoint = "Java_org_ryujinx_android_NativeHelpers_initFFmpegHardwareDecoder")]
         private static extern void InitFFmpegHardwareDecoder();
 
@@ -57,34 +57,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         [return: MarshalAs(UnmanagedType.LPStr)]
         private static extern string GetFFmpegVersion();
 
-        // 新增：直接 C 接口声明（备用方案）
-        [DllImport("ryujinxjni", EntryPoint = "InitializeFFmpegHardwareDecoder")]
-        [return: MarshalAs(UnmanagedType.I1)]
-        private static extern bool InitializeFFmpegHardwareDecoder_C();
-
-        [DllImport("ryujinxjni", EntryPoint = "CleanupFFmpegHardwareDecoder")]
-        private static extern void CleanupFFmpegHardwareDecoder_C();
-
-        [DllImport("ryujinxjni", EntryPoint = "CreateHardwareDecoderContext")]
-        private static extern long CreateHardwareDecoderContext_C([MarshalAs(UnmanagedType.LPStr)] string codecName);
-
-        [DllImport("ryujinxjni", EntryPoint = "DecodeVideoFrame")]
-        private static extern int DecodeVideoFrame_C(long contextId, byte[] inputData, int inputSize,
-                                                    int[] width, int[] height, int[] format,
-                                                    byte[] plane0, int plane0Size,
-                                                    byte[] plane1, int plane1Size,
-                                                    byte[] plane2, int plane2Size);
-
-        [DllImport("ryujinxjni", EntryPoint = "DestroyHardwareDecoderContext")]
-        private static extern void DestroyHardwareDecoderContext_C(long contextId);
-
-        [DllImport("ryujinxjni", EntryPoint = "FlushHardwareDecoder")]
-        private static extern void FlushHardwareDecoder_C(long contextId);
-
-        [DllImport("ryujinxjni", EntryPoint = "GetFFmpegVersionString")]
-        [return: MarshalAs(UnmanagedType.LPStr)]
-        private static extern string GetFFmpegVersionString_C();
-
         // 实现 IVideoDecoder 接口
         public bool IsInitialized => _initialized;
         public bool IsHardwareDecoder => _useHardwareDecoder;
@@ -102,24 +74,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             }
             catch (Exception ex)
             {
-                Logger.Warning?.Print(LogClass.FFmpeg, $"Failed to check MediaCodec support via JNI: {ex.Message}");
-                
-                // 备用方案：尝试直接 C 接口
-                try
-                {
-                    // 检查是否能初始化硬件解码器
-                    bool initialized = InitializeFFmpegHardwareDecoder_C();
-                    if (initialized)
-                    {
-                        CleanupFFmpegHardwareDecoder_C();
-                    }
-                    return initialized;
-                }
-                catch (Exception ex2)
-                {
-                    Logger.Warning?.Print(LogClass.FFmpeg, $"Failed to check MediaCodec support via C API: {ex2.Message}");
-                    return false;
-                }
+                Logger.Warning?.Print(LogClass.FFmpeg, $"Failed to check MediaCodec support: {ex.Message}");
+                return false;
             }
         }
 
@@ -135,23 +91,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             catch (Exception ex)
             {
                 Logger.Warning?.Print(LogClass.FFmpeg, $"Failed to check hardware decoder for {codecName}: {ex.Message}");
-                
-                // 备用方案：尝试创建解码器上下文
-                try
-                {
-                    long contextId = CreateHardwareDecoderContext_C(codecName);
-                    if (contextId != 0)
-                    {
-                        DestroyHardwareDecoderContext_C(contextId);
-                        return true;
-                    }
-                    return false;
-                }
-                catch (Exception ex2)
-                {
-                    Logger.Warning?.Print(LogClass.FFmpeg, $"Failed to check hardware decoder for {codecName} via C API: {ex2.Message}");
-                    return false;
-                }
+                return false;
             }
         }
 
@@ -162,24 +102,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         {
             try
             {
-                string version = GetFFmpegVersion();
-                return version ?? "Unknown";
+                return GetFFmpegVersion() ?? "Unknown";
             }
             catch (Exception ex)
             {
-                Logger.Warning?.Print(LogClass.FFmpeg, $"Failed to get FFmpeg version via JNI: {ex.Message}");
-                
-                // 备用方案：尝试直接 C 接口
-                try
-                {
-                    string version = GetFFmpegVersionString_C();
-                    return version ?? "Unknown";
-                }
-                catch (Exception ex2)
-                {
-                    Logger.Warning?.Print(LogClass.FFmpeg, $"Failed to get FFmpeg version via C API: {ex2.Message}");
-                    return "Unknown";
-                }
+                Logger.Warning?.Print(LogClass.FFmpeg, $"Failed to get FFmpeg version: {ex.Message}");
+                return "Unknown";
             }
         }
 
@@ -192,25 +120,11 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             
             try
             {
-                // 方法1：首先尝试 JNI 接口
-                try
-                {
-                    InitFFmpegHardwareDecoder();
-                    _decoderContextId = CreateHardwareDecoderContext(codecName);
-                }
-                catch (Exception jniEx)
-                {
-                    Logger.Warning?.Print(LogClass.FFmpeg, $"JNI interface failed, trying C API: {jniEx.Message}");
-                    
-                    // 方法2：备用方案 - 使用直接 C 接口
-                    if (!InitializeFFmpegHardwareDecoder_C())
-                    {
-                        throw new InvalidOperationException("Failed to initialize hardware decoder via C API");
-                    }
-                    
-                    _decoderContextId = CreateHardwareDecoderContext_C(codecName);
-                }
-
+                // 初始化硬件解码器
+                InitFFmpegHardwareDecoder();
+                
+                // 创建硬件解码器上下文
+                _decoderContextId = CreateHardwareDecoderContext(codecName);
                 _initialized = _decoderContextId != 0;
                 _useHardwareDecoder = _initialized;
 
@@ -241,6 +155,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return -1;
             }
 
+            // 修复：不能对指针类型使用可空检查，直接检查指针是否为 null
             if (output == null || output.Frame == null)
             {
                 Logger.Error?.Print(LogClass.FFmpeg, "Output surface is null");
@@ -259,48 +174,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     planeData[i] = Array.Empty<byte>();
                 }
 
-                int result;
-                
-                // 方法1：首先尝试 JNI 接口
-                try
-                {
-                    result = DecodeVideoFrame(_decoderContextId, inputData, inputData.Length, frameInfo, planeData);
-                }
-                catch (Exception jniEx)
-                {
-                    Logger.Warning?.Print(LogClass.FFmpeg, $"JNI decode failed, trying C API: {jniEx.Message}");
-                    
-                    // 方法2：备用方案 - 使用直接 C 接口
-                    int[] width = new int[1], height = new int[1], format = new int[1];
-                    
-                    // 估计平面大小
-                    int estimatedSize = inputData.Length * 2; // 粗略估计
-                    byte[] plane0 = new byte[estimatedSize];
-                    byte[] plane1 = new byte[estimatedSize / 4];
-                    byte[] plane2 = new byte[estimatedSize / 4];
-                    
-                    result = DecodeVideoFrame_C(_decoderContextId, inputData, inputData.Length,
-                                              width, height, format,
-                                              plane0, plane0.Length,
-                                              plane1, plane1.Length,
-                                              plane2, plane2.Length);
-                    
-                    if (result == 0)
-                    {
-                        frameInfo[0] = width[0];
-                        frameInfo[1] = height[0];
-                        frameInfo[2] = format[0];
-                        // 对于 C 接口，需要手动计算行大小
-                        frameInfo[3] = width[0];  // 粗略估计
-                        frameInfo[4] = width[0] / 2;
-                        frameInfo[5] = width[0] / 2;
-                        
-                        // 填充平面数据
-                        planeData[0] = plane0;
-                        planeData[1] = plane1;
-                        planeData[2] = plane2;
-                    }
-                }
+                int result = DecodeVideoFrame(_decoderContextId, inputData, inputData.Length, frameInfo, planeData);
 
                 if (result == 0) // 成功
                 {
@@ -351,17 +225,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             {
                 try
                 {
-                    // 首先尝试 JNI 接口
-                    try
-                    {
-                        FlushDecoder(_decoderContextId);
-                    }
-                    catch (Exception jniEx)
-                    {
-                        Logger.Warning?.Print(LogClass.FFmpeg, $"JNI flush failed, trying C API: {jniEx.Message}");
-                        FlushHardwareDecoder_C(_decoderContextId);
-                    }
-                    
+                    FlushDecoder(_decoderContextId);
                     Logger.Debug?.Print(LogClass.FFmpeg, "Hardware decoder flushed");
                 }
                 catch (Exception ex)
@@ -395,45 +259,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     outputPlanes[i] = Array.Empty<byte>();
                 }
 
-                int result;
-                
-                // 首先尝试 JNI 接口
-                try
-                {
-                    result = DecodeVideoFrame(_decoderContextId, inputData, inputData.Length, 
+                int result = DecodeVideoFrame(_decoderContextId, inputData, inputData.Length, 
                                             frameInfoArray, outputPlanes);
-                }
-                catch (Exception jniEx)
-                {
-                    Logger.Warning?.Print(LogClass.FFmpeg, $"JNI decode failed, trying C API: {jniEx.Message}");
-                    
-                    // 备用方案：使用 C 接口
-                    int[] width = new int[1], height = new int[1], format = new int[1];
-                    int estimatedSize = inputData.Length * 2;
-                    byte[] plane0 = new byte[estimatedSize];
-                    byte[] plane1 = new byte[estimatedSize / 4];
-                    byte[] plane2 = new byte[estimatedSize / 4];
-                    
-                    result = DecodeVideoFrame_C(_decoderContextId, inputData, inputData.Length,
-                                              width, height, format,
-                                              plane0, plane0.Length,
-                                              plane1, plane1.Length,
-                                              plane2, plane2.Length);
-                    
-                    if (result == 0)
-                    {
-                        frameInfoArray[0] = width[0];
-                        frameInfoArray[1] = height[0];
-                        frameInfoArray[2] = format[0];
-                        frameInfoArray[3] = width[0];
-                        frameInfoArray[4] = width[0] / 2;
-                        frameInfoArray[5] = width[0] / 2;
-                        
-                        outputPlanes[0] = plane0;
-                        outputPlanes[1] = plane1;
-                        outputPlanes[2] = plane2;
-                    }
-                }
 
                 if (result == 0)
                 {
@@ -467,6 +294,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         /// </summary>
         private bool CopyPlanesToSurface(byte[][] planeData, FrameInfo frameInfo, Surface surface)
         {
+            // 修复：不能对指针类型使用可空检查
             if (planeData == null || planeData.Length == 0 || surface == null || surface.Frame == null)
             {
                 Logger.Error?.Print(LogClass.FFmpeg, "Invalid parameters for CopyPlanesToSurface");
@@ -624,28 +452,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             {
                 try
                 {
-                    // 首先尝试 JNI 接口
-                    try
-                    {
-                        DestroyHardwareDecoder(_decoderContextId);
-                    }
-                    catch (Exception jniEx)
-                    {
-                        Logger.Warning?.Print(LogClass.FFmpeg, $"JNI destroy failed, trying C API: {jniEx.Message}");
-                        DestroyHardwareDecoderContext_C(_decoderContextId);
-                    }
-                    
-                    // 清理硬件解码器
-                    try
-                    {
-                        CleanupFFmpegHardwareDecoder();
-                    }
-                    catch (Exception cleanupEx)
-                    {
-                        Logger.Warning?.Print(LogClass.FFmpeg, $"JNI cleanup failed, trying C API: {cleanupEx.Message}");
-                        CleanupFFmpegHardwareDecoder_C();
-                    }
-                    
+                    DestroyHardwareDecoder(_decoderContextId);
                     _decoderContextId = 0;
                     _initialized = false;
                     
