@@ -57,15 +57,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         [return: MarshalAs(UnmanagedType.LPStr)]
         private static extern string GetFFmpegVersion();
 
-        // FFmpeg native API
-        [DllImport("libavutil", EntryPoint = "av_image_fill_arrays")]
-        private static extern int av_image_fill_arrays(IntPtr[] dst_data, int[] dst_linesize,
-                                                      IntPtr src, int pix_fmt, int width, int height, int align);
-
-        [DllImport("libavutil", EntryPoint = "av_image_alloc")]
-        private static extern int av_image_alloc(IntPtr[] dst_data, int[] dst_linesize,
-                                               int width, int height, int pix_fmt, int align);
-
         // 实现 IVideoDecoder 接口
         public bool IsInitialized => _initialized;
         public bool IsHardwareDecoder => _useHardwareDecoder;
@@ -164,7 +155,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return -1;
             }
 
-            if (output?.Frame == null)
+            // 修复：不能对指针类型使用可空检查，直接检查指针是否为 null
+            if (output == null || output.Frame == null)
             {
                 Logger.Error?.Print(LogClass.FFmpeg, "Output surface is null");
                 return -1;
@@ -302,7 +294,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         /// </summary>
         private bool CopyPlanesToSurface(byte[][] planeData, FrameInfo frameInfo, Surface surface)
         {
-            if (planeData == null || planeData.Length == 0 || surface?.Frame == null)
+            // 修复：不能对指针类型使用可空检查
+            if (planeData == null || planeData.Length == 0 || surface == null || surface.Frame == null)
             {
                 Logger.Error?.Print(LogClass.FFmpeg, "Invalid parameters for CopyPlanesToSurface");
                 return false;

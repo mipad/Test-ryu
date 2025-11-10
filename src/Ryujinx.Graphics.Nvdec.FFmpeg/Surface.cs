@@ -102,17 +102,35 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
             try
             {
-                // 使用 FFmpeg API 分配图像缓冲区
-                int result = FFmpegApi.av_image_alloc(
-                    Frame->Data,
-                    Frame->LineSize,
-                    Frame->Width,
-                    Frame->Height,
-                    (AVPixelFormat)Frame->Format,
-                    32 // 对齐参数
-                );
+                // 创建临时数组来存储数据指针和行大小
+                byte*[] dataPointers = new byte*[8];
+                int[] lineSizes = new int[8];
 
-                return result >= 0;
+                // 使用 FFmpeg API 分配图像缓冲区
+                fixed (byte** dataPtr = dataPointers)
+                fixed (int* lineSizePtr = lineSizes)
+                {
+                    int result = FFmpegApi.av_image_alloc(
+                        dataPtr,
+                        lineSizePtr,
+                        Frame->Width,
+                        Frame->Height,
+                        (AVPixelFormat)Frame->Format,
+                        32 // 对齐参数
+                    );
+
+                    if (result >= 0)
+                    {
+                        // 将分配的数据复制回 Frame 结构
+                        for (int i = 0; i < 8; i++)
+                        {
+                            Frame->Data[i] = (IntPtr)dataPointers[i];
+                            Frame->LineSize[i] = lineSizes[i];
+                        }
+                    }
+
+                    return result >= 0;
+                }
             }
             catch (Exception ex)
             {
@@ -272,8 +290,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 // 首先取消引用
                 FFmpegApi.av_frame_unref(Frame);
                 
-                // 然后释放帧
-                FFmpegApi.av_frame_free(&Frame);
+                // 然后释放帧 - 使用局部变量修复编译错误
+                AVFrame* framePtr = Frame;
+                FFmpegApi.av_frame_free(&framePtr);
             }
         }
 
