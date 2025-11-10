@@ -170,7 +170,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         internal static unsafe partial AVCodecHWConfig* avcodec_get_hw_config(AVCodec* codec, int index);
     }
 
-    // 像素格式枚举定义
+    // 像素格式枚举定义 - 扩展版本
     internal enum AVPixelFormat
     {
         AV_PIX_FMT_NONE = -1,
@@ -202,6 +202,45 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         AV_PIX_FMT_NV12 = 25,
         AV_PIX_FMT_NV21 = 26,
         
+        // 扩展更多像素格式
+        AV_PIX_FMT_ARGB = 27,
+        AV_PIX_FMT_RGBA = 28,
+        AV_PIX_FMT_ABGR = 29,
+        AV_PIX_FMT_BGRA = 30,
+        AV_PIX_FMT_GRAY16BE = 31,
+        AV_PIX_FMT_GRAY16LE = 32,
+        AV_PIX_FMT_YUV440P = 33,
+        AV_PIX_FMT_YUVJ440P = 34,
+        AV_PIX_FMT_YUVA420P = 35,
+        AV_PIX_FMT_RGB48BE = 36,
+        AV_PIX_FMT_RGB48LE = 37,
+        AV_PIX_FMT_RGB565BE = 38,
+        AV_PIX_FMT_RGB565LE = 39,
+        AV_PIX_FMT_RGB555BE = 40,
+        AV_PIX_FMT_RGB555LE = 41,
+        AV_PIX_FMT_BGR565BE = 42,
+        AV_PIX_FMT_BGR565LE = 43,
+        AV_PIX_FMT_BGR555BE = 44,
+        AV_PIX_FMT_BGR555LE = 45,
+        
+        // 10位和12位格式
+        AV_PIX_FMT_YUV420P9BE = 46,
+        AV_PIX_FMT_YUV420P9LE = 47,
+        AV_PIX_FMT_YUV420P10BE = 48,
+        AV_PIX_FMT_YUV420P10LE = 49,
+        AV_PIX_FMT_YUV422P10BE = 50,
+        AV_PIX_FMT_YUV422P10LE = 51,
+        AV_PIX_FMT_YUV444P9BE = 52,
+        AV_PIX_FMT_YUV444P9LE = 53,
+        AV_PIX_FMT_YUV444P10BE = 54,
+        AV_PIX_FMT_YUV444P10LE = 55,
+        AV_PIX_FMT_YUV420P12BE = 56,
+        AV_PIX_FMT_YUV420P12LE = 57,
+        AV_PIX_FMT_YUV422P12BE = 58,
+        AV_PIX_FMT_YUV422P12LE = 59,
+        AV_PIX_FMT_YUV444P12BE = 60,
+        AV_PIX_FMT_YUV444P12LE = 61,
+        
         // 硬件加速格式
         AV_PIX_FMT_VDPAU = 50,
         AV_PIX_FMT_VAAPI = 52,
@@ -209,6 +248,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         AV_PIX_FMT_VIDEOTOOLBOX = 157,
         AV_PIX_FMT_MEDIACODEC = 165,
         AV_PIX_FMT_CUDA = 166,
+        
+        // 更多硬件格式
+        AV_PIX_FMT_D3D11 = 170,
+        AV_PIX_FMT_OPENCL = 171,
     }
 
     // 硬件解码相关类型定义
