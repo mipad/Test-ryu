@@ -47,12 +47,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         // 已知的 Android 硬件像素格式
         private static readonly AVPixelFormat[] AndroidHardwarePixelFormats = new[]
         {
-            AVPixelFormat.AV_PIX_FMT_MEDIACODEC,
-            AVPixelFormat.AV_PIX_FMT_NV12,
-            AVPixelFormat.AV_PIX_FMT_YUV420P,
-            AVPixelFormat.AV_PIX_FMT_YUVJ420P,
-            AVPixelFormat.AV_PIX_FMT_YUV420P10LE,
-            AVPixelFormat.AV_PIX_FMT_YUV420P12LE,
+            AVPixelFormat.AV_PIX_FMT_MEDIACODEC,  // 首选
+            AVPixelFormat.AV_PIX_FMT_NV12,        // 次选  
+            AVPixelFormat.AV_PIX_FMT_YUV420P,     // 备用
+            AVPixelFormat.AV_PIX_FMT_YUVJ420P,    // 备用
+            AVPixelFormat.AV_PIX_FMT_YUV420P10LE, // 10bit 备用
+            AVPixelFormat.AV_PIX_FMT_YUV420P12LE, // 12bit 备用
         };
 
         public FFmpegContext(AVCodecID codecId, bool preferHardware = true)
@@ -242,8 +242,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                         return false;
                     }
 
-                    // 关键修复：直接设置像素格式，避免回调问题
-                    _context->PixFmt = _hwPixelFormat;
+                    // 关键修复：直接设置像素格式，避免回调问题 - 添加显式类型转换
+                    _context->PixFmt = (int)_hwPixelFormat;
                     
                     // 仍然设置回调作为备用
                     _context->GetFormat = _getFormatCallbackPtr;
