@@ -49,7 +49,7 @@ extern jobject _mainActivity;
 extern jclass _mainActivityClass;
 extern pthread_t _renderingThreadIdNative;
 
-// 简化 Oboe 音频函数声明
+// =============== Oboe 音频函数声明 ===============
 extern "C" {
     bool initOboeAudio(int sample_rate, int channel_count);
     void shutdownOboeAudio();
@@ -63,6 +63,46 @@ extern "C" {
     // 设备信息函数
     const char* GetAndroidDeviceModel();
     const char* GetAndroidDeviceBrand();
+}
+
+// =============== FFmpeg 硬件解码 C 接口声明 ===============
+extern "C" {
+    // 硬件解码器管理
+    bool InitializeFFmpegHardwareDecoder();
+    void CleanupFFmpegHardwareDecoder();
+    long CreateHardwareDecoderContext(const char* codecName);
+    void DestroyHardwareDecoderContext(long contextId);
+    void FlushHardwareDecoder(long contextId);
+    
+    // 解码功能
+    int DecodeVideoFrame(long contextId, const uint8_t* inputData, int inputSize,
+                        int* width, int* height, int* format,
+                        uint8_t* plane0, int plane0Size,
+                        uint8_t* plane1, int plane1Size, 
+                        uint8_t* plane2, int plane2Size);
+    
+    // 工具函数
+    const char* GetFFmpegVersionString();
+}
+
+// =============== 其他全局函数声明 ===============
+extern "C" {
+    // 渲染线程相关
+    void setRenderingThread();
+    
+    // 窗口变换相关
+    void setCurrentTransform(long native_window, int transform);
+    
+    // 调试相关
+    void debug_break(int code);
+    
+    // 字符串处理函数（在 ryujinx.cpp 中定义）
+    char *getStringPointer(JNIEnv *env, jstring jS);
+    jstring createString(JNIEnv *env, char *ch);
+    jstring createStringFromStdString(JNIEnv *env, std::string s);
+    
+    // 表面创建函数
+    long createSurface(long native_surface, long instance);
 }
 
 #endif //RYUJINXNATIVE_RYUIJNX_H

@@ -1,5 +1,6 @@
-// ryujinx.cpp (完整修复版本，兼容FFmpeg 7.1.2)
+// ryujinx.cpp (完整简化版本)
 #include "ryuijnx.h"
+#include "FFmpegHardwareDecoder.h"
 #include <chrono>
 #include <csignal>
 #include "oboe_audio_renderer.h"
@@ -7,7 +8,7 @@
 #include <stdarg.h>
 #include <sys/system_properties.h>
 
-// 添加 FFmpeg 头文件
+// FFmpeg 头文件
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -15,53 +16,18 @@ extern "C" {
 #include <libavutil/hwcontext.h>
 #include <libavutil/opt.h>
 #include <libavutil/imgutils.h>
-#include <libavcodec/jni.h>  // 添加 JNI 支持头文件
+#include <libavcodec/jni.h>
 }
 
-// 全局变量定义 (在cpp文件中定义)
+// 全局变量定义
 long _renderingThreadId = 0;
 JavaVM *_vm = nullptr;
 jobject _mainActivity = nullptr;
 jclass _mainActivityClass = nullptr;
 pthread_t _renderingThreadIdNative;
-
 std::chrono::time_point<std::chrono::steady_clock, std::chrono::nanoseconds> _currentTimePoint;
 
-// 硬件解码相关全局变量和结构体
-static JavaVM* g_jvm = nullptr;
-
-// 硬件解码器类型映射
-static std::unordered_map<std::string, std::string> HARDWARE_DECODERS = {
-    {"h264", "h264_mediacodec"},
-    {"hevc", "hevc_mediacodec"}, 
-    {"vp8", "vp8_mediacodec"},
-    {"vp9", "vp9_mediacodec"},
-    {"av1", "av1_mediacodec"},
-};
-
-// 硬件解码上下文结构
-struct HardwareDecoderContext {
-    AVCodecContext* codec_ctx;
-    AVBufferRef* hw_device_ctx;
-    AVFrame* hw_frame;
-    AVFrame* sw_frame;
-    enum AVPixelFormat hw_pix_fmt;
-    bool initialized;
-    
-    HardwareDecoderContext() 
-        : codec_ctx(nullptr)
-        , hw_device_ctx(nullptr)
-        , hw_frame(nullptr)
-        , sw_frame(nullptr)
-        , hw_pix_fmt(AV_PIX_FMT_NONE)
-        , initialized(false) {}
-};
-
-// 全局解码器上下文映射
-static std::unordered_map<jlong, HardwareDecoderContext*> g_decoder_contexts;
-static jlong g_next_context_id = 1;
-
-// 日志标签 - 使用不同的标签避免冲突
+// 日志标签
 #define LOG_TAG_NATIVE "RyujinxNative"
 #define LOGI_NATIVE(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG_NATIVE, __VA_ARGS__)
 #define LOGW_NATIVE(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG_NATIVE, __VA_ARGS__)
@@ -140,6 +106,7 @@ jstring createStringFromStdString(
     return str;
 }
 }
+
 extern "C"
 void setRenderingThread() {
     auto currentId = pthread_self();
@@ -151,14 +118,6 @@ void setRenderingThread() {
 
 // JNI_OnLoad - 设置 JavaVM 给 FFmpeg
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
-    g_jvm = vm;
-    
-    JNIEnv *env = NULL;
-    // 初始化JNIEnv
-    if (vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) != JNI_OK) {
-        return JNI_FALSE;
-    }
-    
     // 设置JavaVM给FFmpeg，否则无法进行硬解码
     av_jni_set_java_vm(vm, nullptr);
     
@@ -167,31 +126,16 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
     // 初始化 FFmpeg
     avformat_network_init();
     
+    // 初始化硬件解码器
+    FFmpegHardwareDecoder::GetInstance().Initialize();
+    
     return JNI_VERSION_1_6;
 }
 
 // JNI_OnUnload
 JNIEXPORT void JNICALL JNI_OnUnload(JavaVM* vm, void* reserved) {
-    // 清理所有解码器上下文
-    for (auto& pair : g_decoder_contexts) {
-        HardwareDecoderContext* ctx = pair.second;
-        if (ctx) {
-            if (ctx->sw_frame) {
-                av_frame_free(&ctx->sw_frame);
-            }
-            if (ctx->hw_frame) {
-                av_frame_free(&ctx->hw_frame);
-            }
-            if (ctx->codec_ctx) {
-                avcodec_free_context(&ctx->codec_ctx);
-            }
-            if (ctx->hw_device_ctx) {
-                av_buffer_unref(&ctx->hw_device_ctx);
-            }
-            delete ctx;
-        }
-    }
-    g_decoder_contexts.clear();
+    // 清理硬件解码器资源
+    FFmpegHardwareDecoder::GetInstance().Cleanup();
     
     avformat_network_deinit();
     
@@ -434,9 +378,23 @@ Java_org_ryujinx_android_NativeHelpers_getAndroidDeviceBrand(JNIEnv *env, jobjec
     return env->NewStringUTF(brand);
 }
 
-// =============== 硬件解码 JNI 接口 ===============
+// =============== FFmpeg 硬件解码初始化 ===============
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_initFFmpegHardwareDecoder(JNIEnv* env, jclass clazz) {
+    bool success = FFmpegHardwareDecoder::GetInstance().Initialize();
+    LOGI_NATIVE("FFmpeg hardware decoder initialization: %s", success ? "success" : "failed");
+}
 
-// 检查是否支持指定的硬件解码器类型
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_cleanupFFmpegHardwareDecoder(JNIEnv* env, jclass clazz) {
+    FFmpegHardwareDecoder::GetInstance().Cleanup();
+    LOGI_NATIVE("FFmpeg hardware decoder cleaned up");
+}
+
+// =============== 硬件解码 JNI 接口 (委托给 FFmpegHardwareDecoder) ===============
+extern "C"
 JNIEXPORT jboolean JNICALL
 Java_org_ryujinx_android_NativeHelpers_isHardwareDecoderSupported(
     JNIEnv* env,
@@ -448,31 +406,13 @@ Java_org_ryujinx_android_NativeHelpers_isHardwareDecoderSupported(
         return JNI_FALSE;
     }
     
-    // 查找硬件解码器类型
-    AVHWDeviceType type = av_hwdevice_find_type_by_name(type_str);
+    bool supported = FFmpegHardwareDecoder::GetInstance().IsHardwareDecoderSupported(type_str);
     env->ReleaseStringUTFChars(decoder_type, type_str);
     
-    if (type == AV_HWDEVICE_TYPE_NONE) {
-        LOGW_NATIVE("Hardware device type %s not supported", type_str);
-        
-        // 输出支持的硬件类型
-        AVHWDeviceType iter_type = AV_HWDEVICE_TYPE_NONE;
-        LOGI_NATIVE("Available hardware device types:");
-        while ((iter_type = av_hwdevice_iterate_types(iter_type)) != AV_HWDEVICE_TYPE_NONE) {
-            const char* name = av_hwdevice_get_type_name(iter_type);
-            if (name) {
-                LOGI_NATIVE("  %s", name);
-            }
-        }
-        
-        return JNI_FALSE;
-    }
-    
-    LOGI_NATIVE("Hardware device type %s is supported", type_str);
-    return JNI_TRUE;
+    return supported ? JNI_TRUE : JNI_FALSE;
 }
 
-// 获取指定 codec 的硬件解码器名称
+extern "C"
 JNIEXPORT jstring JNICALL
 Java_org_ryujinx_android_NativeHelpers_getHardwareDecoderName(
     JNIEnv* env,
@@ -484,18 +424,13 @@ Java_org_ryujinx_android_NativeHelpers_getHardwareDecoderName(
         return env->NewStringUTF("");
     }
     
-    std::string codec_key = codec_str;
+    const char* hw_name = FFmpegHardwareDecoder::GetInstance().GetHardwareDecoderName(codec_str);
     env->ReleaseStringUTFChars(codec_name, codec_str);
     
-    auto it = HARDWARE_DECODERS.find(codec_key);
-    if (it != HARDWARE_DECODERS.end()) {
-        return env->NewStringUTF(it->second.c_str());
-    }
-    
-    return env->NewStringUTF("");
+    return env->NewStringUTF(hw_name);
 }
 
-// 检查硬件解码器是否可用
+extern "C"
 JNIEXPORT jboolean JNICALL
 Java_org_ryujinx_android_NativeHelpers_isHardwareDecoderAvailable(
     JNIEnv* env,
@@ -507,29 +442,13 @@ Java_org_ryujinx_android_NativeHelpers_isHardwareDecoderAvailable(
         return JNI_FALSE;
     }
     
-    // 获取硬件解码器名称
-    std::string codec_key = codec_str;
+    bool available = FFmpegHardwareDecoder::GetInstance().IsHardwareDecoderAvailable(codec_str);
     env->ReleaseStringUTFChars(codec_name, codec_str);
     
-    auto it = HARDWARE_DECODERS.find(codec_key);
-    if (it == HARDWARE_DECODERS.end()) {
-        return JNI_FALSE;
-    }
-    
-    const char* hw_decoder_name = it->second.c_str();
-    
-    // 尝试查找硬件解码器 - 使用 const AVCodec*
-    const AVCodec* codec = avcodec_find_decoder_by_name(hw_decoder_name);
-    if (!codec) {
-        LOGW_NATIVE("Hardware decoder %s not found", hw_decoder_name);
-        return JNI_FALSE;
-    }
-    
-    LOGI_NATIVE("Hardware decoder %s is available", hw_decoder_name);
-    return JNI_TRUE;
+    return available ? JNI_TRUE : JNI_FALSE;
 }
 
-// 获取硬件解码器的像素格式
+extern "C"
 JNIEXPORT jint JNICALL
 Java_org_ryujinx_android_NativeHelpers_getHardwarePixelFormat(
     JNIEnv* env,
@@ -541,428 +460,37 @@ Java_org_ryujinx_android_NativeHelpers_getHardwarePixelFormat(
         return -1;
     }
     
-    const AVCodec* decoder = avcodec_find_decoder_by_name(decoder_str);
+    int format = FFmpegHardwareDecoder::GetInstance().GetHardwarePixelFormat(decoder_str);
     env->ReleaseStringUTFChars(decoder_name, decoder_str);
     
-    if (!decoder) {
-        LOGE_NATIVE("Decoder %s not found", decoder_str);
-        return -1;
-    }
-    
-    // 查找硬件配置
-    for (int i = 0; ; i++) {
-        const AVCodecHWConfig* config = avcodec_get_hw_config(decoder, i);
-        if (!config) {
-            LOGW_NATIVE("No hardware config found for decoder %s at index %d", decoder_str, i);
-            break;
-        }
-        
-        if (config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) {
-            LOGI_NATIVE("Found hardware config for %s: pix_fmt=%d, device_type=%s", 
-                 decoder_str, config->pix_fmt, av_hwdevice_get_type_name(config->device_type));
-            return config->pix_fmt;
-        }
-    }
-    
-    return -1;
+    return format;
 }
 
-// 获取支持的硬件解码器列表
+extern "C"
 JNIEXPORT jobjectArray JNICALL
 Java_org_ryujinx_android_NativeHelpers_getSupportedHardwareDecoders(
     JNIEnv* env,
     jclass clazz) {
     
-    std::vector<std::string> available_decoders;
+    std::vector<std::string> decoders = FFmpegHardwareDecoder::GetInstance().GetSupportedHardwareDecoders();
     
-    for (const auto& pair : HARDWARE_DECODERS) {
-        // 检查解码器是否可用 - 使用 const AVCodec*
-        const AVCodec* codec = avcodec_find_decoder_by_name(pair.second.c_str());
-        if (codec) {
-            std::string display_name = pair.first + " (" + pair.second + ")";
-            available_decoders.push_back(display_name);
-        }
-    }
-    
-    // 创建字符串数组
     jclass stringClass = env->FindClass("java/lang/String");
-    jobjectArray result = env->NewObjectArray(available_decoders.size(), stringClass, nullptr);
+    jobjectArray result = env->NewObjectArray(decoders.size(), stringClass, nullptr);
     
-    for (size_t i = 0; i < available_decoders.size(); i++) {
-        env->SetObjectArrayElement(result, i, env->NewStringUTF(available_decoders[i].c_str()));
+    for (size_t i = 0; i < decoders.size(); i++) {
+        env->SetObjectArrayElement(result, i, env->NewStringUTF(decoders[i].c_str()));
     }
     
     return result;
 }
 
-// 初始化硬件设备上下文
-JNIEXPORT jlong JNICALL
-Java_org_ryujinx_android_NativeHelpers_initHardwareDeviceContext(
-    JNIEnv* env,
-    jclass clazz,
-    jstring device_type) {
-    
-    const char* type_str = env->GetStringUTFChars(device_type, nullptr);
-    if (!type_str) {
-        return 0;
-    }
-    
-    AVHWDeviceType type = av_hwdevice_find_type_by_name(type_str);
-    env->ReleaseStringUTFChars(device_type, type_str);
-    
-    if (type == AV_HWDEVICE_TYPE_NONE) {
-        LOGE_NATIVE("Hardware device type not supported");
-        return 0;
-    }
-    
-    AVBufferRef* hw_device_ctx = nullptr;
-    int err = av_hwdevice_ctx_create(&hw_device_ctx, type, nullptr, nullptr, 0);
-    if (err < 0) {
-        LOGE_NATIVE("Failed to create hardware device context: %s", av_err2str(err));
-        return 0;
-    }
-    
-    LOGI_NATIVE("Hardware device context created successfully");
-    return reinterpret_cast<jlong>(hw_device_ctx);
-}
-
-// 释放硬件设备上下文
-JNIEXPORT void JNICALL
-Java_org_ryujinx_android_NativeHelpers_freeHardwareDeviceContext(
-    JNIEnv* env,
-    jclass clazz,
-    jlong device_ctx_ptr) {
-    
-    if (device_ctx_ptr != 0) {
-        AVBufferRef* hw_device_ctx = reinterpret_cast<AVBufferRef*>(device_ctx_ptr);
-        av_buffer_unref(&hw_device_ctx);
-        LOGI_NATIVE("Hardware device context freed");
-    }
-}
-
-// 创建硬件解码器
-JNIEXPORT jlong JNICALL
-Java_org_ryujinx_android_NativeHelpers_createHardwareDecoder(
-    JNIEnv* env,
-    jclass clazz,
-    jstring decoder_name,
-    jlong device_ctx_ptr) {
-    
-    const char* decoder_str = env->GetStringUTFChars(decoder_name, nullptr);
-    if (!decoder_str) {
-        return 0;
-    }
-    
-    AVBufferRef* hw_device_ctx = reinterpret_cast<AVBufferRef*>(device_ctx_ptr);
-    if (!hw_device_ctx) {
-        env->ReleaseStringUTFChars(decoder_name, decoder_str);
-        return 0;
-    }
-    
-    // 查找解码器 - 使用 const AVCodec*
-    const AVCodec* decoder = avcodec_find_decoder_by_name(decoder_str);
-    if (!decoder) {
-        LOGE_NATIVE("Hardware decoder %s not found", decoder_str);
-        env->ReleaseStringUTFChars(decoder_name, decoder_str);
-        return 0;
-    }
-    
-    // 创建解码器上下文
-    AVCodecContext* codec_ctx = avcodec_alloc_context3(decoder);
-    if (!codec_ctx) {
-        LOGE_NATIVE("Failed to allocate codec context for %s", decoder_str);
-        env->ReleaseStringUTFChars(decoder_name, decoder_str);
-        return 0;
-    }
-    
-    // 设置硬件设备上下文
-    codec_ctx->hw_device_ctx = av_buffer_ref(hw_device_ctx);
-    if (!codec_ctx->hw_device_ctx) {
-        LOGE_NATIVE("Failed to set hardware device context");
-        avcodec_free_context(&codec_ctx);
-        env->ReleaseStringUTFChars(decoder_name, decoder_str);
-        return 0;
-    }
-    
-    // 查找硬件像素格式
-    enum AVPixelFormat hw_pix_fmt = AV_PIX_FMT_NONE;
-    for (int i = 0; ; i++) {
-        const AVCodecHWConfig* config = avcodec_get_hw_config(decoder, i);
-        if (!config) {
-            break;
-        }
-        if (config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) {
-            // 直接使用第一个找到的硬件配置
-            hw_pix_fmt = config->pix_fmt;
-            break;
-        }
-    }
-    
-    if (hw_pix_fmt == AV_PIX_FMT_NONE) {
-        LOGE_NATIVE("No suitable hardware config found for decoder %s", decoder_str);
-        avcodec_free_context(&codec_ctx);
-        env->ReleaseStringUTFChars(decoder_name, decoder_str);
-        return 0;
-    }
-    
-    // 创建硬件解码上下文
-    HardwareDecoderContext* ctx = new HardwareDecoderContext();
-    ctx->codec_ctx = codec_ctx;
-    ctx->hw_device_ctx = hw_device_ctx;
-    ctx->hw_pix_fmt = hw_pix_fmt;
-    
-    // 创建硬件帧
-    ctx->hw_frame = av_frame_alloc();
-    ctx->sw_frame = av_frame_alloc();
-    
-    if (!ctx->hw_frame || !ctx->sw_frame) {
-        LOGE_NATIVE("Failed to allocate frames for hardware decoder");
-        if (ctx->hw_frame) av_frame_free(&ctx->hw_frame);
-        if (ctx->sw_frame) av_frame_free(&ctx->sw_frame);
-        avcodec_free_context(&codec_ctx);
-        delete ctx;
-        env->ReleaseStringUTFChars(decoder_name, decoder_str);
-        return 0;
-    }
-    
-    // 打开解码器
-    int err = avcodec_open2(codec_ctx, decoder, nullptr);
-    if (err < 0) {
-        LOGE_NATIVE("Failed to open hardware decoder %s: %s", decoder_str, av_err2str(err));
-        av_frame_free(&ctx->hw_frame);
-        av_frame_free(&ctx->sw_frame);
-        avcodec_free_context(&codec_ctx);
-        delete ctx;
-        env->ReleaseStringUTFChars(decoder_name, decoder_str);
-        return 0;
-    }
-    
-    ctx->initialized = true;
-    jlong context_id = g_next_context_id++;
-    g_decoder_contexts[context_id] = ctx;
-    
-    LOGI_NATIVE("Hardware decoder %s created successfully, context ID: %ld", decoder_str, context_id);
-    env->ReleaseStringUTFChars(decoder_name, decoder_str);
-    
-    return context_id;
-}
-
-// 解码帧（硬件解码）
-JNIEXPORT jint JNICALL
-Java_org_ryujinx_android_NativeHelpers_decodeFrame(
-    JNIEnv* env,
-    jclass clazz,
-    jlong context_id,
-    jbyteArray input_data,
-    jint input_size,
-    jbyteArray output_data) {
-    
-    if (context_id == 0) {
-        LOGE_NATIVE("Invalid context ID");
-        return -1;
-    }
-    
-    auto it = g_decoder_contexts.find(context_id);
-    if (it == g_decoder_contexts.end()) {
-        LOGE_NATIVE("Decoder context not found for ID: %ld", context_id);
-        return -1;
-    }
-    
-    HardwareDecoderContext* ctx = it->second;
-    if (!ctx->initialized || !ctx->codec_ctx) {
-        LOGE_NATIVE("Decoder context not initialized");
-        return -1;
-    }
-    
-    // 创建 AVPacket
-    AVPacket* packet = av_packet_alloc();
-    if (!packet) {
-        LOGE_NATIVE("Failed to allocate packet");
-        return -1;
-    }
-    
-    // 设置输入数据
-    jbyte* input_bytes = env->GetByteArrayElements(input_data, nullptr);
-    packet->data = reinterpret_cast<uint8_t*>(input_bytes);
-    packet->size = input_size;
-    
-    int ret = 0;
-    int got_frame = 0;
-    
-    // 发送 packet 到解码器
-    ret = avcodec_send_packet(ctx->codec_ctx, packet);
-    if (ret < 0) {
-        LOGE_NATIVE("Error sending packet to decoder: %s", av_err2str(ret));
-        env->ReleaseByteArrayElements(input_data, input_bytes, JNI_ABORT);
-        av_packet_free(&packet);
-        return ret;
-    }
-    
-    // 接收解码后的帧
-    ret = avcodec_receive_frame(ctx->codec_ctx, ctx->hw_frame);
-    if (ret == 0) {
-        got_frame = 1;
-        
-        // 检查是否为硬件帧，需要转换
-        if (ctx->hw_frame->format == ctx->hw_pix_fmt) {
-            // 从 GPU 传输数据到 CPU
-            ret = av_hwframe_transfer_data(ctx->sw_frame, ctx->hw_frame, 0);
-            if (ret < 0) {
-                LOGE_NATIVE("Error transferring data from GPU to CPU: %s", av_err2str(ret));
-                got_frame = 0;
-            } else {
-                // 复制数据到输出缓冲区
-                jbyte* output_bytes = env->GetByteArrayElements(output_data, nullptr);
-                int data_size = 0;
-                
-                // 计算 YUV 数据大小
-                for (int i = 0; i < AV_NUM_DATA_POINTERS; i++) {
-                    if (ctx->sw_frame->data[i]) {
-                        int plane_size = ctx->sw_frame->linesize[i] * ctx->sw_frame->height;
-                        if (i > 0) {
-                            plane_size = ctx->sw_frame->linesize[i] * (ctx->sw_frame->height / 2);
-                        }
-                        
-                        if (data_size + plane_size <= env->GetArrayLength(output_data)) {
-                            memcpy(output_bytes + data_size, ctx->sw_frame->data[i], plane_size);
-                            data_size += plane_size;
-                        } else {
-                            LOGW_NATIVE("Output buffer too small for plane %d", i);
-                        }
-                    }
-                }
-                
-                env->ReleaseByteArrayElements(output_data, output_bytes, 0);
-            }
-        } else {
-            // 直接使用软件帧
-            LOGD_NATIVE("Frame is already in software format");
-        }
-    } else if (ret == AVERROR(EAGAIN)) {
-        LOGD_NATIVE("Need more input data");
-    } else if (ret == AVERROR_EOF) {
-        LOGD_NATIVE("End of stream");
-    } else {
-        LOGE_NATIVE("Error receiving frame from decoder: %s", av_err2str(ret));
-    }
-    
-    env->ReleaseByteArrayElements(input_data, input_bytes, JNI_ABORT);
-    av_packet_free(&packet);
-    av_frame_unref(ctx->hw_frame);
-    av_frame_unref(ctx->sw_frame);
-    
-    return got_frame ? 0 : ret;
-}
-
-// 获取解码帧信息
-JNIEXPORT jintArray JNICALL
-Java_org_ryujinx_android_NativeHelpers_getFrameInfo(
-    JNIEnv* env,
-    jclass clazz,
-    jlong context_id) {
-    
-    if (context_id == 0) {
-        return nullptr;
-    }
-    
-    auto it = g_decoder_contexts.find(context_id);
-    if (it == g_decoder_contexts.end()) {
-        return nullptr;
-    }
-    
-    HardwareDecoderContext* ctx = it->second;
-    if (!ctx->initialized || !ctx->sw_frame) {
-        return nullptr;
-    }
-    
-    // 返回帧信息: [width, height, format, linesize0, linesize1, linesize2]
-    jintArray result = env->NewIntArray(6);
-    jint frame_info[6] = {
-        ctx->sw_frame->width,
-        ctx->sw_frame->height,
-        ctx->sw_frame->format,
-        ctx->sw_frame->linesize[0],
-        ctx->sw_frame->linesize[1],
-        ctx->sw_frame->linesize[2]
-    };
-    
-    env->SetIntArrayRegion(result, 0, 6, frame_info);
-    return result;
-}
-
-// 刷新解码器
-JNIEXPORT void JNICALL
-Java_org_ryujinx_android_NativeHelpers_flushDecoder(
-    JNIEnv* env,
-    jclass clazz,
-    jlong context_id) {
-    
-    if (context_id == 0) {
-        return;
-    }
-    
-    auto it = g_decoder_contexts.find(context_id);
-    if (it == g_decoder_contexts.end()) {
-        return;
-    }
-    
-    HardwareDecoderContext* ctx = it->second;
-    if (ctx->initialized && ctx->codec_ctx) {
-        avcodec_flush_buffers(ctx->codec_ctx);
-        LOGD_NATIVE("Hardware decoder flushed");
-    }
-}
-
-// 销毁硬件解码器
-JNIEXPORT void JNICALL
-Java_org_ryujinx_android_NativeHelpers_destroyHardwareDecoder(
-    JNIEnv* env,
-    jclass clazz,
-    jlong context_id) {
-    
-    if (context_id == 0) {
-        return;
-    }
-    
-    auto it = g_decoder_contexts.find(context_id);
-    if (it == g_decoder_contexts.end()) {
-        return;
-    }
-    
-    HardwareDecoderContext* ctx = it->second;
-    if (ctx) {
-        if (ctx->sw_frame) {
-            av_frame_free(&ctx->sw_frame);
-        }
-        if (ctx->hw_frame) {
-            av_frame_free(&ctx->hw_frame);
-        }
-        if (ctx->codec_ctx) {
-            avcodec_free_context(&ctx->codec_ctx);
-        }
-        // 注意：不要释放 hw_device_ctx，它由外部管理
-        delete ctx;
-    }
-    
-    g_decoder_contexts.erase(it);
-    LOGI_NATIVE("Hardware decoder destroyed, context ID: %ld", context_id);
-}
-
-// 获取硬件设备类型列表
+extern "C"
 JNIEXPORT jobjectArray JNICALL
 Java_org_ryujinx_android_NativeHelpers_getHardwareDeviceTypes(
     JNIEnv* env,
     jclass clazz) {
     
-    std::vector<std::string> device_types;
-    AVHWDeviceType type = AV_HWDEVICE_TYPE_NONE;
-    
-    while ((type = av_hwdevice_iterate_types(type)) != AV_HWDEVICE_TYPE_NONE) {
-        const char* type_name = av_hwdevice_get_type_name(type);
-        if (type_name) {
-            device_types.push_back(type_name);
-        }
-    }
+    std::vector<std::string> device_types = FFmpegHardwareDecoder::GetInstance().GetHardwareDeviceTypes();
     
     jclass stringClass = env->FindClass("java/lang/String");
     jobjectArray result = env->NewObjectArray(device_types.size(), stringClass, nullptr);
@@ -974,33 +502,105 @@ Java_org_ryujinx_android_NativeHelpers_getHardwareDeviceTypes(
     return result;
 }
 
-// 获取 FFmpeg 版本信息
+extern "C"
+JNIEXPORT jlong JNICALL
+Java_org_ryujinx_android_NativeHelpers_initHardwareDeviceContext(
+    JNIEnv* env,
+    jclass clazz,
+    jstring device_type) {
+    
+    const char* type_str = env->GetStringUTFChars(device_type, nullptr);
+    if (!type_str) {
+        return 0;
+    }
+    
+    jlong result = FFmpegHardwareDecoder::GetInstance().InitHardwareDeviceContext(type_str);
+    env->ReleaseStringUTFChars(device_type, type_str);
+    
+    return result;
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_freeHardwareDeviceContext(
+    JNIEnv* env,
+    jclass clazz,
+    jlong device_ctx_ptr) {
+    
+    FFmpegHardwareDecoder::GetInstance().FreeHardwareDeviceContext(device_ctx_ptr);
+}
+
+extern "C"
+JNIEXPORT jlong JNICALL
+Java_org_ryujinx_android_NativeHelpers_createHardwareDecoderContext(
+    JNIEnv* env,
+    jclass clazz,
+    jstring codec_name) {
+    
+    const char* codec_str = env->GetStringUTFChars(codec_name, nullptr);
+    if (!codec_str) {
+        return 0;
+    }
+    
+    jlong context_id = FFmpegHardwareDecoder::GetInstance().CreateHardwareDecoderContext(env, codec_str);
+    env->ReleaseStringUTFChars(codec_name, codec_str);
+    
+    return context_id;
+}
+
+extern "C"
+JNIEXPORT jint JNICALL
+Java_org_ryujinx_android_NativeHelpers_decodeVideoFrame(
+    JNIEnv* env,
+    jclass clazz,
+    jlong context_id,
+    jbyteArray input_data,
+    jint input_size,
+    jintArray frame_info,
+    jobjectArray plane_data) {
+    
+    return FFmpegHardwareDecoder::GetInstance().DecodeVideoFrame(
+        context_id, input_data, input_size, frame_info, plane_data);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_flushDecoder(
+    JNIEnv* env,
+    jclass clazz,
+    jlong context_id) {
+    
+    FFmpegHardwareDecoder::GetInstance().FlushDecoder(context_id);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_destroyHardwareDecoder(
+    JNIEnv* env,
+    jclass clazz,
+    jlong context_id) {
+    
+    FFmpegHardwareDecoder::GetInstance().DestroyHardwareDecoderContext(context_id);
+}
+
+extern "C"
 JNIEXPORT jstring JNICALL
 Java_org_ryujinx_android_NativeHelpers_getFFmpegVersion(JNIEnv* env, jclass clazz) {
-    unsigned int version = avcodec_version();
-    unsigned int major = (version >> 16) & 0xFF;
-    unsigned int minor = (version >> 8) & 0xFF;
-    unsigned int micro = version & 0xFF;
-    
-    char version_str[64];
-    snprintf(version_str, sizeof(version_str), "FFmpeg %d.%d.%d", major, minor, micro);
-    
-    return env->NewStringUTF(version_str);
+    const char* version = FFmpegHardwareDecoder::GetInstance().GetFFmpegVersion();
+    return env->NewStringUTF(version);
 }
 
-// 硬件解码器测试函数
-JNIEXPORT jstring JNICALL
-Java_org_ryujinx_android_NativeHelpers_testHardwareDecoder(JNIEnv *env, jobject thiz) {
-    // 调用 FFmpegHardwareDecoder 的状态函数
-    return env->NewStringUTF("Hardware decoder test function - use NativeHelpers class for full functionality");
-}
-
-// 获取硬件解码器支持状态
+extern "C"
 JNIEXPORT jboolean JNICALL
 Java_org_ryujinx_android_NativeHelpers_isHardwareDecodingSupported(JNIEnv *env, jobject thiz) {
-    // 检查 mediacodec 支持
-    AVHWDeviceType type = av_hwdevice_find_type_by_name("mediacodec");
-    return type != AV_HWDEVICE_TYPE_NONE ? JNI_TRUE : JNI_FALSE;
+    bool supported = FFmpegHardwareDecoder::GetInstance().IsHardwareDecoderSupported("mediacodec");
+    return supported ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_org_ryujinx_android_NativeHelpers_testHardwareDecoder(JNIEnv *env, jobject thiz) {
+    return env->NewStringUTF("Hardware decoder test function - use NativeHelpers class for full functionality");
 }
 
 // =============== Oboe Audio C 接口 (for C# P/Invoke) ===============
@@ -1075,4 +675,147 @@ const char* GetAndroidDeviceBrand() {
         __system_property_get("ro.product.brand", brand);
     }
     return brand;
+}
+
+// =============== FFmpeg 硬件解码 C 接口 ===============
+extern "C"
+bool InitializeFFmpegHardwareDecoder() {
+    return FFmpegHardwareDecoder::GetInstance().Initialize();
+}
+
+extern "C"
+void CleanupFFmpegHardwareDecoder() {
+    FFmpegHardwareDecoder::GetInstance().Cleanup();
+}
+
+extern "C"
+long CreateHardwareDecoderContext(const char* codecName) {
+    JNIEnv* env = nullptr;
+    JavaVM* vm = nullptr;
+    
+    // 获取 JNIEnv
+    if (av_jni_get_java_vm(&vm) == 0 && vm) {
+        jint result = vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6);
+        if (result == JNI_EDETACHED) {
+            if (vm->AttachCurrentThread(&env, nullptr) != 0) {
+                return 0;
+            }
+        }
+    }
+    
+    long contextId = FFmpegHardwareDecoder::GetInstance().CreateHardwareDecoderContext(env, codecName);
+    
+    if (env && vm) {
+        vm->DetachCurrentThread();
+    }
+    
+    return contextId;
+}
+
+extern "C"
+int DecodeVideoFrame(long contextId, const uint8_t* inputData, int inputSize,
+                    int* width, int* height, int* format,
+                    uint8_t* plane0, int plane0Size,
+                    uint8_t* plane1, int plane1Size, 
+                    uint8_t* plane2, int plane2Size) {
+    
+    JNIEnv* env = nullptr;
+    JavaVM* vm = nullptr;
+    bool attached = false;
+    
+    // 获取 JNIEnv
+    if (av_jni_get_java_vm(&vm) == 0 && vm) {
+        jint result = vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6);
+        if (result == JNI_EDETACHED) {
+            if (vm->AttachCurrentThread(&env, nullptr) == 0) {
+                attached = true;
+            }
+        }
+    }
+    
+    if (!env) {
+        return -1;
+    }
+    
+    // 创建 Java 数组
+    jbyteArray inputDataArray = env->NewByteArray(inputSize);
+    jintArray frameInfoArray = env->NewIntArray(6);
+    jobjectArray planeDataArray = env->NewObjectArray(3, env->FindClass("[B"), nullptr);
+    
+    // 设置输入数据
+    env->SetByteArrayRegion(inputDataArray, 0, inputSize, reinterpret_cast<const jbyte*>(inputData));
+    
+    // 设置平面数据数组
+    jbyteArray plane0Array = env->NewByteArray(plane0Size);
+    jbyteArray plane1Array = env->NewByteArray(plane1Size);
+    jbyteArray plane2Array = env->NewByteArray(plane2Size);
+    
+    env->SetObjectArrayElement(planeDataArray, 0, plane0Array);
+    env->SetObjectArrayElement(planeDataArray, 1, plane1Array);
+    env->SetObjectArrayElement(planeDataArray, 2, plane2Array);
+    
+    // 解码帧
+    int result = FFmpegHardwareDecoder::GetInstance().DecodeVideoFrame(
+        contextId, inputDataArray, inputSize, frameInfoArray, planeDataArray);
+    
+    if (result == 0) {
+        // 获取帧信息
+        jint frameInfo[6];
+        env->GetIntArrayRegion(frameInfoArray, 0, 6, frameInfo);
+        
+        *width = frameInfo[0];
+        *height = frameInfo[1];
+        *format = frameInfo[2];
+        
+        // 获取平面数据
+        if (plane0 && plane0Size > 0) {
+            jbyte* plane0Data = env->GetByteArrayElements(plane0Array, nullptr);
+            int actualSize = env->GetArrayLength(plane0Array);
+            memcpy(plane0, plane0Data, actualSize < plane0Size ? actualSize : plane0Size);
+            env->ReleaseByteArrayElements(plane0Array, plane0Data, JNI_ABORT);
+        }
+        
+        if (plane1 && plane1Size > 0) {
+            jbyte* plane1Data = env->GetByteArrayElements(plane1Array, nullptr);
+            int actualSize = env->GetArrayLength(plane1Array);
+            memcpy(plane1, plane1Data, actualSize < plane1Size ? actualSize : plane1Size);
+            env->ReleaseByteArrayElements(plane1Array, plane1Data, JNI_ABORT);
+        }
+        
+        if (plane2 && plane2Size > 0) {
+            jbyte* plane2Data = env->GetByteArrayElements(plane2Array, nullptr);
+            int actualSize = env->GetArrayLength(plane2Array);
+            memcpy(plane2, plane2Data, actualSize < plane2Size ? actualSize : plane2Size);
+            env->ReleaseByteArrayElements(plane2Array, plane2Data, JNI_ABORT);
+        }
+    }
+    
+    // 清理本地引用
+    env->DeleteLocalRef(inputDataArray);
+    env->DeleteLocalRef(frameInfoArray);
+    env->DeleteLocalRef(plane0Array);
+    env->DeleteLocalRef(plane1Array);
+    env->DeleteLocalRef(plane2Array);
+    env->DeleteLocalRef(planeDataArray);
+    
+    if (attached) {
+        vm->DetachCurrentThread();
+    }
+    
+    return result;
+}
+
+extern "C"
+void DestroyHardwareDecoderContext(long contextId) {
+    FFmpegHardwareDecoder::GetInstance().DestroyHardwareDecoderContext(contextId);
+}
+
+extern "C"
+void FlushHardwareDecoder(long contextId) {
+    FFmpegHardwareDecoder::GetInstance().FlushDecoder(contextId);
+}
+
+extern "C"
+const char* GetFFmpegVersionString() {
+    return FFmpegHardwareDecoder::GetInstance().GetFFmpegVersion();
 }

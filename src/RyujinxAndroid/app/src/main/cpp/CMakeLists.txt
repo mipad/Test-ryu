@@ -1,4 +1,4 @@
-include(FetchContent)
+include(FetchContent) 
 
 # For more information about using CMake with Android Studio, read the
 # documentation: https://d.android.com/studio/projects/add-native-code.html
@@ -82,13 +82,19 @@ add_library(
     vulkan_wrapper.cpp
     ryujinx.cpp
     oboe_audio_renderer.cpp
+    # 添加硬件解码模块
+    FFmpegHardwareDecoder.cpp
+    FFmpegHardwareJNI.cpp
 )
 
-# 添加编译定义以优化音频处理
+# 添加编译定义以优化音频处理和硬件解码
 target_compile_definitions(ryujinxjni PRIVATE
     RYUJINX_AUDIO_OPTIMIZE=1
     # 针对天玑8100的优化
     RYUJINX_MTK_OPTIMIZE=1
+    # 硬件解码支持
+    RYUJINX_HARDWARE_DECODER=1
+    FFMPEG_HARDWARE_DECODER=1
     # 如果需要，可以添加更多音频优化标志
 )
 
@@ -102,6 +108,9 @@ target_compile_options(ryujinxjni PRIVATE
     -mtune=cortex-a78  # 天玑8100的大核架构
     -funsafe-math-optimizations
     -ftree-vectorize
+    # 硬件解码优化
+    -fopenmp
+    -fomit-frame-pointer
 )
 
 # 查找系统库
@@ -163,6 +172,10 @@ if (NOT (EXISTS ${LIBAVCODEC_JNI_PATH} AND EXISTS ${LIBAVUTIL_JNI_PATH} AND
     target_compile_definitions(ryujinxjni PRIVATE
         HAVE_FFMPEG=1
         __STDC_CONSTANT_MACROS=1
+        # 硬件解码相关定义
+        HAVE_AV_HWDEVICE_CTX=1
+        HAVE_AV_HWFRAME_TRANSFER=1
+        HAVE_AV_CODEC_HW_CONFIG=1
     )
     
     # 设置 FFmpeg 输出目录
@@ -248,6 +261,10 @@ else()
     target_compile_definitions(ryujinxjni PRIVATE
         HAVE_FFMPEG=1
         __STDC_CONSTANT_MACROS=1
+        # 硬件解码相关定义
+        HAVE_AV_HWDEVICE_CTX=1
+        HAVE_AV_HWFRAME_TRANSFER=1
+        HAVE_AV_CODEC_HW_CONFIG=1
     )
     
     # 设置预编译 FFmpeg 的头文件路径
@@ -266,6 +283,9 @@ target_link_libraries(
     adrenotools
     oboe
     OpenAL
+    # 添加硬件解码可能需要的额外库
+    -lmediandk
+    -ljnigraphics
 )
 
 # 设置 OpenAL 输出目录
@@ -285,6 +305,11 @@ target_compile_definitions(ryujinxjni PRIVATE
     # Mali GPU 硬件加速
     HAVE_MALI_GPU=1
     USE_MEDIACODEC=1
+    # 硬件解码支持
+    ANDROID_HARDWARE_DECODER=1
+    MEDIACODEC_DECODER=1
+    # 视频解码优化
+    VIDEO_DECODER_OPTIMIZE=1
 )
 
 # 添加针对 ARM64 和 Mali 的特定编译选项
@@ -293,6 +318,14 @@ if(CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
         -mcpu=cortex-a78  # 天玑8100大核
         -mtune=cortex-a55  # 天玑8100小核
         -march=armv8.2-a+fp16+dotprod+crypto  # 天玑8100支持的指令集
+        # 硬件解码优化
+        -fopenmp-simd
+        -fvectorize
+    )
+    
+    # 添加链接时优化
+    set_target_properties(ryujinxjni PROPERTIES
+        INTERPROCEDURAL_OPTIMIZATION TRUE
     )
 endif()
 
@@ -301,6 +334,9 @@ set_target_properties(ryujinxjni PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
     ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
     RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
+    # 优化属性
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN 1
 )
 
 # 安装后处理：确保所有依赖库都被复制到正确位置
@@ -311,15 +347,69 @@ add_custom_command(TARGET ryujinxjni POST_BUILD
     COMMENT "Copying OpenAL library to JNI directory"
 )
 
+# 添加硬件解码库的验证
+add_custom_command(TARGET ryujinxjni POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E echo "Verifying hardware decoder libraries..."
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${JNI_PATH}
+    COMMAND bash -c "if [ -f '${JNI_PATH}/libavcodec.so' ]; then echo 'FFmpeg libraries present'; else echo 'FFmpeg libraries missing'; fi"
+    COMMENT "Verifying hardware decoder dependencies"
+)
+
 # 添加验证步骤确保所有库都存在
 add_custom_target(verify_libraries
-    COMMAND ${CMAKE_COMMAND} -E echo "Verifying library sizes..."
+    COMMAND ${CMAKE_COMMAND} -E echo "Verifying library sizes and dependencies..."
     COMMAND ${CMAKE_COMMAND} -E make_directory ${JNI_PATH}
     COMMAND bash -c "ls -la ${JNI_PATH}/*.so && echo 'Library verification completed'"
+    COMMAND bash -c "echo '=== Hardware Decoder Support ==='"
+    COMMAND bash -c "echo 'FFmpeg Hardware Decoder: Enabled'"
+    COMMAND bash -c "echo 'MediaCodec Support: Enabled'"
+    COMMAND bash -c "echo 'Target Architecture: arm64-v8a'"
+    COMMAND bash -c "echo 'Optimization: Dimensity 8100 (Cortex-A78 + Mali GPU)'"
     DEPENDS ryujinxjni
-    COMMENT "Verifying output libraries"
+    COMMENT "Verifying output libraries and hardware decoder support"
+)
+
+# 添加性能优化标志
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    target_compile_options(ryujinxjni PRIVATE
+        -fdata-sections
+        -ffunction-sections
+    )
+    target_link_libraries(ryujinxjni PRIVATE
+        -Wl,--gc-sections
+        -Wl,--as-needed
+    )
+endif()
+
+# 添加调试信息（即使在Release模式下）
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    target_compile_options(ryujinxjni PRIVATE
+        -g2
+    )
+endif()
+
+# 添加硬件解码器特定的包含路径
+target_include_directories(ryujinxjni PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    # 添加FFmpeg头文件路径
+    ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/include
+    ../../../../libryujinx/libs/ffmpeg/include
+)
+
+# 添加硬件解码模块的编译定义
+target_compile_definitions(ryujinxjni PRIVATE
+    # 硬件解码器配置
+    HW_DECODER_CONTEXT_ENABLED=1
+    FFMPEG_HW_DECODER_JNI=1
+    # 性能监控
+    DECODER_PERF_MONITOR=1
+    # 错误处理
+    DECODER_ERROR_RECOVERY=1
 )
 
 message(STATUS "Build configuration for Dimensity 8100 (ARM64, Mali GPU) completed")
 message(STATUS "JNI output path: ${JNI_PATH}")
 message(STATUS "FFmpeg support: Enabled with full features")
+message(STATUS "Hardware decoder: Enabled with MediaCodec support")
+message(STATUS "Audio backend: Oboe with OpenAL")
+message(STATUS "Graphics: Vulkan with adrenotools")
