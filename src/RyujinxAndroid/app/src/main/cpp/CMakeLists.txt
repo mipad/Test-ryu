@@ -83,7 +83,6 @@ add_library(
     ryujinx.cpp
     oboe_audio_renderer.cpp
     FFmpegHardwareDecoder.cpp
-    FFmpegHardwareJNI.cpp
 )
 
 # 添加编译定义以优化音频处理
