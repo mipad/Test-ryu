@@ -6,14 +6,17 @@ using System.Runtime.InteropServices;
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg
 {
-    unsafe class FFmpegContext : IDisposable
+    /// <summary>
+    /// FFmpeg 解码器上下文（软件解码和 FFmpeg 内置硬件解码）
+    /// </summary>
+    unsafe class FFmpegContext : IVideoDecoder, IDisposable
     {
         private unsafe delegate int AVCodec_decode(AVCodecContext* avctx, void* outdata, int* got_frame_ptr, AVPacket* avpkt);
 
         private AVCodec_decode _decodeFrame;
         private static readonly FFmpegApi.av_log_set_callback_callback _logFunc;
         private AVCodec* _codec;
-        private AVPacket* _packet; // 移除了 readonly
+        private AVPacket* _packet;
         private AVCodecContext* _context;
         private readonly bool _useNewApi;
         private bool _isFirstFrame = true;
@@ -45,10 +48,67 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             { AVCodecID.AV_CODEC_ID_AV1, new[] { "av1_mediacodec" } },
         };
 
+        // 实现 IVideoDecoder 接口
+        public bool IsInitialized => _isInitialized;
+        public bool IsHardwareDecoder => _useHardwareDecoder;
+        public string CodecName => GetCodecName(_codec);
+        public string HardwareDecoderName => _hardwareDecoderName ?? "None";
+
+        /// <summary>
+        /// 构造函数
+        /// </summary>
+        /// <param name="codecId">编解码器 ID</param>
+        /// <param name="preferHardware">是否优先使用硬件解码</param>
         public FFmpegContext(AVCodecID codecId, bool preferHardware = true)
         {
             Logger.Info?.Print(LogClass.FFmpeg, $"Initializing FFmpeg decoder for {codecId}, Hardware preference: {preferHardware}");
 
+            // 检查是否应该使用新的硬件解码器
+            if (preferHardware && ShouldUseNativeHardwareDecoder(codecId))
+            {
+                Logger.Info?.Print(LogClass.FFmpeg, $"Using native hardware decoder for {codecId}");
+                _isInitialized = false; // 标记为未初始化，让工厂类使用 FFmpegHardwareDecoder
+                return;
+            }
+
+            InitializeSoftwareDecoder(codecId, preferHardware);
+        }
+
+        /// <summary>
+        /// 判断是否应该使用原生硬件解码器
+        /// </summary>
+        private bool ShouldUseNativeHardwareDecoder(AVCodecID codecId)
+        {
+            try
+            {
+                // 检查硬件解码器是否可用
+                if (!FFmpegHardwareDecoder.IsMediaCodecSupported())
+                {
+                    Logger.Debug?.Print(LogClass.FFmpeg, "MediaCodec not supported, using software decoder");
+                    return false;
+                }
+
+                string codecName = GetCodecNameFromId(codecId);
+                if (!FFmpegHardwareDecoder.IsCodecHardwareSupported(codecName))
+                {
+                    Logger.Debug?.Print(LogClass.FFmpeg, $"Hardware decoder not available for {codecName}, using software decoder");
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.FFmpeg, $"Error checking hardware decoder support: {ex.Message}, falling back to software");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 初始化软件解码器
+        /// </summary>
+        private void InitializeSoftwareDecoder(AVCodecID codecId, bool preferHardware)
+        {
             // 设置 get_format 回调
             _getFormatCallback = GetHwFormat;
             _getFormatCallbackPtr = Marshal.GetFunctionPointerForDelegate(_getFormatCallback);
@@ -500,6 +560,22 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             return Marshal.PtrToStringAnsi((IntPtr)codec->Name) ?? "Unknown";
         }
 
+        /// <summary>
+        /// 根据 AVCodecID 获取编解码器名称
+        /// </summary>
+        private string GetCodecNameFromId(AVCodecID codecId)
+        {
+            switch (codecId)
+            {
+                case AVCodecID.AV_CODEC_ID_H264: return "h264";
+                case AVCodecID.AV_CODEC_ID_HEVC: return "hevc";
+                case AVCodecID.AV_CODEC_ID_VP8: return "vp8";
+                case AVCodecID.AV_CODEC_ID_VP9: return "vp9";
+                case AVCodecID.AV_CODEC_ID_AV1: return "av1";
+                default: return codecId.ToString().ToLower();
+            }
+        }
+
         static FFmpegContext()
         {
             _logFunc = Log;
@@ -543,6 +619,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             }
         }
 
+        /// <summary>
+        /// 实现 IVideoDecoder 接口的 DecodeFrame 方法
+        /// </summary>
         public int DecodeFrame(Surface output, ReadOnlySpan<byte> bitstream)
         {
             if (!_isInitialized || _context == null)
@@ -709,12 +788,17 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             Logger.Warning?.Print(LogClass.FFmpeg, $"{operation} failed with {errorType} decoder (Error: {errorCode})");
         }
 
-        // 公开属性
-        public bool IsHardwareDecoder => _useHardwareDecoder;
-        public string DecoderType => _decoderType;
-        public string CodecName => GetCodecName(_codec);
-        public string HardwareDecoderName => _hardwareDecoderName ?? "None";
-        public bool IsInitialized => _isInitialized;
+        /// <summary>
+        /// 实现 IVideoDecoder 接口的 Flush 方法
+        /// </summary>
+        public void Flush()
+        {
+            if (_useNewApi && _context != null)
+            {
+                FFmpegApi.avcodec_flush_buffers(_context);
+                Logger.Debug?.Print(LogClass.FFmpeg, "FFmpeg decoder flushed");
+            }
+        }
 
         public void Dispose()
         {
@@ -755,6 +839,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             Logger.Debug?.Print(LogClass.FFmpeg, $"{_decoderType} decoder disposed");
         }
 
+        /// <summary>
+        /// 检查硬件解码器支持
+        /// </summary>
         public static bool CheckHardwareDecoderSupport(AVCodecID codecId)
         {
             try
