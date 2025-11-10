@@ -5,6 +5,90 @@ using System.Runtime.InteropServices;
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
 {
+    // 像素格式枚举定义 - 扩展版本
+    public enum AVPixelFormat
+    {
+        AV_PIX_FMT_NONE = -1,
+        AV_PIX_FMT_YUV420P = 0,
+        AV_PIX_FMT_YUYV422 = 1,
+        AV_PIX_FMT_RGB24 = 2,
+        AV_PIX_FMT_BGR24 = 3,
+        AV_PIX_FMT_YUV422P = 4,
+        AV_PIX_FMT_YUV444P = 5,
+        AV_PIX_FMT_YUV410P = 6,
+        AV_PIX_FMT_YUV411P = 7,
+        AV_PIX_FMT_GRAY8 = 8,
+        AV_PIX_FMT_MONOWHITE = 9,
+        AV_PIX_FMT_MONOBLACK = 10,
+        AV_PIX_FMT_PAL8 = 11,
+        AV_PIX_FMT_YUVJ420P = 12,
+        AV_PIX_FMT_YUVJ422P = 13,
+        AV_PIX_FMT_YUVJ444P = 14,
+        AV_PIX_FMT_XVMC_MPEG2_MC = 15,
+        AV_PIX_FMT_XVMC_MPEG2_IDCT = 16,
+        AV_PIX_FMT_UYVY422 = 17,
+        AV_PIX_FMT_UYYVYY411 = 18,
+        AV_PIX_FMT_BGR8 = 19,
+        AV_PIX_FMT_BGR4 = 20,
+        AV_PIX_FMT_BGR4_BYTE = 21,
+        AV_PIX_FMT_RGB8 = 22,
+        AV_PIX_FMT_RGB4 = 23,
+        AV_PIX_FMT_RGB4_BYTE = 24,
+        AV_PIX_FMT_NV12 = 25,
+        AV_PIX_FMT_NV21 = 26,
+        
+        // 扩展更多像素格式
+        AV_PIX_FMT_ARGB = 27,
+        AV_PIX_FMT_RGBA = 28,
+        AV_PIX_FMT_ABGR = 29,
+        AV_PIX_FMT_BGRA = 30,
+        AV_PIX_FMT_GRAY16BE = 31,
+        AV_PIX_FMT_GRAY16LE = 32,
+        AV_PIX_FMT_YUV440P = 33,
+        AV_PIX_FMT_YUVJ440P = 34,
+        AV_PIX_FMT_YUVA420P = 35,
+        AV_PIX_FMT_RGB48BE = 36,
+        AV_PIX_FMT_RGB48LE = 37,
+        AV_PIX_FMT_RGB565BE = 38,
+        AV_PIX_FMT_RGB565LE = 39,
+        AV_PIX_FMT_RGB555BE = 40,
+        AV_PIX_FMT_RGB555LE = 41,
+        AV_PIX_FMT_BGR565BE = 42,
+        AV_PIX_FMT_BGR565LE = 43,
+        AV_PIX_FMT_BGR555BE = 44,
+        AV_PIX_FMT_BGR555LE = 45,
+        
+        // 10位和12位格式
+        AV_PIX_FMT_YUV420P9BE = 46,
+        AV_PIX_FMT_YUV420P9LE = 47,
+        AV_PIX_FMT_YUV420P10BE = 48,
+        AV_PIX_FMT_YUV420P10LE = 49,
+        AV_PIX_FMT_YUV422P10BE = 50,
+        AV_PIX_FMT_YUV422P10LE = 51,
+        AV_PIX_FMT_YUV444P9BE = 52,
+        AV_PIX_FMT_YUV444P9LE = 53,
+        AV_PIX_FMT_YUV444P10BE = 54,
+        AV_PIX_FMT_YUV444P10LE = 55,
+        AV_PIX_FMT_YUV420P12BE = 56,
+        AV_PIX_FMT_YUV420P12LE = 57,
+        AV_PIX_FMT_YUV422P12BE = 58,
+        AV_PIX_FMT_YUV422P12LE = 59,
+        AV_PIX_FMT_YUV444P12BE = 60,
+        AV_PIX_FMT_YUV444P12LE = 61,
+        
+        // 硬件加速格式
+        AV_PIX_FMT_VDPAU = 62,
+        AV_PIX_FMT_VAAPI = 63,
+        AV_PIX_FMT_DXVA2_VLD = 64,
+        AV_PIX_FMT_VIDEOTOOLBOX = 157,
+        AV_PIX_FMT_MEDIACODEC = 165,
+        AV_PIX_FMT_CUDA = 166,
+        
+        // 更多硬件格式
+        AV_PIX_FMT_D3D11 = 170,
+        AV_PIX_FMT_OPENCL = 171,
+    }
+
     static partial class FFmpegApi
     {
         public const string AvCodecLibraryName = "avcodec";
@@ -174,90 +258,14 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         // 新增：获取硬件帧传输格式
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial int av_hwframe_transfer_get_formats(AVBufferRef* hwframes_ctx, int direction, AVPixelFormat** formats, int flags);
-    }
 
-    // 像素格式枚举定义 - 扩展版本
-    internal enum AVPixelFormat
-    {
-        AV_PIX_FMT_NONE = -1,
-        AV_PIX_FMT_YUV420P = 0,
-        AV_PIX_FMT_YUYV422 = 1,
-        AV_PIX_FMT_RGB24 = 2,
-        AV_PIX_FMT_BGR24 = 3,
-        AV_PIX_FMT_YUV422P = 4,
-        AV_PIX_FMT_YUV444P = 5,
-        AV_PIX_FMT_YUV410P = 6,
-        AV_PIX_FMT_YUV411P = 7,
-        AV_PIX_FMT_GRAY8 = 8,
-        AV_PIX_FMT_MONOWHITE = 9,
-        AV_PIX_FMT_MONOBLACK = 10,
-        AV_PIX_FMT_PAL8 = 11,
-        AV_PIX_FMT_YUVJ420P = 12,
-        AV_PIX_FMT_YUVJ422P = 13,
-        AV_PIX_FMT_YUVJ444P = 14,
-        AV_PIX_FMT_XVMC_MPEG2_MC = 15,
-        AV_PIX_FMT_XVMC_MPEG2_IDCT = 16,
-        AV_PIX_FMT_UYVY422 = 17,
-        AV_PIX_FMT_UYYVYY411 = 18,
-        AV_PIX_FMT_BGR8 = 19,
-        AV_PIX_FMT_BGR4 = 20,
-        AV_PIX_FMT_BGR4_BYTE = 21,
-        AV_PIX_FMT_RGB8 = 22,
-        AV_PIX_FMT_RGB4 = 23,
-        AV_PIX_FMT_RGB4_BYTE = 24,
-        AV_PIX_FMT_NV12 = 25,
-        AV_PIX_FMT_NV21 = 26,
-        
-        // 扩展更多像素格式
-        AV_PIX_FMT_ARGB = 27,
-        AV_PIX_FMT_RGBA = 28,
-        AV_PIX_FMT_ABGR = 29,
-        AV_PIX_FMT_BGRA = 30,
-        AV_PIX_FMT_GRAY16BE = 31,
-        AV_PIX_FMT_GRAY16LE = 32,
-        AV_PIX_FMT_YUV440P = 33,
-        AV_PIX_FMT_YUVJ440P = 34,
-        AV_PIX_FMT_YUVA420P = 35,
-        AV_PIX_FMT_RGB48BE = 36,
-        AV_PIX_FMT_RGB48LE = 37,
-        AV_PIX_FMT_RGB565BE = 38,
-        AV_PIX_FMT_RGB565LE = 39,
-        AV_PIX_FMT_RGB555BE = 40,
-        AV_PIX_FMT_RGB555LE = 41,
-        AV_PIX_FMT_BGR565BE = 42,
-        AV_PIX_FMT_BGR565LE = 43,
-        AV_PIX_FMT_BGR555BE = 44,
-        AV_PIX_FMT_BGR555LE = 45,
-        
-        // 10位和12位格式
-        AV_PIX_FMT_YUV420P9BE = 46,
-        AV_PIX_FMT_YUV420P9LE = 47,
-        AV_PIX_FMT_YUV420P10BE = 48,
-        AV_PIX_FMT_YUV420P10LE = 49,
-        AV_PIX_FMT_YUV422P10BE = 50,
-        AV_PIX_FMT_YUV422P10LE = 51,
-        AV_PIX_FMT_YUV444P9BE = 52,
-        AV_PIX_FMT_YUV444P9LE = 53,
-        AV_PIX_FMT_YUV444P10BE = 54,
-        AV_PIX_FMT_YUV444P10LE = 55,
-        AV_PIX_FMT_YUV420P12BE = 56,
-        AV_PIX_FMT_YUV420P12LE = 57,
-        AV_PIX_FMT_YUV422P12BE = 58,
-        AV_PIX_FMT_YUV422P12LE = 59,
-        AV_PIX_FMT_YUV444P12BE = 60,
-        AV_PIX_FMT_YUV444P12LE = 61,
-        
-        // 硬件加速格式
-        AV_PIX_FMT_VDPAU = 62,
-        AV_PIX_FMT_VAAPI = 63,
-        AV_PIX_FMT_DXVA2_VLD = 64,
-        AV_PIX_FMT_VIDEOTOOLBOX = 157,
-        AV_PIX_FMT_MEDIACODEC = 165,
-        AV_PIX_FMT_CUDA = 166,
-        
-        // 更多硬件格式
-        AV_PIX_FMT_D3D11 = 170,
-        AV_PIX_FMT_OPENCL = 171,
+        // 新增：图像分配API
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial int av_image_alloc(byte** pointers, int* linesizes, int width, int height, AVPixelFormat pixelFormat, int align);
+
+        // 新增：帧释放API
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial void av_frame_free(AVFrame** frame);
     }
 
     // 硬件解码相关类型定义
