@@ -463,151 +463,109 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         }
 
         /// <summary>
-        /// 将平面数据复制到 Surface
+        /// 将平面数据复制到 Surface 的 AVFrame
         /// </summary>
-        private bool CopyPlanesToSurface(byte[][] planeData, FrameInfo frameInfo, Surface output)
+        private bool CopyPlanesToSurface(byte[][] planeData, FrameInfo frameInfo, Surface surface)
         {
-            if (planeData == null || frameInfo == null || output?.Frame == null)
+            if (planeData == null || planeData.Length == 0 || surface == null || surface.Frame == null)
             {
+                Logger.Error?.Print(LogClass.FFmpeg, "Invalid parameters for CopyPlanesToSurface");
                 return false;
             }
 
             try
             {
-                // 根据像素格式处理不同的数据布局
-                switch (frameInfo.Format)
+                AVFrame* frame = surface.Frame;
+
+                // 设置帧基本信息
+                frame->Width = frameInfo.Width;
+                frame->Height = frameInfo.Height;
+                frame->Format = frameInfo.Format;
+
+                // 设置行大小
+                for (int i = 0; i < 3 && i < frame->LineSize.Length; i++)
                 {
-                    case PIX_FMT_YUV420P:
-                        // YUV420P 格式：3个独立平面
-                        if (planeData.Length >= 3 && planeData[0] != null && planeData[1] != null && planeData[2] != null)
-                        {
-                            CopyPlaneData(planeData[0], output.Frame, 0, frameInfo.Width, frameInfo.Height, frameInfo.Linesize0);
-                            CopyPlaneData(planeData[1], output.Frame, 1, frameInfo.Width / 2, frameInfo.Height / 2, frameInfo.Linesize1);
-                            CopyPlaneData(planeData[2], output.Frame, 2, frameInfo.Width / 2, frameInfo.Height / 2, frameInfo.Linesize2);
-                            return true;
-                        }
-                        break;
-                        
-                    case PIX_FMT_NV12:
-                        // NV12 格式：Y平面 + UV交错平面
-                        if (planeData.Length >= 2 && planeData[0] != null && planeData[1] != null)
-                        {
-                            CopyPlaneData(planeData[0], output.Frame, 0, frameInfo.Width, frameInfo.Height, frameInfo.Linesize0);
-                            CopyPlaneData(planeData[1], output.Frame, 1, frameInfo.Width, frameInfo.Height / 2, frameInfo.Linesize1);
-                            return true;
-                        }
-                        break;
-                        
-                    case PIX_FMT_MEDIACODEC:
-                        // MediaCodec 特殊格式处理
-                        if (planeData.Length >= 1 && planeData[0] != null)
-                        {
-                            // 对于 MediaCodec，可能需要特殊处理，这里简单复制第一个平面
-                            CopyPlaneData(planeData[0], output.Frame, 0, frameInfo.Width, frameInfo.Height, frameInfo.Linesize0);
-                            return true;
-                        }
-                        break;
-                        
-                    default:
-                        Logger.Warning?.Print(LogClass.FFmpeg, $"Unsupported pixel format: {frameInfo.Format}");
-                        break;
+                    frame->LineSize[i] = GetLineSizeForPlane(i, frameInfo);
                 }
-                
-                return false;
+
+                // 复制平面数据
+                for (int i = 0; i < planeData.Length && i < frame->Data.Length; i++)
+                {
+                    if (planeData[i] != null && planeData[i].Length > 0)
+                    {
+                        CopyPlaneData(planeData[i], (IntPtr)frame->Data[i], frameInfo, i);
+                    }
+                }
+
+                Logger.Debug?.Print(LogClass.FFmpeg, 
+                    $"Copied {planeData.Length} planes to surface, frame: {frameInfo.Width}x{frameInfo.Height}, format: {frameInfo.Format}");
+
+                return true;
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.FFmpeg, $"Exception copying planes to surface: {ex.Message}");
+                Logger.Error?.Print(LogClass.FFmpeg, 
+                    $"Exception copying planes to surface: {ex.Message}");
                 return false;
             }
         }
 
         /// <summary>
-        /// 复制平面数据到目标帧
+        /// 复制单个平面数据
         /// </summary>
-        private void CopyPlaneData(byte[] sourceData, Frame targetFrame, int planeIndex, int width, int height, int lineSize)
+        private void CopyPlaneData(byte[] sourceData, IntPtr destPtr, FrameInfo frameInfo, int planeIndex)
         {
-            if (sourceData == null || targetFrame == null || sourceData.Length == 0)
+            if (sourceData == null || sourceData.Length == 0 || destPtr == IntPtr.Zero)
             {
                 return;
             }
 
-            // 计算实际需要的数据大小
-            int requiredSize = height * Math.Max(width, lineSize);
-            if (sourceData.Length < requiredSize)
+            int planeHeight = GetPlaneHeight(planeIndex, frameInfo.Height);
+            int lineSize = GetLineSizeForPlane(planeIndex, frameInfo);
+            int expectedDataSize = lineSize * planeHeight;
+
+            // 检查数据大小是否匹配
+            if (sourceData.Length < expectedDataSize)
             {
                 Logger.Warning?.Print(LogClass.FFmpeg, 
-                    $"Plane {planeIndex} data size ({sourceData.Length}) is less than required ({requiredSize})");
-                return;
+                    $"Plane {planeIndex} data size mismatch: expected {expectedDataSize}, got {sourceData.Length}");
+                expectedDataSize = Math.Min(sourceData.Length, expectedDataSize);
             }
 
-            try
+            // 逐行复制数据（处理可能的行对齐）
+            int sourceOffset = 0;
+            for (int row = 0; row < planeHeight; row++)
             {
-                // 这里需要根据实际的 Frame 结构来复制数据
-                // 假设 Frame 有相应的方法或属性来访问平面数据
-                // 这是一个示例实现，需要根据实际的 Frame 类进行调整
-                if (targetFrame.Data != null && planeIndex < targetFrame.Data.Length)
-                {
-                    // 确保目标缓冲区足够大
-                    if (targetFrame.Data[planeIndex] == null || targetFrame.Data[planeIndex].Length < requiredSize)
-                    {
-                        targetFrame.Data[planeIndex] = new byte[requiredSize];
-                    }
-                    
-                    // 复制数据
-                    Buffer.BlockCopy(sourceData, 0, targetFrame.Data[planeIndex], 0, Math.Min(sourceData.Length, requiredSize));
-                    
-                    // 更新帧信息
-                    targetFrame.Width = width;
-                    targetFrame.Height = height;
-                    targetFrame.Linesize[planeIndex] = lineSize;
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.Print(LogClass.FFmpeg, $"Exception copying plane {planeIndex} data: {ex.Message}");
+                int bytesToCopy = Math.Min(lineSize, sourceData.Length - sourceOffset);
+                if (bytesToCopy <= 0) break;
+
+                Marshal.Copy(sourceData, sourceOffset, 
+                           IntPtr.Add(destPtr, row * lineSize), 
+                           bytesToCopy);
+                sourceOffset += bytesToCopy;
             }
         }
 
         /// <summary>
-        /// 获取指定平面的高度（考虑色度子采样）
+        /// 获取平面的高度
         /// </summary>
-        private int GetPlaneHeight(int planeIndex, int frameHeight, int format)
+        private int GetPlaneHeight(int planeIndex, int frameHeight)
         {
-            switch (format)
-            {
-                case PIX_FMT_YUV420P:
-                    return planeIndex == 0 ? frameHeight : frameHeight / 2;
-                    
-                case PIX_FMT_NV12:
-                    return planeIndex == 0 ? frameHeight : frameHeight / 2;
-                    
-                case PIX_FMT_MEDIACODEC:
-                    return frameHeight;
-                    
-                default:
-                    return frameHeight;
-            }
+            // 对于 YUV420，Y平面是全高，UV平面是半高
+            return planeIndex == 0 ? frameHeight : (frameHeight + 1) / 2;
         }
 
         /// <summary>
-        /// 获取指定平面的行大小
+        /// 获取平面的行大小
         /// </summary>
-        private int GetLineSizeForPlane(int planeIndex, int frameWidth, int format)
+        private int GetLineSizeForPlane(int planeIndex, FrameInfo frameInfo)
         {
-            switch (format)
+            switch (planeIndex)
             {
-                case PIX_FMT_YUV420P:
-                    return planeIndex == 0 ? frameWidth : frameWidth / 2;
-                    
-                case PIX_FMT_NV12:
-                    return planeIndex == 0 ? frameWidth : frameWidth;
-                    
-                case PIX_FMT_MEDIACODEC:
-                    return frameWidth;
-                    
-                default:
-                    return frameWidth;
+                case 0: return frameInfo.Linesize0;
+                case 1: return frameInfo.Linesize1;
+                case 2: return frameInfo.Linesize2;
+                default: return 0;
             }
         }
 
@@ -616,16 +574,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         /// </summary>
         private int GetValidPlaneCount(byte[][] planeData)
         {
-            if (planeData == null)
-                return 0;
-                
             int count = 0;
-            for (int i = 0; i < planeData.Length; i++)
+            foreach (var plane in planeData)
             {
-                if (planeData[i] != null && planeData[i].Length > 0)
-                {
-                    count++;
-                }
+                if (plane != null && plane.Length > 0) count++;
             }
             return count;
         }
