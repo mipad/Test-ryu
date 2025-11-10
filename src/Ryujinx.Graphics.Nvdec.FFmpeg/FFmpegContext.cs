@@ -13,7 +13,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private AVCodec_decode _decodeFrame;
         private static readonly FFmpegApi.av_log_set_callback_callback _logFunc;
         private AVCodec* _codec;
-        private readonly AVPacket* _packet;
+        private AVPacket* _packet; // 移除了 readonly
         private AVCodecContext* _context;
         private readonly bool _useNewApi;
         private bool _isFirstFrame = true;
@@ -359,12 +359,14 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     }
                 }
 
+                // 释放现有的 packet
                 if (_packet != null)
                 {
                     fixed (AVPacket** ppPacket = &_packet)
                     {
                         FFmpegApi.av_packet_free(ppPacket);
                     }
+                    _packet = null; // 设置为 null，稍后重新分配
                 }
 
                 if (_context != null)
@@ -411,6 +413,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     return false;
                 }
 
+                // 重新分配 packet
                 _packet = FFmpegApi.av_packet_alloc();
                 if (_packet == null)
                 {
