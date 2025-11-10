@@ -27,9 +27,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private AVPixelFormat _hwPixelFormat;
         private bool _isInitialized = false;
 
-        // 新增：软件帧用于硬件帧转换
-        private AVFrame* _swFrame;
-
         // get_format 回调委托
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate AVPixelFormat GetFormatDelegate(AVCodecContext* s, AVPixelFormat* pix_fmts);
@@ -50,12 +47,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         // 已知的 Android 硬件像素格式
         private static readonly AVPixelFormat[] AndroidHardwarePixelFormats = new[]
         {
-            AVPixelFormat.AV_PIX_FMT_MEDIACODEC,  // 首选
-            AVPixelFormat.AV_PIX_FMT_NV12,        // 次选  
-            AVPixelFormat.AV_PIX_FMT_YUV420P,     // 备用
+            AVPixelFormat.AV_PIX_FMT_NV12,        // 首选 - 大多数 Android 设备支持
+            AVPixelFormat.AV_PIX_FMT_YUV420P,     // 次选
             AVPixelFormat.AV_PIX_FMT_YUVJ420P,    // 备用
-            AVPixelFormat.AV_PIX_FMT_YUV420P10LE, // 10bit 备用
-            AVPixelFormat.AV_PIX_FMT_YUV420P12LE, // 12bit 备用
+            AVPixelFormat.AV_PIX_FMT_MEDIACODEC,  // 最后尝试 - 可能导致问题
         };
 
         public FFmpegContext(AVCodecID codecId, bool preferHardware = true)
@@ -134,16 +129,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return;
             }
 
-            // 如果是硬件解码，分配软件帧用于转换
-            if (_useHardwareDecoder)
-            {
-                _swFrame = FFmpegApi.av_frame_alloc();
-                if (_swFrame == null)
-                {
-                    Logger.Warning?.Print(LogClass.FFmpeg, "Failed to allocate software frame for hardware decoding");
-                }
-            }
-
             // 设置解码器参数
             if (!ConfigureDecoderContext())
             {
@@ -151,10 +136,47 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return;
             }
 
+            // 关键修复：在打开编解码器之前进行参数验证
+            if (_useHardwareDecoder)
+            {
+                if (!ValidateHardwareDecoderParams())
+                {
+                    Logger.Warning?.Print(LogClass.FFmpeg, "Hardware decoder parameters validation failed, falling back to software decoder");
+                    // 回退到软件解码器
+                    _useHardwareDecoder = false;
+                    _decoderType = "Software";
+                    
+                    // 重新配置为软件解码
+                    if (!ConfigureSoftwareDecoderContext())
+                    {
+                        Logger.Error?.PrintMsg(LogClass.FFmpeg, "Failed to configure software decoder context.");
+                        return;
+                    }
+                }
+            }
+
             int openResult = FFmpegApi.avcodec_open2(_context, _codec, null);
             if (openResult != 0)
             {
-                Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Codec couldn't be opened (Error: {openResult}).");
+                string errorMsg = GetFFmpegErrorString(openResult);
+                Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Codec couldn't be opened (Error: {openResult}, {errorMsg}).");
+                
+                // 如果硬件解码失败，尝试回退到软件解码
+                if (_useHardwareDecoder)
+                {
+                    Logger.Warning?.Print(LogClass.FFmpeg, "Hardware decoder failed, falling back to software decoder");
+                    
+                    // 清理硬件资源
+                    CleanupHardwareResources();
+                    
+                    // 重新初始化为软件解码器
+                    if (ReinitializeAsSoftwareDecoder(codecId))
+                    {
+                        Logger.Info?.Print(LogClass.FFmpeg, "Successfully fell back to software decoder");
+                        return;
+                    }
+                }
+                
                 return;
             }
 
@@ -208,83 +230,176 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
             if (_useHardwareDecoder)
             {
-                try
-                {
-                    Logger.Debug?.Print(LogClass.FFmpeg, "Configuring hardware decoder...");
-
-                    // 创建硬件设备上下文
-                    AVHWDeviceType deviceType = FFmpegApi.av_hwdevice_find_type_by_name("mediacodec");
-                    if (deviceType == AVHWDeviceType.AV_HWDEVICE_TYPE_NONE)
-                    {
-                        Logger.Warning?.Print(LogClass.FFmpeg, "MediaCodec hardware device type not supported");
-                        return false;
-                    }
-
-                    Logger.Debug?.Print(LogClass.FFmpeg, $"Found MediaCodec device type: {deviceType}");
-
-                    // 关键修复：先获取硬件像素格式
-                    _hwPixelFormat = FindHardwarePixelFormat(_codec, deviceType);
-                    if (_hwPixelFormat == AVPixelFormat.AV_PIX_FMT_NONE)
-                    {
-                        Logger.Warning?.Print(LogClass.FFmpeg, "Failed to find compatible hardware pixel format");
-                        return false;
-                    }
-
-                    Logger.Debug?.Print(LogClass.FFmpeg, $"Selected hardware pixel format: {_hwPixelFormat}");
-
-                    // 创建硬件设备上下文
-                    int result;
-                    fixed (AVBufferRef** ppHwDeviceContext = &_hwDeviceContext)
-                    {
-                        result = FFmpegApi.av_hwdevice_ctx_create(ppHwDeviceContext, deviceType, null, null, 0);
-                    }
-                    
-                    if (result < 0)
-                    {
-                        Logger.Warning?.Print(LogClass.FFmpeg, $"Failed to create hardware device context: {result}");
-                        return false;
-                    }
-
-                    Logger.Debug?.Print(LogClass.FFmpeg, "Hardware device context created successfully");
-
-                    // 设置硬件设备上下文到编解码器上下文
-                    _context->HwDeviceCtx = (nint)FFmpegApi.av_buffer_ref(_hwDeviceContext);
-                    if (_context->HwDeviceCtx == IntPtr.Zero)
-                    {
-                        Logger.Warning?.Print(LogClass.FFmpeg, "Failed to set hardware device context");
-                        return false;
-                    }
-
-                    // 关键修复：直接设置像素格式，避免回调问题 - 添加显式类型转换
-                    _context->PixFmt = (int)_hwPixelFormat;
-                    
-                    // 仍然设置回调作为备用
-                    _context->GetFormat = _getFormatCallbackPtr;
-
-                    // 硬件解码器优化设置
-                    _context->Flags2 |= 0x00000001; // CODEC_FLAG2_FAST - 快速解码
-                    _context->ThreadCount = 1; // 硬件解码器通常单线程
-                    
-                    // 减少错误恢复，硬件解码器通常更稳定
-                    _context->ErrRecognition = 0x0001;
-                    
-                    Logger.Debug?.Print(LogClass.FFmpeg, "Hardware decoder configured successfully");
-                    return true;
-                }
-                catch (Exception ex)
-                {
-                    Logger.Warning?.Print(LogClass.FFmpeg, $"Exception configuring hardware decoder: {ex.Message}");
-                    return false;
-                }
+                return ConfigureHardwareDecoderContext();
             }
             else
             {
-                // 软件解码器优化
-                _context->ThreadCount = Math.Min(Environment.ProcessorCount, 4);
-                _context->Refs = 3; // 限制参考帧数量
+                return ConfigureSoftwareDecoderContext();
+            }
+        }
+
+        private bool ConfigureHardwareDecoderContext()
+        {
+            try
+            {
+                Logger.Debug?.Print(LogClass.FFmpeg, "Configuring hardware decoder...");
+
+                // 创建硬件设备上下文
+                AVHWDeviceType deviceType = FFmpegApi.av_hwdevice_find_type_by_name("mediacodec");
+                if (deviceType == AVHWDeviceType.AV_HWDEVICE_TYPE_NONE)
+                {
+                    Logger.Warning?.Print(LogClass.FFmpeg, "MediaCodec hardware device type not supported");
+                    return false;
+                }
+
+                Logger.Debug?.Print(LogClass.FFmpeg, $"Found MediaCodec device type: {deviceType}");
+
+                // 关键修复：先获取硬件像素格式
+                _hwPixelFormat = FindHardwarePixelFormat(_codec, deviceType);
+                if (_hwPixelFormat == AVPixelFormat.AV_PIX_FMT_NONE)
+                {
+                    Logger.Warning?.Print(LogClass.FFmpeg, "Failed to find compatible hardware pixel format");
+                    return false;
+                }
+
+                Logger.Debug?.Print(LogClass.FFmpeg, $"Selected hardware pixel format: {_hwPixelFormat}");
+
+                // 创建硬件设备上下文
+                int result;
+                fixed (AVBufferRef** ppHwDeviceContext = &_hwDeviceContext)
+                {
+                    result = FFmpegApi.av_hwdevice_ctx_create(ppHwDeviceContext, deviceType, null, null, 0);
+                }
                 
-                Logger.Debug?.Print(LogClass.FFmpeg, $"Configured for software decoding ({_context->ThreadCount} threads)");
+                if (result < 0)
+                {
+                    Logger.Warning?.Print(LogClass.FFmpeg, $"Failed to create hardware device context: {result}");
+                    return false;
+                }
+
+                Logger.Debug?.Print(LogClass.FFmpeg, "Hardware device context created successfully");
+
+                // 设置硬件设备上下文到编解码器上下文
+                _context->HwDeviceCtx = (nint)FFmpegApi.av_buffer_ref(_hwDeviceContext);
+                if (_context->HwDeviceCtx == IntPtr.Zero)
+                {
+                    Logger.Warning?.Print(LogClass.FFmpeg, "Failed to set hardware device context");
+                    return false;
+                }
+
+                // 关键修复：对于硬件解码器，不直接设置像素格式，而是通过回调
+                // _context->PixFmt = (int)_hwPixelFormat; // 注释掉这行
+                
+                // 设置 get_format 回调
+                _context->GetFormat = _getFormatCallbackPtr;
+
+                // 硬件解码器优化设置
+                _context->Flags2 |= 0x00000001; // CODEC_FLAG2_FAST - 快速解码
+                _context->ThreadCount = 1; // 硬件解码器通常单线程
+                
+                // 减少错误恢复，硬件解码器通常更稳定
+                _context->ErrRecognition = 0x0001;
+                
+                Logger.Debug?.Print(LogClass.FFmpeg, "Hardware decoder configured successfully");
                 return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.FFmpeg, $"Exception configuring hardware decoder: {ex.Message}");
+                return false;
+            }
+        }
+
+        private bool ConfigureSoftwareDecoderContext()
+        {
+            // 软件解码器优化
+            _context->ThreadCount = Math.Min(Environment.ProcessorCount, 4);
+            _context->Refs = 3; // 限制参考帧数量
+            
+            Logger.Debug?.Print(LogClass.FFmpeg, $"Configured for software decoding ({_context->ThreadCount} threads)");
+            return true;
+        }
+
+        private bool ValidateHardwareDecoderParams()
+        {
+            // 验证硬件解码器参数
+            if (_hwDeviceContext == null)
+            {
+                Logger.Error?.Print(LogClass.FFmpeg, "Hardware device context is null");
+                return false;
+            }
+
+            if (_hwPixelFormat == AVPixelFormat.AV_PIX_FMT_NONE)
+            {
+                Logger.Error?.Print(LogClass.FFmpeg, "Hardware pixel format is invalid");
+                return false;
+            }
+
+            Logger.Debug?.Print(LogClass.FFmpeg, "Hardware decoder parameters validated successfully");
+            return true;
+        }
+
+        private bool ReinitializeAsSoftwareDecoder(AVCodecID codecId)
+        {
+            Logger.Info?.Print(LogClass.FFmpeg, "Reinitializing as software decoder...");
+
+            // 清理现有资源
+            CleanupHardwareResources();
+            
+            if (_context != null)
+            {
+                fixed (AVCodecContext** ppContext = &_context)
+                {
+                    FFmpegApi.avcodec_free_context(ppContext);
+                }
+                _context = null;
+            }
+
+            // 重新创建软件解码器
+            _useHardwareDecoder = false;
+            _decoderType = "Software";
+            
+            // 查找软件解码器
+            _codec = FFmpegApi.avcodec_find_decoder(codecId);
+            if (_codec == null)
+            {
+                Logger.Error?.Print(LogClass.FFmpeg, "Software decoder not found during fallback");
+                return false;
+            }
+
+            _context = FFmpegApi.avcodec_alloc_context3(_codec);
+            if (_context == null)
+            {
+                Logger.Error?.Print(LogClass.FFmpeg, "Failed to allocate software codec context during fallback");
+                return false;
+            }
+
+            // 配置软件解码器
+            if (!ConfigureSoftwareDecoderContext())
+            {
+                return false;
+            }
+
+            int openResult = FFmpegApi.avcodec_open2(_context, _codec, null);
+            if (openResult != 0)
+            {
+                Logger.Error?.Print(LogClass.FFmpeg, $"Software decoder also failed to open: {openResult}");
+                return false;
+            }
+
+            _isInitialized = true;
+            return true;
+        }
+
+        private void CleanupHardwareResources()
+        {
+            if (_hwDeviceContext != null)
+            {
+                fixed (AVBufferRef** ppHwDeviceContext = &_hwDeviceContext)
+                {
+                    FFmpegApi.av_buffer_unref(ppHwDeviceContext);
+                }
+                _hwDeviceContext = null;
             }
         }
 
@@ -338,10 +453,13 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             // 对于 Android MediaCodec，这些格式通常被支持
             switch (format)
             {
-                case AVPixelFormat.AV_PIX_FMT_MEDIACODEC:
                 case AVPixelFormat.AV_PIX_FMT_NV12:
                 case AVPixelFormat.AV_PIX_FMT_YUV420P:
                 case AVPixelFormat.AV_PIX_FMT_YUVJ420P:
+                    return true;
+                case AVPixelFormat.AV_PIX_FMT_MEDIACODEC:
+                    // MediaCodec 格式可能导致问题，谨慎使用
+                    Logger.Debug?.Print(LogClass.FFmpeg, "Using MediaCodec pixel format - may cause issues");
                     return true;
                 default:
                     return false;
@@ -369,6 +487,21 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             // 回调失败时返回已知的硬件格式
             Logger.Info?.Print(LogClass.FFmpeg, $"Falling back to predefined hardware format: {_hwPixelFormat}");
             return _hwPixelFormat;
+        }
+
+        private string GetFFmpegErrorString(int errorCode)
+        {
+            // 常见的FFmpeg错误码
+            switch (errorCode)
+            {
+                case -22: return "EINVAL - Invalid argument";
+                case -2: return "ENOENT - No such file or directory"; 
+                case -5: return "EIO - I/O error";
+                case -12: return "ENOMEM - Out of memory";
+                case -1094995529: return "AVERROR_INVALIDDATA - Invalid data found";
+                case -541478725: return "AVERROR_EOF - End of file";
+                default: return $"Unknown error ({errorCode})";
+            }
         }
 
         private string GetCodecName(AVCodec* codec)
@@ -504,56 +637,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     gotFrame = 1;
                     _isFirstFrame = false;
 
-                    // 关键修复：如果是硬件解码，处理硬件帧转换
-                    if (_useHardwareDecoder)
-                    {
-                        Logger.Debug?.Print(LogClass.FFmpeg, $"Hardware frame decoded, format: {output.Format}, expected: {_hwPixelFormat}");
-                        
-                        // 如果是硬件帧格式，需要转换到软件帧
-                        if (output.Format == AVPixelFormat.AV_PIX_FMT_MEDIACODEC)
-                        {
-                            Logger.Info?.Print(LogClass.FFmpeg, "Converting hardware frame to software frame");
-                            
-                            // 使用硬件帧转换API
-                            if (_swFrame != null)
-                            {
-                                FFmpegApi.av_frame_unref(_swFrame);
-                                
-                                // 从硬件帧传输数据到软件帧
-                                int transferResult = FFmpegApi.av_hwframe_transfer_data(_swFrame, output.Frame, 0);
-                                if (transferResult < 0)
-                                {
-                                    Logger.Error?.Print(LogClass.FFmpeg, $"Failed to transfer hardware frame to software frame: {transferResult}");
-                                    FFmpegApi.av_frame_unref(output.Frame);
-                                    FFmpegApi.av_packet_unref(_packet);
-                                    return -1;
-                                }
-
-                                // 复制软件帧数据到输出帧
-                                FFmpegApi.av_frame_unref(output.Frame);
-                                int copyResult = FFmpegApi.av_frame_ref(output.Frame, _swFrame);
-                                if (copyResult < 0)
-                                {
-                                    Logger.Error?.Print(LogClass.FFmpeg, $"Failed to copy software frame to output: {copyResult}");
-                                    FFmpegApi.av_frame_unref(output.Frame);
-                                    FFmpegApi.av_packet_unref(_packet);
-                                    return -1;
-                                }
-
-                                Logger.Info?.Print(LogClass.FFmpeg, $"Hardware frame converted successfully to format: {output.Format}");
-                            }
-                            else
-                            {
-                                Logger.Error?.Print(LogClass.FFmpeg, "Software frame not allocated for hardware decoding");
-                                FFmpegApi.av_frame_unref(output.Frame);
-                                FFmpegApi.av_packet_unref(_packet);
-                                return -1;
-                            }
-                        }
-                        
-                        // 记录详细的帧信息（参考案例）
-                        Logger.Debug?.Print(LogClass.FFmpeg, $"Decoded frame: {output.GetFrameInfo()}");
-                    }
+                    // 记录详细的帧信息（参考案例）
+                    Logger.Debug?.Print(LogClass.FFmpeg, $"Decoded frame: {output.GetFrameInfo()}");
                 }
                 else if (result == FFmpegApi.EAGAIN || result == FFmpegApi.EOF)
                 {
@@ -670,14 +755,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
         public void Dispose()
         {
-            // 清理软件帧
-            if (_swFrame != null)
-            {
-                FFmpegApi.av_frame_unref(_swFrame);
-                FFmpegApi.av_free(_swFrame);
-                _swFrame = null;
-            }
-
             // 清理数据包
             if (_packet != null)
             {
@@ -688,13 +765,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             }
 
             // 清理硬件设备上下文
-            if (_hwDeviceContext != null)
-            {
-                fixed (AVBufferRef** ppHwDeviceContext = &_hwDeviceContext)
-                {
-                    FFmpegApi.av_buffer_unref(ppHwDeviceContext);
-                }
-            }
+            CleanupHardwareResources();
 
             // 刷新解码器缓冲区
             if (_useNewApi && _context != null)
