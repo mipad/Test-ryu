@@ -14,7 +14,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private unsafe delegate int AVCodec_decode(AVCodecContext* avctx, void* outdata, int* got_frame_ptr, AVPacket* avpkt);
 
         private AVCodec_decode _decodeFrame;
-        private static FFmpegApi.av_log_set_callback_callback _logFunc; // 移除 readonly
+        private static FFmpegApi.av_log_set_callback_callback _logFunc; // 移除 readonly 修饰符
         private AVCodec* _codec;
         private AVPacket* _packet;
         private AVCodecContext* _context;
