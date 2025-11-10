@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg
 {
-    unsafe class Surface : ISurface
+    public unsafe class Surface : ISurface
     {
         public AVFrame* Frame { get; }
 
