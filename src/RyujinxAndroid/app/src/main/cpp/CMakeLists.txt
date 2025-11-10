@@ -104,13 +104,13 @@ target_compile_options(ryujinxjni PRIVATE
     -O3
     -DNDEBUG
     -ffast-math
-    -march=armv8.2-a+fp16+dotprod+crypto  # 天玑8100支持的指令集
-    -mtune=cortex-a78  # 天玑8100的大核架构
+    -march=armv8.2-a+fp16+dotprod+crypto  
+    -mtune=cortex-a78  
     -funsafe-math-optimizations
     -ftree-vectorize
-    # 硬件解码优化
     -fopenmp
     -fomit-frame-pointer
+    -fno-lto
 )
 
 # 查找系统库
@@ -326,7 +326,7 @@ if(CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
     
     # 添加链接时优化
     set_target_properties(ryujinxjni PROPERTIES
-        INTERPROCEDURAL_OPTIMIZATION TRUE
+        INTERPROCEDURAL_OPTIMIZATION FALSE
     )
 endif()
 
