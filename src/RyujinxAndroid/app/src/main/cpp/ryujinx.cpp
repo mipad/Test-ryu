@@ -378,23 +378,7 @@ Java_org_ryujinx_android_NativeHelpers_getAndroidDeviceBrand(JNIEnv *env, jobjec
     return env->NewStringUTF(brand);
 }
 
-// =============== FFmpeg 硬件解码初始化 ===============
-extern "C"
-JNIEXPORT void JNICALL
-Java_org_ryujinx_android_NativeHelpers_initFFmpegHardwareDecoder(JNIEnv* env, jclass clazz) {
-    bool success = FFmpegHardwareDecoder::GetInstance().Initialize();
-    LOGI_NATIVE("FFmpeg hardware decoder initialization: %s", success ? "success" : "failed");
-}
-
-extern "C"
-JNIEXPORT void JNICALL
-Java_org_ryujinx_android_NativeHelpers_cleanupFFmpegHardwareDecoder(JNIEnv* env, jclass clazz) {
-    FFmpegHardwareDecoder::GetInstance().Cleanup();
-    LOGI_NATIVE("FFmpeg hardware decoder cleaned up");
-}
-
-// 注意：所有硬件解码相关的 JNI 函数已移至 FFmpegHardwareJNI.cpp 以避免重复符号错误
-
+// =============== 测试函数 ===============
 extern "C"
 JNIEXPORT jstring JNICALL
 Java_org_ryujinx_android_NativeHelpers_testHardwareDecoder(JNIEnv *env, jobject thiz) {
