@@ -66,9 +66,9 @@ set(ALSOFT_REQUIRE_NEON OFF CACHE BOOL "Don't require NEON")
 set(ALSOFT_HRTF_DISABLE ON CACHE BOOL "Disable HRTF" FORCE) # 禁用HRTF可能减少延迟
 set(ALSOFT_AMBIENT_CHANNELS 0 CACHE STRING "Ambient channels") # 减少环境声道
 
-# 针对低延迟优化
+# 针对低延迟优化 - 使用新的变量名
+set(ALSOFT_INSTALL_CONFIG "" CACHE STRING "Config file")
 set(ALSOFT_DEFAULT_CFG "" CACHE STRING "Default config file")
-set(ALSOFT_CONFIG "" CACHE STRING "Config file")
 set(ALSOFT_DEFAULT_REVERB OFF CACHE BOOL "Disable default reverb")
 set(ALSOFT_DEFAULT_ECHO OFF CACHE BOOL "Disable default echo")
 set(ALSOFT_DEFAULT_MODULATION OFF CACHE BOOL "Disable default modulation")
@@ -119,7 +119,9 @@ find_library(opensles-lib OpenSLES)
 find_library(android-lib android)
 
 # 添加 Oboe 包含目录
-include_directories(${oboe_SOURCE_DIR}/include)
+target_include_directories(ryujinxjni PRIVATE
+    ${oboe_SOURCE_DIR}/include
+)
 
 # 设置 JNI 库输出路径
 set(JNI_PATH ../jniLibs/${CMAKE_ANDROID_ARCH_ABI})
@@ -158,8 +160,8 @@ if (NOT (EXISTS ${LIBAVCODEC_JNI_PATH} AND EXISTS ${LIBAVUTIL_JNI_PATH} AND
         ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/include
     )
     
-    # 链接 FFmpeg 库
-    target_link_libraries(ryujinxjni
+    # 链接 FFmpeg 库 - 使用 PRIVATE 关键字保持一致性
+    target_link_libraries(ryujinxjni PRIVATE
         avcodec
         avutil
         avformat
@@ -247,8 +249,8 @@ else()
         IMPORTED_LOCATION ${JNI_PATH}/libavfilter.so
     )
     
-    # 链接预编译的 FFmpeg 库
-    target_link_libraries(ryujinxjni
+    # 链接预编译的 FFmpeg 库 - 使用 PRIVATE 关键字保持一致性
+    target_link_libraries(ryujinxjni PRIVATE
         avcodec
         avutil
         avformat
@@ -273,9 +275,8 @@ else()
     )
 endif()
 
-# 链接其他库
-target_link_libraries(
-    ryujinxjni
+# 链接其他库 - 使用 PRIVATE 关键字保持一致性
+target_link_libraries(ryujinxjni PRIVATE
     ${log-lib}
     ${opensles-lib}
     ${android-lib}
