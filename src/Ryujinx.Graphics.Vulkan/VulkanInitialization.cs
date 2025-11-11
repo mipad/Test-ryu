@@ -16,7 +16,7 @@ namespace Ryujinx.Graphics.Vulkan
         private const uint InvalidIndex = uint.MaxValue;
         private static readonly uint _minimalVulkanVersion = Vk.Version11.Value;
         private static readonly uint _minimalInstanceVulkanVersion = Vk.Version12.Value;
-        private static readonly uint _maximumVulkanVersion = Vk.Version13.Value; // 更新到1.3
+        private static readonly uint _maximumVulkanVersion = Vk.Version13.Value;
         private const string AppName = "Ryujinx.Graphics.Vulkan";
         private const int QueuesCount = 2;
 
@@ -24,14 +24,14 @@ namespace Ryujinx.Graphics.Vulkan
         [
             ExtConditionalRendering.ExtensionName,
             ExtExtendedDynamicState.ExtensionName,
-            ExtExtendedDynamicState2.ExtensionName, // 新增：扩展动态状态2
+            ExtExtendedDynamicState2.ExtensionName,
             ExtTransformFeedback.ExtensionName,
             KhrDrawIndirectCount.ExtensionName,
             KhrPushDescriptor.ExtensionName,
-            KhrTimelineSemaphore.ExtensionName, // 新增：时间线信号量
-            KhrSynchronization2.ExtensionName, // 新增：同步2
-            KhrDynamicRendering.ExtensionName, // 新增：动态渲染
-            KhrMultiview.ExtensionName, // 新增：多视图
+            KhrTimelineSemaphore.ExtensionName,
+            KhrSynchronization2.ExtensionName,
+            KhrDynamicRendering.ExtensionName,
+            "VK_KHR_multiview", // 使用字符串而不是KhrMultiview类
             ExtExternalMemoryHost.ExtensionName,
             "VK_EXT_blend_operation_advanced",
             "VK_EXT_custom_border_color",
@@ -52,20 +52,21 @@ namespace Ryujinx.Graphics.Vulkan
             "VK_KHR_maintenance2",
             "VK_EXT_attachment_feedback_loop_layout",
             "VK_EXT_attachment_feedback_loop_dynamic_state",
-            "VK_KHR_maintenance4", // 新增：Vulkan 1.3维护功能
-            "VK_EXT_shader_object", // 新增：着色器对象
-            "VK_EXT_graphics_pipeline_library", // 新增：图形管线库
-            "VK_KHR_copy_commands2" // 新增：复制命令2
+            "VK_KHR_maintenance4",
+            "VK_EXT_shader_object",
+            "VK_EXT_graphics_pipeline_library"
+            // 移除 VK_KHR_copy_commands2 相关代码
         ];
 
         private static readonly string[] _requiredExtensions =
         [
             KhrSwapchain.ExtensionName,
-            "VK_KHR_timeline_semaphore" // 时间线信号量现在作为必需扩展
+            "VK_KHR_timeline_semaphore"
         ];
 
         internal static VulkanInstance CreateInstance(Vk api, GraphicsDebugLevel logLevel, string[] requiredExtensions)
         {
+            // ... 保持原有代码不变 ...
             var enabledLayers = new List<string>();
 
             var instanceExtensions = VulkanInstance.GetInstanceExtensions(api);
@@ -150,9 +151,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         internal static VulkanPhysicalDevice FindSuitablePhysicalDevice(Vk api, VulkanInstance instance, SurfaceKHR surface, string preferredGpuId)
         {
+            // ... 保持原有代码不变 ...
             instance.EnumeratePhysicalDevices(out var physicalDevices).ThrowOnError();
 
-            // First we try to pick the user preferred GPU.
             for (int i = 0; i < physicalDevices.Length; i++)
             {
                 if (IsPreferredAndSuitableDevice(api, physicalDevices[i], surface, preferredGpuId))
@@ -161,7 +162,6 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
 
-            // If we fail to do that, just use the first compatible GPU.
             for (int i = 0; i < physicalDevices.Length; i++)
             {
                 if (IsSuitableDevice(api, physicalDevices[i], surface))
@@ -175,6 +175,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         internal static DeviceInfo[] GetSuitablePhysicalDevices(Vk api)
         {
+            // ... 保持原有代码不变 ...
             var appName = Marshal.StringToHGlobalAnsi(AppName);
 
             var applicationInfo = new ApplicationInfo
@@ -204,8 +205,6 @@ namespace Ryujinx.Graphics.Vulkan
 
             using VulkanInstance instance = rawInstance;
 
-            // We currently assume that the instance is compatible with Vulkan 1.2
-            // TODO: Remove this once we relax our initialization codepaths.
             if (instance.InstanceVersion < _minimalInstanceVulkanVersion)
             {
                 return [];
@@ -307,7 +306,7 @@ namespace Ryujinx.Graphics.Vulkan
                 SType = StructureType.PhysicalDeviceFeatures2,
             };
 
-            // 添加时间线信号量特性
+            // 时间线信号量特性
             PhysicalDeviceTimelineSemaphoreFeaturesKHR timelineSemaphoreFeatures = new()
             {
                 SType = StructureType.PhysicalDeviceTimelineSemaphoreFeatures,
@@ -320,7 +319,7 @@ namespace Ryujinx.Graphics.Vulkan
                 features2.PNext = &timelineSemaphoreFeatures;
             }
 
-            // 添加同步2特性
+            // 同步2特性
             PhysicalDeviceSynchronization2FeaturesKHR synchronization2Features = new()
             {
                 SType = StructureType.PhysicalDeviceSynchronization2Features,
@@ -333,7 +332,7 @@ namespace Ryujinx.Graphics.Vulkan
                 features2.PNext = &synchronization2Features;
             }
 
-            // 添加动态渲染特性
+            // 动态渲染特性
             PhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeatures = new()
             {
                 SType = StructureType.PhysicalDeviceDynamicRenderingFeatures,
@@ -346,7 +345,7 @@ namespace Ryujinx.Graphics.Vulkan
                 features2.PNext = &dynamicRenderingFeatures;
             }
 
-            // 添加扩展动态状态2特性
+            // 扩展动态状态2特性
             PhysicalDeviceExtendedDynamicState2FeaturesEXT extendedDynamicState2Features = new()
             {
                 SType = StructureType.PhysicalDeviceExtendedDynamicState2FeaturesExt,
@@ -361,7 +360,7 @@ namespace Ryujinx.Graphics.Vulkan
                 features2.PNext = &extendedDynamicState2Features;
             }
 
-            // 添加多视图特性
+            // 多视图特性
             PhysicalDeviceMultiviewFeatures multiviewFeatures = new()
             {
                 SType = StructureType.PhysicalDeviceMultiviewFeatures,
@@ -493,17 +492,17 @@ namespace Ryujinx.Graphics.Vulkan
                 features2.PNext = &supportedFeaturesDynamicAttachmentFeedbackLoopLayout;
             }
 
-            // 复制命令2特性
-            PhysicalDeviceCopyCommands2FeaturesKHR supportedFeaturesCopyCommands2 = new()
-            {
-                SType = StructureType.PhysicalDeviceCopyCommands2FeaturesKhr,
-                PNext = features2.PNext,
-            };
-
-            if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_copy_commands2"))
-            {
-                features2.PNext = &supportedFeaturesCopyCommands2;
-            }
+            // 注释掉不支持的CopyCommands2扩展
+            // PhysicalDeviceCopyCommands2FeaturesKHR supportedFeaturesCopyCommands2 = new()
+            // {
+            //     SType = StructureType.PhysicalDeviceCopyCommands2FeaturesKhr,
+            //     PNext = features2.PNext,
+            // };
+            // 
+            // if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_copy_commands2"))
+            // {
+            //     features2.PNext = &supportedFeaturesCopyCommands2;
+            // }
 
             // 获取物理设备特性
             api.GetPhysicalDeviceFeatures2(physicalDevice.PhysicalDevice, &features2);
@@ -810,20 +809,20 @@ namespace Ryujinx.Graphics.Vulkan
                 pExtendedFeatures = &featuresDynamicAttachmentFeedbackLoopLayout;
             }
 
-            // 复制命令2特性
-            PhysicalDeviceCopyCommands2FeaturesKHR featuresCopyCommands2;
-
-            if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_copy_commands2"))
-            {
-                featuresCopyCommands2 = new PhysicalDeviceCopyCommands2FeaturesKHR
-                {
-                    SType = StructureType.PhysicalDeviceCopyCommands2FeaturesKhr,
-                    PNext = pExtendedFeatures,
-                    CopyCommands2 = supportedFeaturesCopyCommands2.CopyCommands2,
-                };
-
-                pExtendedFeatures = &featuresCopyCommands2;
-            }
+            // 注释掉不支持的CopyCommands2特性
+            // PhysicalDeviceCopyCommands2FeaturesKHR featuresCopyCommands2;
+            // 
+            // if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_copy_commands2"))
+            // {
+            //     featuresCopyCommands2 = new PhysicalDeviceCopyCommands2FeaturesKHR
+            //     {
+            //         SType = StructureType.PhysicalDeviceCopyCommands2FeaturesKhr,
+            //         PNext = pExtendedFeatures,
+            //         CopyCommands2 = supportedFeaturesCopyCommands2.CopyCommands2,
+            //     };
+            // 
+            //     pExtendedFeatures = &featuresCopyCommands2;
+            // }
 
             var enabledExtensions = _requiredExtensions.Union(_desirableExtensions.Intersect(physicalDevice.DeviceExtensions)).ToArray();
 
