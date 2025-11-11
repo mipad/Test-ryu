@@ -1,5 +1,6 @@
 using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Logging;
+using Ryujinx.Common.Memory;
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Gpu.Engine.Threed;
 using Ryujinx.Graphics.Gpu.Engine.Types;
@@ -24,24 +25,6 @@ namespace Ryujinx.Graphics.Gpu.Shader
         /// Default flags used on the shader translation process.
         /// </summary>
         public const TranslationFlags DefaultFlags = TranslationFlags.DebugMode;
-
-        // 移动端优化的纹理格式优先级列表 - 使用正确的格式名称
-        private static readonly Format[] MobilePreferredFormats = new[]
-        {
-            Format.Astc4x4Unorm,    // 最高压缩比，移动端首选
-            Format.Astc6x6Unorm,
-            Format.Etc2RgbUnorm,    // 修正格式名称
-            Format.Etc2RgbaUnorm,   // 修正格式名称
-            Format.R8G8B8A8Unorm,   // 未压缩格式作为后备
-        };
-
-        // 移动端优化的渲染目标格式
-        private const Format MobileOptimalColorFormat = Format.R8G8B8A8Unorm;
-        private const Format MobileOptimalDepthFormat = Format.D24UnormS8Uint;
-        
-        // 移动端计算着色器工作组大小优化
-        private static readonly (int, int) OptimalWorkGroupSize2D = (8, 8);
-        private const int OptimalInstanceBatchSize = 32;
 
         private readonly struct TranslatedShader
         {
@@ -97,11 +80,6 @@ namespace Ryujinx.Graphics.Gpu.Shader
         private readonly DiskCacheHostStorage _diskCacheHostStorage;
         private readonly BackgroundDiskCacheWriter _cacheWriter;
 
-        // 动态分辨率缩放状态
-        private float _resolutionScale = 1.0f;
-        private int _framesSinceLastAdjustment = 0;
-        private const int FrameSampleCount = 60;
-
         /// <summary>
         /// Event for signalling shader cache loading progress.
         /// </summary>
@@ -140,7 +118,7 @@ namespace Ryujinx.Graphics.Gpu.Shader
         private static string GetDiskCachePath()
         {
             return GraphicsConfig.EnableShaderCache && GraphicsConfig.TitleId != null
-                ? Path.Combine(AppDataManager.GamesDirPath, GraphicsConfig.TitleId, "cache", "shader")
+                ? Path.Combine(AppDataManager.GamesDirPath, GraphicsConfig.TitleId.ToLower(), "cache", "shader")
                 : null;
         }
 
@@ -209,89 +187,6 @@ namespace Ryujinx.Graphics.Gpu.Shader
         }
 
         /// <summary>
-        /// Updates dynamic resolution scaling based on performance metrics
-        /// </summary>
-        public void UpdateDynamicResolutionScaling()
-        {
-            _framesSinceLastAdjustment++;
-            
-            // 每60帧调整一次分辨率
-            if (_framesSinceLastAdjustment >= FrameSampleCount)
-            {
-                _framesSinceLastAdjustment = 0;
-                
-                // 这里应该从GPU上下文获取实际的性能指标
-                // 简化实现：基于帧时间调整
-                float targetFPS = 60f;
-                float currentFPS = 60f; // 这里应该从实际系统获取
-                
-                if (currentFPS < targetFPS * 0.8f && _resolutionScale > 0.5f)
-                {
-                    // 性能不足，降低分辨率
-                    _resolutionScale = Math.Max(0.5f, _resolutionScale - 0.1f);
-                    Logger.Info?.Print(LogClass.Gpu, $"Dynamic resolution scaling: decreasing to {_resolutionScale:P0}");
-                }
-                else if (currentFPS > targetFPS * 1.2f && _resolutionScale < 1.0f)
-                {
-                    // 性能充足，提高分辨率
-                    _resolutionScale = Math.Min(1.0f, _resolutionScale + 0.1f);
-                    Logger.Info?.Print(LogClass.Gpu, $"Dynamic resolution scaling: increasing to {_resolutionScale:P0}");
-                }
-            }
-        }
-
-        /// <summary>
-        /// Gets the current dynamic resolution scale
-        /// </summary>
-        public float GetResolutionScale() => _resolutionScale;
-
-        /// <summary>
-        /// Optimizes texture format for mobile bandwidth
-        /// </summary>
-        private Format OptimizeTextureFormat(Format originalFormat)
-        {
-            // 查找移动端优先的替代格式
-            foreach (var preferredFormat in MobilePreferredFormats)
-            {
-                if (IsFormatCompatible(originalFormat, preferredFormat))
-                {
-                    return preferredFormat;
-                }
-            }
-            
-            return originalFormat;
-        }
-
-        /// <summary>
-        /// Checks if two formats are functionally compatible for our use case
-        /// </summary>
-        private bool IsFormatCompatible(Format original, Format candidate)
-        {
-            // 简化的兼容性检查
-            // 在实际实现中需要更详细的检查
-            return GetFormatBitsPerPixel(original) >= GetFormatBitsPerPixel(candidate);
-        }
-
-        /// <summary>
-        /// Gets approximate bits per pixel for format comparison
-        /// </summary>
-        private int GetFormatBitsPerPixel(Format format)
-        {
-            return format switch
-            {
-                Format.R8G8B8A8Unorm => 32,
-                Format.R8G8B8A8Srgb => 32,
-                Format.B8G8R8A8Unorm => 32,
-                Format.R5G6B5Unorm => 16,
-                Format.Astc4x4Unorm => 8,  // 压缩格式
-                Format.Astc6x6Unorm => 4,  // 更低比特率
-                Format.Etc2RgbUnorm => 8,
-                Format.Etc2RgbaUnorm => 8,
-                _ => 32
-            };
-        }
-
-        /// <summary>
         /// Gets a compute shader from the cache.
         /// </summary>
         /// <remarks>
@@ -329,9 +224,7 @@ namespace Ryujinx.Graphics.Gpu.Shader
             TranslatorContext translatorContext = DecodeComputeShader(gpuAccessor, _context.Capabilities.Api, gpuVa);
             TranslatedShader translatedShader = TranslateShader(_dumper, channel, translatorContext, cachedGuestCode, asCompute: false);
 
-            // 应用移动端优化到着色器源
-            ShaderSource optimizedSource = ApplyMobileOptimizations(CreateShaderSource(translatedShader.Program));
-            ShaderSource[] shaderSourcesArray = new ShaderSource[] { optimizedSource };
+            ShaderSource[] shaderSourcesArray = [CreateShaderSource(translatedShader.Program)];
             ShaderInfo info = ShaderInfoBuilder.BuildForCompute(_context, translatedShader.Program.Info);
             IProgram hostProgram = _context.Renderer.CreateProgram(shaderSourcesArray, info);
 
@@ -342,17 +235,6 @@ namespace Ryujinx.Graphics.Gpu.Shader
             _cpPrograms[gpuVa] = cpShader;
 
             return cpShader;
-        }
-
-        /// <summary>
-        /// Applies mobile-specific optimizations to shader source
-        /// </summary>
-        private ShaderSource ApplyMobileOptimizations(ShaderSource source)
-        {
-            // 这里可以添加移动端特定的着色器优化
-            // 例如：减少寄存器使用、优化控制流等
-            // 当前实现返回原始源，实际中应该应用具体优化
-            return source;
         }
 
         /// <summary>
@@ -377,57 +259,33 @@ namespace Ryujinx.Graphics.Gpu.Shader
 
             int count = rtControl.UnpackCount();
 
+            Span<RtColorState> rtColorStateSpan = state.RtColorState.AsSpan();
+            Span<bool> attachmentEnableSpan = pipeline.AttachmentEnable.AsSpan();
+            Span<Format> attachmentFormatsSpan = pipeline.AttachmentFormats.AsSpan();
+
             for (int index = 0; index < Constants.TotalRenderTargets; index++)
             {
                 int rtIndex = rtControl.UnpackPermutationIndex(index);
 
-                var colorState = state.RtColorState[rtIndex];
+                var colorState = rtColorStateSpan[rtIndex];
 
                 if (index >= count || colorState.Format == 0 || colorState.WidthOrStride == 0)
                 {
-                    pipeline.AttachmentEnable[index] = false;
-                    pipeline.AttachmentFormats[index] = Format.R8G8B8A8Unorm;
+                    attachmentEnableSpan[index] = false;
+                    attachmentFormatsSpan[index] = Format.R8G8B8A8Unorm;
                 }
                 else
                 {
-                    pipeline.AttachmentEnable[index] = true;
-                    // 应用移动端优化的格式选择
-                    pipeline.AttachmentFormats[index] = OptimizeRenderTargetFormat(colorState.Format.Convert().Format);
+                    attachmentEnableSpan[index] = true;
+                    attachmentFormatsSpan[index] = colorState.Format.Convert().Format;
                 }
             }
 
             pipeline.DepthStencilEnable = state.RtDepthStencilEnable;
-            pipeline.DepthStencilFormat = pipeline.DepthStencilEnable ? 
-                OptimizeDepthStencilFormat(state.RtDepthStencilState.Format.Convert().Format) : 
-                MobileOptimalDepthFormat;
+            pipeline.DepthStencilFormat = pipeline.DepthStencilEnable ? state.RtDepthStencilState.Format.Convert().Format : Format.D24UnormS8Uint;
 
             pipeline.VertexBufferCount = Constants.TotalVertexBuffers;
             pipeline.Topology = graphicsState.Topology;
-        }
-
-        /// <summary>
-        /// Optimizes render target format for mobile bandwidth
-        /// </summary>
-        private static Format OptimizeRenderTargetFormat(Format originalFormat)
-        {
-            // 对于渲染目标，优先使用移动端优化的格式
-            if (originalFormat == Format.R8G8B8A8Unorm || 
-                originalFormat == Format.R8G8B8A8Srgb ||
-                originalFormat == Format.B8G8R8A8Unorm)
-            {
-                return MobileOptimalColorFormat;
-            }
-            
-            return originalFormat;
-        }
-
-        /// <summary>
-        /// Optimizes depth-stencil format for mobile bandwidth
-        /// </summary>
-        private static Format OptimizeDepthStencilFormat(Format originalFormat)
-        {
-            // 深度格式优化
-            return originalFormat == Format.D32FloatS8Uint ? MobileOptimalDepthFormat : originalFormat;
         }
 
         /// <summary>
@@ -512,7 +370,7 @@ namespace Ryujinx.Graphics.Gpu.Shader
             bool geometryToCompute = ShouldConvertGeometryToCompute(_context, geometryHasStore);
 
             CachedShaderStage[] shaders = new CachedShaderStage[Constants.ShaderStages + 1];
-            List<ShaderSource> shaderSources = new();
+            List<ShaderSource> shaderSources = [];
 
             TranslatorContext previousStage = null;
             ShaderInfoBuilder infoBuilder = new(_context, transformFeedbackDescriptors != null, vertexToCompute);
@@ -583,9 +441,7 @@ namespace Ryujinx.Graphics.Gpu.Shader
 
                     if (program != null)
                     {
-                        // 应用移动端优化
-                        ShaderSource optimizedSource = ApplyMobileOptimizations(CreateShaderSource(program));
-                        shaderSources.Add(optimizedSource);
+                        shaderSources.Add(CreateShaderSource(program));
                         infoBuilder.AddStageInfo(program.Info);
                     }
 
@@ -597,9 +453,7 @@ namespace Ryujinx.Graphics.Gpu.Shader
                     stageIndex == 3 &&
                     !_context.Capabilities.SupportsLayerVertexTessellation)
                 {
-                    ShaderProgram passthroughProgram = previousStage.GenerateGeometryPassthrough();
-                    ShaderSource optimizedSource = ApplyMobileOptimizations(CreateShaderSource(passthroughProgram));
-                    shaderSources.Add(optimizedSource);
+                    shaderSources.Add(CreateShaderSource(previousStage.GenerateGeometryPassthrough()));
                 }
             }
 
@@ -681,11 +535,9 @@ namespace Ryujinx.Graphics.Gpu.Shader
         private ShaderAsCompute CreateHostVertexAsComputeProgram(ShaderProgram program, TranslatorContext context, bool tfEnabled)
         {
             ShaderSource source = new(program.Code, program.BinaryCode, ShaderStage.Compute, program.Language);
-            // 应用移动端优化
-            ShaderSource optimizedSource = ApplyMobileOptimizations(source);
             ShaderInfo info = ShaderInfoBuilder.BuildForVertexAsCompute(_context, program.Info, tfEnabled);
 
-            return new(_context.Renderer.CreateProgram(new[] { optimizedSource }, info), program.Info, context.GetResourceReservations());
+            return new(_context.Renderer.CreateProgram([source], info), program.Info, context.GetResourceReservations());
         }
 
         /// <summary>
@@ -733,15 +585,18 @@ namespace Ryujinx.Graphics.Gpu.Shader
 
             TransformFeedbackDescriptor[] descs = new TransformFeedbackDescriptor[Constants.TotalTransformFeedbackBuffers];
 
+            Span<TfState> tfStateSpan = state.TfState.AsSpan();
+            Span<Array32<uint>> tfVaryingLocationsSpan = state.TfVaryingLocations.AsSpan();
+            
             for (int i = 0; i < Constants.TotalTransformFeedbackBuffers; i++)
             {
-                var tf = state.TfState[i];
+                var tf = tfStateSpan[i];
 
                 descs[i] = new TransformFeedbackDescriptor(
                     tf.BufferIndex,
                     tf.Stride,
                     tf.VaryingsCount,
-                    ref state.TfVaryingLocations[i]);
+                    ref tfVaryingLocationsSpan[i]);
             }
 
             return descs;
@@ -950,7 +805,7 @@ namespace Ryujinx.Graphics.Gpu.Shader
         {
             if (address == MemoryManager.PteUnmapped || size == 0)
             {
-                return Array.Empty<byte>();
+                return [];
             }
 
             return memoryManager.Physical.GetSpan(address, size).ToArray();
@@ -986,12 +841,6 @@ namespace Ryujinx.Graphics.Gpu.Shader
                 ? TargetLanguage.Spirv
                 : TargetLanguage.Glsl;
 
-            // 为移动端添加优化标志
-            if (lang == TargetLanguage.Spirv)
-            {
-                flags |= TranslationFlags.Optimize;
-            }
-
             return new TranslationOptions(lang, api, flags);
         }
 
@@ -1015,3 +864,4 @@ namespace Ryujinx.Graphics.Gpu.Shader
         }
     }
 }
+
