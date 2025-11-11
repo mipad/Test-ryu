@@ -1,4 +1,4 @@
-package org.ryujinx.android.views
+package org.ryujinx.android.views 
 
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.border
