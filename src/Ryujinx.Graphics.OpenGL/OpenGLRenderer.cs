@@ -128,7 +128,7 @@ namespace Ryujinx.Graphics.OpenGL
 
         public HardwareInfo GetHardwareInfo()
         {
-            return new HardwareInfo(GpuVendor, GpuRenderer, GpuVendor); // OpenGL does not provide a driver name, vendor name is closest analogue.
+            return new HardwareInfo(GpuVendor, GpuRenderer, GpuVendor);
         }
 
         public PinnedSpan<byte> GetBufferData(BufferHandle buffer, int offset, int size)
@@ -153,7 +153,7 @@ namespace Ryujinx.Graphics.OpenGL
                 supportsAstcCompression: HwCapabilities.SupportsAstcCompression,
                 supportsBc123Compression: HwCapabilities.SupportsTextureCompressionS3tc,
                 supportsBc45Compression: HwCapabilities.SupportsTextureCompressionRgtc,
-                supportsBc67Compression: true, // Should check BPTC extension, but for some reason NVIDIA is not exposing the extension.
+                supportsBc67Compression: true,
                 supportsEtc2Compression: true,
                 supports3DTextureCompression: false,
                 supportsBgraFormat: false,
@@ -188,15 +188,20 @@ namespace Ryujinx.Graphics.OpenGL
                 supportsViewportSwizzle: HwCapabilities.SupportsViewportSwizzle,
                 supportsIndirectParameters: HwCapabilities.SupportsIndirectParameters,
                 supportsDepthClipControl: true,
-                supportsFragmentDensityMap: false, // OpenGL does not support fragment density mapping
-                supportsFragmentDensityMap2: false, // OpenGL does not support fragment density mapping 2
+                supportsFragmentDensityMap: false,
+                supportsFragmentDensityMap2: false,
+                supportsMultiview: false,
+                supportsTimelineSemaphores: false,
+                supportsSynchronization2: false,
+                supportsDynamicRendering: false,
+                supportsExtendedDynamicState2: false,
                 uniformBufferSetIndex: 0,
                 storageBufferSetIndex: 1,
                 textureSetIndex: 2,
                 imageSetIndex: 3,
                 extraSetBaseIndex: 0,
                 maximumExtraSets: 0,
-                maximumUniformBuffersPerStage: 13, // TODO: Avoid hardcoding those limits here and get from driver?
+                maximumUniformBuffersPerStage: 13,
                 maximumStorageBuffersPerStage: 16,
                 maximumTexturesPerStage: 32,
                 maximumImagesPerStage: 8,
@@ -205,7 +210,7 @@ namespace Ryujinx.Graphics.OpenGL
                 shaderSubgroupSize: Constants.MaxSubgroupSize,
                 storageBufferOffsetAlignment: HwCapabilities.StorageBufferOffsetAlignment,
                 textureBufferOffsetAlignment: HwCapabilities.TextureBufferOffsetAlignment,
-                gatherBiasPrecision: intelWindows || amdWindows ? 8 : 0, // Precision is 8 for these vendors on Vulkan.
+                gatherBiasPrecision: intelWindows || amdWindows ? 8 : 0,
                 maximumGpuMemory: 0);
         }
 
@@ -243,10 +248,6 @@ namespace Ryujinx.Graphics.OpenGL
 
             _counters.Initialize();
 
-            // This is required to disable [0, 1] clamping for SNorm outputs on compatibility profiles.
-            // This call is expected to fail if we're running with a core profile,
-            // as this clamp target was deprecated, but that's fine as a core profile
-            // should already have the desired behaviour were outputs are not clamped.
             GL.ClampColor(ClampColorTarget.ClampFragmentColor, ClampColorMode.False);
         }
 
@@ -266,11 +267,9 @@ namespace Ryujinx.Graphics.OpenGL
 
         public void BackgroundContextAction(Action action, bool alwaysBackground = false)
         {
-            // alwaysBackground is ignored, since we cannot switch from the current context.
-
             if (_window.BackgroundContext.HasContext())
             {
-                action(); // We have a context already - use that (assuming it is the main one).
+                action();
             }
             else
             {
@@ -318,7 +317,6 @@ namespace Ryujinx.Graphics.OpenGL
 
         public void SetInterruptAction(Action<Action> interruptAction)
         {
-            // Currently no need for an interrupt action.
         }
 
         public void Screenshot()
