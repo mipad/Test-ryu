@@ -46,14 +46,14 @@ namespace Ryujinx.Audio.Output
         private readonly AudioOutputManager _manager;
 
         /// <summary>
+        /// 每个会话独立的锁，避免全局锁竞争
+        /// </summary>
+        private readonly object _sessionLock = new object();
+
+        /// <summary>
         /// The dispose state.
         /// </summary>
         private int _disposeState;
-
-        /// <summary>
-        /// 会话专用锁（每个实例独立）
-        /// </summary>
-        private readonly object _sessionLock = new object();
 
         /// <summary>
         /// Create a new <see cref="AudioOutputSystem"/>.
@@ -119,6 +119,7 @@ namespace Ryujinx.Audio.Output
         /// </summary>
         public void Update()
         {
+            // 使用细粒度锁，只保护会话内部状态
             lock (_sessionLock)
             {
                 _session.Update();
@@ -183,6 +184,7 @@ namespace Ryujinx.Audio.Output
         /// <returns>A <see cref="ResultCode"/> reporting an error or a success.</returns>
         public ResultCode AppendBuffer(ulong bufferTag, ref AudioUserBuffer userBuffer)
         {
+            // 使用细粒度锁，避免全局锁竞争
             lock (_sessionLock)
             {
                 AudioBuffer buffer = new()
@@ -211,19 +213,16 @@ namespace Ryujinx.Audio.Output
         {
             releasedCount = 0;
 
-            // 确保如果没有返回任何条目，第一个条目设置为零
+            // Ensure that the first entry is set to zero if no entries are returned.
             if (releasedBuffers.Length > 0)
             {
                 releasedBuffers[0] = 0;
             }
 
+            // 使用细粒度锁
             lock (_sessionLock)
             {
-                // 批处理优化：限制每次调用处理的最大缓冲区数量
-                const int maxBatchSize = 32;  // 根据性能测试调整此值
-                int batchSize = Math.Min(releasedBuffers.Length, maxBatchSize);
-                
-                for (int i = 0; i < batchSize; i++)
+                for (int i = 0; i < releasedBuffers.Length; i++)
                 {
                     if (!_session.TryPopReleasedBuffer(out AudioBuffer buffer))
                     {
@@ -241,8 +240,7 @@ namespace Ryujinx.Audio.Output
         /// <summary>
         /// Get the current state of the <see cref="AudioOutputSystem"/>.
         /// </summary>
-        /// <returns>Return the curent sta\te of the <see cref="AudioOutputSystem"/></returns>
-        /// <returns></returns>
+        /// <returns>Return the curent state of the <see cref="AudioOutputSystem"/></returns>
         public AudioDeviceState GetState()
         {
             lock (_sessionLock)
@@ -362,10 +360,7 @@ namespace Ryujinx.Audio.Output
         {
             if (disposing)
             {
-                lock (_sessionLock)
-                {
-                    _session.Dispose();
-                }
+                _session.Dispose();
 
                 _manager.Unregister(this);
             }

@@ -3,6 +3,8 @@ using Ryujinx.Audio.Integration;
 using Ryujinx.Common.Logging;
 using Ryujinx.Memory;
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
@@ -15,14 +17,14 @@ namespace Ryujinx.Audio.Output
     public class AudioOutputManager : IDisposable
     {
         /// <summary>
-        /// Lock used for session allocation.
+        /// Lock used for session allocation (仅用于ID分配，不用于会话操作).
         /// </summary>
-        private readonly object _sessionLock = new();
+        private readonly object _sessionIdLock = new();
 
         /// <summary>
         /// The session ids allocation table.
         /// </summary>
-        private readonly int[] _sessionIds;
+        private readonly ConcurrentQueue<int> _availableSessionIds;
 
         /// <summary>
         /// The device driver.
@@ -37,7 +39,7 @@ namespace Ryujinx.Audio.Output
         /// <summary>
         /// The <see cref="AudioOutputSystem"/> session instances.
         /// </summary>
-        private readonly AudioOutputSystem[] _sessions;
+        private readonly ConcurrentDictionary<int, AudioOutputSystem> _sessions;
 
         /// <summary>
         /// The count of active sessions.
@@ -54,13 +56,14 @@ namespace Ryujinx.Audio.Output
         /// </summary>
         public AudioOutputManager()
         {
-            _sessionIds = new int[Constants.AudioOutSessionCountMax];
-            _sessions = new AudioOutputSystem[Constants.AudioOutSessionCountMax];
+            _availableSessionIds = new ConcurrentQueue<int>();
+            _sessions = new ConcurrentDictionary<int, AudioOutputSystem>();
             _activeSessionCount = 0;
 
-            for (int i = 0; i < _sessionIds.Length; i++)
+            // 初始化可用的会话ID
+            for (int i = 0; i < Constants.AudioOutSessionCountMax; i++)
             {
-                _sessionIds[i] = i;
+                _availableSessionIds.Enqueue(i);
             }
         }
 
@@ -81,22 +84,15 @@ namespace Ryujinx.Audio.Output
         /// <returns>A new session id.</returns>
         private int AcquireSessionId()
         {
-            lock (_sessionLock)
+            // 使用无锁方式获取会话ID
+            if (_availableSessionIds.TryDequeue(out int sessionId))
             {
-                int index = _activeSessionCount;
-
-                Debug.Assert(index < _sessionIds.Length);
-
-                int sessionId = _sessionIds[index];
-
-                _sessionIds[index] = -1;
-
-                _activeSessionCount++;
-
+                Interlocked.Increment(ref _activeSessionCount);
                 Logger.Info?.Print(LogClass.AudioRenderer, $"Registered new output ({sessionId})");
-
                 return sessionId;
             }
+
+            throw new InvalidOperationException("No available session IDs");
         }
 
         /// <summary>
@@ -105,15 +101,8 @@ namespace Ryujinx.Audio.Output
         /// <param name="sessionId">The session id to release.</param>
         private void ReleaseSessionId(int sessionId)
         {
-            lock (_sessionLock)
-            {
-                Debug.Assert(_activeSessionCount > 0);
-
-                int newIndex = --_activeSessionCount;
-
-                _sessionIds[newIndex] = sessionId;
-            }
-
+            _availableSessionIds.Enqueue(sessionId);
+            Interlocked.Decrement(ref _activeSessionCount);
             Logger.Info?.Print(LogClass.AudioRenderer, $"Unregistered output ({sessionId})");
         }
 
@@ -122,17 +111,10 @@ namespace Ryujinx.Audio.Output
         /// </summary>
         public void Update()
         {
-            // 先复制会话列表避免长时锁定
-            AudioOutputSystem[] sessions;
-            lock (_sessionLock)
+            // 无锁遍历所有会话
+            foreach (var sessionPair in _sessions)
             {
-                sessions = _sessions.Where(s => s != null).ToArray();
-            }
-
-            // 并行更新各会话
-            foreach (var session in sessions)
-            {
-                session.Update(); // 内部使用会话级锁
+                sessionPair.Value?.Update();
             }
         }
 
@@ -142,9 +124,10 @@ namespace Ryujinx.Audio.Output
         /// <param name="output">The <see cref="AudioOutputSystem"/> to register.</param>
         private void Register(AudioOutputSystem output)
         {
-            lock (_sessionLock)
+            int sessionId = output.GetSessionId();
+            if (!_sessions.TryAdd(sessionId, output))
             {
-                _sessions[output.GetSessionId()] = output;
+                throw new InvalidOperationException($"Session {sessionId} already exists");
             }
         }
 
@@ -154,12 +137,9 @@ namespace Ryujinx.Audio.Output
         /// <param name="output">The <see cref="AudioOutputSystem"/> to unregister.</param>
         internal void Unregister(AudioOutputSystem output)
         {
-            lock (_sessionLock)
+            int sessionId = output.GetSessionId();
+            if (_sessions.TryRemove(sessionId, out _))
             {
-                int sessionId = output.GetSessionId();
-
-                _sessions[output.GetSessionId()] = null;
-
                 ReleaseSessionId(sessionId);
             }
         }
@@ -198,8 +178,8 @@ namespace Ryujinx.Audio.Output
 
             IHardwareDeviceSession deviceSession = _deviceDriver.OpenDeviceSession(IHardwareDeviceDriver.Direction.Output, memoryManager, sampleFormat, parameter.SampleRate, parameter.ChannelCount);
 
-            // 不再传递父级锁
-            AudioOutputSystem audioOut = new(this, deviceSession, _sessionsBufferEvents[sessionId]);
+            // 注意：移除了 parentLock 参数
+            AudioOutputSystem audioOut = new AudioOutputSystem(this, deviceSession, _sessionsBufferEvents[sessionId]);
 
             ResultCode result = audioOut.Initialize(inputDeviceName, sampleFormat, ref parameter, sessionId);
 
@@ -244,13 +224,9 @@ namespace Ryujinx.Audio.Output
         {
             if (disposing)
             {
-                // 克隆会话数组以便在锁外释放
-                AudioOutputSystem[] sessions;
-
-                lock (_sessionLock)
-                {
-                    sessions = _sessions.ToArray();
-                }
+                // 无锁方式处理所有会话的释放
+                var sessions = _sessions.Values.ToArray();
+                _sessions.Clear();
 
                 foreach (AudioOutputSystem output in sessions)
                 {
