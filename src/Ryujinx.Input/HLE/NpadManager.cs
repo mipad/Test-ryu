@@ -313,6 +313,10 @@ namespace Ryujinx.Input.HLE
                 }
 
                 _device.TamperMachine.UpdateInput(hleInputStates);
+                
+                hleMotionStates.Clear();
+                
+                _hleMotionStatesPool.Release(hleMotionStates);
             }
         }
 
@@ -355,3 +359,4 @@ namespace Ryujinx.Input.HLE
         }
     }
 }
+
