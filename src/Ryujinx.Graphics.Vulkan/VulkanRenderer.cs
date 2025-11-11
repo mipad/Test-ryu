@@ -34,6 +34,9 @@ namespace Ryujinx.Graphics.Vulkan
         public uint ProgramCount { get; set; } = 0;
 
         internal KhrTimelineSemaphore TimelineSemaphoreApi { get; private set; }
+        internal KhrSynchronization2 Synchronization2Api { get; private set; }
+        internal KhrDynamicRendering DynamicRenderingApi { get; private set; }
+        internal ExtExtendedDynamicState2 ExtendedDynamicState2Api { get; private set; }
         internal FormatCapabilities FormatCapabilities { get; private set; }
         internal HardwareCapabilities Capabilities;
 
@@ -49,6 +52,11 @@ namespace Ryujinx.Graphics.Vulkan
         
         internal bool SupportsFragmentDensityMap { get; private set; }
         internal bool SupportsFragmentDensityMap2 { get; private set; }
+        internal bool SupportsMultiview { get; private set; }
+        internal bool SupportsTimelineSemaphores { get; private set; }
+        internal bool SupportsSynchronization2 { get; private set; }
+        internal bool SupportsDynamicRendering { get; private set; }
+        internal bool SupportsExtendedDynamicState2 { get; private set; }
 
         internal uint QueueFamilyIndex { get; private set; }
         internal Queue Queue { get; private set; }
@@ -166,11 +174,30 @@ namespace Ryujinx.Graphics.Vulkan
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrTimelineSemaphore timelineSemaphoreApi))
             {
                 TimelineSemaphoreApi = timelineSemaphoreApi;
+                SupportsTimelineSemaphores = true;
+            }
+
+            if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrSynchronization2 synchronization2Api))
+            {
+                Synchronization2Api = synchronization2Api;
+                SupportsSynchronization2 = true;
+            }
+
+            if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrDynamicRendering dynamicRenderingApi))
+            {
+                DynamicRenderingApi = dynamicRenderingApi;
+                SupportsDynamicRendering = true;
             }
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtExtendedDynamicState extendedDynamicStateApi))
             {
                 ExtendedDynamicStateApi = extendedDynamicStateApi;
+            }
+
+            if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtExtendedDynamicState2 extendedDynamicState2Api))
+            {
+                ExtendedDynamicState2Api = extendedDynamicState2Api;
+                SupportsExtendedDynamicState2 = true;
             }
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrPushDescriptor pushDescriptorApi))
@@ -195,6 +222,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             SupportsFragmentDensityMap = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map");
             SupportsFragmentDensityMap2 = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map2");
+            SupportsMultiview = _physicalDevice.IsDeviceExtensionPresent("VK_KHR_multiview");
 
             if (maxQueueCount >= 2)
             {
@@ -304,6 +332,51 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 SType = StructureType.PhysicalDevicePortabilitySubsetFeaturesKhr,
             };
+
+            // 新增：Vulkan 1.3+ 特性
+            PhysicalDeviceTimelineSemaphoreFeaturesKHR featuresTimelineSemaphore = new()
+            {
+                SType = StructureType.PhysicalDeviceTimelineSemaphoreFeatures,
+            };
+
+            PhysicalDeviceSynchronization2FeaturesKHR featuresSynchronization2 = new()
+            {
+                SType = StructureType.PhysicalDeviceSynchronization2Features,
+            };
+
+            PhysicalDeviceDynamicRenderingFeaturesKHR featuresDynamicRendering = new()
+            {
+                SType = StructureType.PhysicalDeviceDynamicRenderingFeatures,
+            };
+
+            PhysicalDeviceExtendedDynamicState2FeaturesEXT featuresExtendedDynamicState2 = new()
+            {
+                SType = StructureType.PhysicalDeviceExtendedDynamicState2FeaturesExt,
+            };
+
+            if (_physicalDevice.IsDeviceExtensionPresent("VK_KHR_timeline_semaphore"))
+            {
+                featuresTimelineSemaphore.PNext = features2.PNext;
+                features2.PNext = &featuresTimelineSemaphore;
+            }
+
+            if (_physicalDevice.IsDeviceExtensionPresent("VK_KHR_synchronization2"))
+            {
+                featuresSynchronization2.PNext = features2.PNext;
+                features2.PNext = &featuresSynchronization2;
+            }
+
+            if (_physicalDevice.IsDeviceExtensionPresent("VK_KHR_dynamic_rendering"))
+            {
+                featuresDynamicRendering.PNext = features2.PNext;
+                features2.PNext = &featuresDynamicRendering;
+            }
+
+            if (_physicalDevice.IsDeviceExtensionPresent("VK_EXT_extended_dynamic_state2"))
+            {
+                featuresExtendedDynamicState2.PNext = features2.PNext;
+                features2.PNext = &featuresExtendedDynamicState2;
+            }
 
             if (_physicalDevice.IsDeviceExtensionPresent("VK_EXT_primitive_topology_list_restart"))
             {
@@ -463,6 +536,7 @@ namespace Ryujinx.Graphics.Vulkan
                 features2.Features.ShaderStorageImageMultisample,
                 _physicalDevice.IsDeviceExtensionPresent(ExtConditionalRendering.ExtensionName),
                 _physicalDevice.IsDeviceExtensionPresent(ExtExtendedDynamicState.ExtensionName),
+                _physicalDevice.IsDeviceExtensionPresent("VK_EXT_extended_dynamic_state2") && featuresExtendedDynamicState2.ExtendedDynamicState2,
                 features2.Features.MultiViewport && !(IsMoltenVk && Vendor == Vendor.Amd),
                 featuresRobustness2.NullDescriptor || IsMoltenVk,
                 supportsPushDescriptors && !IsMoltenVk,
@@ -480,6 +554,9 @@ namespace Ryujinx.Graphics.Vulkan
                 supportsDepthClipControl && featuresDepthClipControl.DepthClipControl,
                 supportsAttachmentFeedbackLoop && featuresAttachmentFeedbackLoop.AttachmentFeedbackLoopLayout,
                 supportsDynamicAttachmentFeedbackLoop && featuresDynamicAttachmentFeedbackLoop.AttachmentFeedbackLoopDynamicState,
+                _physicalDevice.IsDeviceExtensionPresent("VK_KHR_timeline_semaphore") && featuresTimelineSemaphore.TimelineSemaphore,
+                _physicalDevice.IsDeviceExtensionPresent("VK_KHR_synchronization2") && featuresSynchronization2.Synchronization2,
+                _physicalDevice.IsDeviceExtensionPresent("VK_KHR_dynamic_rendering") && featuresDynamicRendering.DynamicRendering,
                 propertiesSubgroup.SubgroupSize,
                 supportedSampleCounts,
                 portabilityFlags,
@@ -856,6 +933,11 @@ namespace Ryujinx.Graphics.Vulkan
                 supportsDepthClipControl: Capabilities.SupportsDepthClipControl,
                 supportsFragmentDensityMap: supportsFragmentDensityMap,
                 supportsFragmentDensityMap2: supportsFragmentDensityMap2,
+                supportsMultiview: SupportsMultiview,
+                supportsTimelineSemaphores: SupportsTimelineSemaphores,
+                supportsSynchronization2: SupportsSynchronization2,
+                supportsDynamicRendering: SupportsDynamicRendering,
+                supportsExtendedDynamicState2: SupportsExtendedDynamicState2,
                 uniformBufferSetIndex: PipelineBase.UniformSetIndex,
                 storageBufferSetIndex: PipelineBase.StorageSetIndex,
                 textureSetIndex: PipelineBase.TextureSetIndex,
@@ -967,6 +1049,16 @@ namespace Ryujinx.Graphics.Vulkan
         {
             Logger.Notice.Print(LogClass.Gpu, $"{GpuVendor} {GpuRenderer} ({GpuVersion})");
             Logger.Notice.Print(LogClass.Gpu, $"GPU Memory: {GetTotalGPUMemory() / (1024 * 1024)} MiB");
+            
+            // 打印新支持的功能
+            if (SupportsTimelineSemaphores)
+                Logger.Notice.Print(LogClass.Gpu, "Supports: Timeline Semaphores");
+            if (SupportsSynchronization2)
+                Logger.Notice.Print(LogClass.Gpu, "Supports: Synchronization2");
+            if (SupportsDynamicRendering)
+                Logger.Notice.Print(LogClass.Gpu, "Supports: Dynamic Rendering");
+            if (SupportsMultiview)
+                Logger.Notice.Print(LogClass.Gpu, "Supports: Multiview");
         }
 
         public void Initialize(GraphicsDebugLevel logLevel)
@@ -1236,4 +1328,3 @@ namespace Ryujinx.Graphics.Vulkan
         }        
     }
 }
-

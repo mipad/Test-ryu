@@ -16,7 +16,7 @@ namespace Ryujinx.Graphics.Vulkan
         private const uint InvalidIndex = uint.MaxValue;
         private static readonly uint _minimalVulkanVersion = Vk.Version11.Value;
         private static readonly uint _minimalInstanceVulkanVersion = Vk.Version12.Value;
-        private static readonly uint _maximumVulkanVersion = Vk.Version12.Value;
+        private static readonly uint _maximumVulkanVersion = Vk.Version13.Value; // 更新到1.3
         private const string AppName = "Ryujinx.Graphics.Vulkan";
         private const int QueuesCount = 2;
 
@@ -24,13 +24,18 @@ namespace Ryujinx.Graphics.Vulkan
         [
             ExtConditionalRendering.ExtensionName,
             ExtExtendedDynamicState.ExtensionName,
+            ExtExtendedDynamicState2.ExtensionName, // 新增：扩展动态状态2
             ExtTransformFeedback.ExtensionName,
             KhrDrawIndirectCount.ExtensionName,
             KhrPushDescriptor.ExtensionName,
+            KhrTimelineSemaphore.ExtensionName, // 新增：时间线信号量
+            KhrSynchronization2.ExtensionName, // 新增：同步2
+            KhrDynamicRendering.ExtensionName, // 新增：动态渲染
+            KhrMultiview.ExtensionName, // 新增：多视图
             ExtExternalMemoryHost.ExtensionName,
             "VK_EXT_blend_operation_advanced",
             "VK_EXT_custom_border_color",
-            "VK_EXT_descriptor_indexing", // Enabling this works around an issue with disposed buffer bindings on RADV.
+            "VK_EXT_descriptor_indexing",
             "VK_EXT_fragment_shader_interlock",
             "VK_EXT_index_type_uint8",
             "VK_EXT_primitive_topology_list_restart",
@@ -41,20 +46,22 @@ namespace Ryujinx.Graphics.Vulkan
             "VK_NV_geometry_shader_passthrough",
             "VK_NV_viewport_array2",
             "VK_EXT_depth_clip_control",
-            "VK_KHR_portability_subset", // As per spec, we should enable this if present.
+            "VK_KHR_portability_subset",
             "VK_EXT_4444_formats",
             "VK_KHR_8bit_storage",
             "VK_KHR_maintenance2",
             "VK_EXT_attachment_feedback_loop_layout",
             "VK_EXT_attachment_feedback_loop_dynamic_state",
-             "VK_KHR_timeline_semaphore", //添加时间线信号量功能
-             "VK_KHR_multiview" // 添加
+            "VK_KHR_maintenance4", // 新增：Vulkan 1.3维护功能
+            "VK_EXT_shader_object", // 新增：着色器对象
+            "VK_EXT_graphics_pipeline_library", // 新增：图形管线库
+            "VK_KHR_copy_commands2" // 新增：复制命令2
         ];
 
         private static readonly string[] _requiredExtensions =
         [
             KhrSwapchain.ExtensionName,
-            "VK_KHR_timeline_semaphore"
+            "VK_KHR_timeline_semaphore" // 时间线信号量现在作为必需扩展
         ];
 
         internal static VulkanInstance CreateInstance(Vk api, GraphicsDebugLevel logLevel, string[] requiredExtensions)
@@ -300,31 +307,76 @@ namespace Ryujinx.Graphics.Vulkan
                 SType = StructureType.PhysicalDeviceFeatures2,
             };
 
-// 添加多视图特性检测 
-PhysicalDeviceMultiviewFeatures supportedFeaturesMultiview = new()
-{
-    SType = StructureType.PhysicalDeviceMultiviewFeatures,
-    PNext = features2.PNext,
-};
+            // 添加时间线信号量特性
+            PhysicalDeviceTimelineSemaphoreFeaturesKHR timelineSemaphoreFeatures = new()
+            {
+                SType = StructureType.PhysicalDeviceTimelineSemaphoreFeatures,
+                PNext = features2.PNext,
+                TimelineSemaphore = true
+            };
 
-if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_multiview"))
-{
-    features2.PNext = &supportedFeaturesMultiview;
-}
-// 添加结束 
+            if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_timeline_semaphore"))
+            {
+                features2.PNext = &timelineSemaphoreFeatures;
+            }
 
-PhysicalDeviceTimelineSemaphoreFeaturesKHR supportedFeaturesTimelineSemaphore = new()
-{
-    SType = StructureType.PhysicalDeviceTimelineSemaphoreFeatures,
-    PNext = features2.PNext,
-    TimelineSemaphore = true // 明确启用时间线信号量
-};
+            // 添加同步2特性
+            PhysicalDeviceSynchronization2FeaturesKHR synchronization2Features = new()
+            {
+                SType = StructureType.PhysicalDeviceSynchronization2Features,
+                PNext = features2.PNext,
+                Synchronization2 = true
+            };
 
-if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_timeline_semaphore"))
-{
-    features2.PNext = &supportedFeaturesTimelineSemaphore;
-}
+            if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_synchronization2"))
+            {
+                features2.PNext = &synchronization2Features;
+            }
 
+            // 添加动态渲染特性
+            PhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeatures = new()
+            {
+                SType = StructureType.PhysicalDeviceDynamicRenderingFeatures,
+                PNext = features2.PNext,
+                DynamicRendering = true
+            };
+
+            if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_dynamic_rendering"))
+            {
+                features2.PNext = &dynamicRenderingFeatures;
+            }
+
+            // 添加扩展动态状态2特性
+            PhysicalDeviceExtendedDynamicState2FeaturesEXT extendedDynamicState2Features = new()
+            {
+                SType = StructureType.PhysicalDeviceExtendedDynamicState2FeaturesExt,
+                PNext = features2.PNext,
+                ExtendedDynamicState2 = true,
+                ExtendedDynamicState2LogicOp = true,
+                ExtendedDynamicState2PatchControlPoints = true
+            };
+
+            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_extended_dynamic_state2"))
+            {
+                features2.PNext = &extendedDynamicState2Features;
+            }
+
+            // 添加多视图特性
+            PhysicalDeviceMultiviewFeatures multiviewFeatures = new()
+            {
+                SType = StructureType.PhysicalDeviceMultiviewFeatures,
+                PNext = features2.PNext,
+                Multiview = true,
+                MultiviewGeometryShader = true,
+                MultiviewTessellationShader = true
+            };
+
+            if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_multiview"))
+            {
+                features2.PNext = &multiviewFeatures;
+            }
+
+            // Vulkan 1.1 特性
             PhysicalDeviceVulkan11Features supportedFeaturesVk11 = new()
             {
                 SType = StructureType.PhysicalDeviceVulkan11Features,
@@ -333,6 +385,31 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_timeline_semaphore"))
 
             features2.PNext = &supportedFeaturesVk11;
 
+            // Vulkan 1.2 特性
+            PhysicalDeviceVulkan12Features supportedPhysicalDeviceVulkan12Features = new()
+            {
+                SType = StructureType.PhysicalDeviceVulkan12Features,
+                PNext = features2.PNext,
+            };
+
+            features2.PNext = &supportedPhysicalDeviceVulkan12Features;
+
+            // Vulkan 1.3 特性
+            PhysicalDeviceVulkan13Features supportedPhysicalDeviceVulkan13Features = new()
+            {
+                SType = StructureType.PhysicalDeviceVulkan13Features,
+                PNext = features2.PNext,
+                Synchronization2 = true,
+                DynamicRendering = true,
+                Maintenance4 = true
+            };
+
+            if (physicalDevice.PhysicalDeviceProperties.ApiVersion >= Vk.Version13.Value)
+            {
+                features2.PNext = &supportedPhysicalDeviceVulkan13Features;
+            }
+
+            // 自定义边框颜色特性
             PhysicalDeviceCustomBorderColorFeaturesEXT supportedFeaturesCustomBorderColor = new()
             {
                 SType = StructureType.PhysicalDeviceCustomBorderColorFeaturesExt,
@@ -344,6 +421,7 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_timeline_semaphore"))
                 features2.PNext = &supportedFeaturesCustomBorderColor;
             }
 
+            // 图元拓扑列表重启特性
             PhysicalDevicePrimitiveTopologyListRestartFeaturesEXT supportedFeaturesPrimitiveTopologyListRestart = new()
             {
                 SType = StructureType.PhysicalDevicePrimitiveTopologyListRestartFeaturesExt,
@@ -355,6 +433,7 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_timeline_semaphore"))
                 features2.PNext = &supportedFeaturesPrimitiveTopologyListRestart;
             }
 
+            // 变换反馈特性
             PhysicalDeviceTransformFeedbackFeaturesEXT supportedFeaturesTransformFeedback = new()
             {
                 SType = StructureType.PhysicalDeviceTransformFeedbackFeaturesExt,
@@ -366,6 +445,7 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_timeline_semaphore"))
                 features2.PNext = &supportedFeaturesTransformFeedback;
             }
 
+            // 鲁棒性2特性
             PhysicalDeviceRobustness2FeaturesEXT supportedFeaturesRobustness2 = new()
             {
                 SType = StructureType.PhysicalDeviceRobustness2FeaturesExt,
@@ -374,10 +454,10 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_timeline_semaphore"))
             if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_robustness2"))
             {
                 supportedFeaturesRobustness2.PNext = features2.PNext;
-
                 features2.PNext = &supportedFeaturesRobustness2;
             }
 
+            // 深度裁剪控制特性
             PhysicalDeviceDepthClipControlFeaturesEXT supportedFeaturesDepthClipControl = new()
             {
                 SType = StructureType.PhysicalDeviceDepthClipControlFeaturesExt,
@@ -389,6 +469,7 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_timeline_semaphore"))
                 features2.PNext = &supportedFeaturesDepthClipControl;
             }
 
+            // 附件反馈循环布局特性
             PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT supportedFeaturesAttachmentFeedbackLoopLayout = new()
             {
                 SType = StructureType.PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesExt,
@@ -400,6 +481,7 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_timeline_semaphore"))
                 features2.PNext = &supportedFeaturesAttachmentFeedbackLoopLayout;
             }
 
+            // 动态附件反馈循环特性
             PhysicalDeviceAttachmentFeedbackLoopDynamicStateFeaturesEXT supportedFeaturesDynamicAttachmentFeedbackLoopLayout = new()
             {
                 SType = StructureType.PhysicalDeviceAttachmentFeedbackLoopDynamicStateFeaturesExt,
@@ -411,14 +493,19 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_timeline_semaphore"))
                 features2.PNext = &supportedFeaturesDynamicAttachmentFeedbackLoopLayout;
             }
 
-            PhysicalDeviceVulkan12Features supportedPhysicalDeviceVulkan12Features = new()
+            // 复制命令2特性
+            PhysicalDeviceCopyCommands2FeaturesKHR supportedFeaturesCopyCommands2 = new()
             {
-                SType = StructureType.PhysicalDeviceVulkan12Features,
+                SType = StructureType.PhysicalDeviceCopyCommands2FeaturesKhr,
                 PNext = features2.PNext,
             };
 
-            features2.PNext = &supportedPhysicalDeviceVulkan12Features;
+            if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_copy_commands2"))
+            {
+                features2.PNext = &supportedFeaturesCopyCommands2;
+            }
 
+            // 获取物理设备特性
             api.GetPhysicalDeviceFeatures2(physicalDevice.PhysicalDevice, &features2);
 
             var supportedFeatures = features2.Features;
@@ -451,23 +538,86 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_timeline_semaphore"))
 
             void* pExtendedFeatures = null;
 
-// 添加多视图特性启用 
-PhysicalDeviceMultiviewFeatures featuresMultiview;
+            // 时间线信号量特性
+            PhysicalDeviceTimelineSemaphoreFeaturesKHR featuresTimelineSemaphore;
 
-if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_multiview"))
-{
-    featuresMultiview = new PhysicalDeviceMultiviewFeatures
-    {
-        SType = StructureType.PhysicalDeviceMultiviewFeatures,
-        PNext = pExtendedFeatures,
-        Multiview = supportedFeaturesMultiview.Multiview,
-        MultiviewGeometryShader = supportedFeaturesMultiview.MultiviewGeometryShader,
-        MultiviewTessellationShader = supportedFeaturesMultiview.MultiviewTessellationShader
-    };
-    
-    pExtendedFeatures = &featuresMultiview;
-}
-// 添加结束 
+            if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_timeline_semaphore"))
+            {
+                featuresTimelineSemaphore = new PhysicalDeviceTimelineSemaphoreFeaturesKHR
+                {
+                    SType = StructureType.PhysicalDeviceTimelineSemaphoreFeatures,
+                    PNext = pExtendedFeatures,
+                    TimelineSemaphore = timelineSemaphoreFeatures.TimelineSemaphore,
+                };
+
+                pExtendedFeatures = &featuresTimelineSemaphore;
+            }
+
+            // 同步2特性
+            PhysicalDeviceSynchronization2FeaturesKHR featuresSynchronization2;
+
+            if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_synchronization2"))
+            {
+                featuresSynchronization2 = new PhysicalDeviceSynchronization2FeaturesKHR
+                {
+                    SType = StructureType.PhysicalDeviceSynchronization2Features,
+                    PNext = pExtendedFeatures,
+                    Synchronization2 = synchronization2Features.Synchronization2,
+                };
+
+                pExtendedFeatures = &featuresSynchronization2;
+            }
+
+            // 动态渲染特性
+            PhysicalDeviceDynamicRenderingFeaturesKHR featuresDynamicRendering;
+
+            if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_dynamic_rendering"))
+            {
+                featuresDynamicRendering = new PhysicalDeviceDynamicRenderingFeaturesKHR
+                {
+                    SType = StructureType.PhysicalDeviceDynamicRenderingFeatures,
+                    PNext = pExtendedFeatures,
+                    DynamicRendering = dynamicRenderingFeatures.DynamicRendering,
+                };
+
+                pExtendedFeatures = &featuresDynamicRendering;
+            }
+
+            // 扩展动态状态2特性
+            PhysicalDeviceExtendedDynamicState2FeaturesEXT featuresExtendedDynamicState2;
+
+            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_extended_dynamic_state2"))
+            {
+                featuresExtendedDynamicState2 = new PhysicalDeviceExtendedDynamicState2FeaturesEXT
+                {
+                    SType = StructureType.PhysicalDeviceExtendedDynamicState2FeaturesExt,
+                    PNext = pExtendedFeatures,
+                    ExtendedDynamicState2 = extendedDynamicState2Features.ExtendedDynamicState2,
+                    ExtendedDynamicState2LogicOp = extendedDynamicState2Features.ExtendedDynamicState2LogicOp,
+                    ExtendedDynamicState2PatchControlPoints = extendedDynamicState2Features.ExtendedDynamicState2PatchControlPoints,
+                };
+
+                pExtendedFeatures = &featuresExtendedDynamicState2;
+            }
+
+            // 多视图特性
+            PhysicalDeviceMultiviewFeatures featuresMultiview;
+
+            if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_multiview"))
+            {
+                featuresMultiview = new PhysicalDeviceMultiviewFeatures
+                {
+                    SType = StructureType.PhysicalDeviceMultiviewFeatures,
+                    PNext = pExtendedFeatures,
+                    Multiview = multiviewFeatures.Multiview,
+                    MultiviewGeometryShader = multiviewFeatures.MultiviewGeometryShader,
+                    MultiviewTessellationShader = multiviewFeatures.MultiviewTessellationShader
+                };
+
+                pExtendedFeatures = &featuresMultiview;
+            }
+
+            // 变换反馈特性
             PhysicalDeviceTransformFeedbackFeaturesEXT featuresTransformFeedback;
 
             if (physicalDevice.IsDeviceExtensionPresent(ExtTransformFeedback.ExtensionName))
@@ -482,6 +632,7 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_multiview"))
                 pExtendedFeatures = &featuresTransformFeedback;
             }
 
+            // 图元拓扑列表重启特性
             PhysicalDevicePrimitiveTopologyListRestartFeaturesEXT featuresPrimitiveTopologyListRestart;
 
             if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_primitive_topology_list_restart"))
@@ -497,6 +648,7 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_multiview"))
                 pExtendedFeatures = &featuresPrimitiveTopologyListRestart;
             }
 
+            // 鲁棒性2特性
             PhysicalDeviceRobustness2FeaturesEXT featuresRobustness2;
 
             if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_robustness2"))
@@ -511,6 +663,7 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_multiview"))
                 pExtendedFeatures = &featuresRobustness2;
             }
 
+            // 扩展动态状态特性
             var featuresExtendedDynamicState = new PhysicalDeviceExtendedDynamicStateFeaturesEXT
             {
                 SType = StructureType.PhysicalDeviceExtendedDynamicStateFeaturesExt,
@@ -520,6 +673,7 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_multiview"))
 
             pExtendedFeatures = &featuresExtendedDynamicState;
 
+            // Vulkan 1.1 特性
             var featuresVk11 = new PhysicalDeviceVulkan11Features
             {
                 SType = StructureType.PhysicalDeviceVulkan11Features,
@@ -529,6 +683,7 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_multiview"))
 
             pExtendedFeatures = &featuresVk11;
 
+            // Vulkan 1.2 特性
             var featuresVk12 = new PhysicalDeviceVulkan12Features
             {
                 SType = StructureType.PhysicalDeviceVulkan12Features,
@@ -542,6 +697,24 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_multiview"))
 
             pExtendedFeatures = &featuresVk12;
 
+            // Vulkan 1.3 特性
+            PhysicalDeviceVulkan13Features featuresVk13;
+
+            if (physicalDevice.PhysicalDeviceProperties.ApiVersion >= Vk.Version13.Value)
+            {
+                featuresVk13 = new PhysicalDeviceVulkan13Features
+                {
+                    SType = StructureType.PhysicalDeviceVulkan13Features,
+                    PNext = pExtendedFeatures,
+                    Synchronization2 = supportedPhysicalDeviceVulkan13Features.Synchronization2,
+                    DynamicRendering = supportedPhysicalDeviceVulkan13Features.DynamicRendering,
+                    Maintenance4 = supportedPhysicalDeviceVulkan13Features.Maintenance4,
+                };
+
+                pExtendedFeatures = &featuresVk13;
+            }
+
+            // 索引类型Uint8特性
             PhysicalDeviceIndexTypeUint8FeaturesEXT featuresIndexU8;
 
             if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_index_type_uint8"))
@@ -556,6 +729,7 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_multiview"))
                 pExtendedFeatures = &featuresIndexU8;
             }
 
+            // 片段着色器互锁特性
             PhysicalDeviceFragmentShaderInterlockFeaturesEXT featuresFragmentShaderInterlock;
 
             if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_shader_interlock"))
@@ -570,6 +744,7 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_multiview"))
                 pExtendedFeatures = &featuresFragmentShaderInterlock;
             }
 
+            // 自定义边框颜色特性
             PhysicalDeviceCustomBorderColorFeaturesEXT featuresCustomBorderColor;
 
             if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_custom_border_color") &&
@@ -587,6 +762,7 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_multiview"))
                 pExtendedFeatures = &featuresCustomBorderColor;
             }
 
+            // 深度裁剪控制特性
             PhysicalDeviceDepthClipControlFeaturesEXT featuresDepthClipControl;
 
             if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_depth_clip_control") &&
@@ -602,6 +778,7 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_multiview"))
                 pExtendedFeatures = &featuresDepthClipControl;
             }
 
+            // 附件反馈循环布局特性
             PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT featuresAttachmentFeedbackLoopLayout;
 
             if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_attachment_feedback_loop_layout") &&
@@ -617,6 +794,7 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_multiview"))
                 pExtendedFeatures = &featuresAttachmentFeedbackLoopLayout;
             }
 
+            // 动态附件反馈循环特性
             PhysicalDeviceAttachmentFeedbackLoopDynamicStateFeaturesEXT featuresDynamicAttachmentFeedbackLoopLayout;
 
             if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_attachment_feedback_loop_dynamic_state") &&
@@ -630,6 +808,21 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_multiview"))
                 };
 
                 pExtendedFeatures = &featuresDynamicAttachmentFeedbackLoopLayout;
+            }
+
+            // 复制命令2特性
+            PhysicalDeviceCopyCommands2FeaturesKHR featuresCopyCommands2;
+
+            if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_copy_commands2"))
+            {
+                featuresCopyCommands2 = new PhysicalDeviceCopyCommands2FeaturesKHR
+                {
+                    SType = StructureType.PhysicalDeviceCopyCommands2FeaturesKhr,
+                    PNext = pExtendedFeatures,
+                    CopyCommands2 = supportedFeaturesCopyCommands2.CopyCommands2,
+                };
+
+                pExtendedFeatures = &featuresCopyCommands2;
             }
 
             var enabledExtensions = _requiredExtensions.Union(_desirableExtensions.Intersect(physicalDevice.DeviceExtensions)).ToArray();
