@@ -25,13 +25,13 @@ namespace Ryujinx.Graphics.Gpu.Shader
         /// </summary>
         public const TranslationFlags DefaultFlags = TranslationFlags.DebugMode;
 
-        // 移动端优化的纹理格式优先级列表
+        // 移动端优化的纹理格式优先级列表 - 使用正确的格式名称
         private static readonly Format[] MobilePreferredFormats = new[]
         {
-            Format.ASTC4x4Unorm,    // 最高压缩比，移动端首选
-            Format.ASTC6x6Unorm,
-            Format.ETC2R8G8B8Unorm, // 兼容性更好
-            Format.ETC2R8G8B8A8Unorm,
+            Format.Astc4x4Unorm,    // 最高压缩比，移动端首选
+            Format.Astc6x6Unorm,
+            Format.Etc2RgbUnorm,    // 修正格式名称
+            Format.Etc2RgbaUnorm,   // 修正格式名称
             Format.R8G8B8A8Unorm,   // 未压缩格式作为后备
         };
 
@@ -283,9 +283,10 @@ namespace Ryujinx.Graphics.Gpu.Shader
                 Format.R8G8B8A8Srgb => 32,
                 Format.B8G8R8A8Unorm => 32,
                 Format.R5G6B5Unorm => 16,
-                Format.ASTC4x4Unorm => 8,  // 压缩格式
-                Format.ASTC6x6Unorm => 4,  // 更低比特率
-                Format.ETC2R8G8B8Unorm => 8,
+                Format.Astc4x4Unorm => 8,  // 压缩格式
+                Format.Astc6x6Unorm => 4,  // 更低比特率
+                Format.Etc2RgbUnorm => 8,
+                Format.Etc2RgbaUnorm => 8,
                 _ => 32
             };
         }
