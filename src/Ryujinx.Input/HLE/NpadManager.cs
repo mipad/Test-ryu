@@ -15,7 +15,9 @@ using Switch = Ryujinx.HLE.Switch;
 namespace Ryujinx.Input.HLE
 {
     public class NpadManager : IDisposable
-    {
+    {   
+        private static readonly ObjectPool<List<SixAxisInput>> _hleMotionStatesPool = new (() => new List<SixAxisInput>(NpadDevices.MaxControllers));
+        
         private readonly CemuHookClient _cemuHookClient;
 
         private readonly object _lock = new();
@@ -204,7 +206,7 @@ namespace Ryujinx.Input.HLE
             lock (_lock)
             {
                 List<GamepadInput> hleInputStates = new();
-                List<SixAxisInput> hleMotionStates = new(NpadDevices.MaxControllers);
+                List<SixAxisInput> hleMotionStates = _hleMotionStatesPool.Allocate();
 
                 KeyboardInput? hleKeyboardInput = null;
 
