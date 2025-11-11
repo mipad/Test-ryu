@@ -44,13 +44,17 @@ namespace Ryujinx.Graphics.Vulkan
         private ScalingFilter _currentScalingFilter;
         private bool _colorSpacePassthroughEnabled;
 
-        // 新增：自定义表面格式相关字段
+        // 新增：移动端计算着色器支持相关字段
+        private bool _supportsComputeOnSwapchain;
+        private bool _swapchainSupportsStorage;
+
+        // 自定义表面格式相关字段
         private static bool _useCustomSurfaceFormat = false;
         private static SurfaceFormatKHR _customSurfaceFormat;
         private static bool _customFormatValid = false;
         private static List<SurfaceFormatKHR> _availableSurfaceFormats = new List<SurfaceFormatKHR>();
 
-        // 从版本11新增：表面查询保护机制
+        // 表面查询保护机制
         private volatile bool _allowSurfaceQueries = true;
 
         public unsafe Window(VulkanRenderer gd, SurfaceKHR surface, PhysicalDevice physicalDevice, Device device)
@@ -59,6 +63,9 @@ namespace Ryujinx.Graphics.Vulkan
             _physicalDevice = physicalDevice;
             _device = device;
             _surface = surface;
+
+            // 检测移动端计算着色器支持
+            CheckComputeShaderSupport();
 
             if (_gd.PresentAllowed && _surface.Handle != 0)
             {
@@ -70,11 +77,21 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        // 从版本11新增：表面查询权限控制
+        // 检测移动端计算着色器支持
+        private void CheckComputeShaderSupport()
+        {
+            // 移动端通常支持计算着色器，但需要检查交换链图像是否支持Storage用法
+            _supportsComputeOnSwapchain = true;
+            
+            // 记录支持信息
+            Logger.Info?.Print(LogClass.Gpu, $"Mobile compute shader support: {_supportsComputeOnSwapchain}");
+        }
+
+        // 表面查询权限控制
         public void SetSurfaceQueryAllowed(bool allowed) => _allowSurfaceQueries = allowed;
         private bool CanQuerySurface() => _allowSurfaceQueries && _gd.PresentAllowed && _surface.Handle != 0;
 
-        // 从版本11新增：安全的表面查询方法
+        // 安全的表面查询方法
         private unsafe bool TryGetSurfaceCapabilities(out SurfaceCapabilitiesKHR caps)
         {
             caps = default;
@@ -119,7 +136,7 @@ namespace Ryujinx.Graphics.Vulkan
             return true;
         }
 
-        // 从版本11改进：增强的交换链重建方法
+        // 增强的交换链重建方法（移动端优化）
         private void RecreateSwapchain()
         {
             if (!_gd.PresentAllowed || _surface.Handle == 0 || !CanQuerySurface())
@@ -133,40 +150,13 @@ namespace Ryujinx.Graphics.Vulkan
                 var oldSwapchain = _swapchain;
                 _swapchainIsDirty = false;
 
-                if (_swapchainImageViews != null)
-                {
-                    for (int i = 0; i < _swapchainImageViews.Length; i++)
-                    {
-                        _swapchainImageViews[i]?.Dispose();
-                    }
-                }
+                // 清理现有资源
+                CleanupSwapchainResources();
 
                 _gd.Api.DeviceWaitIdle(_device);
 
-                unsafe
-                {
-                    if (_imageAvailableSemaphores != null)
-                    {
-                        for (int i = 0; i < _imageAvailableSemaphores.Length; i++)
-                        {
-                            if (_imageAvailableSemaphores[i].Handle != 0)
-                            {
-                                _gd.Api.DestroySemaphore(_device, _imageAvailableSemaphores[i], null);
-                            }
-                        }
-                    }
-
-                    if (_renderFinishedSemaphores != null)
-                    {
-                        for (int i = 0; i < _renderFinishedSemaphores.Length; i++)
-                        {
-                            if (_renderFinishedSemaphores[i].Handle != 0)
-                            {
-                                _gd.Api.DestroySemaphore(_device, _renderFinishedSemaphores[i], null);
-                            }
-                        }
-                    }
-                }
+                // 清理信号量
+                CleanupSemaphores();
 
                 if (oldSwapchain.Handle != 0)
                 {
@@ -174,6 +164,47 @@ namespace Ryujinx.Graphics.Vulkan
                 }
 
                 CreateSwapchain();
+            }
+        }
+
+        // 清理交换链资源
+        private void CleanupSwapchainResources()
+        {
+            if (_swapchainImageViews != null)
+            {
+                for (int i = 0; i < _swapchainImageViews.Length; i++)
+                {
+                    _swapchainImageViews[i]?.Dispose();
+                }
+                _swapchainImageViews = null;
+            }
+        }
+
+        // 清理信号量
+        private unsafe void CleanupSemaphores()
+        {
+            if (_imageAvailableSemaphores != null)
+            {
+                for (int i = 0; i < _imageAvailableSemaphores.Length; i++)
+                {
+                    if (_imageAvailableSemaphores[i].Handle != 0)
+                    {
+                        _gd.Api.DestroySemaphore(_device, _imageAvailableSemaphores[i], null);
+                    }
+                }
+                _imageAvailableSemaphores = null;
+            }
+
+            if (_renderFinishedSemaphores != null)
+            {
+                for (int i = 0; i < _renderFinishedSemaphores.Length; i++)
+                {
+                    if (_renderFinishedSemaphores[i].Handle != 0)
+                    {
+                        _gd.Api.DestroySemaphore(_device, _renderFinishedSemaphores[i], null);
+                    }
+                }
+                _renderFinishedSemaphores = null;
             }
         }
 
@@ -194,7 +225,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        // 从版本11改进：增强的交换链创建方法
+        // 增强的交换链创建方法（移动端优化）
         private unsafe void CreateSwapchain()
         {
             if (!_gd.PresentAllowed || _surface.Handle == 0 || !CanQuerySurface())
@@ -217,7 +248,7 @@ namespace Ryujinx.Graphics.Vulkan
                     return;
                 }
 
-                // 保存可用的表面格式列表 - 确保这是最新的
+                // 保存可用的表面格式列表
                 _availableSurfaceFormats.Clear();
                 _availableSurfaceFormats.AddRange(surfaceFormats);
 
@@ -247,7 +278,7 @@ namespace Ryujinx.Graphics.Vulkan
 
                 var extent = ChooseSwapExtent(capabilities);
 
-                // 从版本11新增：防止0x0尺寸
+                // 防止0x0尺寸
                 if (extent.Width == 0 || extent.Height == 0)
                 {
                     _swapchainIsDirty = true;
@@ -262,14 +293,24 @@ namespace Ryujinx.Graphics.Vulkan
 
                 CurrentTransform = capabilities.CurrentTransform;
 
-                // 从版本11改进：更清晰的图像使用标志
+                // 移动端优化：统一使用相同的图像用法标志
+                // 在移动端也允许StorageBit，以便计算着色器能够工作
                 var usage = ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit;
-                if (!Ryujinx.Common.PlatformInfo.IsBionic)
+                
+                // 检查表面是否支持Storage用法
+                if (capabilities.SupportedUsageFlags.HasFlag(ImageUsageFlags.StorageBit))
                 {
-                    usage |= ImageUsageFlags.StorageBit; // 仅桌面平台允许在交换链上使用Storage
+                    usage |= ImageUsageFlags.StorageBit;
+                    _swapchainSupportsStorage = true;
+                    Logger.Info?.Print(LogClass.Gpu, "Swapchain supports Storage usage for compute shaders");
+                }
+                else
+                {
+                    _swapchainSupportsStorage = false;
+                    Logger.Warning?.Print(LogClass.Gpu, "Swapchain does NOT support Storage usage, compute shaders may be limited");
                 }
 
-                // 从版本11改进：Android使用Identity变换，其他使用驱动推荐的变换
+                // 移动端使用Identity变换，其他使用驱动推荐的变换
                 var preTransform = Ryujinx.Common.PlatformInfo.IsBionic
                     ? SurfaceTransformFlagsKHR.IdentityBitKhr
                     : capabilities.CurrentTransform;
@@ -311,6 +352,7 @@ namespace Ryujinx.Graphics.Vulkan
                 Result result = _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain);
                 if (result != Result.Success)
                 {
+                    Logger.Error?.Print(LogClass.Gpu, $"Failed to create swapchain: {result}");
                     result.ThrowOnError();
                 }
                 
@@ -348,6 +390,8 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     _gd.Api.CreateSemaphore(_device, in semaphoreCreateInfo, null, out _renderFinishedSemaphores[i]).ThrowOnError();
                 }
+
+                Logger.Info?.Print(LogClass.Gpu, $"Swapchain created successfully: {_width}x{_height}, format: {surfaceFormat.Format}, images: {imageCount}");
             }
         }
 
@@ -703,10 +747,10 @@ namespace Ryujinx.Graphics.Vulkan
             return $"{formatName} ({colorSpaceName})";
         }
 
-        // 从版本11改进：增强的Present方法
+        // 增强的Present方法（移动端优化）
         public unsafe override void Present(ITexture texture, ImageCrop crop, Action swapBuffersCallback)
         {
-            // 从版本11新增：表面查询权限恢复
+            // 表面查询权限恢复
             if (!_allowSurfaceQueries && _surface.Handle != 0)
             {
                 _allowSurfaceQueries = true;
@@ -718,7 +762,7 @@ namespace Ryujinx.Graphics.Vulkan
                 return;
             }
 
-            // 从版本11新增：尺寸检查
+            // 尺寸检查
             if (_width <= 0 || _height <= 0)
             {
                 RecreateSwapchain();
@@ -726,7 +770,7 @@ namespace Ryujinx.Graphics.Vulkan
                 return;
             }
 
-            // 从版本11新增：延迟初始化/恢复
+            // 延迟初始化/恢复
             if (_swapchain.Handle == 0 || _imageAvailableSemaphores == null || _renderFinishedSemaphores == null)
             {
                 try { CreateSwapchain(); } catch { /* 下一帧重试 */ }
@@ -768,7 +812,7 @@ namespace Ryujinx.Graphics.Vulkan
                 }
                 else if (acquireResult == Result.ErrorSurfaceLostKhr)
                 {
-                    // 从版本11改进：在后台不立即重新创建 - 释放并返回
+                    // 在后台不立即重新创建 - 释放并返回
                     _gd.ReleaseSurface();
                     swapBuffersCallback?.Invoke();
                     return;
@@ -786,13 +830,13 @@ namespace Ryujinx.Graphics.Vulkan
 
             var cbs = _gd.CommandBufferPool.Rent();
 
-            // 从版本11改进：根据路径正确设置布局/阶段
-            bool allowStorageDst = !Ryujinx.Common.PlatformInfo.IsBionic; // Android: 交换链上无Storage
-            bool useComputeDst = allowStorageDst && _scalingFilter != null;
+            // 移动端优化：根据交换链支持情况决定是否使用计算着色器
+            bool allowComputeDst = _swapchainSupportsStorage && _scalingFilter != null;
+            bool useComputeDst = allowComputeDst && _supportsComputeOnSwapchain;
 
             if (useComputeDst)
             {
-                // Compute写入交换链图像 → General + ShaderWrite
+                // 计算着色器写入交换链图像 → General + ShaderWrite
                 Transition(
                     cbs.CommandBuffer,
                     swapchainImage,
@@ -805,7 +849,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else
             {
-                // Renderpass写入交换链图像 → ColorAttachmentOptimal
+                // 渲染通道写入交换链图像 → ColorAttachmentOptimal
                 Transition(
                     cbs.CommandBuffer,
                     swapchainImage,
@@ -887,6 +931,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (_scalingFilter != null && useComputeDst)
             {
+                // 使用计算着色器进行缩放过滤
                 _scalingFilter!.Run(
                     view,
                     cbs,
@@ -900,6 +945,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else
             {
+                // 使用传统的渲染通道进行blit操作
                 _gd.HelperShader.BlitColor(
                     _gd,
                     cbs,
@@ -938,17 +984,17 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             var waitSems = new Silk.NET.Vulkan.Semaphore[] { _imageAvailableSemaphores[semaphoreIndex] };
-            var waitStages = new PipelineStageFlags[] { PipelineStageFlags.ColorAttachmentOutputBit }; // 在Android上很重要
+            var waitStages = new PipelineStageFlags[] { PipelineStageFlags.ColorAttachmentOutputBit };
             var signalSems = new Silk.NET.Vulkan.Semaphore[] { _renderFinishedSemaphores[semaphoreIndex] };
             _gd.CommandBufferPool.Return(cbs, waitSems, waitStages, signalSems);
 
-            // 从版本11新增：使用PresentOne方法
+            // 使用PresentOne方法
             PresentOne(_gd, _renderFinishedSemaphores[semaphoreIndex], _swapchain, nextImage);
 
             swapBuffersCallback?.Invoke();
         }
 
-        // 从版本11新增：PresentOne辅助方法
+        // PresentOne辅助方法
         private static unsafe void PresentOne(
             VulkanRenderer gd,
             Silk.NET.Vulkan.Semaphore signal,
@@ -980,7 +1026,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        // 从版本11改进：增强的Transition方法
+        // 增强的Transition方法
         private unsafe void Transition(
             CommandBuffer commandBuffer,
             Image image,
@@ -1128,13 +1174,13 @@ namespace Ryujinx.Graphics.Vulkan
             _gd.OnScreenCaptured(new ScreenCaptureImageInfo(width, height, isBgra, bitmap, flipX, flipY));
         }
 
-        // 从版本11改进：增强的SetSize方法
+        // 增强的SetSize方法
         public override void SetSize(int width, int height)
         {
             // We don't need to use width and height as we can get the size from the surface.
             _swapchainIsDirty = true;
 
-            // 从版本11新增：在恢复后确保表面查询再次允许，
+            // 在恢复后确保表面查询再次允许，
             // 如果之前OnSurfaceLost()关闭了门控。
             if (_surface.Handle != 0)
             {
@@ -1149,7 +1195,7 @@ namespace Ryujinx.Graphics.Vulkan
             _swapchainIsDirty = true;
         }
 
-        // 从版本11新增：表面丢失处理方法
+        // 表面丢失处理方法
         public void OnSurfaceLost()
         {
             lock (_gd.SurfaceLock)
@@ -1160,41 +1206,8 @@ namespace Ryujinx.Graphics.Vulkan
 
                 _gd.Api.DeviceWaitIdle(_device);
 
-                unsafe
-                {
-                    if (_imageAvailableSemaphores != null)
-                    {
-                        for (int i = 0; i < _imageAvailableSemaphores.Length; i++)
-                        {
-                            if (_imageAvailableSemaphores[i].Handle != 0)
-                            {
-                                _gd.Api.DestroySemaphore(_device, _imageAvailableSemaphores[i], null);
-                            }
-                        }
-                        _imageAvailableSemaphores = null;
-                    }
-
-                    if (_renderFinishedSemaphores != null)
-                    {
-                        for (int i = 0; i < _renderFinishedSemaphores.Length; i++)
-                        {
-                            if (_renderFinishedSemaphores[i].Handle != 0)
-                            {
-                                _gd.Api.DestroySemaphore(_device, _renderFinishedSemaphores[i], null);
-                            }
-                        }
-                        _renderFinishedSemaphores = null;
-                    }
-                }
-
-                if (_swapchainImageViews != null)
-                {
-                    for (int i = 0; i < _swapchainImageViews.Length; i++)
-                    {
-                        _swapchainImageViews[i]?.Dispose();
-                    }
-                    _swapchainImageViews = null;
-                }
+                CleanupSemaphores();
+                CleanupSwapchainResources();
 
                 if (_swapchain.Handle != 0)
                 {
@@ -1207,7 +1220,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        // 从版本11改进：增强的Dispose方法
+        // 增强的Dispose方法
         protected virtual void Dispose(bool disposing)
         {
             if (disposing)
@@ -1216,35 +1229,8 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     unsafe
                     {
-                        if (_swapchainImageViews != null)
-                        {
-                            for (int i = 0; i < _swapchainImageViews.Length; i++)
-                            {
-                                _swapchainImageViews[i]?.Dispose();
-                            }
-                        }
-
-                        if (_imageAvailableSemaphores != null)
-                        {
-                            for (int i = 0; i < _imageAvailableSemaphores.Length; i++)
-                            {
-                                if (_imageAvailableSemaphores[i].Handle != 0)
-                                {
-                                    _gd.Api.DestroySemaphore(_device, _imageAvailableSemaphores[i], null);
-                                }
-                            }
-                        }
-
-                        if (_renderFinishedSemaphores != null)
-                        {
-                            for (int i = 0; i < _renderFinishedSemaphores.Length; i++)
-                            {
-                                if (_renderFinishedSemaphores[i].Handle != 0)
-                                {
-                                    _gd.Api.DestroySemaphore(_device, _renderFinishedSemaphores[i], null);
-                                }
-                            }
-                        }
+                        CleanupSwapchainResources();
+                        CleanupSemaphores();
 
                         if (_swapchain.Handle != 0)
                         {
