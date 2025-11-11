@@ -4,7 +4,7 @@ import android.app.Application
 import android.content.Context
 import java.io.File
 
-class KaryujinxApplication : Application() {
+class ryujinxApplication : Application() {
     init {
         instance = this
     }
@@ -12,7 +12,7 @@ class KaryujinxApplication : Application() {
     fun getPublicFilesDir(): File = getExternalFilesDir(null) ?: filesDir
 
     companion object {
-        lateinit var instance: KaryujinxApplication
+        lateinit var instance: ryujinxApplication
             private set
 
         val context: Context get() = instance.applicationContext
