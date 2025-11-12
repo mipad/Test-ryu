@@ -1,40 +1,45 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
-#extension GL_GOOGLE_include_directive : enable
 
 layout(location = 0) in vec2 texcoord;
 layout(location = 0) out vec4 frag_color;
 
 layout(binding = 1) uniform sampler2D InputTexture;
 
-// RCAS常量
-layout(binding = 2) uniform SharpeningParams {
-    float sharpness;
-    float width;
-    float height;
-} params;
+layout(binding = 2) uniform RcasConstants {
+    vec4 con;
+} constants;
 
-#define A_GPU 1
-#define A_GLSL 1
-#include "ffx_a.h"
-#include "ffx_fsr1.h"
-
-AF4 FsrRcasLoadF(ASU2 p) { 
-    ivec2 texSize = textureSize(InputTexture, 0);
-    vec2 uv = vec2(p) / vec2(texSize);
-    return texture(InputTexture, uv); 
-}
-
-void FsrRcasInputF(inout AF1 r, inout AF1 g, inout AF1 b) {}
-
+// 简化的RCAS锐化实现
 void main() {
-    AU2 pos = AU2(texcoord * vec2(params.width, params.height));
-    AF3 color;
+    ivec2 ip = ivec2(gl_FragCoord.xy);
     
-    // 计算RCAS常量
-    uvec4 const0;
-    FsrRcasCon(const0, params.sharpness);
+    // 获取3x3邻域
+    vec3 c = texelFetch(InputTexture, ip + ivec2( 0, 0), 0).rgb;
+    vec3 n = texelFetch(InputTexture, ip + ivec2( 0,-1), 0).rgb;
+    vec3 e = texelFetch(InputTexture, ip + ivec2( 1, 0), 0).rgb;
+    vec3 s = texelFetch(InputTexture, ip + ivec2( 0, 1), 0).rgb;
+    vec3 w = texelFetch(InputTexture, ip + ivec2(-1, 0), 0).rgb;
     
-    FsrRcasF(color.r, color.g, color.b, pos, const0);
-    frag_color = vec4(color, 1.0);
+    float sharpness = constants.con.x; // 锐化强度
+    
+    // 计算亮度
+    float cL = dot(c, vec3(0.299, 0.587, 0.114));
+    float nL = dot(n, vec3(0.299, 0.587, 0.114));
+    float eL = dot(e, vec3(0.299, 0.587, 0.114));
+    float sL = dot(s, vec3(0.299, 0.587, 0.114));
+    float wL = dot(w, vec3(0.299, 0.587, 0.114));
+    
+    // 计算高频细节（拉普拉斯算子）
+    float detail = (nL + eL + sL + wL) * 0.25 - cL;
+    
+    // 自适应锐化 - 基于局部对比度调整强度
+    float localContrast = max(max(max(nL, eL), max(sL, wL)) - min(min(min(nL, eL), min(sL, wL)), 0.1);
+    float adaptiveSharpness = sharpness * clamp(localContrast * 4.0, 0.0, 1.0);
+    
+    // 应用锐化
+    vec3 result = c + detail * adaptiveSharpness;
+    
+    // 限制结果范围
+    frag_color = vec4(clamp(result, 0.0, 1.0), 1.0);
 }
