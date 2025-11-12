@@ -31,7 +31,7 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             _pipeline = new PipelineHelperShader(gd, device);
             _pipeline.Initialize();
 
-            _samplerLinear = gd.CreateSampler(SamplerCreateInfo.Create(MinFilter.Linear, MagFilter.Linear));
+            _samplerLinear = gd.CreateSampler(GAL.SamplerCreateInfo.Create(MinFilter.Linear, MagFilter.Linear));
 
             // 创建 FSR 缩放着色器程序
             ResourceLayout fsrScalingResourceLayout = new ResourceLayoutBuilder()
@@ -46,10 +46,11 @@ namespace Ryujinx.Graphics.Vulkan.Effects
 
             try
             {
-                _programFSRScaling = gd.CreateProgramWithMinimalLayout([
-                    new ShaderSource(ReadSpirv("FsrScaling.vert.spv"), ShaderStage.Vertex, TargetLanguage.Spirv),
-                    new ShaderSource(ReadSpirv("FsrScaling.frag.spv"), ShaderStage.Fragment, TargetLanguage.Spirv)
-                ], fsrScalingResourceLayout);
+                _programFSRScaling = gd.CreateProgramWithMinimalLayout(new[]
+                {
+                    new ShaderSource(Encoding.UTF8.GetString(ReadSpirv("FsrScaling.vert.spv")), ShaderStage.Vertex),
+                    new ShaderSource(Encoding.UTF8.GetString(ReadSpirv("FsrScaling.frag.spv")), ShaderStage.Fragment)
+                }, fsrScalingResourceLayout);
                 Logger.Info?.Print(LogClass.Gpu, "FSR scaling shader program created successfully");
             }
             catch (Exception ex)
@@ -60,10 +61,11 @@ namespace Ryujinx.Graphics.Vulkan.Effects
 
             try
             {
-                _programFSRSharpening = gd.CreateProgramWithMinimalLayout([
-                    new ShaderSource(ReadSpirv("FsrScaling.vert.spv"), ShaderStage.Vertex, TargetLanguage.Spirv),
-                    new ShaderSource(ReadSpirv("FsrSharpening.frag.spv"), ShaderStage.Fragment, TargetLanguage.Spirv)
-                ], fsrSharpeningResourceLayout);
+                _programFSRSharpening = gd.CreateProgramWithMinimalLayout(new[]
+                {
+                    new ShaderSource(Encoding.UTF8.GetString(ReadSpirv("FsrScaling.vert.spv")), ShaderStage.Vertex),
+                    new ShaderSource(Encoding.UTF8.GetString(ReadSpirv("FsrSharpening.frag.spv")), ShaderStage.Fragment)
+                }, fsrSharpeningResourceLayout);
                 Logger.Info?.Print(LogClass.Gpu, "FSR sharpening shader program created successfully");
             }
             catch (Exception ex)
@@ -123,7 +125,7 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                     SwizzleComponent.Blue,
                     SwizzleComponent.Alpha);
 
-                using var dstView = new TextureView(_gd, _device, destinationTexture, textureCreateInfo, FormatTable.GetFormat(ConvertVkFormatToGalFormat(format)));
+                using var dstView = new TextureView(_gd, _device, destinationTexture, textureCreateInfo, ConvertVkFormatToGalFormat(format));
 
                 // 执行 FSR 处理
                 RunFsrProcessing(view, dstView, cbs, source, destination, fsrConstants, rcasConstants);
@@ -143,10 +145,10 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             // 将 Vulkan Format 转换为 GAL Format
             switch (vkFormat)
             {
-                case VkFormat.R8G8B8A8Unorm:
-                    return GalFormat.R8G8B8A8Unorm;
                 case VkFormat.B8G8R8A8Unorm:
                     return GalFormat.B8G8R8A8Unorm;
+                case VkFormat.R8G8B8A8Unorm:
+                    return GalFormat.R8G8B8A8Unorm;
                 case VkFormat.R8Unorm:
                     return GalFormat.R8Unorm;
                 case VkFormat.R8G8Unorm:
@@ -224,10 +226,11 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             using ScopedTemporaryBuffer fsrConstantsBuffer = _gd.BufferManager.ReserveOrCreate(_gd, cbs, FsrConstantsSize);
             fsrConstantsBuffer.Holder.SetDataUnchecked<float>(fsrConstantsBuffer.Offset, fsrConstants);
 
-            _pipeline.SetUniformBuffers([
+            _pipeline.SetUniformBuffers(new[]
+            {
                 new BufferAssignment(1, regionBuffer.Range),
                 new BufferAssignment(2, fsrConstantsBuffer.Range)
-            ]);
+            });
 
             Span<Viewport> viewports = stackalloc Viewport[1];
             Rectangle<float> rect = new(
@@ -253,8 +256,8 @@ namespace Ryujinx.Graphics.Vulkan.Effects
 
             _pipeline.SetProgram(_programFSRScaling);
             _pipeline.SetRenderTarget(dst, (uint)dst.Width, (uint)dst.Height);
-            _pipeline.SetRenderTargetColorMasks([0xf]);
-            _pipeline.SetScissors([new Rectangle<int>(0, 0, dst.Width, dst.Height)]);
+            _pipeline.SetRenderTargetColorMasks(new[] { 0xf });
+            _pipeline.SetScissors(new[] { new Rectangle<int>(0, 0, dst.Width, dst.Height) });
             _pipeline.SetViewports(viewports);
             _pipeline.SetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
             _pipeline.Draw(4, 1, 0, 0);
@@ -301,10 +304,11 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             using ScopedTemporaryBuffer rcasConstantsBuffer = _gd.BufferManager.ReserveOrCreate(_gd, cbs, RcasConstantsSize);
             rcasConstantsBuffer.Holder.SetDataUnchecked<float>(rcasConstantsBuffer.Offset, rcasConstants);
 
-            _pipeline.SetUniformBuffers([
+            _pipeline.SetUniformBuffers(new[]
+            {
                 new BufferAssignment(1, regionBuffer.Range),
                 new BufferAssignment(2, rcasConstantsBuffer.Range)
-            ]);
+            });
 
             Span<Viewport> viewports = stackalloc Viewport[1];
             Rectangle<float> rect = new(
@@ -330,8 +334,8 @@ namespace Ryujinx.Graphics.Vulkan.Effects
 
             _pipeline.SetProgram(_programFSRSharpening);
             _pipeline.SetRenderTarget(dst, (uint)dst.Width, (uint)dst.Height);
-            _pipeline.SetRenderTargetColorMasks([0xf]);
-            _pipeline.SetScissors([new Rectangle<int>(0, 0, dst.Width, dst.Height)]);
+            _pipeline.SetRenderTargetColorMasks(new[] { 0xf });
+            _pipeline.SetScissors(new[] { new Rectangle<int>(0, 0, dst.Width, dst.Height) });
             _pipeline.SetViewports(viewports);
             _pipeline.SetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
             _pipeline.Draw(4, 1, 0, 0);
@@ -359,7 +363,7 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                 SwizzleComponent.Blue,
                 SwizzleComponent.Alpha);
 
-            using var dstView = new TextureView(_gd, _device, destinationTexture, textureCreateInfo, FormatTable.GetFormat(ConvertVkFormatToGalFormat(format)));
+            using var dstView = new TextureView(_gd, _device, destinationTexture, textureCreateInfo, ConvertVkFormatToGalFormat(format));
 
             _gd.HelperShader.BlitColor(
                 _gd, cbs, view, dstView,
