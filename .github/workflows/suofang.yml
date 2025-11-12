@@ -1,0 +1,180 @@
+name: Auto Compile SPIR-V Shaders
+
+on:
+  push:
+    branches: [ "缩放new" ]
+    paths:
+      - 'src/Ryujinx.Graphics.Vulkan/Effects/Shaders/**'
+  workflow_dispatch:
+
+jobs:
+  compile-and-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    env:
+      SHADER_SRC_DIR: "src/Ryujinx.Graphics.Vulkan/Effects/Shaders"
+      OUTPUT_DIR: "compiled-shaders"
+      ZIP_NAME: "compiled-shaders-${{ github.sha }}.zip"
+
+    steps:
+    # ========== 1. 代码检出 ==========
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        repository: mipad/Test-ryu
+        ref: 缩放new
+        path: Test-ryu
+
+    # ========== 2. 安装编译工具 ==========
+    - name: Install Compilation Tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y glslang-tools spirv-tools zip
+
+    # ========== 3. 验证头文件 ==========
+    - name: Verify FSR Header Files
+      working-directory: ${{ github.workspace }}/Test-ryu
+      run: |
+        echo "🔍 验证FSR头文件..."
+        
+        # 检查目录是否存在
+        if [ ! -d "$SHADER_SRC_DIR" ]; then
+          echo "❌ 错误: 着色器目录不存在: $SHADER_SRC_DIR"
+          echo "当前目录结构:"
+          find . -type d -name "*Vulkan*" | head -10
+          exit 1
+        fi
+        
+        # 检查必需的FSR头文件
+        REQUIRED_HEADERS=("ffx_a.h" "ffx_fsr1.h")
+        ALL_HEADERS_FOUND=true
+        
+        for header in "${REQUIRED_HEADERS[@]}"; do
+          if [ -f "$SHADER_SRC_DIR/$header" ]; then
+            echo "✅ 找到: $header"
+            # 显示头文件前几行以验证内容
+            echo "   前几行:"
+            head -5 "$SHADER_SRC_DIR/$header" | sed 's/^/      /'
+          else
+            echo "❌ 缺失: $header"
+            ALL_HEADERS_FOUND=false
+          fi
+        done
+        
+        if [ "$ALL_HEADERS_FOUND" = false ]; then
+          echo "❌ 错误: 缺少必要的FSR头文件，编译将失败"
+          echo "当前着色器目录内容:"
+          ls -la "$SHADER_SRC_DIR/" 2>/dev/null || echo "目录无法访问"
+          exit 1
+        fi
+        
+        echo "✅ 所有FSR头文件验证通过"
+
+    # ========== 4. 编译着色器 ==========
+    - name: Compile Shaders to SPIR-V
+      working-directory: ${{ github.workspace }}/Test-ryu
+      run: |
+        echo "🔄 开始编译着色器..."
+        
+        # 创建输出目录
+        mkdir -p $OUTPUT_DIR
+        
+        # 显示着色器文件
+        echo "📁 找到的着色器文件:"
+        find "$SHADER_SRC_DIR" -type f \( -name "*.vert" -o -name "*.frag" \) | while read file; do
+          echo "  - $file"
+        done
+        
+        # 编译函数
+        compile_shader() {
+          local input_file="$1"
+          local output_name="$2"
+          
+          if [ ! -f "$input_file" ]; then
+            echo "❌ 文件不存在: $input_file"
+            return 1
+          fi
+          
+          echo "🔨 编译: $(basename "$input_file")"
+          if glslangValidator -V -I"$SHADER_SRC_DIR" -o "$OUTPUT_DIR/$output_name" "$input_file"; then
+            echo "✅ 成功: $output_name"
+            return 0
+          else
+            echo "❌ 失败: $(basename "$input_file")"
+            return 1
+          fi
+        }
+        
+        # 编译FSR着色器
+        compile_shader "$SHADER_SRC_DIR/FsrScaling.vert" "FsrScaling.vert.spv"
+        compile_shader "$SHADER_SRC_DIR/FsrScaling.frag" "FsrScaling.frag.spv" 
+        compile_shader "$SHADER_SRC_DIR/FsrSharpening.frag" "FsrSharpening.frag.spv"
+        
+        # 显示编译结果
+        echo "📊 编译统计:"
+        find "$OUTPUT_DIR" -name "*.spv" | wc -l | xargs echo "  生成文件数:"
+        find "$OUTPUT_DIR" -name "*.spv" -exec ls -lh {} \; | sed 's/^/   /'
+
+    # ========== 5. 验证编译结果 ==========
+    - name: Validate SPIR-V Files
+      working-directory: ${{ github.workspace }}/Test-ryu
+      run: |
+        echo "🔍 验证SPIR-V文件..."
+        
+        if [ ! -d "$OUTPUT_DIR" ]; then
+          echo "❌ 错误: 输出目录不存在"
+          exit 1
+        fi
+        
+        SPIRV_FILES=$(find "$OUTPUT_DIR" -name "*.spv")
+        if [ -z "$SPIRV_FILES" ]; then
+          echo "❌ 错误: 未生成任何SPIR-V文件"
+          exit 1
+        fi
+        
+        echo "✅ 生成的SPIR-V文件:"
+        echo "$SPIRV_FILES" | while read file; do
+          size=$(stat -c%s "$file")
+          echo "  📄 $(basename "$file") - $size 字节"
+        done
+
+    # ========== 6. 创建ZIP包 ==========
+    - name: Create ZIP Package
+      working-directory: ${{ github.workspace }}/Test-ryu
+      run: |
+        echo "📦 创建ZIP包: $ZIP_NAME"
+        
+        # 创建包含编译信息的README
+        cat > "$OUTPUT_DIR/README.md" << EOF
+        # 编译的SPIR-V着色器
+        
+        ## 编译信息
+        - 分支: ${{ github.ref }}
+        - 提交: ${{ github.sha }}
+        - 编译时间: $(date -u)
+        - 包含FSR头文件: 是
+        
+        ## 文件列表
+        $(find "$OUTPUT_DIR" -name "*.spv" | while read file; do
+          size=$(stat -c%s "$file")
+          echo "- $(basename "$file") ($size 字节)"
+        done)
+        
+        ## 使用说明
+        这些SPIR-V文件已包含FSR (FidelityFX Super Resolution) 功能。
+        在Vulkan应用程序中直接使用即可。
+        EOF
+        
+        # 创建ZIP文件
+        zip -r "$ZIP_NAME" "$OUTPUT_DIR"/
+        
+        echo "✅ ZIP包创建完成: $(ls -lh "$ZIP_NAME")"
+
+    # ========== 7. 上传ZIP制品 ==========
+    - name: Upload ZIP Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: compiled-shaders-with-fsr
+        path: ${{ github.workspace }}/Test-ryu/${{ env.ZIP_NAME }}
+        retention-days: 30
