@@ -455,15 +455,14 @@ namespace Ryujinx.Graphics.Vulkan
 
             _pipeline.SetRenderTarget(dst, (uint)dstWidth, (uint)dstHeight);
             _pipeline.SetRenderTargetColorMasks([0xf]);
-            _pipeline.SetScissor(0, 0, dstWidth, dstHeight);
-            _pipeline.SetViewport(0, 0, dstWidth, dstHeight, 0f, 1f);
+            _pipeline.SetScissors([new Rectangle<int>(0, 0, dstWidth, dstHeight)]);
+            _pipeline.SetViewports(viewports);
 
             if (clearAlpha)
             {
                 _pipeline.ClearRenderTargetColor(0, 0, 1, new ColorF(0f, 0f, 0f, 1f));
             }
 
-            _pipeline.SetViewports(viewports);
             _pipeline.SetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
             _pipeline.Draw(4, 1, 0, 0);
 
@@ -551,8 +550,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             _pipeline.SetRenderTarget(dst, (uint)dstWidth, (uint)dstHeight);
             _pipeline.SetRenderTargetColorMasks([0xf]);
-            _pipeline.SetScissor(0, 0, dstWidth, dstHeight);
-            _pipeline.SetViewport(0, 0, dstWidth, dstHeight, 0f, 1f);
+            _pipeline.SetScissors([new Rectangle<int>(0, 0, dstWidth, dstHeight)]);
             _pipeline.SetViewports(viewports);
             _pipeline.SetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
             _pipeline.Draw(4, 1, 0, 0);
@@ -636,8 +634,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             _pipeline.SetRenderTarget(dst, (uint)dstWidth, (uint)dstHeight);
             _pipeline.SetRenderTargetColorMasks([0xf]);
-            _pipeline.SetScissor(0, 0, dstWidth, dstHeight);
-            _pipeline.SetViewport(0, 0, dstWidth, dstHeight, 0f, 1f);
+            _pipeline.SetScissors([new Rectangle<int>(0, 0, dstWidth, dstHeight)]);
             _pipeline.SetViewports(viewports);
             _pipeline.SetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
             _pipeline.Draw(4, 1, 0, 0);
@@ -722,8 +719,7 @@ namespace Ryujinx.Graphics.Vulkan
             int dstHeight = dst.Height;
 
             _pipeline.SetRenderTarget(dst, (uint)dstWidth, (uint)dstHeight);
-            _pipeline.SetScissor(0, 0, dstWidth, dstHeight);
-            _pipeline.SetViewport(0, 0, dstWidth, dstHeight, 0f, 1f);
+            _pipeline.SetScissors([new Rectangle<int>(0, 0, dstWidth, dstHeight)]);
             _pipeline.SetViewports(viewports);
             _pipeline.SetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
 
@@ -886,8 +882,7 @@ namespace Ryujinx.Graphics.Vulkan
             _pipeline.SetRenderTarget(dst, (uint)dstWidth, (uint)dstHeight);
             _pipeline.SetRenderTargetColorMasks(new[] { componentMask });
             _pipeline.SetViewports(viewports);
-            _pipeline.SetScissor(scissor.X, scissor.Y, scissor.Width, scissor.Height);
-            _pipeline.SetViewport(0, 0, dstWidth, dstHeight, 0f, 1f);
+            _pipeline.SetScissors([scissor]);
             _pipeline.SetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
             _pipeline.Draw(4, 1, 0, 0);
             _pipeline.Finish();
@@ -933,8 +928,7 @@ namespace Ryujinx.Graphics.Vulkan
             _pipeline.SetProgram(_programDepthStencilClear);
             _pipeline.SetRenderTarget(dst, (uint)dstWidth, (uint)dstHeight);
             _pipeline.SetViewports(viewports);
-            _pipeline.SetScissor(scissor.X, scissor.Y, scissor.Width, scissor.Height);
-            _pipeline.SetViewport(0, 0, dstWidth, dstHeight, 0f, 1f);
+            _pipeline.SetScissors([scissor]);
             _pipeline.SetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
             _pipeline.SetDepthTest(new DepthTestDescriptor(true, depthMask, CompareOp.Always));
             _pipeline.SetStencilTest(CreateStencilTestDescriptor(stencilMask != 0, stencilValue, 0xff, stencilMask));
@@ -1398,8 +1392,7 @@ namespace Ryujinx.Graphics.Vulkan
                     0f,
                     1f);
 
-                _pipeline.SetScissor(0, 0, dst.Width, dst.Height);
-                _pipeline.SetViewport(0, 0, dst.Width, dst.Height, 0f, 1f);
+                _pipeline.SetScissors([new Rectangle<int>(0, 0, dst.Width, dst.Height)]);
                 _pipeline.SetViewports(viewports);
                 _pipeline.SetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
 
@@ -1521,8 +1514,7 @@ namespace Ryujinx.Graphics.Vulkan
                 1f);
 
             _pipeline.SetRenderTargetColorMasks([0xf]);
-            _pipeline.SetScissor(0, 0, dst.Width, dst.Height);
-            _pipeline.SetViewport(0, 0, dst.Width, dst.Height, 0f, 1f);
+            _pipeline.SetScissors([new Rectangle<int>(0, 0, dst.Width, dst.Height)]);
             _pipeline.SetViewports(viewports);
             _pipeline.SetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
 
