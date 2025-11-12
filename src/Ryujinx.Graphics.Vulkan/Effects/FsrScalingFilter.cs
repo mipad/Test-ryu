@@ -5,6 +5,7 @@ using Ryujinx.Graphics.Shader.Translation;
 using Silk.NET.Vulkan;
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Extent2D = Ryujinx.Graphics.GAL.Extents2D;
 using Format = Silk.NET.Vulkan.Format;
 using SamplerCreateInfo = Ryujinx.Graphics.GAL.SamplerCreateInfo;
@@ -22,7 +23,23 @@ namespace Ryujinx.Graphics.Vulkan.Effects
         private Device _device;
         private TextureView _intermediaryTexture;
 
-        // 移除单独的顶点着色器程序，使用合并的程序
+        // Push constant 结构体
+        [StructLayout(LayoutKind.Sequential, Size = 64)]
+        private struct EasuPushConstants
+        {
+            public Vector4 Con0;
+            public Vector4 Con1;
+            public Vector4 Con2;
+            public Vector4 Con3;
+        }
+
+        [StructLayout(LayoutKind.Sequential, Size = 32)]
+        private struct RcasPushConstants
+        {
+            public Vector4 Con0;
+            public Vector3 Con1;
+            public float Padding;
+        }
 
         public float Level
         {
@@ -60,33 +77,29 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             var scalingShader = EmbeddedResources.Read("Ryujinx.Graphics.Vulkan/Effects/Shaders/FsrScaling.frag.spv");
             var sharpeningShader = EmbeddedResources.Read("Ryujinx.Graphics.Vulkan/Effects/Shaders/FsrSharpening.frag.spv");
 
-            // 创建合并的着色器程序资源布局（顶点+片段）
+            // 创建使用push constants的资源布局
             var scalingResourceLayout = new ResourceLayoutBuilder()
-                .Add(ResourceStages.Vertex, ResourceType.UniformBuffer, 1)   // 区域参数
-                .Add(ResourceStages.Fragment, ResourceType.UniformBuffer, 2) // FSR常量
-                .Add(ResourceStages.Fragment, ResourceType.TextureAndSampler, 1) // 输入纹理
+                .Add(ResourceStages.Fragment, ResourceType.TextureAndSampler, 0) // 输入纹理
                 .Build();
 
             var sharpeningResourceLayout = new ResourceLayoutBuilder()
-                .Add(ResourceStages.Vertex, ResourceType.UniformBuffer, 1)   // 区域参数
-                .Add(ResourceStages.Fragment, ResourceType.UniformBuffer, 2) // RCAS常量
-                .Add(ResourceStages.Fragment, ResourceType.TextureAndSampler, 1) // 输入纹理
+                .Add(ResourceStages.Fragment, ResourceType.TextureAndSampler, 0) // 输入纹理
                 .Build();
 
             _sampler = _renderer.CreateSampler(SamplerCreateInfo.Create(MinFilter.Linear, MagFilter.Linear));
 
-            // 创建合并的着色器程序（顶点+片段）
+            // 创建着色器程序，指定push constant大小
             _scalingProgram = _renderer.CreateProgramWithMinimalLayout(new[]
             {
                 new ShaderSource(vertexShader, ShaderStage.Vertex, TargetLanguage.Spirv),
                 new ShaderSource(scalingShader, ShaderStage.Fragment, TargetLanguage.Spirv),
-            }, scalingResourceLayout);
+            }, scalingResourceLayout, pushConstantSize: 64); // EASU需要64字节
 
             _sharpeningProgram = _renderer.CreateProgramWithMinimalLayout(new[]
             {
                 new ShaderSource(vertexShader, ShaderStage.Vertex, TargetLanguage.Spirv),
                 new ShaderSource(sharpeningShader, ShaderStage.Fragment, TargetLanguage.Spirv),
-            }, sharpeningResourceLayout);
+            }, sharpeningResourceLayout, pushConstantSize: 32); // RCAS需要32字节
         }
 
         public void Run(
@@ -140,57 +153,37 @@ namespace Ryujinx.Graphics.Vulkan.Effects
 
         private void RunScalingPass(TextureView view, int width, int height, Extent2D source, Extent2D destination, CommandBufferScoped cbs)
         {
-            // 使用合并的着色器程序
             _pipeline.SetProgram(_scalingProgram);
-            _pipeline.SetTextureAndSampler(ShaderStage.Fragment, 1, view, _sampler);
+            _pipeline.SetTextureAndSampler(ShaderStage.Fragment, 0, view, _sampler);
 
-            // 计算FSR EASU常量 - 使用数组避免Span作用域问题
-            float[] constants = CalculateFsrConstants(source, destination, width, height);
+            // 计算FSR EASU常量
+            var constants = CalculateFsrConstants(source, destination, width, height);
 
-            // 创建统一缓冲区
-            int bufferSize = constants.Length * sizeof(float);
-            using var buffer = _renderer.BufferManager.ReserveOrCreate(_renderer, cbs, bufferSize);
-            buffer.Holder.SetDataUnchecked(buffer.Offset, constants);
+            // 使用push constants传递数据
+            _pipeline.PushConstants(cbs.CommandBuffer, constants);
 
-            _pipeline.SetUniformBuffers(stackalloc[] { new BufferAssignment(2, buffer.Range) });
-            
-            // 使用TextureView版本的SetRenderTarget
             _pipeline.SetRenderTarget(_intermediaryTexture);
-            
-            // 设置视口和裁剪
             SetViewportAndScissor(width, height);
-            
-            // 绘制全屏四边形（3个顶点）
             _pipeline.Draw(3, 1, 0, 0);
         }
 
         private void RunSharpeningPass(int width, int height, Auto<DisposableImageView> destinationTexture, CommandBufferScoped cbs)
         {
-            // 使用合并的着色器程序
             _pipeline.SetProgram(_sharpeningProgram);
-            _pipeline.SetTextureAndSampler(ShaderStage.Fragment, 1, _intermediaryTexture, _sampler);
+            _pipeline.SetTextureAndSampler(ShaderStage.Fragment, 0, _intermediaryTexture, _sampler);
 
-            // 计算RCAS锐化常量 - 使用数组避免Span作用域问题
-            float[] sharpeningBufferData = CalculateRcasConstants(width, height);
+            // 计算RCAS锐化常量
+            var constants = CalculateRcasConstants(width, height);
 
-            int bufferSize = sharpeningBufferData.Length * sizeof(float);
-            using var sharpeningBuffer = _renderer.BufferManager.ReserveOrCreate(_renderer, cbs, bufferSize);
-            sharpeningBuffer.Holder.SetDataUnchecked(sharpeningBuffer.Offset, sharpeningBufferData);
+            // 使用push constants传递数据
+            _pipeline.PushConstants(cbs.CommandBuffer, constants);
 
-            _pipeline.SetUniformBuffers(stackalloc[] { new BufferAssignment(2, sharpeningBuffer.Range) });
-            
-            // 使用Auto<DisposableImageView>版本的SetRenderTarget
             _pipeline.SetRenderTarget(destinationTexture);
-            
-            // 设置视口和裁剪
             SetViewportAndScissor(width, height);
-            
-            // 绘制全屏四边形
             _pipeline.Draw(3, 1, 0, 0);
         }
 
-        // 修改返回类型为数组，避免Span作用域问题
-        private float[] CalculateFsrConstants(Extent2D source, Extent2D destination, int width, int height)
+        private EasuPushConstants CalculateFsrConstants(Extent2D source, Extent2D destination, int width, int height)
         {
             // 计算视口参数
             float viewportWidth = Math.Abs(source.X2 - source.X1);
@@ -216,62 +209,51 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                 outputWidth, outputHeight,
                 viewportX, viewportY);
 
-            // 使用数组而不是栈分配的Span
-            float[] constants = new float[16];
-            
-            // con0
-            constants[0] = BitConverter.UInt32BitsToSingle(con0[0]);
-            constants[1] = BitConverter.UInt32BitsToSingle(con0[1]);
-            constants[2] = BitConverter.UInt32BitsToSingle(con0[2]);
-            constants[3] = BitConverter.UInt32BitsToSingle(con0[3]);
-            
-            // con1
-            constants[4] = BitConverter.UInt32BitsToSingle(con1[0]);
-            constants[5] = BitConverter.UInt32BitsToSingle(con1[1]);
-            constants[6] = BitConverter.UInt32BitsToSingle(con1[2]);
-            constants[7] = BitConverter.UInt32BitsToSingle(con1[3]);
-            
-            // con2
-            constants[8] = BitConverter.UInt32BitsToSingle(con2[0]);
-            constants[9] = BitConverter.UInt32BitsToSingle(con2[1]);
-            constants[10] = BitConverter.UInt32BitsToSingle(con2[2]);
-            constants[11] = BitConverter.UInt32BitsToSingle(con2[3]);
-            
-            // con3
-            constants[12] = BitConverter.UInt32BitsToSingle(con3[0]);
-            constants[13] = BitConverter.UInt32BitsToSingle(con3[1]);
-            constants[14] = BitConverter.UInt32BitsToSingle(con3[2]);
-            constants[15] = BitConverter.UInt32BitsToSingle(con3[3]);
-
-            return constants;
+            return new EasuPushConstants
+            {
+                Con0 = new Vector4(
+                    BitConverter.UInt32BitsToSingle(con0[0]),
+                    BitConverter.UInt32BitsToSingle(con0[1]),
+                    BitConverter.UInt32BitsToSingle(con0[2]),
+                    BitConverter.UInt32BitsToSingle(con0[3])),
+                Con1 = new Vector4(
+                    BitConverter.UInt32BitsToSingle(con1[0]),
+                    BitConverter.UInt32BitsToSingle(con1[1]),
+                    BitConverter.UInt32BitsToSingle(con1[2]),
+                    BitConverter.UInt32BitsToSingle(con1[3])),
+                Con2 = new Vector4(
+                    BitConverter.UInt32BitsToSingle(con2[0]),
+                    BitConverter.UInt32BitsToSingle(con2[1]),
+                    BitConverter.UInt32BitsToSingle(con2[2]),
+                    BitConverter.UInt32BitsToSingle(con2[3])),
+                Con3 = new Vector4(
+                    BitConverter.UInt32BitsToSingle(con3[0]),
+                    BitConverter.UInt32BitsToSingle(con3[1]),
+                    BitConverter.UInt32BitsToSingle(con3[2]),
+                    BitConverter.UInt32BitsToSingle(con3[3]))
+            };
         }
 
-        // 修改返回类型为数组，避免Span作用域问题
-        private float[] CalculateRcasConstants(int width, int height)
+        private RcasPushConstants CalculateRcasConstants(int width, int height)
         {
             // 计算RCAS常量
             Span<uint> rcasCon = stackalloc uint[4];
             FsrConstantsCalculator.FsrRcasCon(rcasCon, Level);
 
-            float[] constants = new float[7];
-            
-            // RCAS常量
-            constants[0] = BitConverter.UInt32BitsToSingle(rcasCon[0]); // sharpness
-            constants[1] = BitConverter.UInt32BitsToSingle(rcasCon[1]);
-            constants[2] = BitConverter.UInt32BitsToSingle(rcasCon[2]);
-            constants[3] = BitConverter.UInt32BitsToSingle(rcasCon[3]);
-            
-            // 纹理尺寸
-            constants[4] = width;
-            constants[5] = height;
-            constants[6] = 0.0f; // 填充
-
-            return constants;
+            return new RcasPushConstants
+            {
+                Con0 = new Vector4(
+                    BitConverter.UInt32BitsToSingle(rcasCon[0]),
+                    BitConverter.UInt32BitsToSingle(rcasCon[1]),
+                    BitConverter.UInt32BitsToSingle(rcasCon[2]),
+                    BitConverter.UInt32BitsToSingle(rcasCon[3])),
+                Con1 = new Vector3(width, height, 0.0f),
+                Padding = 0.0f
+            };
         }
 
         private void SetViewportAndScissor(int width, int height)
         {
-            // 设置视口为整个纹理
             _pipeline.SetViewport(0, 0, width, height);
             _pipeline.SetScissor(0, 0, width, height);
         }
@@ -363,6 +345,34 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                 constants[2] = ToUint(sharpScale);
                 constants[3] = ToUint(0.0f);
             }
+        }
+    }
+
+    // 简单的Vector3/Vector4结构体用于数据传递
+    [StructLayout(LayoutKind.Sequential)]
+    public struct Vector3
+    {
+        public float X, Y, Z;
+        
+        public Vector3(float x, float y, float z)
+        {
+            X = x;
+            Y = y;
+            Z = z;
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct Vector4
+    {
+        public float X, Y, Z, W;
+        
+        public Vector4(float x, float y, float z, float w)
+        {
+            X = x;
+            Y = y;
+            Z = z;
+            W = w;
         }
     }
 }
