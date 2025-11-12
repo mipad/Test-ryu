@@ -58,7 +58,9 @@ namespace Ryujinx.Graphics.Vulkan
         private volatile bool _allowSurfaceQueries = true;
 
         public SurfaceTransformFlagsKHR CurrentTransform { get; private set; }
-        public override bool ScreenCaptureRequested { get; set; }
+
+        // 修复：移除 override 关键字，因为基类属性没有标记为 virtual
+        public bool ScreenCaptureRequested { get; set; }
 
         public unsafe Window(VulkanRenderer gd, SurfaceKHR surface, PhysicalDevice physicalDevice, Device device)
         {
