@@ -5,11 +5,13 @@
 layout(location = 0) in vec2 frag_texcoord;
 layout(location = 0) out vec4 frag_color;
 
-layout(binding = 1) uniform sampler2D InputTexture;
+layout(binding = 0) uniform sampler2D InputTexture;
 
-// RCAS常量
-layout(binding = 2) uniform RcasConstants {
-    uvec4 con;
+// RCAS常量 - 使用push constants
+layout(push_constant) uniform RcasConstants {
+    vec4 con0;
+    vec3 con1;
+    float padding;
 } constants;
 
 // 核心宏定义 - 使用32位版本
@@ -27,18 +29,24 @@ AF4 FsrRcasLoadF(ASU2 p) {
 
 void FsrRcasInputF(inout AF1 r, inout AF1 g, inout AF1 b) {
     // 可选的颜色转换，如果不需要可以留空
-    // 例如：从sRGB到线性的转换
 }
 
 void main() {
-    // 将纹理坐标转换为像素坐标 - 这是关键修复
+    // 将纹理坐标转换为像素坐标
     ivec2 texture_size = textureSize(InputTexture, 0);
     AU2 ip = AU2(frag_texcoord * vec2(texture_size));
     
     AF1 pixR, pixG, pixB;
     
+    // 准备RCAS常量
+    AU4 rcasCon;
+    rcasCon[0] = floatBitsToUint(constants.con0.x);
+    rcasCon[1] = floatBitsToUint(constants.con0.y);
+    rcasCon[2] = floatBitsToUint(constants.con0.z);
+    rcasCon[3] = floatBitsToUint(constants.con0.w);
+    
     // 调用RCAS锐化
-    FsrRcasF(pixR, pixG, pixB, ip, constants.con);
+    FsrRcasF(pixR, pixG, pixB, ip, rcasCon);
     
     frag_color = vec4(pixR, pixG, pixB, 1.0);
 }

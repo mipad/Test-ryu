@@ -5,10 +5,10 @@
 layout(location = 0) in vec2 texcoord;
 layout(location = 0) out vec4 frag_color;
 
-layout(binding = 1) uniform sampler2D InputTexture;
+layout(binding = 0) uniform sampler2D InputTexture;
 
-// EASU常量
-layout(binding = 2) uniform EasuConstants {
+// EASU常量 - 使用push constants
+layout(push_constant) uniform EasuConstants {
     vec4 con0;
     vec4 con1; 
     vec4 con2;
