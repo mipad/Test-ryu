@@ -5,7 +5,6 @@ using Silk.NET.Vulkan;
 using System;
 using System.Runtime.CompilerServices;
 using Extent2D = Ryujinx.Graphics.GAL.Extents2D;
-using Format = Ryujinx.Graphics.GAL.Format;
 using VkFormat = Silk.NET.Vulkan.Format;
 
 namespace Ryujinx.Graphics.Vulkan.Effects
@@ -83,7 +82,7 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             TextureView view,
             CommandBufferScoped cbs,
             Auto<DisposableImageView> destinationTexture,
-            Format format,
+            VkFormat format,
             int width,
             int height,
             Extent2D source,
@@ -115,7 +114,7 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                 // 创建目标 TextureView
                 var textureCreateInfo = new TextureCreateInfo(
                     width, height, 1, 1, 1, 1, 1, 1,
-                    format,
+                    ConvertVkFormatToGalFormat(format),
                     DepthStencilMode.Depth,
                     Target.Texture2D,
                     SwizzleComponent.Red,
@@ -123,7 +122,7 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                     SwizzleComponent.Blue,
                     SwizzleComponent.Alpha);
 
-                using var dstView = new TextureView(_gd, _device, destinationTexture, textureCreateInfo, FormatTable.GetFormat(format));
+                using var dstView = new TextureView(_gd, _device, destinationTexture, textureCreateInfo, FormatTable.GetFormat(ConvertVkFormatToGalFormat(format)));
 
                 // 执行 FSR 处理
                 RunFsrProcessing(view, dstView, cbs, source, destination, fsrConstants, rcasConstants);
@@ -135,6 +134,27 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                 Logger.Error?.Print(LogClass.Gpu, $"FSR: Error during processing: {ex.Message}");
                 Logger.Info?.Print(LogClass.Gpu, "FSR: Falling back to bilinear scaling");
                 FallbackToBilinear(view, cbs, destinationTexture, format, width, height, source, destination);
+            }
+        }
+
+        private Format ConvertVkFormatToGalFormat(VkFormat vkFormat)
+        {
+            // 将 Vulkan Format 转换为 GAL Format
+            // 这里需要根据实际的格式映射来实现
+            switch (vkFormat)
+            {
+                case VkFormat.R8G8B8A8Unorm:
+                    return Format.R8G8B8A8Unorm;
+                case VkFormat.B8G8R8A8Unorm:
+                    return Format.B8G8R8A8Unorm;
+                case VkFormat.R8Unorm:
+                    return Format.R8Unorm;
+                case VkFormat.R8G8Unorm:
+                    return Format.R8G8Unorm;
+                // 添加更多格式映射...
+                default:
+                    Logger.Warning?.Print(LogClass.Gpu, $"FSR: Unsupported Vulkan format {vkFormat}, defaulting to R8G8B8A8Unorm");
+                    return Format.R8G8B8A8Unorm;
             }
         }
 
@@ -319,7 +339,7 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             TextureView view,
             CommandBufferScoped cbs,
             Auto<DisposableImageView> destinationTexture,
-            Format format,
+            VkFormat format,
             int width,
             int height,
             Extent2D source,
@@ -327,7 +347,7 @@ namespace Ryujinx.Graphics.Vulkan.Effects
         {
             var textureCreateInfo = new TextureCreateInfo(
                 width, height, 1, 1, 1, 1, 1, 1,
-                format,
+                ConvertVkFormatToGalFormat(format),
                 DepthStencilMode.Depth,
                 Target.Texture2D,
                 SwizzleComponent.Red,
@@ -335,7 +355,7 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                 SwizzleComponent.Blue,
                 SwizzleComponent.Alpha);
 
-            using var dstView = new TextureView(_gd, _device, destinationTexture, textureCreateInfo, FormatTable.GetFormat(format));
+            using var dstView = new TextureView(_gd, _device, destinationTexture, textureCreateInfo, FormatTable.GetFormat(ConvertVkFormatToGalFormat(format)));
 
             _gd.HelperShader.BlitColor(
                 _gd, cbs, view, dstView,
