@@ -22,8 +22,7 @@ namespace Ryujinx.Graphics.Vulkan.Effects
         private Device _device;
         private TextureView _intermediaryTexture;
 
-        // 添加顶点着色器
-        private ShaderCollection _vertexProgram;
+        // 移除单独的顶点着色器程序，使用合并的程序
 
         public float Level
         {
@@ -47,7 +46,6 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             _pipeline.Dispose();
             _scalingProgram?.Dispose();
             _sharpeningProgram?.Dispose();
-            _vertexProgram?.Dispose();
             _sampler?.Dispose();
             _intermediaryTexture?.Dispose();
         }
@@ -62,36 +60,31 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             var scalingShader = EmbeddedResources.Read("Ryujinx.Graphics.Vulkan/Effects/Shaders/FsrScaling.frag.spv");
             var sharpeningShader = EmbeddedResources.Read("Ryujinx.Graphics.Vulkan/Effects/Shaders/FsrSharpening.frag.spv");
 
-            // 顶点着色器布局（简单的全屏四边形）
-            var vertexResourceLayout = new ResourceLayoutBuilder().Build();
-
-            // 片段着色器资源布局
+            // 创建合并的着色器程序资源布局（顶点+片段）
             var scalingResourceLayout = new ResourceLayoutBuilder()
-                .Add(ResourceStages.Fragment, ResourceType.UniformBuffer, 2)  // Push constants/UBO
+                .Add(ResourceStages.Vertex, ResourceType.UniformBuffer, 1)   // 区域参数
+                .Add(ResourceStages.Fragment, ResourceType.UniformBuffer, 2) // FSR常量
                 .Add(ResourceStages.Fragment, ResourceType.TextureAndSampler, 1) // 输入纹理
                 .Build();
 
             var sharpeningResourceLayout = new ResourceLayoutBuilder()
-                .Add(ResourceStages.Fragment, ResourceType.UniformBuffer, 2)  // Push constants/UBO
+                .Add(ResourceStages.Vertex, ResourceType.UniformBuffer, 1)   // 区域参数
+                .Add(ResourceStages.Fragment, ResourceType.UniformBuffer, 2) // RCAS常量
                 .Add(ResourceStages.Fragment, ResourceType.TextureAndSampler, 1) // 输入纹理
                 .Build();
 
             _sampler = _renderer.CreateSampler(SamplerCreateInfo.Create(MinFilter.Linear, MagFilter.Linear));
 
-            // 创建顶点着色器程序
-            _vertexProgram = _renderer.CreateProgramWithMinimalLayout(new[]
-            {
-                new ShaderSource(vertexShader, ShaderStage.Vertex, TargetLanguage.Spirv),
-            }, vertexResourceLayout);
-
-            // 创建片段着色器程序
+            // 创建合并的着色器程序（顶点+片段）
             _scalingProgram = _renderer.CreateProgramWithMinimalLayout(new[]
             {
+                new ShaderSource(vertexShader, ShaderStage.Vertex, TargetLanguage.Spirv),
                 new ShaderSource(scalingShader, ShaderStage.Fragment, TargetLanguage.Spirv),
             }, scalingResourceLayout);
 
             _sharpeningProgram = _renderer.CreateProgramWithMinimalLayout(new[]
             {
+                new ShaderSource(vertexShader, ShaderStage.Vertex, TargetLanguage.Spirv),
                 new ShaderSource(sharpeningShader, ShaderStage.Fragment, TargetLanguage.Spirv),
             }, sharpeningResourceLayout);
         }
@@ -147,11 +140,12 @@ namespace Ryujinx.Graphics.Vulkan.Effects
 
         private void RunScalingPass(TextureView view, int width, int height, Extent2D source, Extent2D destination, CommandBufferScoped cbs)
         {
-            _pipeline.SetProgram(_vertexProgram, _scalingProgram);
+            // 使用合并的着色器程序
+            _pipeline.SetProgram(_scalingProgram);
             _pipeline.SetTextureAndSampler(ShaderStage.Fragment, 1, view, _sampler);
 
-            // 计算FSR EASU常量
-            ReadOnlySpan<float> constants = CalculateFsrConstants(source, destination, width, height);
+            // 计算FSR EASU常量 - 使用数组避免Span作用域问题
+            float[] constants = CalculateFsrConstants(source, destination, width, height);
 
             // 创建统一缓冲区
             int bufferSize = constants.Length * sizeof(float);
@@ -159,7 +153,9 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             buffer.Holder.SetDataUnchecked(buffer.Offset, constants);
 
             _pipeline.SetUniformBuffers(stackalloc[] { new BufferAssignment(2, buffer.Range) });
-            _pipeline.SetRenderTarget(_intermediaryTexture.GetView(FormatTable.ConvertRgba8SrgbToUnorm(view.Info.Format)));
+            
+            // 使用TextureView版本的SetRenderTarget
+            _pipeline.SetRenderTarget(_intermediaryTexture);
             
             // 设置视口和裁剪
             SetViewportAndScissor(width, height);
@@ -170,17 +166,20 @@ namespace Ryujinx.Graphics.Vulkan.Effects
 
         private void RunSharpeningPass(int width, int height, Auto<DisposableImageView> destinationTexture, CommandBufferScoped cbs)
         {
-            _pipeline.SetProgram(_vertexProgram, _sharpeningProgram);
+            // 使用合并的着色器程序
+            _pipeline.SetProgram(_sharpeningProgram);
             _pipeline.SetTextureAndSampler(ShaderStage.Fragment, 1, _intermediaryTexture, _sampler);
 
-            // 计算RCAS锐化常量
-            ReadOnlySpan<float> sharpeningBufferData = CalculateRcasConstants(width, height);
+            // 计算RCAS锐化常量 - 使用数组避免Span作用域问题
+            float[] sharpeningBufferData = CalculateRcasConstants(width, height);
 
             int bufferSize = sharpeningBufferData.Length * sizeof(float);
             using var sharpeningBuffer = _renderer.BufferManager.ReserveOrCreate(_renderer, cbs, bufferSize);
             sharpeningBuffer.Holder.SetDataUnchecked(sharpeningBuffer.Offset, sharpeningBufferData);
 
             _pipeline.SetUniformBuffers(stackalloc[] { new BufferAssignment(2, sharpeningBuffer.Range) });
+            
+            // 使用Auto<DisposableImageView>版本的SetRenderTarget
             _pipeline.SetRenderTarget(destinationTexture);
             
             // 设置视口和裁剪
@@ -190,7 +189,8 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             _pipeline.Draw(3, 1, 0, 0);
         }
 
-        private ReadOnlySpan<float> CalculateFsrConstants(Extent2D source, Extent2D destination, int width, int height)
+        // 修改返回类型为数组，避免Span作用域问题
+        private float[] CalculateFsrConstants(Extent2D source, Extent2D destination, int width, int height)
         {
             // 计算视口参数
             float viewportWidth = Math.Abs(source.X2 - source.X1);
@@ -216,8 +216,8 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                 outputWidth, outputHeight,
                 viewportX, viewportY);
 
-            // 将常量合并到float数组中
-            Span<float> constants = stackalloc float[16];
+            // 使用数组而不是栈分配的Span
+            float[] constants = new float[16];
             
             // con0
             constants[0] = BitConverter.UInt32BitsToSingle(con0[0]);
@@ -246,13 +246,14 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             return constants;
         }
 
-        private ReadOnlySpan<float> CalculateRcasConstants(int width, int height)
+        // 修改返回类型为数组，避免Span作用域问题
+        private float[] CalculateRcasConstants(int width, int height)
         {
             // 计算RCAS常量
             Span<uint> rcasCon = stackalloc uint[4];
             FsrConstantsCalculator.FsrRcasCon(rcasCon, Level);
 
-            Span<float> constants = stackalloc float[7];
+            float[] constants = new float[7];
             
             // RCAS常量
             constants[0] = BitConverter.UInt32BitsToSingle(rcasCon[0]); // sharpness
