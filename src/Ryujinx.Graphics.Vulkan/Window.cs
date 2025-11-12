@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using VkFormat = Silk.NET.Vulkan.Format;
 using Ryujinx.Common.Logging;
 using Extents2D = Ryujinx.Graphics.GAL.Extents2D;
+using System.Text;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -174,7 +175,7 @@ namespace Ryujinx.Graphics.Vulkan
 
                 if (oldSwapchain.Handle != 0)
                 {
-                    _gd.SwapchainApi.DestroySwapchain(_device, oldSwapchain, Span<AllocationCallbacks>.Empty);
+                    _gd.SwapchainApi.DestroySwapchain(_device, oldSwapchain, (AllocationCallbacks*)null);
                 }
 
                 CreateSwapchain();
@@ -839,7 +840,7 @@ namespace Ryujinx.Graphics.Vulkan
                     _scalingFilter.Run(
                         view, cbs, 
                         _swapchainImageViews[nextImage].GetImageView(),
-                        FormatTable.GetFormat(_format), _width, _height,
+                        _format, _width, _height,
                         new Extents2D(srcX0, srcY0, srcX1, srcY1),
                         new Extents2D(dstX0, dstY0, dstX1, dstY1));
                 }
@@ -1140,7 +1141,7 @@ namespace Ryujinx.Graphics.Vulkan
 
                 if (_swapchain.Handle != 0)
                 {
-                    _gd.SwapchainApi.DestroySwapchain(_device, _swapchain, Span<AllocationCallbacks>.Empty);
+                    _gd.SwapchainApi.DestroySwapchain(_device, _swapchain, (AllocationCallbacks*)null);
                     _swapchain = default;
                 }
 
