@@ -57,6 +57,9 @@ namespace Ryujinx.Graphics.Vulkan
         // 从版本11新增：表面查询保护机制
         private volatile bool _allowSurfaceQueries = true;
 
+        public SurfaceTransformFlagsKHR CurrentTransform { get; private set; }
+        public override bool ScreenCaptureRequested { get; set; }
+
         public unsafe Window(VulkanRenderer gd, SurfaceKHR surface, PhysicalDevice physicalDevice, Device device)
         {
             _gd = gd;
@@ -1181,62 +1184,6 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        // 从版本11改进：增强的Dispose方法
-        protected virtual void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                lock (_gd.SurfaceLock)
-                {
-                    unsafe
-                    {
-                        if (_swapchainImageViews != null)
-                        {
-                            for (int i = 0; i < _swapchainImageViews.Length; i++)
-                            {
-                                _swapchainImageViews[i]?.Dispose();
-                            }
-                        }
-
-                        if (_imageAvailableSemaphores != null)
-                        {
-                            for (int i = 0; i < _imageAvailableSemaphores.Length; i++)
-                            {
-                                if (_imageAvailableSemaphores[i].Handle != 0)
-                                {
-                                    _gd.Api.DestroySemaphore(_device, _imageAvailableSemaphores[i], null);
-                                }
-                            }
-                        }
-
-                        if (_renderFinishedSemaphores != null)
-                        {
-                            for (int i = 0; i < _renderFinishedSemaphores.Length; i++)
-                            {
-                                if (_renderFinishedSemaphores[i].Handle != 0)
-                                {
-                                    _gd.Api.DestroySemaphore(_device, _renderFinishedSemaphores[i], null);
-                                }
-                            }
-                        }
-
-                        if (_swapchain.Handle != 0)
-                        {
-                            _gd.SwapchainApi.DestroySwapchain(_device, _swapchain, null);
-                        }
-                    }
-                }
-
-                _effect?.Dispose();
-                _intermediaryTexture?.Dispose();
-            }
-        }
-
-        public override void Dispose()
-        {
-            Dispose(true);
-        }
-
         // FSR常量计算方法
         private float[] CalculateFsrConstants(Extents2D source, Extents2D destination, int width, int height)
         {
@@ -1396,6 +1343,62 @@ namespace Ryujinx.Graphics.Vulkan
         private static uint ToUint(float value)
         {
             return BitConverter.SingleToUInt32Bits(value);
+        }
+
+        // 从版本11改进：增强的Dispose方法
+        protected virtual void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                lock (_gd.SurfaceLock)
+                {
+                    unsafe
+                    {
+                        if (_swapchainImageViews != null)
+                        {
+                            for (int i = 0; i < _swapchainImageViews.Length; i++)
+                            {
+                                _swapchainImageViews[i]?.Dispose();
+                            }
+                        }
+
+                        if (_imageAvailableSemaphores != null)
+                        {
+                            for (int i = 0; i < _imageAvailableSemaphores.Length; i++)
+                            {
+                                if (_imageAvailableSemaphores[i].Handle != 0)
+                                {
+                                    _gd.Api.DestroySemaphore(_device, _imageAvailableSemaphores[i], null);
+                                }
+                            }
+                        }
+
+                        if (_renderFinishedSemaphores != null)
+                        {
+                            for (int i = 0; i < _renderFinishedSemaphores.Length; i++)
+                            {
+                                if (_renderFinishedSemaphores[i].Handle != 0)
+                                {
+                                    _gd.Api.DestroySemaphore(_device, _renderFinishedSemaphores[i], null);
+                                }
+                            }
+                        }
+
+                        if (_swapchain.Handle != 0)
+                        {
+                            _gd.SwapchainApi.DestroySwapchain(_device, _swapchain, null);
+                        }
+                    }
+                }
+
+                _effect?.Dispose();
+                _intermediaryTexture?.Dispose();
+            }
+        }
+
+        public override void Dispose()
+        {
+            Dispose(true);
         }
     }
 }
