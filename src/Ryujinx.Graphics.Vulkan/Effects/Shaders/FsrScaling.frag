@@ -20,23 +20,11 @@ layout(binding = 2) uniform EasuConstants {
 #define A_GLSL 1
 #define FSR_EASU_F 1
 
-// 确保类型定义正确
-#define AF1 float
-#define AF2 vec2
-#define AF3 vec3
-#define AF4 vec4
-#define AU1 uint
-#define AU2 uvec2
-#define AU4 uvec4
-#define AH1 float
-#define AH2 vec2
-#define AH3 vec3
-#define AH4 vec4
-
+// 包含必要的头文件
 #include "ffx_a.h"
 #include "ffx_fsr1.h"
 
-// 修复回调函数定义
+// 修复回调函数定义 - 使用正确的GLSL类型
 AF4 FsrEasuRF(AF2 p) { 
     return textureGather(InputTexture, p, 0); 
 }
@@ -53,12 +41,12 @@ void main() {
     AU2 pos = AU2(gl_FragCoord.xy);
     AF3 color;
     
-    // 确保参数类型匹配
+    // 直接使用vec4常量，ffx_a.h会自动处理类型转换
     FsrEasuF(color, pos, 
-        constants.con0,  // 直接使用vec4，不转换
-        constants.con1, 
-        constants.con2, 
-        constants.con3);
+        AU4(constants.con0), 
+        AU4(constants.con1), 
+        AU4(constants.con2), 
+        AU4(constants.con3));
         
     frag_color = vec4(color, 1.0);
 }
