@@ -46,10 +46,11 @@ namespace Ryujinx.Graphics.Vulkan.Effects
 
             try
             {
+                // 使用正确的 ShaderSource 构造函数
                 _programFSRScaling = gd.CreateProgramWithMinimalLayout(new[]
                 {
-                    new ShaderSource(ReadSpirv("FsrScaling.vert.spv"), Ryujinx.Graphics.GAL.ShaderStage.Vertex),
-                    new ShaderSource(ReadSpirv("FsrScaling.frag.spv"), Ryujinx.Graphics.GAL.ShaderStage.Fragment)
+                    new ShaderSource(ReadSpirv("FsrScaling.vert.spv")),
+                    new ShaderSource(ReadSpirv("FsrScaling.frag.spv"))
                 }, fsrScalingResourceLayout);
                 Logger.Info?.Print(LogClass.Gpu, "FSR scaling shader program created successfully");
             }
@@ -63,8 +64,8 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             {
                 _programFSRSharpening = gd.CreateProgramWithMinimalLayout(new[]
                 {
-                    new ShaderSource(ReadSpirv("FsrScaling.vert.spv"), Ryujinx.Graphics.GAL.ShaderStage.Vertex),
-                    new ShaderSource(ReadSpirv("FsrSharpening.frag.spv"), Ryujinx.Graphics.GAL.ShaderStage.Fragment)
+                    new ShaderSource(ReadSpirv("FsrScaling.vert.spv")),
+                    new ShaderSource(ReadSpirv("FsrSharpening.frag.spv"))
                 }, fsrSharpeningResourceLayout);
                 Logger.Info?.Print(LogClass.Gpu, "FSR sharpening shader program created successfully");
             }
@@ -202,7 +203,7 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             const int FsrConstantsSize = 64;
 
             ISampler sampler = _samplerLinear;
-            _pipeline.SetTextureAndSamplerIdentitySwizzle(ShaderStage.Fragment, 0, src, sampler);
+            _pipeline.SetTextureAndSampler(0, src, sampler);
 
             Span<float> region = stackalloc float[RegionBufferSize / sizeof(float)];
 
@@ -281,7 +282,7 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             const int RcasConstantsSize = 28;
 
             ISampler sampler = _samplerLinear;
-            _pipeline.SetTextureAndSamplerIdentitySwizzle(ShaderStage.Fragment, 0, src, sampler);
+            _pipeline.SetTextureAndSampler(0, src, sampler);
 
             Span<float> region = stackalloc float[RegionBufferSize / sizeof(float)];
 
