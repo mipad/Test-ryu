@@ -17,14 +17,14 @@
     <EmbeddedResource Include="Effects\Textures\SmaaSearchTexture.bin" />
     <EmbeddedResource Include="Effects\Shaders\AreaScaling.spv" />
     <EmbeddedResource Include="Effects\Shaders\FsrScaling.spv" />
-    <EmbeddedResource Include="Effects\Shaders\FsrSharpening.frag.spv" />
-    <EmbeddedResource Include="Effects\Shaders\FsrScaling.vert.spv" />
-    <EmbeddedResource Include="Effects\Shaders\FsrScaling.frag.spv" />
     <EmbeddedResource Include="Effects\Shaders\FsrSharpening.spv" />
     <EmbeddedResource Include="Effects\Shaders\Fxaa.spv" />
     <EmbeddedResource Include="Effects\Shaders\SmaaBlend.spv" />
     <EmbeddedResource Include="Effects\Shaders\SmaaEdge.spv" />
     <EmbeddedResource Include="Effects\Shaders\SmaaNeighbour.spv" />
+    <EmbeddedResource Include="Shaders\SpirvBinaries\FSRSharpeningFragment.spv" />
+    <EmbeddedResource Include="Shaders\SpirvBinaries\FSRScalingVertex.spv" />
+    <EmbeddedResource Include="Shaders\SpirvBinaries\FSRScalingFragment.spv" />
     <EmbeddedResource Include="Shaders\SpirvBinaries\ChangeBufferStride.spv" />
     <EmbeddedResource Include="Shaders\SpirvBinaries\ColorBlitClearAlphaFragment.spv" />
     <EmbeddedResource Include="Shaders\SpirvBinaries\ColorBlitFragment.spv" />

@@ -217,20 +217,25 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             // 添加FSR着色器程序
-            ResourceLayout fsrResourceLayout = new ResourceLayoutBuilder()
+            ResourceLayout fsrScalingResourceLayout = new ResourceLayoutBuilder()
                 .Add(ResourceStages.Vertex, ResourceType.UniformBuffer, 1)  // 区域参数
                 .Add(ResourceStages.Fragment, ResourceType.UniformBuffer, 2) // FSR常量
+                .Add(ResourceStages.Fragment, ResourceType.TextureAndSampler, 0).Build();
+
+            ResourceLayout fsrSharpeningResourceLayout = new ResourceLayoutBuilder()
+                .Add(ResourceStages.Vertex, ResourceType.UniformBuffer, 1)  // 区域参数
+                .Add(ResourceStages.Fragment, ResourceType.UniformBuffer, 2) // RCAS常量
                 .Add(ResourceStages.Fragment, ResourceType.TextureAndSampler, 0).Build();
 
             _programFSRScaling = gd.CreateProgramWithMinimalLayout([
                 new ShaderSource(ReadSpirv("FSRScalingVertex.spv"), ShaderStage.Vertex, TargetLanguage.Spirv),
                 new ShaderSource(ReadSpirv("FSRScalingFragment.spv"), ShaderStage.Fragment, TargetLanguage.Spirv)
-            ], fsrResourceLayout);
+            ], fsrScalingResourceLayout);
 
             _programFSRSharpening = gd.CreateProgramWithMinimalLayout([
                 new ShaderSource(ReadSpirv("FSRScalingVertex.spv"), ShaderStage.Vertex, TargetLanguage.Spirv),
                 new ShaderSource(ReadSpirv("FSRSharpeningFragment.spv"), ShaderStage.Fragment, TargetLanguage.Spirv)
-            ], fsrResourceLayout);
+            ], fsrSharpeningResourceLayout);
         }
 
         private static byte[] ReadSpirv(string fileName)
@@ -385,22 +390,22 @@ namespace Ryujinx.Graphics.Vulkan
 
             Span<float> region = stackalloc float[RegionBufferSize / sizeof(float)];
 
-// 无分支优化开始
-float srcX1 = (float)srcRegion.X1 / src.Width;
-float srcX2 = (float)srcRegion.X2 / src.Width;
-float srcY1 = (float)srcRegion.Y1 / src.Height;
-float srcY2 = (float)srcRegion.Y2 / src.Height;
+            // 无分支优化开始
+            float srcX1 = (float)srcRegion.X1 / src.Width;
+            float srcX2 = (float)srcRegion.X2 / src.Width;
+            float srcY1 = (float)srcRegion.Y1 / src.Height;
+            float srcY2 = (float)srcRegion.Y2 / src.Height;
 
-// 计算翻转标志 (Mali 架构友好)
-int flipX = (dstRegion.X1 > dstRegion.X2) ? 1 : 0;
-int flipY = (dstRegion.Y1 > dstRegion.Y2) ? 1 : 0;
+            // 计算翻转标志 (Mali 架构友好)
+            int flipX = (dstRegion.X1 > dstRegion.X2) ? 1 : 0;
+            int flipY = (dstRegion.Y1 > dstRegion.Y2) ? 1 : 0;
 
-// 无分支选择 (避免移动端GPU分支预测惩罚)
-region[0] = (1 - flipX) * srcX1 + flipX * srcX2;
-region[1] = flipX * srcX1 + (1 - flipX) * srcX2;
-region[2] = (1 - flipY) * srcY1 + flipY * srcY2;
-region[3] = flipY * srcY1 + (1 - flipY) * srcY2;
-// 无分支优化结束
+            // 无分支选择 (避免移动端GPU分支预测惩罚)
+            region[0] = (1 - flipX) * srcX1 + flipX * srcX2;
+            region[1] = flipX * srcX1 + (1 - flipX) * srcX2;
+            region[2] = (1 - flipY) * srcY1 + flipY * srcY2;
+            region[3] = flipY * srcY1 + (1 - flipY) * srcY2;
+            // 无分支优化结束
 
             using ScopedTemporaryBuffer buffer = gd.BufferManager.ReserveOrCreate(gd, cbs, RegionBufferSize);
 
@@ -450,7 +455,8 @@ region[3] = flipY * srcY1 + (1 - flipY) * srcY2;
 
             _pipeline.SetRenderTarget(dst, (uint)dstWidth, (uint)dstHeight);
             _pipeline.SetRenderTargetColorMasks([0xf]);
-            _pipeline.SetScissors([new Rectangle<int>(0, 0, dstWidth, dstHeight)]);
+            _pipeline.SetScissor(0, 0, dstWidth, dstHeight);
+            _pipeline.SetViewport(0, 0, dstWidth, dstHeight, 0f, 1f);
 
             if (clearAlpha)
             {
@@ -469,16 +475,15 @@ region[3] = flipY * srcY1 + (1 - flipY) * srcY2;
             _pipeline.Finish(gd, cbs);
         }
 
-        // 新增：FSR专用的Blit方法
-        public void BlitColorWithFSR(
+        // 新增：FSR缩放通道
+        public void BlitColorWithFSRScaling(
             VulkanRenderer gd,
             CommandBufferScoped cbs,
             TextureView src,
             TextureView dst,
             Extents2D srcRegion,
             Extents2D dstRegion,
-            ReadOnlySpan<float> fsrConstants,
-            bool isSharpeningPass = false)
+            ReadOnlySpan<float> fsrConstants)
         {
             _pipeline.SetCommandBuffer(cbs);
 
@@ -538,27 +543,127 @@ region[3] = flipY * srcY1 + (1 - flipY) * srcY2;
                 0f,
                 1f);
 
-            // 设置FSR着色器程序
-            if (isSharpeningPass)
-            {
-                _pipeline.SetProgram(_programFSRSharpening);
-            }
-            else
-            {
-                _pipeline.SetProgram(_programFSRScaling);
-            }
+            // 设置FSR缩放着色器程序
+            _pipeline.SetProgram(_programFSRScaling);
 
             int dstWidth = dst.Width;
             int dstHeight = dst.Height;
 
             _pipeline.SetRenderTarget(dst, (uint)dstWidth, (uint)dstHeight);
             _pipeline.SetRenderTargetColorMasks([0xf]);
-            _pipeline.SetScissors([new Rectangle<int>(0, 0, dstWidth, dstHeight)]);
+            _pipeline.SetScissor(0, 0, dstWidth, dstHeight);
+            _pipeline.SetViewport(0, 0, dstWidth, dstHeight, 0f, 1f);
             _pipeline.SetViewports(viewports);
             _pipeline.SetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
             _pipeline.Draw(4, 1, 0, 0);
 
             _pipeline.Finish(gd, cbs);
+        }
+
+        // 新增：FSR锐化通道
+        public void BlitColorWithFSRSharpening(
+            VulkanRenderer gd,
+            CommandBufferScoped cbs,
+            TextureView src,
+            TextureView dst,
+            Extents2D srcRegion,
+            Extents2D dstRegion,
+            ReadOnlySpan<float> rcasConstants)
+        {
+            _pipeline.SetCommandBuffer(cbs);
+
+            const int RegionBufferSize = 16;
+            const int RcasConstantsSize = 28; // RCAS常量缓冲区大小
+
+            ISampler sampler = _samplerLinear;
+
+            _pipeline.SetTextureAndSamplerIdentitySwizzle(ShaderStage.Fragment, 0, src, sampler);
+
+            Span<float> region = stackalloc float[RegionBufferSize / sizeof(float)];
+
+            // 无分支优化开始
+            float srcX1 = (float)srcRegion.X1 / src.Width;
+            float srcX2 = (float)srcRegion.X2 / src.Width;
+            float srcY1 = (float)srcRegion.Y1 / src.Height;
+            float srcY2 = (float)srcRegion.Y2 / src.Height;
+
+            // 计算翻转标志
+            int flipX = (dstRegion.X1 > dstRegion.X2) ? 1 : 0;
+            int flipY = (dstRegion.Y1 > dstRegion.Y2) ? 1 : 0;
+
+            // 无分支选择
+            region[0] = (1 - flipX) * srcX1 + flipX * srcX2;
+            region[1] = flipX * srcX1 + (1 - flipX) * srcX2;
+            region[2] = (1 - flipY) * srcY1 + flipY * srcY2;
+            region[3] = flipY * srcY1 + (1 - flipY) * srcY2;
+            // 无分支优化结束
+
+            using ScopedTemporaryBuffer regionBuffer = gd.BufferManager.ReserveOrCreate(gd, cbs, RegionBufferSize);
+            regionBuffer.Holder.SetDataUnchecked<float>(regionBuffer.Offset, region);
+
+            // 创建RCAS常量缓冲区
+            using ScopedTemporaryBuffer rcasConstantsBuffer = gd.BufferManager.ReserveOrCreate(gd, cbs, RcasConstantsSize);
+            rcasConstantsBuffer.Holder.SetDataUnchecked<float>(rcasConstantsBuffer.Offset, rcasConstants);
+
+            // 设置缓冲区
+            _pipeline.SetUniformBuffers([
+                new BufferAssignment(1, regionBuffer.Range),
+                new BufferAssignment(2, rcasConstantsBuffer.Range)
+            ]);
+
+            Span<Viewport> viewports = stackalloc Viewport[1];
+
+            Rectangle<float> rect = new(
+                MathF.Min(dstRegion.X1, dstRegion.X2),
+                MathF.Min(dstRegion.Y1, dstRegion.Y2),
+                MathF.Abs(dstRegion.X2 - dstRegion.X1),
+                MathF.Abs(dstRegion.Y2 - dstRegion.Y1));
+
+            viewports[0] = new Viewport(
+                rect,
+                ViewportSwizzle.PositiveX,
+                ViewportSwizzle.PositiveY,
+                ViewportSwizzle.PositiveZ,
+                ViewportSwizzle.PositiveW,
+                0f,
+                1f);
+
+            // 设置FSR锐化着色器程序
+            _pipeline.SetProgram(_programFSRSharpening);
+
+            int dstWidth = dst.Width;
+            int dstHeight = dst.Height;
+
+            _pipeline.SetRenderTarget(dst, (uint)dstWidth, (uint)dstHeight);
+            _pipeline.SetRenderTargetColorMasks([0xf]);
+            _pipeline.SetScissor(0, 0, dstWidth, dstHeight);
+            _pipeline.SetViewport(0, 0, dstWidth, dstHeight, 0f, 1f);
+            _pipeline.SetViewports(viewports);
+            _pipeline.SetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
+            _pipeline.Draw(4, 1, 0, 0);
+
+            _pipeline.Finish(gd, cbs);
+        }
+
+        // 新增：完整的FSR处理（缩放+锐化）
+        public void BlitColorWithFSR(
+            VulkanRenderer gd,
+            CommandBufferScoped cbs,
+            TextureView src,
+            TextureView dst,
+            Extents2D srcRegion,
+            Extents2D dstRegion,
+            ReadOnlySpan<float> fsrConstants,
+            ReadOnlySpan<float> rcasConstants,
+            TextureView intermediateTexture)
+        {
+            // 第一遍：缩放
+            BlitColorWithFSRScaling(gd, cbs, src, intermediateTexture, srcRegion, dstRegion, fsrConstants);
+            
+            // 第二遍：锐化
+            BlitColorWithFSRSharpening(gd, cbs, intermediateTexture, dst, 
+                new Extents2D(0, 0, intermediateTexture.Width, intermediateTexture.Height),
+                dstRegion, rcasConstants);
         }
 
         private void BlitDepthStencil(
@@ -617,7 +722,8 @@ region[3] = flipY * srcY1 + (1 - flipY) * srcY2;
             int dstHeight = dst.Height;
 
             _pipeline.SetRenderTarget(dst, (uint)dstWidth, (uint)dstHeight);
-            _pipeline.SetScissors([new Rectangle<int>(0, 0, dstWidth, dstHeight)]);
+            _pipeline.SetScissor(0, 0, dstWidth, dstHeight);
+            _pipeline.SetViewport(0, 0, dstWidth, dstHeight, 0f, 1f);
             _pipeline.SetViewports(viewports);
             _pipeline.SetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
 
@@ -780,7 +886,8 @@ region[3] = flipY * srcY1 + (1 - flipY) * srcY2;
             _pipeline.SetRenderTarget(dst, (uint)dstWidth, (uint)dstHeight);
             _pipeline.SetRenderTargetColorMasks(new[] { componentMask });
             _pipeline.SetViewports(viewports);
-            _pipeline.SetScissors([scissor]);
+            _pipeline.SetScissor(scissor.X, scissor.Y, scissor.Width, scissor.Height);
+            _pipeline.SetViewport(0, 0, dstWidth, dstHeight, 0f, 1f);
             _pipeline.SetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
             _pipeline.Draw(4, 1, 0, 0);
             _pipeline.Finish();
@@ -826,7 +933,8 @@ region[3] = flipY * srcY1 + (1 - flipY) * srcY2;
             _pipeline.SetProgram(_programDepthStencilClear);
             _pipeline.SetRenderTarget(dst, (uint)dstWidth, (uint)dstHeight);
             _pipeline.SetViewports(viewports);
-            _pipeline.SetScissors([scissor]);
+            _pipeline.SetScissor(scissor.X, scissor.Y, scissor.Width, scissor.Height);
+            _pipeline.SetViewport(0, 0, dstWidth, dstHeight, 0f, 1f);
             _pipeline.SetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
             _pipeline.SetDepthTest(new DepthTestDescriptor(true, depthMask, CompareOp.Always));
             _pipeline.SetStencilTest(CreateStencilTestDescriptor(stencilMask != 0, stencilValue, 0xff, stencilMask));
@@ -915,7 +1023,6 @@ region[3] = flipY * srcY1 + (1 - flipY) * srcY2;
     // 合并屏障 - 单次设置所有内存访问
     var barriers = new BufferMemoryBarrier[2];
     
-    // 修正参数命名：sourceAccessMask -> SrcAccessMask, destinationAccessMask -> DstAccessMask
     barriers[0] = new BufferMemoryBarrier()
     {
         SType = StructureType.BufferMemoryBarrier,
@@ -1291,7 +1398,8 @@ region[3] = flipY * srcY1 + (1 - flipY) * srcY2;
                     0f,
                     1f);
 
-                _pipeline.SetScissors([new Rectangle<int>(0, 0, dst.Width, dst.Height)]);
+                _pipeline.SetScissor(0, 0, dst.Width, dst.Height);
+                _pipeline.SetViewport(0, 0, dst.Width, dst.Height, 0f, 1f);
                 _pipeline.SetViewports(viewports);
                 _pipeline.SetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
 
@@ -1413,7 +1521,8 @@ region[3] = flipY * srcY1 + (1 - flipY) * srcY2;
                 1f);
 
             _pipeline.SetRenderTargetColorMasks([0xf]);
-            _pipeline.SetScissors([new Rectangle<int>(0, 0, dst.Width, dst.Height)]);
+            _pipeline.SetScissor(0, 0, dst.Width, dst.Height);
+            _pipeline.SetViewport(0, 0, dst.Width, dst.Height, 0f, 1f);
             _pipeline.SetViewports(viewports);
             _pipeline.SetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
 

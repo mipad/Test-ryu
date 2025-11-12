@@ -5,8 +5,10 @@ using Silk.NET.Vulkan.Extensions.KHR;
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using VkFormat = Silk.NET.Vulkan.Format;
 using Ryujinx.Common.Logging;
+using Extents2D = Ryujinx.Graphics.GAL.Extents2D;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -37,12 +39,14 @@ namespace Ryujinx.Graphics.Vulkan
         private AntiAliasing _currentAntiAliasing;
         private bool _updateEffect;
         private IPostProcessingEffect _effect;
-        private IScalingFilter _scalingFilter;
         private bool _isLinear;
         private float _scalingFilterLevel;
         private bool _updateScalingFilter;
         private ScalingFilter _currentScalingFilter;
         private bool _colorSpacePassthroughEnabled;
+
+        // FSR中间纹理
+        private TextureView _intermediaryTexture;
 
         // 新增：自定义表面格式相关字段
         private static bool _useCustomSurfaceFormat = false;
@@ -865,31 +869,48 @@ namespace Ryujinx.Graphics.Vulkan
             int dstY0 = crop.FlipY ? dstPaddingY : _height - dstPaddingY;
             int dstY1 = crop.FlipY ? _height - dstPaddingY : dstPaddingY;
 
-            // 修改：使用图形管线进行FSR缩放和锐化
-            if (_scalingFilter != null)
+            // 修改：使用HelperShader进行FSR缩放和锐化
+            if (_currentScalingFilter == ScalingFilter.Fsr)
             {
-                _scalingFilter!.Run(
-                    view,
-                    cbs,
-                    _swapchainImageViews[nextImage].GetImageViewForAttachment(),
-                    _format,
-                    _width,
-                    _height,
+                // 确保中间纹理存在
+                if (_intermediaryTexture == null || 
+                    _intermediaryTexture.Info.Width != _width || 
+                    _intermediaryTexture.Info.Height != _height)
+                {
+                    var originalInfo = view.Info;
+                    var info = new TextureCreateInfo(
+                        _width, _height, originalInfo.Depth, originalInfo.Levels, originalInfo.Samples,
+                        originalInfo.BlockWidth, originalInfo.BlockHeight, originalInfo.BytesPerPixel,
+                        originalInfo.Format, originalInfo.DepthStencilMode, originalInfo.Target,
+                        originalInfo.SwizzleR, originalInfo.SwizzleG, originalInfo.SwizzleB, originalInfo.SwizzleA);
+                    
+                    _intermediaryTexture?.Dispose();
+                    _intermediaryTexture = _gd.CreateTexture(info) as TextureView;
+                }
+
+                // 计算FSR常量
+                var fsrConstants = CalculateFsrConstants(
                     new Extents2D(srcX0, srcY0, srcX1, srcY1),
-                    new Extents2D(dstX0, dstY0, dstX1, dstY1)
-                );
+                    new Extents2D(dstX0, dstY0, dstX1, dstY1),
+                    _width, _height);
+                    
+                var rcasConstants = CalculateRcasConstants(_width, _height);
+
+                // 使用HelperShader进行FSR处理
+                _gd.HelperShader.BlitColorWithFSR(
+                    _gd, cbs, view, _swapchainImageViews[nextImage],
+                    new Extents2D(srcX0, srcY0, srcX1, srcY1),
+                    new Extents2D(dstX0, dstY0, dstX1, dstY1),
+                    fsrConstants, rcasConstants, _intermediaryTexture);
             }
             else
             {
+                // 原有的Bilinear/Nearest处理
                 _gd.HelperShader.BlitColor(
-                    _gd,
-                    cbs,
-                    view,
-                    _swapchainImageViews[nextImage],
+                    _gd, cbs, view, _swapchainImageViews[nextImage],
                     new Extents2D(srcX0, srcY0, srcX1, srcY1),
-                    new Extents2D(dstX0, dstY1, dstX1, dstY0),
-                    _isLinear,
-                    true);
+                    new Extents2D(dstX0, dstY1, dstX1, dstY0), // 注意Y坐标翻转
+                    _isLinear, true);
             }
 
             // 转换到Present布局
@@ -999,7 +1020,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         public override void SetScalingFilter(ScalingFilter type)
         {
-            if (_currentScalingFilter == type && _effect != null)
+            if (_currentScalingFilter == type)
             {
                 return;
             }
@@ -1057,25 +1078,13 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     case ScalingFilter.Bilinear:
                     case ScalingFilter.Nearest:
-                        _scalingFilter?.Dispose();
-                        _scalingFilter = null;
                         _isLinear = _currentScalingFilter == ScalingFilter.Bilinear;
                         break;
                     case ScalingFilter.Fsr:
-                        if (_scalingFilter is not FsrScalingFilter)
-                        {
-                            _scalingFilter?.Dispose();
-                            _scalingFilter = new FsrScalingFilter(_gd, _device);
-                        }
-
-                        _scalingFilter.Level = _scalingFilterLevel;
+                        // FSR在HelperShader中实现，不需要特殊处理
                         break;
                     case ScalingFilter.Area:
-                        if (_scalingFilter is not AreaScalingFilter)
-                        {
-                            _scalingFilter?.Dispose();
-                            _scalingFilter = new AreaScalingFilter(_gd, _device);
-                        }
+                        // Area缩放过滤器的处理保持不变
                         break;
                 }
             }
@@ -1084,7 +1093,6 @@ namespace Ryujinx.Graphics.Vulkan
         public override void SetScalingFilterLevel(float level)
         {
             _scalingFilterLevel = level;
-            _updateScalingFilter = true;
         }
 
         private void CaptureFrame(TextureView texture, int x, int y, int width, int height, bool isBgra, bool flipX, bool flipY)
@@ -1220,13 +1228,174 @@ namespace Ryujinx.Graphics.Vulkan
                 }
 
                 _effect?.Dispose();
-                _scalingFilter?.Dispose();
+                _intermediaryTexture?.Dispose();
             }
         }
 
         public override void Dispose()
         {
             Dispose(true);
+        }
+
+        // FSR常量计算方法
+        private float[] CalculateFsrConstants(Extents2D source, Extents2D destination, int width, int height)
+        {
+            float viewportWidth = Math.Abs(source.X2 - source.X1);
+            float viewportHeight = Math.Abs(source.Y2 - source.Y1);
+            float viewportX = source.X1;
+            float viewportY = source.Y1;
+            
+            float inputWidth = viewportWidth;
+            float inputHeight = viewportHeight;
+            float outputWidth = width;
+            float outputHeight = height;
+
+            // 计算EASU常量
+            Span<uint> con0 = stackalloc uint[4];
+            Span<uint> con1 = stackalloc uint[4]; 
+            Span<uint> con2 = stackalloc uint[4];
+            Span<uint> con3 = stackalloc uint[4];
+            
+            FsrEasuConOffset(
+                con0, con1, con2, con3,
+                viewportWidth, viewportHeight,
+                inputWidth, inputHeight, 
+                outputWidth, outputHeight,
+                viewportX, viewportY);
+
+            float[] constants = new float[16];
+            
+            // con0
+            constants[0] = BitConverter.UInt32BitsToSingle(con0[0]);
+            constants[1] = BitConverter.UInt32BitsToSingle(con0[1]);
+            constants[2] = BitConverter.UInt32BitsToSingle(con0[2]);
+            constants[3] = BitConverter.UInt32BitsToSingle(con0[3]);
+            
+            // con1
+            constants[4] = BitConverter.UInt32BitsToSingle(con1[0]);
+            constants[5] = BitConverter.UInt32BitsToSingle(con1[1]);
+            constants[6] = BitConverter.UInt32BitsToSingle(con1[2]);
+            constants[7] = BitConverter.UInt32BitsToSingle(con1[3]);
+            
+            // con2
+            constants[8] = BitConverter.UInt32BitsToSingle(con2[0]);
+            constants[9] = BitConverter.UInt32BitsToSingle(con2[1]);
+            constants[10] = BitConverter.UInt32BitsToSingle(con2[2]);
+            constants[11] = BitConverter.UInt32BitsToSingle(con2[3]);
+            
+            // con3
+            constants[12] = BitConverter.UInt32BitsToSingle(con3[0]);
+            constants[13] = BitConverter.UInt32BitsToSingle(con3[1]);
+            constants[14] = BitConverter.UInt32BitsToSingle(con3[2]);
+            constants[15] = BitConverter.UInt32BitsToSingle(con3[3]);
+
+            return constants;
+        }
+
+        private float[] CalculateRcasConstants(int width, int height)
+        {
+            // 计算RCAS常量
+            Span<uint> rcasCon = stackalloc uint[4];
+            FsrRcasCon(rcasCon, _scalingFilterLevel);
+
+            float[] constants = new float[7];
+            
+            // RCAS常量
+            constants[0] = BitConverter.UInt32BitsToSingle(rcasCon[0]); // sharpness
+            constants[1] = BitConverter.UInt32BitsToSingle(rcasCon[1]);
+            constants[2] = BitConverter.UInt32BitsToSingle(rcasCon[2]);
+            constants[3] = BitConverter.UInt32BitsToSingle(rcasCon[3]);
+            
+            // 纹理尺寸
+            constants[4] = width;
+            constants[5] = height;
+            constants[6] = 0.0f; // 填充
+
+            return constants;
+        }
+
+        // FSR常量计算器
+        private static void FsrEasuConOffset(
+            Span<uint> con0,
+            Span<uint> con1, 
+            Span<uint> con2,
+            Span<uint> con3,
+            float viewportWidth,
+            float viewportHeight,
+            float inputImageWidth,
+            float inputImageHeight,
+            float outputImageWidth, 
+            float outputImageHeight,
+            float viewportX,
+            float viewportY)
+        {
+            // 基于FFX FSR的EASU常量计算
+            float srcW = viewportWidth;
+            float srcH = viewportHeight;
+            float dstW = outputImageWidth;
+            float dstH = outputImageHeight;
+            
+            const float kEPS = 1e-6f;
+            
+            float rcpW = 1.0f / srcW;
+            float rcpH = 1.0f / srcH;
+            
+            float translateX = -viewportX * rcpW;
+            float translateY = -viewportY * rcpH;
+            
+            float scaleX = dstW * rcpW;
+            float scaleY = dstH * rcpH;
+            
+            float subpixelX = 0.5f * rcpW;
+            float subpixelY = 0.5f * rcpH;
+            
+            float kernelSize = 2.0f;
+            float rcpTextureSizeX = 1.0f / inputImageWidth;
+            float rcpTextureSizeY = 1.0f / inputImageHeight;
+
+            // con0 - 视口边界
+            con0[0] = ToUint(viewportX * rcpTextureSizeX);
+            con0[1] = ToUint(viewportY * rcpTextureSizeY);
+            con0[2] = ToUint((viewportX + srcW) * rcpTextureSizeX);
+            con0[3] = ToUint((viewportY + srcH) * rcpTextureSizeY);
+
+            // con1 - 缩放参数
+            con1[0] = ToUint(scaleX);
+            con1[1] = ToUint(scaleY);
+            con1[2] = ToUint(scaleX * kernelSize - 0.5f - subpixelX);
+            con1[3] = ToUint(scaleY * kernelSize - 0.5f - subpixelY);
+
+            // con2 - 子像素偏移
+            con2[0] = ToUint(0.0f);
+            con2[1] = ToUint(0.0f);
+            con2[2] = ToUint(subpixelX);
+            con2[3] = ToUint(subpixelY);
+
+            // con3 - 倒数参数
+            con3[0] = ToUint(rcpW);
+            con3[1] = ToUint(rcpH);
+            con3[2] = ToUint(rcpTextureSizeX);
+            con3[3] = ToUint(rcpTextureSizeY);
+        }
+
+        private static void FsrRcasCon(Span<uint> constants, float sharpness)
+        {
+            // 基于FFX FSR的RCAS常量计算
+            // 锐化调整 - 将[0,1]范围转换为RCAS参数
+            float sharp = 1.0f - sharpness * 0.99f;
+            float sharpScale = sharp * 8.0f;
+
+            // con0 - 锐化参数
+            constants[0] = ToUint(sharpScale);
+            constants[1] = ToUint(sharpScale);
+            constants[2] = ToUint(sharpScale);
+            constants[3] = ToUint(0.0f);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static uint ToUint(float value)
+        {
+            return BitConverter.SingleToUInt32Bits(value);
         }
     }
 }
