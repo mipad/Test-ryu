@@ -44,21 +44,20 @@ namespace Ryujinx.Graphics.Vulkan
         private ScalingFilter _currentScalingFilter;
         private bool _colorSpacePassthroughEnabled;
 
-        // FSR中间纹理
-        private TextureView _intermediaryTexture;
+        // 缩放过滤器
+        private IScalingFilter _scalingFilter;
 
-        // 新增：自定义表面格式相关字段
+        // 自定义表面格式相关字段
         private static bool _useCustomSurfaceFormat = false;
         private static SurfaceFormatKHR _customSurfaceFormat;
         private static bool _customFormatValid = false;
         private static List<SurfaceFormatKHR> _availableSurfaceFormats = new List<SurfaceFormatKHR>();
 
-        // 从版本11新增：表面查询保护机制
+        // 表面查询保护机制
         private volatile bool _allowSurfaceQueries = true;
 
         public SurfaceTransformFlagsKHR CurrentTransform { get; private set; }
 
-        // 修复：移除 override 关键字，因为基类属性没有标记为 virtual
         public bool ScreenCaptureRequested { get; set; }
 
         public unsafe Window(VulkanRenderer gd, SurfaceKHR surface, PhysicalDevice physicalDevice, Device device)
@@ -78,11 +77,9 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        // 从版本11新增：表面查询权限控制
         public void SetSurfaceQueryAllowed(bool allowed) => _allowSurfaceQueries = allowed;
         private bool CanQuerySurface() => _allowSurfaceQueries && _gd.PresentAllowed && _surface.Handle != 0;
 
-        // 从版本11新增：安全的表面查询方法
         private unsafe bool TryGetSurfaceCapabilities(out SurfaceCapabilitiesKHR caps)
         {
             caps = default;
@@ -127,7 +124,6 @@ namespace Ryujinx.Graphics.Vulkan
             return true;
         }
 
-        // 从版本11改进：增强的交换链重建方法
         private void RecreateSwapchain()
         {
             if (!_gd.PresentAllowed || _surface.Handle == 0 || !CanQuerySurface())
@@ -202,7 +198,6 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        // 从版本11改进：增强的交换链创建方法
         private unsafe void CreateSwapchain()
         {
             if (!_gd.PresentAllowed || _surface.Handle == 0 || !CanQuerySurface())
@@ -225,14 +220,10 @@ namespace Ryujinx.Graphics.Vulkan
                     return;
                 }
 
-                // 保存可用的表面格式列表 - 确保这是最新的
                 _availableSurfaceFormats.Clear();
                 _availableSurfaceFormats.AddRange(surfaceFormats);
 
-                // 记录可用的表面格式到日志
                 LogAvailableSurfaceFormats(surfaceFormats);
-                
-                // 记录详细的格式信息
                 LogDetailedFormatInfo();
 
                 if (!TryGetPresentModes(out var presentModes))
@@ -247,15 +238,12 @@ namespace Ryujinx.Graphics.Vulkan
                     imageCount = capabilities.MaxImageCount;
                 }
 
-                // 使用增强的表面格式选择方法
                 var surfaceFormat = ChooseSwapSurfaceFormat(surfaceFormats, _colorSpacePassthroughEnabled);
 
-                // 记录最终选择的表面格式到日志
                 Logger.Info?.Print(LogClass.Gpu, $"Selected surface format: {GetFormatDisplayName(surfaceFormat.Format, surfaceFormat.ColorSpace)}");
 
                 var extent = ChooseSwapExtent(capabilities);
 
-                // 从版本11新增：防止0x0尺寸
                 if (extent.Width == 0 || extent.Height == 0)
                 {
                     _swapchainIsDirty = true;
@@ -270,14 +258,12 @@ namespace Ryujinx.Graphics.Vulkan
 
                 CurrentTransform = capabilities.CurrentTransform;
 
-                // 从版本11改进：更清晰的图像使用标志
                 var usage = ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit;
                 if (!Ryujinx.Common.PlatformInfo.IsBionic)
                 {
-                    usage |= ImageUsageFlags.StorageBit; // 仅桌面平台允许在交换链上使用Storage
+                    usage |= ImageUsageFlags.StorageBit;
                 }
 
-                // 从版本11改进：Android使用Identity变换，其他使用驱动推荐的变换
                 var preTransform = Ryujinx.Common.PlatformInfo.IsBionic
                     ? SurfaceTransformFlagsKHR.IdentityBitKhr
                     : capabilities.CurrentTransform;
@@ -359,7 +345,6 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        // 记录可用表面格式到日志的方法
         private void LogAvailableSurfaceFormats(SurfaceFormatKHR[] availableFormats)
         {
             if (availableFormats.Length == 0)
@@ -375,7 +360,6 @@ namespace Ryujinx.Graphics.Vulkan
                 var format = availableFormats[i];
                 string formatInfo = $"  [{i}] {GetFormatDisplayName(format.Format, format.ColorSpace)}";
                 
-                // 标记常用格式
                 if (format.Format == VkFormat.B8G8R8A8Unorm || format.Format == VkFormat.B8G8R8A8Srgb)
                 {
                     formatInfo += " (Common)";
@@ -389,7 +373,6 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
         
-        // 详细的格式信息显示
         private void LogDetailedFormatInfo()
         {
             Logger.Info?.Print(LogClass.Gpu, "=== Detailed Surface Format Information ===");
@@ -404,7 +387,6 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 string formatInfo = $"Format: {format.Format}, ColorSpace: {format.ColorSpace}";
                 
-                // 添加格式描述
                 switch (format.Format)
                 {
                     case VkFormat.B8G8R8A8Unorm:
@@ -455,13 +437,10 @@ namespace Ryujinx.Graphics.Vulkan
             return new TextureView(_gd, _device, new DisposableImageView(_gd.Api, _device, imageView), info, format);
         }
 
-        // 增强的表面格式选择方法，支持多种首选格式
         private static SurfaceFormatKHR ChooseSwapSurfaceFormat(SurfaceFormatKHR[] availableFormats, bool colorSpacePassthroughEnabled)
         {
-            // 如果启用了自定义表面格式且格式有效，优先使用自定义格式
             if (_useCustomSurfaceFormat && _customFormatValid)
             {
-                // 检查自定义格式是否在可用格式列表中
                 foreach (var format in availableFormats)
                 {
                     if (format.Format == _customSurfaceFormat.Format && 
@@ -472,45 +451,38 @@ namespace Ryujinx.Graphics.Vulkan
                     }
                 }
                 
-                // 如果自定义格式不可用，回退到自动选择并记录警告
                 Logger.Warning?.Print(LogClass.Gpu, $"Custom surface format not available: {GetFormatDisplayName(_customSurfaceFormat.Format, _customSurfaceFormat.ColorSpace)}, falling back to automatic selection");
                 _customFormatValid = false;
             }
 
-            // 定义标准颜色空间常量
             const ColorSpaceKHR StandardColorSpace = ColorSpaceKHR.SpaceSrgbNonlinearKhr;
             
-            // 定义首选格式列表，按优先级排序
             var preferredFormats = new[]
             {
-                VkFormat.B8G8R8A8Unorm,    // 最高优先级 - 最常见的格式
-                VkFormat.R8G8B8A8Unorm,    // 次高优先级 - 也很常见
-                VkFormat.B8G8R8A8Srgb,     // SRGB版本的BGRA
-                VkFormat.R8G8B8A8Srgb,     // SRGB版本的RGBA
-                VkFormat.A2B10G10R10UnormPack32, // 10位格式
-                VkFormat.A2R10G10B10UnormPack32, // 另一种10位格式
+                VkFormat.B8G8R8A8Unorm,
+                VkFormat.R8G8B8A8Unorm,
+                VkFormat.B8G8R8A8Srgb,
+                VkFormat.R8G8B8A8Srgb,
+                VkFormat.A2B10G10R10UnormPack32,
+                VkFormat.A2R10G10B10UnormPack32,
             };
 
-            // 空数组检查 - 返回安全默认值
             if (availableFormats.Length == 0)
             {
                 Logger.Warning?.Print(LogClass.Gpu, "No available surface formats, using fallback format");
                 return new SurfaceFormatKHR(VkFormat.B8G8R8A8Unorm, StandardColorSpace);
             }
 
-            // 特殊格式处理
             if (availableFormats.Length == 1 && availableFormats[0].Format == VkFormat.Undefined)
             {
                 Logger.Info?.Print(LogClass.Gpu, "Surface format undefined, using default format");
                 return new SurfaceFormatKHR(VkFormat.B8G8R8A8Unorm, StandardColorSpace);
             }
 
-            // 修复：使用正确的颜色空间枚举值
             if (colorSpacePassthroughEnabled)
             {
                 Logger.Info?.Print(LogClass.Gpu, "Color space passthrough enabled, looking for compatible formats...");
                 
-                // 优先选择PassThrough格式
                 foreach (var preferredFormat in preferredFormats)
                 {
                     foreach (var format in availableFormats)
@@ -524,7 +496,6 @@ namespace Ryujinx.Graphics.Vulkan
                     }
                 }
                 
-                // 其次选择标准SRGB格式
                 foreach (var preferredFormat in preferredFormats)
                 {
                     foreach (var format in availableFormats)
@@ -542,7 +513,6 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 Logger.Info?.Print(LogClass.Gpu, "Standard color space mode, looking for SRGB formats...");
                 
-                // 标准模式下优先选择SRGB格式
                 foreach (var preferredFormat in preferredFormats)
                 {
                     foreach (var format in availableFormats)
@@ -557,7 +527,6 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
 
-            // 没有匹配时返回第一个可用格式
             var fallbackFormat = availableFormats[0];
             Logger.Info?.Print(LogClass.Gpu, $"No preferred format found, using fallback: {GetFormatDisplayName(fallbackFormat.Format, fallbackFormat.ColorSpace)}");
             return fallbackFormat;
@@ -584,7 +553,7 @@ namespace Ryujinx.Graphics.Vulkan
             if (availablePresentModes.Length == 0)
             {
                 Logger.Warning?.Print(LogClass.Gpu, "No available present modes, using FIFO as fallback");
-                return PresentModeKHR.FifoKhr; // 安全默认值
+                return PresentModeKHR.FifoKhr;
             }
             
             if (!vsyncEnabled && availablePresentModes.Contains(PresentModeKHR.ImmediateKhr))
@@ -617,7 +586,6 @@ namespace Ryujinx.Graphics.Vulkan
             return new Extent2D(width, height);
         }
 
-        // 设置自定义表面格式的方法
         public static void SetCustomSurfaceFormat(VkFormat format, ColorSpaceKHR colorSpace)
         {
             _customSurfaceFormat = new SurfaceFormatKHR(format, colorSpace);
@@ -627,7 +595,6 @@ namespace Ryujinx.Graphics.Vulkan
             Logger.Info?.Print(LogClass.Gpu, $"Custom surface format set: {GetFormatDisplayName(format, colorSpace)}");
         }
 
-        // 清除自定义表面格式设置
         public static void ClearCustomSurfaceFormat()
         {
             _useCustomSurfaceFormat = false;
@@ -635,13 +602,11 @@ namespace Ryujinx.Graphics.Vulkan
             Logger.Info?.Print(LogClass.Gpu, "Custom surface format cleared");
         }
 
-        // 检查自定义表面格式是否可用
         public static bool IsCustomSurfaceFormatValid()
         {
             return _customFormatValid;
         }
 
-        // 获取当前使用的表面格式信息
         public static string GetCurrentSurfaceFormatInfo()
         {
             if (_useCustomSurfaceFormat && _customFormatValid)
@@ -654,12 +619,10 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        // 获取设备支持的表面格式列表（改进版本）
         public static List<SurfaceFormatKHR> GetAvailableSurfaceFormats()
         {
             try
             {
-                // 返回保存的可用格式列表
                 if (_availableSurfaceFormats != null && _availableSurfaceFormats.Count > 0)
                 {
                     Logger.Info?.Print(LogClass.Gpu, $"Returning {_availableSurfaceFormats.Count} cached surface formats");
@@ -678,13 +641,11 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        // 获取格式名称的友好显示
         public static string GetFormatDisplayName(VkFormat format, ColorSpaceKHR colorSpace)
         {
             string formatName = format.ToString();
             string colorSpaceName = colorSpace.ToString();
             
-            // 简化格式名称显示
             if (formatName.StartsWith("B8G8R8A8"))
                 formatName = "BGRA8";
             else if (formatName.StartsWith("R8G8B8A8"))
@@ -698,7 +659,6 @@ namespace Ryujinx.Graphics.Vulkan
             else if (formatName.StartsWith("R16G16B16A16"))
                 formatName = "RGBA16F";
                 
-            // 简化色彩空间名称显示
             if (colorSpaceName.Contains("SrgbNonlinear"))
                 colorSpaceName = "SRGB";
             else if (colorSpaceName.Contains("PassThrough"))
@@ -711,10 +671,8 @@ namespace Ryujinx.Graphics.Vulkan
             return $"{formatName} ({colorSpaceName})";
         }
 
-        // 从版本11改进：增强的Present方法
         public unsafe override void Present(ITexture texture, ImageCrop crop, Action swapBuffersCallback)
         {
-            // 从版本11新增：表面查询权限恢复
             if (!_allowSurfaceQueries && _surface.Handle != 0)
             {
                 _allowSurfaceQueries = true;
@@ -726,7 +684,6 @@ namespace Ryujinx.Graphics.Vulkan
                 return;
             }
 
-            // 从版本11新增：尺寸检查
             if (_width <= 0 || _height <= 0)
             {
                 RecreateSwapchain();
@@ -734,7 +691,6 @@ namespace Ryujinx.Graphics.Vulkan
                 return;
             }
 
-            // 从版本11新增：延迟初始化/恢复
             if (_swapchain.Handle == 0 || _imageAvailableSemaphores == null || _renderFinishedSemaphores == null)
             {
                 try { CreateSwapchain(); } catch { /* 下一帧重试 */ }
@@ -776,7 +732,6 @@ namespace Ryujinx.Graphics.Vulkan
                 }
                 else if (acquireResult == Result.ErrorSurfaceLostKhr)
                 {
-                    // 从版本11改进：在后台不立即重新创建 - 释放并返回
                     _gd.ReleaseSurface();
                     swapBuffersCallback?.Invoke();
                     return;
@@ -794,7 +749,6 @@ namespace Ryujinx.Graphics.Vulkan
 
             var cbs = _gd.CommandBufferPool.Rent();
 
-            // 修改：总是使用图形管线路径，不再使用计算着色器
             Transition(
                 cbs.CommandBuffer,
                 swapchainImage,
@@ -808,6 +762,7 @@ namespace Ryujinx.Graphics.Vulkan
             var view = (TextureView)texture;
 
             UpdateEffect();
+            UpdateScalingFilter();
 
             if (_effect != null)
             {
@@ -873,101 +828,39 @@ namespace Ryujinx.Graphics.Vulkan
             int dstY0 = crop.FlipY ? dstPaddingY : _height - dstPaddingY;
             int dstY1 = crop.FlipY ? _height - dstPaddingY : dstPaddingY;
 
-            // 添加FSR调试日志
-            Logger.Info?.Print(LogClass.Gpu, $"FSR Debug: ScalingFilter={_currentScalingFilter}, Source=({srcX0},{srcY0})-({srcX1},{srcY1}), Destination=({dstX0},{dstY0})-({dstX1},{dstY1})");
-            Logger.Info?.Print(LogClass.Gpu, $"FSR Debug: View size={view.Width}x{view.Height}, Swapchain size={_width}x{_height}");
+            Logger.Info?.Print(LogClass.Gpu, $"Scaling Debug: ScalingFilter={_currentScalingFilter}, Source=({srcX0},{srcY0})-({srcX1},{srcY1}), Destination=({dstX0},{dstY0})-({dstX1},{dstY1})");
+            Logger.Info?.Print(LogClass.Gpu, $"Scaling Debug: View size={view.Width}x{view.Height}, Swapchain size={_width}x{_height}");
 
-            // 修改：使用HelperShader进行FSR缩放和锐化
-            if (_currentScalingFilter == ScalingFilter.Fsr)
+            // 使用缩放过滤器
+            if (_scalingFilter != null)
             {
-                Logger.Info?.Print(LogClass.Gpu, "FSR: Starting FSR processing");
-                
-                // 确保中间纹理存在
-                if (_intermediaryTexture == null || 
-                    _intermediaryTexture.Info.Width != _width || 
-                    _intermediaryTexture.Info.Height != _height)
+                try
                 {
-                    Logger.Info?.Print(LogClass.Gpu, $"FSR: Creating intermediary texture {_width}x{_height}");
-                    
-                    try
-                    {
-                        var originalInfo = view.Info;
-                        var info = new TextureCreateInfo(
-                            _width, _height, originalInfo.Depth, originalInfo.Levels, originalInfo.Samples,
-                            originalInfo.BlockWidth, originalInfo.BlockHeight, originalInfo.BytesPerPixel,
-                            originalInfo.Format, originalInfo.DepthStencilMode, originalInfo.Target,
-                            originalInfo.SwizzleR, originalInfo.SwizzleG, originalInfo.SwizzleB, originalInfo.SwizzleA);
-                        
-                        _intermediaryTexture?.Dispose();
-                        _intermediaryTexture = _gd.CreateTexture(info) as TextureView;
-                        
-                        if (_intermediaryTexture == null)
-                        {
-                            Logger.Error?.Print(LogClass.Gpu, "FSR: Failed to create intermediary texture");
-                        }
-                        else
-                        {
-                            Logger.Info?.Print(LogClass.Gpu, $"FSR: Successfully created intermediary texture {_intermediaryTexture.Width}x{_intermediaryTexture.Height}");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error?.Print(LogClass.Gpu, $"FSR: Error creating intermediary texture: {ex.Message}");
-                    }
-                }
-
-                if (_intermediaryTexture != null)
-                {
-                    // 计算FSR常量
-                    var fsrConstants = CalculateFsrConstants(
+                    _scalingFilter.Run(
+                        view, cbs, 
+                        _swapchainImageViews[nextImage].GetImageView(),
+                        FormatTable.GetFormat(_format), _width, _height,
                         new Extents2D(srcX0, srcY0, srcX1, srcY1),
-                        new Extents2D(dstX0, dstY0, dstX1, dstY1),
-                        _width, _height);
-                        
-                    var rcasConstants = CalculateRcasConstants(_width, _height);
-
-                    Logger.Info?.Print(LogClass.Gpu, $"FSR: Constants calculated - FSR[{fsrConstants.Length}], RCAS[{rcasConstants.Length}]");
-
-                    // 使用HelperShader进行FSR处理
-                    try
-                    {
-                        _gd.HelperShader.BlitColorWithFSR(
-                            _gd, cbs, view, _swapchainImageViews[nextImage],
-                            new Extents2D(srcX0, srcY0, srcX1, srcY1),
-                            new Extents2D(dstX0, dstY0, dstX1, dstY1),
-                            fsrConstants, rcasConstants, _intermediaryTexture);
-                        Logger.Info?.Print(LogClass.Gpu, "FSR: Processing completed successfully");
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error?.Print(LogClass.Gpu, $"FSR: Error during processing: {ex.Message}");
-                        // 如果FSR失败，回退到双线性缩放
-                        Logger.Info?.Print(LogClass.Gpu, "FSR: Falling back to bilinear scaling");
-                        _gd.HelperShader.BlitColor(
-                            _gd, cbs, view, _swapchainImageViews[nextImage],
-                            new Extents2D(srcX0, srcY0, srcX1, srcY1),
-                            new Extents2D(dstX0, dstY1, dstX1, dstY0), // 注意Y坐标翻转
-                            true, true);
-                    }
+                        new Extents2D(dstX0, dstY0, dstX1, dstY1));
                 }
-                else
+                catch (Exception ex)
                 {
-                    Logger.Error?.Print(LogClass.Gpu, "FSR: No intermediary texture available, falling back to bilinear");
+                    Logger.Error?.Print(LogClass.Gpu, $"Scaling filter error: {ex.Message}, falling back to bilinear");
+                    // 回退到双线性
                     _gd.HelperShader.BlitColor(
                         _gd, cbs, view, _swapchainImageViews[nextImage],
                         new Extents2D(srcX0, srcY0, srcX1, srcY1),
-                        new Extents2D(dstX0, dstY1, dstX1, dstY0), // 注意Y坐标翻转
+                        new Extents2D(dstX0, dstY1, dstX1, dstY0),
                         true, true);
                 }
             }
             else
             {
-                // 原有的Bilinear/Nearest处理
-                Logger.Info?.Print(LogClass.Gpu, $"Using {_currentScalingFilter} scaling filter");
+                // 回退到原有的 HelperShader 路径
                 _gd.HelperShader.BlitColor(
                     _gd, cbs, view, _swapchainImageViews[nextImage],
                     new Extents2D(srcX0, srcY0, srcX1, srcY1),
-                    new Extents2D(dstX0, dstY1, dstX1, dstY0), // 注意Y坐标翻转
+                    new Extents2D(dstX0, dstY1, dstX1, dstY0),
                     _isLinear, true);
             }
 
@@ -987,13 +880,11 @@ namespace Ryujinx.Graphics.Vulkan
             var signalSems = new Silk.NET.Vulkan.Semaphore[] { _renderFinishedSemaphores[semaphoreIndex] };
             _gd.CommandBufferPool.Return(cbs, waitSems, waitStages, signalSems);
 
-            // 从版本11新增：使用PresentOne方法
             PresentOne(_gd, _renderFinishedSemaphores[semaphoreIndex], _swapchain, nextImage);
 
             swapBuffersCallback?.Invoke();
         }
 
-        // 从版本11新增：PresentOne辅助方法
         private static unsafe void PresentOne(
             VulkanRenderer gd,
             Silk.NET.Vulkan.Semaphore signal,
@@ -1025,7 +916,6 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        // 从版本11改进：增强的Transition方法
         private unsafe void Transition(
             CommandBuffer commandBuffer,
             Image image,
@@ -1079,14 +969,23 @@ namespace Ryujinx.Graphics.Vulkan
         public override void SetScalingFilter(ScalingFilter type)
         {
             Logger.Info?.Print(LogClass.Gpu, $"Setting scaling filter to: {type}");
-            if (_currentScalingFilter == type)
+            if (_currentScalingFilter == type && _scalingFilter != null)
             {
                 return;
             }
 
             _currentScalingFilter = type;
-
             _updateScalingFilter = true;
+        }
+
+        public override void SetScalingFilterLevel(float level)
+        {
+            Logger.Info?.Print(LogClass.Gpu, $"Setting scaling filter level to: {level}");
+            _scalingFilterLevel = level;
+            if (_scalingFilter != null)
+            {
+                _scalingFilter.Level = level;
+            }
         }
 
         public override void SetColorSpacePassthrough(bool colorSpacePassthroughEnabled)
@@ -1128,34 +1027,47 @@ namespace Ryujinx.Graphics.Vulkan
                         break;
                 }
             }
+        }
 
+        private void UpdateScalingFilter()
+        {
             if (_updateScalingFilter)
             {
                 _updateScalingFilter = false;
+                
+                _scalingFilter?.Dispose();
+                _scalingFilter = null;
 
                 switch (_currentScalingFilter)
                 {
                     case ScalingFilter.Bilinear:
+                        _isLinear = true;
+                        break;
                     case ScalingFilter.Nearest:
-                        _isLinear = _currentScalingFilter == ScalingFilter.Bilinear;
-                        Logger.Info?.Print(LogClass.Gpu, $"Scaling filter updated: Linear={_isLinear}");
+                        _isLinear = false;
                         break;
                     case ScalingFilter.Fsr:
-                        Logger.Info?.Print(LogClass.Gpu, "FSR scaling filter activated");
-                        // FSR在HelperShader中实现，不需要特殊处理
+                        try
+                        {
+                            _scalingFilter = new FsrScalingFilter(_gd, _device);
+                            _scalingFilter.Level = _scalingFilterLevel;
+                            Logger.Info?.Print(LogClass.Gpu, "FSR scaling filter created successfully");
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Error?.Print(LogClass.Gpu, $"Failed to create FSR scaling filter: {ex.Message}");
+                            _scalingFilter = null;
+                            _isLinear = true; // 回退到双线性
+                        }
                         break;
                     case ScalingFilter.Area:
-                        // Area缩放过滤器的处理保持不变
-                        Logger.Info?.Print(LogClass.Gpu, "Area scaling filter activated");
+                        // 可以创建 AreaScalingFilter
+                        _isLinear = true;
                         break;
                 }
+                
+                Logger.Info?.Print(LogClass.Gpu, $"Scaling filter updated: {_currentScalingFilter}, Level: {_scalingFilterLevel}");
             }
-        }
-
-        public override void SetScalingFilterLevel(float level)
-        {
-            Logger.Info?.Print(LogClass.Gpu, $"Setting scaling filter level to: {level}");
-            _scalingFilterLevel = level;
         }
 
         private void CaptureFrame(TextureView texture, int x, int y, int width, int height, bool isBgra, bool flipX, bool flipY)
@@ -1165,14 +1077,10 @@ namespace Ryujinx.Graphics.Vulkan
             _gd.OnScreenCaptured(new ScreenCaptureImageInfo(width, height, isBgra, bitmap, flipX, flipY));
         }
 
-        // 从版本11改进：增强的SetSize方法
         public override void SetSize(int width, int height)
         {
-            // We don't need to use width and height as we can get the size from the surface.
             _swapchainIsDirty = true;
 
-            // 从版本11新增：在恢复后确保表面查询再次允许，
-            // 如果之前OnSurfaceLost()关闭了门控。
             if (_surface.Handle != 0)
             {
                 SetSurfaceQueryAllowed(true);
@@ -1182,16 +1090,13 @@ namespace Ryujinx.Graphics.Vulkan
         public override void ChangeVSyncMode(bool vsyncEnabled)
         {
             _vsyncEnabled = vsyncEnabled;
-            // 呈现模式可能改变，因此标记交换链需要重新创建
             _swapchainIsDirty = true;
         }
 
-        // 从版本11新增：表面丢失处理方法
         public void OnSurfaceLost()
         {
             lock (_gd.SurfaceLock)
             {
-                // 硬清理操作，确保恢复后没有"旧"内容残留
                 _swapchainIsDirty = true;
                 SetSurfaceQueryAllowed(false);
 
@@ -1240,179 +1145,10 @@ namespace Ryujinx.Graphics.Vulkan
                 }
 
                 _surface = new SurfaceKHR(0);
-                _width = _height = 0; // 强制后续进行干净的重新创建路径
+                _width = _height = 0;
             }
         }
 
-        // FSR常量计算方法
-        private float[] CalculateFsrConstants(Extents2D source, Extents2D destination, int width, int height)
-        {
-            Logger.Info?.Print(LogClass.Gpu, $"FSR: Calculating constants for source={source}, destination={destination}, output={width}x{height}");
-            
-            float viewportWidth = Math.Abs(source.X2 - source.X1);
-            float viewportHeight = Math.Abs(source.Y2 - source.Y1);
-            float viewportX = source.X1;
-            float viewportY = source.Y1;
-            
-            float inputWidth = viewportWidth;
-            float inputHeight = viewportHeight;
-            float outputWidth = width;
-            float outputHeight = height;
-
-            Logger.Info?.Print(LogClass.Gpu, $"FSR: Viewport={viewportWidth}x{viewportHeight} at ({viewportX},{viewportY})");
-
-            // 计算EASU常量
-            Span<uint> con0 = stackalloc uint[4];
-            Span<uint> con1 = stackalloc uint[4]; 
-            Span<uint> con2 = stackalloc uint[4];
-            Span<uint> con3 = stackalloc uint[4];
-            
-            FsrEasuConOffset(
-                con0, con1, con2, con3,
-                viewportWidth, viewportHeight,
-                inputWidth, inputHeight, 
-                outputWidth, outputHeight,
-                viewportX, viewportY);
-
-            float[] constants = new float[16];
-            
-            // con0
-            constants[0] = BitConverter.UInt32BitsToSingle(con0[0]);
-            constants[1] = BitConverter.UInt32BitsToSingle(con0[1]);
-            constants[2] = BitConverter.UInt32BitsToSingle(con0[2]);
-            constants[3] = BitConverter.UInt32BitsToSingle(con0[3]);
-            
-            // con1
-            constants[4] = BitConverter.UInt32BitsToSingle(con1[0]);
-            constants[5] = BitConverter.UInt32BitsToSingle(con1[1]);
-            constants[6] = BitConverter.UInt32BitsToSingle(con1[2]);
-            constants[7] = BitConverter.UInt32BitsToSingle(con1[3]);
-            
-            // con2
-            constants[8] = BitConverter.UInt32BitsToSingle(con2[0]);
-            constants[9] = BitConverter.UInt32BitsToSingle(con2[1]);
-            constants[10] = BitConverter.UInt32BitsToSingle(con2[2]);
-            constants[11] = BitConverter.UInt32BitsToSingle(con2[3]);
-            
-            // con3
-            constants[12] = BitConverter.UInt32BitsToSingle(con3[0]);
-            constants[13] = BitConverter.UInt32BitsToSingle(con3[1]);
-            constants[14] = BitConverter.UInt32BitsToSingle(con3[2]);
-            constants[15] = BitConverter.UInt32BitsToSingle(con3[3]);
-
-            Logger.Info?.Print(LogClass.Gpu, $"FSR: Constants calculated successfully");
-            return constants;
-        }
-
-        private float[] CalculateRcasConstants(int width, int height)
-        {
-            // 计算RCAS常量
-            Span<uint> rcasCon = stackalloc uint[4];
-            FsrRcasCon(rcasCon, _scalingFilterLevel);
-
-            Logger.Info?.Print(LogClass.Gpu, $"FSR: RCAS sharpness level = {_scalingFilterLevel}");
-
-            float[] constants = new float[7];
-            
-            // RCAS常量
-            constants[0] = BitConverter.UInt32BitsToSingle(rcasCon[0]); // sharpness
-            constants[1] = BitConverter.UInt32BitsToSingle(rcasCon[1]);
-            constants[2] = BitConverter.UInt32BitsToSingle(rcasCon[2]);
-            constants[3] = BitConverter.UInt32BitsToSingle(rcasCon[3]);
-            
-            // 纹理尺寸
-            constants[4] = width;
-            constants[5] = height;
-            constants[6] = 0.0f; // 填充
-
-            return constants;
-        }
-
-        // FSR常量计算器
-        private static void FsrEasuConOffset(
-            Span<uint> con0,
-            Span<uint> con1, 
-            Span<uint> con2,
-            Span<uint> con3,
-            float viewportWidth,
-            float viewportHeight,
-            float inputImageWidth,
-            float inputImageHeight,
-            float outputImageWidth, 
-            float outputImageHeight,
-            float viewportX,
-            float viewportY)
-        {
-            // 基于FFX FSR的EASU常量计算
-            float srcW = viewportWidth;
-            float srcH = viewportHeight;
-            float dstW = outputImageWidth;
-            float dstH = outputImageHeight;
-            
-            const float kEPS = 1e-6f;
-            
-            float rcpW = 1.0f / srcW;
-            float rcpH = 1.0f / srcH;
-            
-            float translateX = -viewportX * rcpW;
-            float translateY = -viewportY * rcpH;
-            
-            float scaleX = dstW * rcpW;
-            float scaleY = dstH * rcpH;
-            
-            float subpixelX = 0.5f * rcpW;
-            float subpixelY = 0.5f * rcpH;
-            
-            float kernelSize = 2.0f;
-            float rcpTextureSizeX = 1.0f / inputImageWidth;
-            float rcpTextureSizeY = 1.0f / inputImageHeight;
-
-            // con0 - 视口边界
-            con0[0] = ToUint(viewportX * rcpTextureSizeX);
-            con0[1] = ToUint(viewportY * rcpTextureSizeY);
-            con0[2] = ToUint((viewportX + srcW) * rcpTextureSizeX);
-            con0[3] = ToUint((viewportY + srcH) * rcpTextureSizeY);
-
-            // con1 - 缩放参数
-            con1[0] = ToUint(scaleX);
-            con1[1] = ToUint(scaleY);
-            con1[2] = ToUint(scaleX * kernelSize - 0.5f - subpixelX);
-            con1[3] = ToUint(scaleY * kernelSize - 0.5f - subpixelY);
-
-            // con2 - 子像素偏移
-            con2[0] = ToUint(0.0f);
-            con2[1] = ToUint(0.0f);
-            con2[2] = ToUint(subpixelX);
-            con2[3] = ToUint(subpixelY);
-
-            // con3 - 倒数参数
-            con3[0] = ToUint(rcpW);
-            con3[1] = ToUint(rcpH);
-            con3[2] = ToUint(rcpTextureSizeX);
-            con3[3] = ToUint(rcpTextureSizeY);
-        }
-
-        private static void FsrRcasCon(Span<uint> constants, float sharpness)
-        {
-            // 基于FFX FSR的RCAS常量计算
-            // 锐化调整 - 将[0,1]范围转换为RCAS参数
-            float sharp = 1.0f - sharpness * 0.99f;
-            float sharpScale = sharp * 8.0f;
-
-            // con0 - 锐化参数
-            constants[0] = ToUint(sharpScale);
-            constants[1] = ToUint(sharpScale);
-            constants[2] = ToUint(sharpScale);
-            constants[3] = ToUint(0.0f);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static uint ToUint(float value)
-        {
-            return BitConverter.SingleToUInt32Bits(value);
-        }
-
-        // 从版本11改进：增强的Dispose方法
         protected virtual void Dispose(bool disposing)
         {
             if (disposing)
@@ -1459,7 +1195,7 @@ namespace Ryujinx.Graphics.Vulkan
                 }
 
                 _effect?.Dispose();
-                _intermediaryTexture?.Dispose();
+                _scalingFilter?.Dispose();
             }
         }
 
