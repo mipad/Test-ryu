@@ -48,8 +48,8 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             {
                 _programFSRScaling = gd.CreateProgramWithMinimalLayout(new[]
                 {
-                    new ShaderSource(Encoding.UTF8.GetString(ReadSpirv("FsrScaling.vert.spv")), ShaderStage.Vertex),
-                    new ShaderSource(Encoding.UTF8.GetString(ReadSpirv("FsrScaling.frag.spv")), ShaderStage.Fragment)
+                    new ShaderSource(ReadSpirv("FsrScaling.vert.spv"), Ryujinx.Graphics.GAL.ShaderStage.Vertex),
+                    new ShaderSource(ReadSpirv("FsrScaling.frag.spv"), Ryujinx.Graphics.GAL.ShaderStage.Fragment)
                 }, fsrScalingResourceLayout);
                 Logger.Info?.Print(LogClass.Gpu, "FSR scaling shader program created successfully");
             }
@@ -63,8 +63,8 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             {
                 _programFSRSharpening = gd.CreateProgramWithMinimalLayout(new[]
                 {
-                    new ShaderSource(Encoding.UTF8.GetString(ReadSpirv("FsrScaling.vert.spv")), ShaderStage.Vertex),
-                    new ShaderSource(Encoding.UTF8.GetString(ReadSpirv("FsrSharpening.frag.spv")), ShaderStage.Fragment)
+                    new ShaderSource(ReadSpirv("FsrScaling.vert.spv"), Ryujinx.Graphics.GAL.ShaderStage.Vertex),
+                    new ShaderSource(ReadSpirv("FsrSharpening.frag.spv"), Ryujinx.Graphics.GAL.ShaderStage.Fragment)
                 }, fsrSharpeningResourceLayout);
                 Logger.Info?.Print(LogClass.Gpu, "FSR sharpening shader program created successfully");
             }
