@@ -1,7 +1,6 @@
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Vulkan.Effects;
 using Silk.NET.Vulkan;
-using Silk.NET.Vulkan.Extensions.KHR;
 using System;
 using System.Linq;
 using System.Collections.Generic;
@@ -874,43 +873,97 @@ namespace Ryujinx.Graphics.Vulkan
             int dstY0 = crop.FlipY ? dstPaddingY : _height - dstPaddingY;
             int dstY1 = crop.FlipY ? _height - dstPaddingY : dstPaddingY;
 
+            // 添加FSR调试日志
+            Logger.Info?.Print(LogClass.Gpu, $"FSR Debug: ScalingFilter={_currentScalingFilter}, Source=({srcX0},{srcY0})-({srcX1},{srcY1}), Destination=({dstX0},{dstY0})-({dstX1},{dstY1})");
+            Logger.Info?.Print(LogClass.Gpu, $"FSR Debug: View size={view.Width}x{view.Height}, Swapchain size={_width}x{_height}");
+
             // 修改：使用HelperShader进行FSR缩放和锐化
             if (_currentScalingFilter == ScalingFilter.Fsr)
             {
+                Logger.Info?.Print(LogClass.Gpu, "FSR: Starting FSR processing");
+                
                 // 确保中间纹理存在
                 if (_intermediaryTexture == null || 
                     _intermediaryTexture.Info.Width != _width || 
                     _intermediaryTexture.Info.Height != _height)
                 {
-                    var originalInfo = view.Info;
-                    var info = new TextureCreateInfo(
-                        _width, _height, originalInfo.Depth, originalInfo.Levels, originalInfo.Samples,
-                        originalInfo.BlockWidth, originalInfo.BlockHeight, originalInfo.BytesPerPixel,
-                        originalInfo.Format, originalInfo.DepthStencilMode, originalInfo.Target,
-                        originalInfo.SwizzleR, originalInfo.SwizzleG, originalInfo.SwizzleB, originalInfo.SwizzleA);
+                    Logger.Info?.Print(LogClass.Gpu, $"FSR: Creating intermediary texture {_width}x{_height}");
                     
-                    _intermediaryTexture?.Dispose();
-                    _intermediaryTexture = _gd.CreateTexture(info) as TextureView;
+                    try
+                    {
+                        var originalInfo = view.Info;
+                        var info = new TextureCreateInfo(
+                            _width, _height, originalInfo.Depth, originalInfo.Levels, originalInfo.Samples,
+                            originalInfo.BlockWidth, originalInfo.BlockHeight, originalInfo.BytesPerPixel,
+                            originalInfo.Format, originalInfo.DepthStencilMode, originalInfo.Target,
+                            originalInfo.SwizzleR, originalInfo.SwizzleG, originalInfo.SwizzleB, originalInfo.SwizzleA);
+                        
+                        _intermediaryTexture?.Dispose();
+                        _intermediaryTexture = _gd.CreateTexture(info) as TextureView;
+                        
+                        if (_intermediaryTexture == null)
+                        {
+                            Logger.Error?.Print(LogClass.Gpu, "FSR: Failed to create intermediary texture");
+                        }
+                        else
+                        {
+                            Logger.Info?.Print(LogClass.Gpu, $"FSR: Successfully created intermediary texture {_intermediaryTexture.Width}x{_intermediaryTexture.Height}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error?.Print(LogClass.Gpu, $"FSR: Error creating intermediary texture: {ex.Message}");
+                    }
                 }
 
-                // 计算FSR常量
-                var fsrConstants = CalculateFsrConstants(
-                    new Extents2D(srcX0, srcY0, srcX1, srcY1),
-                    new Extents2D(dstX0, dstY0, dstX1, dstY1),
-                    _width, _height);
-                    
-                var rcasConstants = CalculateRcasConstants(_width, _height);
+                if (_intermediaryTexture != null)
+                {
+                    // 计算FSR常量
+                    var fsrConstants = CalculateFsrConstants(
+                        new Extents2D(srcX0, srcY0, srcX1, srcY1),
+                        new Extents2D(dstX0, dstY0, dstX1, dstY1),
+                        _width, _height);
+                        
+                    var rcasConstants = CalculateRcasConstants(_width, _height);
 
-                // 使用HelperShader进行FSR处理
-                _gd.HelperShader.BlitColorWithFSR(
-                    _gd, cbs, view, _swapchainImageViews[nextImage],
-                    new Extents2D(srcX0, srcY0, srcX1, srcY1),
-                    new Extents2D(dstX0, dstY0, dstX1, dstY1),
-                    fsrConstants, rcasConstants, _intermediaryTexture);
+                    Logger.Info?.Print(LogClass.Gpu, $"FSR: Constants calculated - FSR[{fsrConstants.Length}], RCAS[{rcasConstants.Length}]");
+
+                    // 使用HelperShader进行FSR处理
+                    try
+                    {
+                        _gd.HelperShader.BlitColorWithFSR(
+                            _gd, cbs, view, _swapchainImageViews[nextImage],
+                            new Extents2D(srcX0, srcY0, srcX1, srcY1),
+                            new Extents2D(dstX0, dstY0, dstX1, dstY1),
+                            fsrConstants, rcasConstants, _intermediaryTexture);
+                        Logger.Info?.Print(LogClass.Gpu, "FSR: Processing completed successfully");
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error?.Print(LogClass.Gpu, $"FSR: Error during processing: {ex.Message}");
+                        // 如果FSR失败，回退到双线性缩放
+                        Logger.Info?.Print(LogClass.Gpu, "FSR: Falling back to bilinear scaling");
+                        _gd.HelperShader.BlitColor(
+                            _gd, cbs, view, _swapchainImageViews[nextImage],
+                            new Extents2D(srcX0, srcY0, srcX1, srcY1),
+                            new Extents2D(dstX0, dstY1, dstX1, dstY0), // 注意Y坐标翻转
+                            true, true);
+                    }
+                }
+                else
+                {
+                    Logger.Error?.Print(LogClass.Gpu, "FSR: No intermediary texture available, falling back to bilinear");
+                    _gd.HelperShader.BlitColor(
+                        _gd, cbs, view, _swapchainImageViews[nextImage],
+                        new Extents2D(srcX0, srcY0, srcX1, srcY1),
+                        new Extents2D(dstX0, dstY1, dstX1, dstY0), // 注意Y坐标翻转
+                        true, true);
+                }
             }
             else
             {
                 // 原有的Bilinear/Nearest处理
+                Logger.Info?.Print(LogClass.Gpu, $"Using {_currentScalingFilter} scaling filter");
                 _gd.HelperShader.BlitColor(
                     _gd, cbs, view, _swapchainImageViews[nextImage],
                     new Extents2D(srcX0, srcY0, srcX1, srcY1),
@@ -1025,6 +1078,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         public override void SetScalingFilter(ScalingFilter type)
         {
+            Logger.Info?.Print(LogClass.Gpu, $"Setting scaling filter to: {type}");
             if (_currentScalingFilter == type)
             {
                 return;
@@ -1084,12 +1138,15 @@ namespace Ryujinx.Graphics.Vulkan
                     case ScalingFilter.Bilinear:
                     case ScalingFilter.Nearest:
                         _isLinear = _currentScalingFilter == ScalingFilter.Bilinear;
+                        Logger.Info?.Print(LogClass.Gpu, $"Scaling filter updated: Linear={_isLinear}");
                         break;
                     case ScalingFilter.Fsr:
+                        Logger.Info?.Print(LogClass.Gpu, "FSR scaling filter activated");
                         // FSR在HelperShader中实现，不需要特殊处理
                         break;
                     case ScalingFilter.Area:
                         // Area缩放过滤器的处理保持不变
+                        Logger.Info?.Print(LogClass.Gpu, "Area scaling filter activated");
                         break;
                 }
             }
@@ -1097,6 +1154,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         public override void SetScalingFilterLevel(float level)
         {
+            Logger.Info?.Print(LogClass.Gpu, $"Setting scaling filter level to: {level}");
             _scalingFilterLevel = level;
         }
 
@@ -1189,6 +1247,8 @@ namespace Ryujinx.Graphics.Vulkan
         // FSR常量计算方法
         private float[] CalculateFsrConstants(Extents2D source, Extents2D destination, int width, int height)
         {
+            Logger.Info?.Print(LogClass.Gpu, $"FSR: Calculating constants for source={source}, destination={destination}, output={width}x{height}");
+            
             float viewportWidth = Math.Abs(source.X2 - source.X1);
             float viewportHeight = Math.Abs(source.Y2 - source.Y1);
             float viewportX = source.X1;
@@ -1198,6 +1258,8 @@ namespace Ryujinx.Graphics.Vulkan
             float inputHeight = viewportHeight;
             float outputWidth = width;
             float outputHeight = height;
+
+            Logger.Info?.Print(LogClass.Gpu, $"FSR: Viewport={viewportWidth}x{viewportHeight} at ({viewportX},{viewportY})");
 
             // 计算EASU常量
             Span<uint> con0 = stackalloc uint[4];
@@ -1238,6 +1300,7 @@ namespace Ryujinx.Graphics.Vulkan
             constants[14] = BitConverter.UInt32BitsToSingle(con3[2]);
             constants[15] = BitConverter.UInt32BitsToSingle(con3[3]);
 
+            Logger.Info?.Print(LogClass.Gpu, $"FSR: Constants calculated successfully");
             return constants;
         }
 
@@ -1246,6 +1309,8 @@ namespace Ryujinx.Graphics.Vulkan
             // 计算RCAS常量
             Span<uint> rcasCon = stackalloc uint[4];
             FsrRcasCon(rcasCon, _scalingFilterLevel);
+
+            Logger.Info?.Print(LogClass.Gpu, $"FSR: RCAS sharpness level = {_scalingFilterLevel}");
 
             float[] constants = new float[7];
             

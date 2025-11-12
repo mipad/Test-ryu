@@ -227,15 +227,34 @@ namespace Ryujinx.Graphics.Vulkan
                 .Add(ResourceStages.Fragment, ResourceType.UniformBuffer, 2) // RCAS常量
                 .Add(ResourceStages.Fragment, ResourceType.TextureAndSampler, 0).Build();
 
-            _programFSRScaling = gd.CreateProgramWithMinimalLayout([
-                new ShaderSource(ReadSpirv("FSRScalingVertex.spv"), ShaderStage.Vertex, TargetLanguage.Spirv),
-                new ShaderSource(ReadSpirv("FSRScalingFragment.spv"), ShaderStage.Fragment, TargetLanguage.Spirv)
-            ], fsrScalingResourceLayout);
+            // 添加FSR着色器创建日志
+            try
+            {
+                _programFSRScaling = gd.CreateProgramWithMinimalLayout([
+                    new ShaderSource(ReadSpirv("FSRScalingVertex.spv"), ShaderStage.Vertex, TargetLanguage.Spirv),
+                    new ShaderSource(ReadSpirv("FSRScalingFragment.spv"), ShaderStage.Fragment, TargetLanguage.Spirv)
+                ], fsrScalingResourceLayout);
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "FSR scaling shader program created successfully");
+            }
+            catch (Exception ex)
+            {
+                Ryujinx.Common.Logging.Logger.Error?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"Failed to create FSR scaling shader program: {ex.Message}");
+                throw;
+            }
 
-            _programFSRSharpening = gd.CreateProgramWithMinimalLayout([
-                new ShaderSource(ReadSpirv("FSRScalingVertex.spv"), ShaderStage.Vertex, TargetLanguage.Spirv),
-                new ShaderSource(ReadSpirv("FSRSharpeningFragment.spv"), ShaderStage.Fragment, TargetLanguage.Spirv)
-            ], fsrSharpeningResourceLayout);
+            try
+            {
+                _programFSRSharpening = gd.CreateProgramWithMinimalLayout([
+                    new ShaderSource(ReadSpirv("FSRScalingVertex.spv"), ShaderStage.Vertex, TargetLanguage.Spirv),
+                    new ShaderSource(ReadSpirv("FSRSharpeningFragment.spv"), ShaderStage.Fragment, TargetLanguage.Spirv)
+                ], fsrSharpeningResourceLayout);
+                Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "FSR sharpening shader program created successfully");
+            }
+            catch (Exception ex)
+            {
+                Ryujinx.Common.Logging.Logger.Error?.Print(Ryujinx.Common.Logging.LogClass.Gpu, $"Failed to create FSR sharpening shader program: {ex.Message}");
+                throw;
+            }
         }
 
         private static byte[] ReadSpirv(string fileName)
@@ -484,6 +503,8 @@ namespace Ryujinx.Graphics.Vulkan
             Extents2D dstRegion,
             ReadOnlySpan<float> fsrConstants)
         {
+            Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "FSR: Starting scaling pass");
+
             _pipeline.SetCommandBuffer(cbs);
 
             const int RegionBufferSize = 16;
@@ -543,6 +564,12 @@ namespace Ryujinx.Graphics.Vulkan
                 1f);
 
             // 设置FSR缩放着色器程序
+            if (_programFSRScaling == null)
+            {
+                Ryujinx.Common.Logging.Logger.Error?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "FSR: Scaling program is null");
+                throw new InvalidOperationException("FSR scaling program is not available");
+            }
+
             _pipeline.SetProgram(_programFSRScaling);
 
             int dstWidth = dst.Width;
@@ -556,6 +583,7 @@ namespace Ryujinx.Graphics.Vulkan
             _pipeline.Draw(4, 1, 0, 0);
 
             _pipeline.Finish(gd, cbs);
+            Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "FSR: Scaling pass completed");
         }
 
         // 新增：FSR锐化通道
@@ -568,6 +596,8 @@ namespace Ryujinx.Graphics.Vulkan
             Extents2D dstRegion,
             ReadOnlySpan<float> rcasConstants)
         {
+            Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "FSR: Starting sharpening pass");
+
             _pipeline.SetCommandBuffer(cbs);
 
             const int RegionBufferSize = 16;
@@ -627,6 +657,12 @@ namespace Ryujinx.Graphics.Vulkan
                 1f);
 
             // 设置FSR锐化着色器程序
+            if (_programFSRSharpening == null)
+            {
+                Ryujinx.Common.Logging.Logger.Error?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "FSR: Sharpening program is null");
+                throw new InvalidOperationException("FSR sharpening program is not available");
+            }
+
             _pipeline.SetProgram(_programFSRSharpening);
 
             int dstWidth = dst.Width;
@@ -640,6 +676,7 @@ namespace Ryujinx.Graphics.Vulkan
             _pipeline.Draw(4, 1, 0, 0);
 
             _pipeline.Finish(gd, cbs);
+            Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "FSR: Sharpening pass completed");
         }
 
         // 新增：完整的FSR处理（缩放+锐化）
@@ -654,6 +691,20 @@ namespace Ryujinx.Graphics.Vulkan
             ReadOnlySpan<float> rcasConstants,
             TextureView intermediateTexture)
         {
+            Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "FSR: Starting full FSR processing");
+
+            if (intermediateTexture == null)
+            {
+                Ryujinx.Common.Logging.Logger.Error?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "FSR: Intermediate texture is null");
+                throw new ArgumentNullException(nameof(intermediateTexture));
+            }
+
+            if (_programFSRScaling == null || _programFSRSharpening == null)
+            {
+                Ryujinx.Common.Logging.Logger.Error?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "FSR: Shader programs not available");
+                throw new InvalidOperationException("FSR shader programs are not initialized");
+            }
+
             // 第一遍：缩放
             BlitColorWithFSRScaling(gd, cbs, src, intermediateTexture, srcRegion, dstRegion, fsrConstants);
             
@@ -661,6 +712,8 @@ namespace Ryujinx.Graphics.Vulkan
             BlitColorWithFSRSharpening(gd, cbs, intermediateTexture, dst, 
                 new Extents2D(0, 0, intermediateTexture.Width, intermediateTexture.Height),
                 dstRegion, rcasConstants);
+
+            Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Gpu, "FSR: Full processing completed");
         }
 
         private void BlitDepthStencil(
@@ -1162,7 +1215,7 @@ namespace Ryujinx.Graphics.Vulkan
             memoryBarrierCount: 0,
             pMemoryBarriers: null,
             bufferMemoryBarrierCount: (uint)postBarriers.Length,
-            pBufferMemoryBarriers: pPostBarriers,
+            pBufferMemoryBarriers = pPostBarriers,
             imageMemoryBarrierCount: 0,
             pImageMemoryBarriers: null
         );
