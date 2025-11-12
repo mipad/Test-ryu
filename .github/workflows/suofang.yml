@@ -5,7 +5,7 @@ on:
     branches: [ "缩放new" ] 
     paths:
       - 'src/Ryujinx.Graphics.Vulkan/Effects/Shaders/**'
-      - 'suofang.yml'  # 添加 suofang.yml 作为触发条件
+      - '.github/workflows/suofang.yml'  # 添加对工作流文件本身的监控
   workflow_dispatch:
 
 jobs:
@@ -27,31 +27,13 @@ jobs:
         ref: 缩放new
         path: Test-ryu
 
-    # ========== 2. 显示触发信息 ==========
-    - name: Display Trigger Info
-      working-directory: ${{ github.workspace }}/Test-ryu
-      run: |
-        echo "🎯 触发信息:"
-        echo "  分支: ${{ github.ref }}"
-        echo "  提交: ${{ github.sha }}"
-        echo "  触发文件: ${{ github.event.head_commit.modified || '未知' }}"
-        
-        # 检查 suofang.yml 是否存在
-        if [ -f "suofang.yml" ]; then
-          echo "✅ suofang.yml 存在"
-          echo "   文件大小: $(stat -c%s "suofang.yml") 字节"
-          echo "   修改时间: $(stat -c%y "suofang.yml")"
-        else
-          echo "⚠️  suofang.yml 不存在，但工作流被触发"
-        fi
-
-    # ========== 3. 安装编译工具 ==========
+    # ========== 2. 安装编译工具 ==========
     - name: Install Compilation Tools
       run: |
         sudo apt-get update
         sudo apt-get install -y glslang-tools spirv-tools zip
 
-    # ========== 4. 验证头文件 ==========
+    # ========== 3. 验证头文件 ==========
     - name: Verify FSR Header Files
       working-directory: ${{ github.workspace }}/Test-ryu
       run: |
@@ -90,7 +72,7 @@ jobs:
         
         echo "✅ 所有FSR头文件验证通过"
 
-    # ========== 5. 编译着色器 ==========
+    # ========== 4. 编译着色器 ==========
     - name: Compile Shaders to SPIR-V
       working-directory: ${{ github.workspace }}/Test-ryu
       run: |
@@ -135,7 +117,7 @@ jobs:
         find "$OUTPUT_DIR" -name "*.spv" | wc -l | xargs echo "  生成文件数:"
         find "$OUTPUT_DIR" -name "*.spv" -exec ls -lh {} \; | sed 's/^/   /'
 
-    # ========== 6. 验证编译结果 ==========
+    # ========== 5. 验证编译结果 ==========
     - name: Validate SPIR-V Files
       working-directory: ${{ github.workspace }}/Test-ryu
       run: |
@@ -158,7 +140,7 @@ jobs:
           echo "  📄 $(basename "$file") - $size 字节"
         done
 
-    # ========== 7. 创建ZIP包 ==========
+    # ========== 6. 创建ZIP包 ==========
     - name: Create ZIP Package
       working-directory: ${{ github.workspace }}/Test-ryu
       run: |
@@ -173,7 +155,6 @@ jobs:
         - 提交: ${{ github.sha }}
         - 编译时间: $(date -u)
         - 包含FSR头文件: 是
-        - 触发方式: ${{ github.event_name }}
         
         ## 文件列表
         $(find "$OUTPUT_DIR" -name "*.spv" | while read file; do
@@ -184,12 +165,6 @@ jobs:
         ## 使用说明
         这些SPIR-V文件已包含FSR (FidelityFX Super Resolution) 功能。
         在Vulkan应用程序中直接使用即可。
-        
-        ## 触发方式说明
-        本次编译由以下方式触发:
-        - 修改 suofang.yml 文件
-        - 或修改着色器源文件
-        - 或手动触发工作流
         EOF
         
         # 创建ZIP文件
@@ -197,27 +172,10 @@ jobs:
         
         echo "✅ ZIP包创建完成: $(ls -lh "$ZIP_NAME")"
 
-    # ========== 8. 上传ZIP制品 ==========
+    # ========== 7. 上传ZIP制品 ==========
     - name: Upload ZIP Artifact
       uses: actions/upload-artifact@v4
       with:
         name: compiled-shaders-with-fsr
         path: ${{ github.workspace }}/Test-ryu/${{ env.ZIP_NAME }}
         retention-days: 30
-
-    # ========== 9. 创建触发标记文件（可选） ==========
-    - name: Create Trigger Marker
-      working-directory: ${{ github.workspace }}/Test-ryu
-      run: |
-        # 创建一个标记文件，记录本次编译的触发信息
-        cat > "$OUTPUT_DIR/trigger-info.txt" << EOF
-        编译触发信息:
-        - 工作流: ${{ github.workflow }}
-        - 触发事件: ${{ github.event_name }}
-        - 触发分支: ${{ github.ref }}
-        - 提交SHA: ${{ github.sha }}
-        - 触发时间: $(date -u)
-        - 触发方式: ${{ github.event_name == 'workflow_dispatch' && '手动触发' || '代码推送' }}
-        EOF
-        
-        echo "📝 触发信息已记录"
