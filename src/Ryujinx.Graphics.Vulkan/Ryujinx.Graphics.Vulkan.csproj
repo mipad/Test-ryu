@@ -17,6 +17,9 @@
     <EmbeddedResource Include="Effects\Textures\SmaaSearchTexture.bin" />
     <EmbeddedResource Include="Effects\Shaders\AreaScaling.spv" />
     <EmbeddedResource Include="Effects\Shaders\FsrScaling.spv" />
+    <EmbeddedResource Include="Effects\Shaders\FsrSharpening.frag.spv" />
+    <EmbeddedResource Include="Effects\Shaders\FsrScaling.vert.spv" />
+    <EmbeddedResource Include="Effects\Shaders\FsrScaling.frag.spv" />
     <EmbeddedResource Include="Effects\Shaders\FsrSharpening.spv" />
     <EmbeddedResource Include="Effects\Shaders\Fxaa.spv" />
     <EmbeddedResource Include="Effects\Shaders\SmaaBlend.spv" />
