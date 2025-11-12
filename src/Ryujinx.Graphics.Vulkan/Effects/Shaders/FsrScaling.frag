@@ -7,7 +7,7 @@ layout(location = 0) out vec4 frag_color;
 
 layout(binding = 1) uniform sampler2D InputTexture;
 
-// EASU常量
+
 layout(binding = 2) uniform EasuConstants {
     vec4 con0;
     vec4 con1; 
@@ -17,6 +17,7 @@ layout(binding = 2) uniform EasuConstants {
 
 #define A_GPU 1
 #define A_GLSL 1
+#define FSR_EASU_F 1  
 #include "ffx_a.h"
 #include "ffx_fsr1.h"
 
