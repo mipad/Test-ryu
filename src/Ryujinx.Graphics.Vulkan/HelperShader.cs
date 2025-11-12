@@ -57,6 +57,10 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly ShaderCollection _programStencilDrawToMs;
         private readonly ShaderCollection _programStencilDrawToNonMs;
 
+        // FSR着色器程序
+        private readonly ShaderCollection _programFSRScaling;
+        private readonly ShaderCollection _programFSRSharpening;
+
         public HelperShader(VulkanRenderer gd, Device device)
         {
             _pipeline = new PipelineHelperShader(gd, device);
@@ -211,6 +215,22 @@ namespace Ryujinx.Graphics.Vulkan
                     new ShaderSource(ReadSpirv("StencilDrawToNonMsFragment.spv"), ShaderStage.Fragment, TargetLanguage.Spirv)
                 ], colorDrawToMsResourceLayout);
             }
+
+            // 添加FSR着色器程序
+            ResourceLayout fsrResourceLayout = new ResourceLayoutBuilder()
+                .Add(ResourceStages.Vertex, ResourceType.UniformBuffer, 1)  // 区域参数
+                .Add(ResourceStages.Fragment, ResourceType.UniformBuffer, 2) // FSR常量
+                .Add(ResourceStages.Fragment, ResourceType.TextureAndSampler, 0).Build();
+
+            _programFSRScaling = gd.CreateProgramWithMinimalLayout([
+                new ShaderSource(ReadSpirv("FSRScalingVertex.spv"), ShaderStage.Vertex, TargetLanguage.Spirv),
+                new ShaderSource(ReadSpirv("FSRScalingFragment.spv"), ShaderStage.Fragment, TargetLanguage.Spirv)
+            ], fsrResourceLayout);
+
+            _programFSRSharpening = gd.CreateProgramWithMinimalLayout([
+                new ShaderSource(ReadSpirv("FSRScalingVertex.spv"), ShaderStage.Vertex, TargetLanguage.Spirv),
+                new ShaderSource(ReadSpirv("FSRSharpeningFragment.spv"), ShaderStage.Fragment, TargetLanguage.Spirv)
+            ], fsrResourceLayout);
         }
 
         private static byte[] ReadSpirv(string fileName)
@@ -445,6 +465,98 @@ region[3] = flipY * srcY1 + (1 - flipY) * srcY2;
             {
                 _pipeline.SetDepthTest(new DepthTestDescriptor(false, false, CompareOp.Always));
             }
+
+            _pipeline.Finish(gd, cbs);
+        }
+
+        // 新增：FSR专用的Blit方法
+        public void BlitColorWithFSR(
+            VulkanRenderer gd,
+            CommandBufferScoped cbs,
+            TextureView src,
+            TextureView dst,
+            Extents2D srcRegion,
+            Extents2D dstRegion,
+            ReadOnlySpan<float> fsrConstants,
+            bool isSharpeningPass = false)
+        {
+            _pipeline.SetCommandBuffer(cbs);
+
+            const int RegionBufferSize = 16;
+            const int FsrConstantsSize = 64; // FSR常量缓冲区大小
+
+            ISampler sampler = _samplerLinear;
+
+            _pipeline.SetTextureAndSamplerIdentitySwizzle(ShaderStage.Fragment, 0, src, sampler);
+
+            Span<float> region = stackalloc float[RegionBufferSize / sizeof(float)];
+
+            // 无分支优化开始
+            float srcX1 = (float)srcRegion.X1 / src.Width;
+            float srcX2 = (float)srcRegion.X2 / src.Width;
+            float srcY1 = (float)srcRegion.Y1 / src.Height;
+            float srcY2 = (float)srcRegion.Y2 / src.Height;
+
+            // 计算翻转标志
+            int flipX = (dstRegion.X1 > dstRegion.X2) ? 1 : 0;
+            int flipY = (dstRegion.Y1 > dstRegion.Y2) ? 1 : 0;
+
+            // 无分支选择
+            region[0] = (1 - flipX) * srcX1 + flipX * srcX2;
+            region[1] = flipX * srcX1 + (1 - flipX) * srcX2;
+            region[2] = (1 - flipY) * srcY1 + flipY * srcY2;
+            region[3] = flipY * srcY1 + (1 - flipY) * srcY2;
+            // 无分支优化结束
+
+            using ScopedTemporaryBuffer regionBuffer = gd.BufferManager.ReserveOrCreate(gd, cbs, RegionBufferSize);
+            regionBuffer.Holder.SetDataUnchecked<float>(regionBuffer.Offset, region);
+
+            // 创建FSR常量缓冲区
+            using ScopedTemporaryBuffer fsrConstantsBuffer = gd.BufferManager.ReserveOrCreate(gd, cbs, FsrConstantsSize);
+            fsrConstantsBuffer.Holder.SetDataUnchecked<float>(fsrConstantsBuffer.Offset, fsrConstants);
+
+            // 设置缓冲区
+            _pipeline.SetUniformBuffers([
+                new BufferAssignment(1, regionBuffer.Range),
+                new BufferAssignment(2, fsrConstantsBuffer.Range)
+            ]);
+
+            Span<Viewport> viewports = stackalloc Viewport[1];
+
+            Rectangle<float> rect = new(
+                MathF.Min(dstRegion.X1, dstRegion.X2),
+                MathF.Min(dstRegion.Y1, dstRegion.Y2),
+                MathF.Abs(dstRegion.X2 - dstRegion.X1),
+                MathF.Abs(dstRegion.Y2 - dstRegion.Y1));
+
+            viewports[0] = new Viewport(
+                rect,
+                ViewportSwizzle.PositiveX,
+                ViewportSwizzle.PositiveY,
+                ViewportSwizzle.PositiveZ,
+                ViewportSwizzle.PositiveW,
+                0f,
+                1f);
+
+            // 设置FSR着色器程序
+            if (isSharpeningPass)
+            {
+                _pipeline.SetProgram(_programFSRSharpening);
+            }
+            else
+            {
+                _pipeline.SetProgram(_programFSRScaling);
+            }
+
+            int dstWidth = dst.Width;
+            int dstHeight = dst.Height;
+
+            _pipeline.SetRenderTarget(dst, (uint)dstWidth, (uint)dstHeight);
+            _pipeline.SetRenderTargetColorMasks([0xf]);
+            _pipeline.SetScissors([new Rectangle<int>(0, 0, dstWidth, dstHeight)]);
+            _pipeline.SetViewports(viewports);
+            _pipeline.SetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
+            _pipeline.Draw(4, 1, 0, 0);
 
             _pipeline.Finish(gd, cbs);
         }
@@ -1777,6 +1889,8 @@ region[3] = flipY * srcY1 + (1 - flipY) * srcY2;
                 _programStencilBlitMs?.Dispose();
                 _programStencilDrawToMs?.Dispose();
                 _programStencilDrawToNonMs?.Dispose();
+                _programFSRScaling?.Dispose();
+                _programFSRSharpening?.Dispose();
                 _samplerNearest.Dispose();
                 _samplerLinear.Dispose();
                 _pipeline.Dispose();

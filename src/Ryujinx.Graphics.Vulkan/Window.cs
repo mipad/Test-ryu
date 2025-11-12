@@ -786,36 +786,16 @@ namespace Ryujinx.Graphics.Vulkan
 
             var cbs = _gd.CommandBufferPool.Rent();
 
-            // 从版本11改进：根据路径正确设置布局/阶段
-            bool allowStorageDst = !Ryujinx.Common.PlatformInfo.IsBionic; // Android: 交换链上无Storage
-            bool useComputeDst = allowStorageDst && _scalingFilter != null;
-
-            if (useComputeDst)
-            {
-                // Compute写入交换链图像 → General + ShaderWrite
-                Transition(
-                    cbs.CommandBuffer,
-                    swapchainImage,
-                    PipelineStageFlags.TopOfPipeBit,
-                    PipelineStageFlags.ComputeShaderBit,
-                    0,
-                    AccessFlags.ShaderWriteBit,
-                    ImageLayout.Undefined,
-                    ImageLayout.General);
-            }
-            else
-            {
-                // Renderpass写入交换链图像 → ColorAttachmentOptimal
-                Transition(
-                    cbs.CommandBuffer,
-                    swapchainImage,
-                    PipelineStageFlags.TopOfPipeBit,
-                    PipelineStageFlags.ColorAttachmentOutputBit,
-                    0,
-                    AccessFlags.ColorAttachmentWriteBit,
-                    ImageLayout.Undefined,
-                    ImageLayout.ColorAttachmentOptimal);
-            }
+            // 修改：总是使用图形管线路径，不再使用计算着色器
+            Transition(
+                cbs.CommandBuffer,
+                swapchainImage,
+                PipelineStageFlags.TopOfPipeBit,
+                PipelineStageFlags.ColorAttachmentOutputBit,
+                0,
+                AccessFlags.ColorAttachmentWriteBit,
+                ImageLayout.Undefined,
+                ImageLayout.ColorAttachmentOptimal);
 
             var view = (TextureView)texture;
 
@@ -885,7 +865,8 @@ namespace Ryujinx.Graphics.Vulkan
             int dstY0 = crop.FlipY ? dstPaddingY : _height - dstPaddingY;
             int dstY1 = crop.FlipY ? _height - dstPaddingY : dstPaddingY;
 
-            if (_scalingFilter != null && useComputeDst)
+            // 修改：使用图形管线进行FSR缩放和锐化
+            if (_scalingFilter != null)
             {
                 _scalingFilter!.Run(
                     view,
@@ -911,34 +892,19 @@ namespace Ryujinx.Graphics.Vulkan
                     true);
             }
 
-            // 转换到Present布局 - 根据之前的路径设置阶段/访问
-            if (useComputeDst)
-            {
-                Transition(
-                    cbs.CommandBuffer,
-                    swapchainImage,
-                    PipelineStageFlags.ComputeShaderBit,
-                    PipelineStageFlags.BottomOfPipeBit,
-                    AccessFlags.ShaderWriteBit,
-                    0,
-                    ImageLayout.General,
-                    ImageLayout.PresentSrcKhr);
-            }
-            else
-            {
-                Transition(
-                    cbs.CommandBuffer,
-                    swapchainImage,
-                    PipelineStageFlags.ColorAttachmentOutputBit,
-                    PipelineStageFlags.BottomOfPipeBit,
-                    AccessFlags.ColorAttachmentWriteBit,
-                    0,
-                    ImageLayout.ColorAttachmentOptimal,
-                    ImageLayout.PresentSrcKhr);
-            }
+            // 转换到Present布局
+            Transition(
+                cbs.CommandBuffer,
+                swapchainImage,
+                PipelineStageFlags.ColorAttachmentOutputBit,
+                PipelineStageFlags.BottomOfPipeBit,
+                AccessFlags.ColorAttachmentWriteBit,
+                0,
+                ImageLayout.ColorAttachmentOptimal,
+                ImageLayout.PresentSrcKhr);
 
             var waitSems = new Silk.NET.Vulkan.Semaphore[] { _imageAvailableSemaphores[semaphoreIndex] };
-            var waitStages = new PipelineStageFlags[] { PipelineStageFlags.ColorAttachmentOutputBit }; // 在Android上很重要
+            var waitStages = new PipelineStageFlags[] { PipelineStageFlags.ColorAttachmentOutputBit };
             var signalSems = new Silk.NET.Vulkan.Semaphore[] { _renderFinishedSemaphores[semaphoreIndex] };
             _gd.CommandBufferPool.Return(cbs, waitSems, waitStages, signalSems);
 
