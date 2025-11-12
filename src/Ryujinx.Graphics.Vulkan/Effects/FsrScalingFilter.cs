@@ -6,6 +6,7 @@ using System;
 using System.Runtime.CompilerServices;
 using Extent2D = Ryujinx.Graphics.GAL.Extents2D;
 using VkFormat = Silk.NET.Vulkan.Format;
+using GalFormat = Ryujinx.Graphics.GAL.Format;
 
 namespace Ryujinx.Graphics.Vulkan.Effects
 {
@@ -137,24 +138,27 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             }
         }
 
-        private Format ConvertVkFormatToGalFormat(VkFormat vkFormat)
+        private GalFormat ConvertVkFormatToGalFormat(VkFormat vkFormat)
         {
             // 将 Vulkan Format 转换为 GAL Format
-            // 这里需要根据实际的格式映射来实现
             switch (vkFormat)
             {
                 case VkFormat.R8G8B8A8Unorm:
-                    return Format.R8G8B8A8Unorm;
+                    return GalFormat.R8G8B8A8Unorm;
                 case VkFormat.B8G8R8A8Unorm:
-                    return Format.B8G8R8A8Unorm;
+                    return GalFormat.B8G8R8A8Unorm;
                 case VkFormat.R8Unorm:
-                    return Format.R8Unorm;
+                    return GalFormat.R8Unorm;
                 case VkFormat.R8G8Unorm:
-                    return Format.R8G8Unorm;
+                    return GalFormat.R8G8Unorm;
+                case VkFormat.R16G16B16A16Sfloat:
+                    return GalFormat.R16G16B16A16Float;
+                case VkFormat.R32G32B32A32Sfloat:
+                    return GalFormat.R32G32B32A32Float;
                 // 添加更多格式映射...
                 default:
                     Logger.Warning?.Print(LogClass.Gpu, $"FSR: Unsupported Vulkan format {vkFormat}, defaulting to R8G8B8A8Unorm");
-                    return Format.R8G8B8A8Unorm;
+                    return GalFormat.R8G8B8A8Unorm;
             }
         }
 
@@ -364,7 +368,7 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                 true, true);
         }
 
-        private void CreateIntermediaryTexture(int width, int height, Format format)
+        private void CreateIntermediaryTexture(int width, int height, GalFormat format)
         {
             Logger.Info?.Print(LogClass.Gpu, $"FSR: Creating intermediary texture {width}x{height} with format {format}");
 
