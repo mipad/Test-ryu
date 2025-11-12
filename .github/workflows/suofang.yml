@@ -2,7 +2,7 @@ name: Auto Compile SPIR-V Shaders
 
 on:
   push:
-    branches: [ "缩放new" ] 
+    branches: [ "缩放new" ]  
     paths:
       - 'src/Ryujinx.Graphics.Vulkan/Effects/Shaders/**'
       - '.github/workflows/suofang.yml'  # 添加对工作流文件本身的监控
