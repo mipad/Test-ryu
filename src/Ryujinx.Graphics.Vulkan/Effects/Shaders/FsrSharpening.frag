@@ -7,8 +7,8 @@ layout(location = 0) out vec4 frag_color;
 
 layout(binding = 0) uniform sampler2D InputTexture;
 
-// RCAS常量 - 使用push constants
-layout(push_constant) uniform RcasConstants {
+// RCAS常量 - 使用uniform buffer
+layout(binding = 2) uniform RcasConstants {
     vec4 con0;
     vec3 con1;
     float padding;

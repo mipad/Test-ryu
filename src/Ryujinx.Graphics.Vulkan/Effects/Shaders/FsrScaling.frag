@@ -7,8 +7,8 @@ layout(location = 0) out vec4 frag_color;
 
 layout(binding = 0) uniform sampler2D InputTexture;
 
-// EASU常量 - 使用push constants
-layout(push_constant) uniform EasuConstants {
+// EASU常量 - 使用uniform buffer
+layout(binding = 2) uniform EasuConstants {
     vec4 con0;
     vec4 con1; 
     vec4 con2;
