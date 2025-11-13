@@ -197,6 +197,7 @@ namespace LibRyujinx
             // 添加渲染器状态检查
             Logger.Info?.Print(LogClass.Application, $"Renderer type: {Renderer.GetType().Name}");
             Logger.Info?.Print(LogClass.Application, $"Renderer.Window is null: {Renderer.Window == null}");
+            ARMeilleure.Optimizations.EcoFriendly = SwitchDevice!.EnableLowPowerPtc;
             
             ARMeilleure.Optimizations.CacheEviction = SwitchDevice!.EnableJitCacheEviction;
             

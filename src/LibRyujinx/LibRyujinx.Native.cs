@@ -25,7 +25,6 @@ namespace LibRyujinx
 {
     public static partial class LibRyujinx
     {
-        // 添加静态字段来存储跳过内存屏障的状态
         private static bool _skipMemoryBarriers = false;
 
         private unsafe static IntPtr CreateStringArray(List<string> strings)
@@ -42,7 +41,7 @@ namespace LibRyujinx
             return (nint)array;
         }
 
-        // 添加设置跳过内存屏障的 JNI 方法 - 修正 EntryPoint 名称
+        
         [UnmanagedCallersOnly(EntryPoint = "setSkipMemoryBarriers")]
         public static void SetSkipMemoryBarriersNative(bool skip)
         {
@@ -50,7 +49,7 @@ namespace LibRyujinx
             Logger.Info?.Print(LogClass.Emulation, $"Memory barriers {(skip ? "disabled" : "enabled")}");
         }
 
-        // 添加获取跳过内存屏障状态的方法（供内部使用）
+        
         public static bool GetSkipMemoryBarriers()
         {
             return _skipMemoryBarriers;
@@ -78,6 +77,7 @@ namespace LibRyujinx
                                                   bool enableVsync,
                                                   bool enableDockedMode,
                                                   bool enablePtc,
+                                                  bool enableLowPowerPtc,
                                                   bool enableJitCacheEviction,
                                                   bool enableInternetAccess,
                                                   IntPtr timeZone,
@@ -113,6 +113,7 @@ namespace LibRyujinx
                                     enableVsync,
                                     enableDockedMode,
                                     enablePtc,
+                                    enableLowPowerPtc,
                                     enableJitCacheEviction,
                                     enableInternetAccess,
                                     Marshal.PtrToStringAnsi(timeZone),

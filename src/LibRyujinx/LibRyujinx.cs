@@ -1410,7 +1410,7 @@ public static int GetScalingFilterLevel()
                 }
 
                 // Return the ControlFS
-                controlFs = controlNca?.OpenFileSystem(NcaSectionType.Data, IntegrityCheckLevel.None);
+                controlFs = controlNca?.OpenFileSystem(NcaSectionType.Data, SwitchDevice.EnableFsIntegrityChecks ? IntegrityCheckLevel.ErrorOnInvalid : IntegrityCheckLevel.None);
                 titleId = controlNca?.Header.TitleId.ToString("x16");
             }
 
@@ -1476,7 +1476,7 @@ public static int GetScalingFilterLevel()
 
                     if (patchNca != null && controlNca != null)
                     {
-                        updatedControlFs = controlNca.OpenFileSystem(NcaSectionType.Data, IntegrityCheckLevel.None);
+                        updatedControlFs = controlNca.OpenFileSystem(NcaSectionType.Data, SwitchDevice.EnableFsIntegrityChecks ? IntegrityCheckLevel.ErrorOnInvalid : IntegrityCheckLevel.None);
 
                         return true;
                     }
@@ -2387,6 +2387,7 @@ public static int GetScalingFilterLevel()
         public InputManager? InputManager { get; set; }
         public Switch? EmulationContext { get; set; }
         public IHostUIHandler? HostUiHandler { get; set; }
+        public bool EnableLowPowerPtc { get; set; }
         public bool EnableJitCacheEviction { get; set; }
         public bool EnableFsIntegrityChecks { get; set; }
         
@@ -2429,8 +2430,10 @@ public static int GetScalingFilterLevel()
                                       bool enableVsync,
                                       bool enableDockedMode,
                                       bool enablePtc,
+                                      bool enableLowPowerPtc,
                                       bool enableJitCacheEviction,
                                       bool enableInternetAccess,
+                                      bool enableFsIntegrityChecks
                                       string? timeZone,
                                       bool ignoreMissingServices,
                                       MemoryConfiguration memoryConfiguration,
@@ -2450,6 +2453,10 @@ public static int GetScalingFilterLevel()
             {
                 renderer = new ThreadedRenderer(renderer);
             }
+            
+            EnableLowPowerPtc = enableLowPowerPtc;
+            EnableJitCacheEviction = enableJitCacheEviction;
+            EnableFsIntegrityChecks = enableFsIntegrityChecks;
 
             HLEConfiguration configuration = new HLEConfiguration(VirtualFileSystem,
                                                                   LibHacHorizonManager,
@@ -2465,13 +2472,14 @@ public static int GetScalingFilterLevel()
                                                                   enableVsync,
                                                                   enableDockedMode,
                                                                   enablePtc,
+                                                                  enableLowPowerPtc,
                                                                   enableJitCacheEviction,
                                                                   enableInternetAccess,
-                                                                  IntegrityCheckLevel.None,
+                                                                  EnableFsIntegrityChecks ? IntegrityCheckLevel.ErrorOnInvalid : IntegrityCheckLevel.None,
                                                                   0,
                                                                   systemTimeOffset,
                                                                   timeZone,
-                                                                  memoryManagerMode,  // 使用传入的MemoryManagerMode参数
+                                                                  memoryManagerMode,  
                                                                   ignoreMissingServices,
                                                                   LibRyujinx.GetAspectRatio(),
                                                                   100,
