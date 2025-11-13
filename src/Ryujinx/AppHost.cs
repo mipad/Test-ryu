@@ -407,7 +407,9 @@ namespace Ryujinx.Ava
 
         public void Start()
         {   
-        
+           
+           ARMeilleure.Optimizations.EcoFriendly = ConfigurationState.Instance.System.EnableLowPowerPtc;
+           
            ARMeilleure.Optimizations.CacheEviction = ConfigurationState.Instance.System.EnableJitCacheEviction;
            
             if (OperatingSystem.IsWindows())
