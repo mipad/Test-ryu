@@ -77,6 +77,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
 import com.anggrayudi.storage.file.extension
+import org.ryujinx.android.BackendThreading
 import org.ryujinx.android.Helpers
 import org.ryujinx.android.MainActivity
 import org.ryujinx.android.RegionCode
@@ -233,6 +234,10 @@ class SettingViews {
             // 新增：Enable Color Space Passthrough 状态变量
             val enableColorSpacePassthrough = remember { mutableStateOf(false) }
 
+            // 新增：BackendThreading 状态变量
+            val backendThreading = remember { mutableStateOf(BackendThreading.Auto.ordinal) }
+            val showBackendThreadingDialog = remember { mutableStateOf(false) } // 控制BackendThreading对话框显示
+
             if (!loaded.value) {
                 settingsViewModel.initializeState(
                     memoryManagerMode,  // 修改：传递memoryManagerMode参数
@@ -278,7 +283,9 @@ class SettingViews {
                     surfaceFormat,
                     surfaceColorSpace,
                     // 新增：Enable Color Space Passthrough 参数
-                    enableColorSpacePassthrough
+                    enableColorSpacePassthrough,
+                    // 新增：BackendThreading 参数
+                    backendThreading
                 )
                 
                 // 修改：直接从MainViewModel获取已保存的表面格式列表，不重新获取
@@ -356,7 +363,9 @@ class SettingViews {
                                     surfaceFormat,
                                     surfaceColorSpace,
                                     // 新增：Enable Color Space Passthrough 参数
-                                    enableColorSpacePassthrough
+                                    enableColorSpacePassthrough,
+                                    // 新增：BackendThreading 参数
+                                    backendThreading
                                 )
                                 settingsViewModel.navController.popBackStack()
                             }) {
@@ -2064,6 +2073,26 @@ Row(
     )
 }
 
+// 新增：BackendThreading 设置
+Row(
+    modifier = Modifier
+        .fillMaxWidth()
+        .padding(8.dp)
+        .clickable { showBackendThreadingDialog.value = true },
+    horizontalArrangement = Arrangement.SpaceBetween,
+    verticalAlignment = Alignment.CenterVertically
+) {
+    Text(text = "Backend Threading")
+    Text(
+        text = when (backendThreading.value) {
+            BackendThreading.Off.ordinal -> "Off"
+            BackendThreading.On.ordinal -> "On"
+            else -> "Auto"
+        },
+        color = MaterialTheme.colorScheme.primary
+    )
+}
+
 // 内存配置选择对话框
 if (showMemoryConfigDialog.value) {
     BasicAlertDialog(
@@ -2121,6 +2150,117 @@ if (showMemoryConfigDialog.value) {
                 ) {
                     TextButton(
                         onClick = { showMemoryConfigDialog.value = false }
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+            }
+        }
+    }
+}
+
+// BackendThreading 选择对话框
+if (showBackendThreadingDialog.value) {
+    BasicAlertDialog(
+        onDismissRequest = { showBackendThreadingDialog.value = false }
+    ) {
+        Surface(
+            modifier = Modifier
+                .wrapContentWidth()
+                .wrapContentHeight(),
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = AlertDialogDefaults.TonalElevation
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Text(
+                    text = "Select Backend Threading",
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                
+                // Auto 选项
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            backendThreading.value = BackendThreading.Auto.ordinal
+                            showBackendThreadingDialog.value = false
+                        }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = backendThreading.value == BackendThreading.Auto.ordinal,
+                        onClick = {
+                            backendThreading.value = BackendThreading.Auto.ordinal
+                            showBackendThreadingDialog.value = false
+                        }
+                    )
+                    Text(
+                        text = "Auto",
+                        modifier = Modifier.padding(start = 16.dp)
+                    )
+                }
+                
+                // Off 选项
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            backendThreading.value = BackendThreading.Off.ordinal
+                            showBackendThreadingDialog.value = false
+                        }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = backendThreading.value == BackendThreading.Off.ordinal,
+                        onClick = {
+                            backendThreading.value = BackendThreading.Off.ordinal
+                            showBackendThreadingDialog.value = false
+                        }
+                    )
+                    Text(
+                        text = "Off",
+                        modifier = Modifier.padding(start = 16.dp)
+                    )
+                }
+                
+                // On 选项
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            backendThreading.value = BackendThreading.On.ordinal
+                            showBackendThreadingDialog.value = false
+                        }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = backendThreading.value == BackendThreading.On.ordinal,
+                        onClick = {
+                            backendThreading.value = BackendThreading.On.ordinal
+                            showBackendThreadingDialog.value = false
+                        }
+                    )
+                    Text(
+                        text = "On",
+                        modifier = Modifier.padding(start = 16.dp)
+                    )
+                }
+                
+                // 添加取消按钮
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = { showBackendThreadingDialog.value = false }
                     ) {
                         Text("Cancel")
                     }
@@ -2646,7 +2786,9 @@ if (showMemoryConfigDialog.value) {
                         surfaceFormat,
                         surfaceColorSpace,
                         // 新增：Enable Color Space Passthrough 参数
-                        enableColorSpacePassthrough
+                        enableColorSpacePassthrough,
+                        // 新增：BackendThreading 参数
+                        backendThreading
                     )
                     settingsViewModel.navController.popBackStack()
                 }
