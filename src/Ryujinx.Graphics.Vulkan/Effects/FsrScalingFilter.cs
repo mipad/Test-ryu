@@ -1,4 +1,4 @@
-using Ryujinx.Common;
+using Ryujinx.Common; 
 using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Shader;
