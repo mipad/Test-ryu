@@ -5,6 +5,9 @@ namespace ARMeilleure
 
     public static class Optimizations
     {   
+        // low-core count PPTC
+        public static bool EcoFriendly { get; set; } = false;
+
         // Jit cache eviction
         public static bool CacheEviction { get; set; } = false;
         
