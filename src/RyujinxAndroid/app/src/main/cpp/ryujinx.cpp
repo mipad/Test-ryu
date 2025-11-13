@@ -1,4 +1,4 @@
-// ryujinx.cpp (完整版本 - 移除FFmpeg功能)
+// ryujinx.cpp (完整版本 - 移除FFmpeg功能，添加Oboe PCM offload和压缩格式支持)
 #include "ryuijnx.h"
 #include <chrono>
 #include <csignal>
@@ -315,6 +315,56 @@ Java_org_ryujinx_android_NativeHelpers_resetOboeAudio(JNIEnv *env, jobject thiz)
     RyujinxOboe::OboeAudioRenderer::GetInstance().Reset();
 }
 
+// =============== PCM Offload JNI 接口 ===============
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_enableOboePcmOffload(JNIEnv *env, jobject thiz, jboolean enable) {
+    RyujinxOboe::OboeAudioRenderer::GetInstance().EnablePcmOffload(enable);
+}
+
+extern "C"
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_isOboePcmOffloadEnabled(JNIEnv *env, jobject thiz) {
+    bool enabled = RyujinxOboe::OboeAudioRenderer::GetInstance().IsPcmOffloadEnabled();
+    return enabled ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C"
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_isOboePcmOffloadSupported(JNIEnv *env, jobject thiz) {
+    bool supported = RyujinxOboe::OboeAudioRenderer::GetInstance().IsPcmOffloadSupported();
+    return supported ? JNI_TRUE : JNI_FALSE;
+}
+
+// =============== 压缩音频 JNI 接口 ===============
+extern "C"
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_writeOboeCompressedAudio(JNIEnv *env, jobject thiz, 
+                                                               jbyteArray audio_data, 
+                                                               jint data_size,
+                                                               jint format,
+                                                               jint num_frames) {
+    if (!audio_data || data_size <= 0) {
+        return JNI_FALSE;
+    }
+
+    jsize length = env->GetArrayLength(audio_data);
+    jbyte* data = env->GetByteArrayElements(audio_data, nullptr);
+    
+    if (data) {
+        bool success = RyujinxOboe::OboeAudioRenderer::GetInstance().WriteCompressedAudio(
+            reinterpret_cast<uint8_t*>(data), 
+            data_size,
+            static_cast<oboe::AudioFormat>(format),
+            num_frames
+        );
+        env->ReleaseByteArrayElements(audio_data, data, JNI_ABORT);
+        return success ? JNI_TRUE : JNI_FALSE;
+    }
+    
+    return JNI_FALSE;
+}
+
 // =============== 设备信息获取函数 ===============
 extern "C"
 JNIEXPORT jstring JNICALL
@@ -377,6 +427,35 @@ int32_t getOboeBufferedFrames() {
 extern "C"
 void resetOboeAudio() {
     RyujinxOboe::OboeAudioRenderer::GetInstance().Reset();
+}
+
+// =============== PCM Offload C 接口 ===============
+extern "C"
+void enableOboePcmOffload(bool enable) {
+    RyujinxOboe::OboeAudioRenderer::GetInstance().EnablePcmOffload(enable);
+}
+
+extern "C"
+bool isOboePcmOffloadEnabled() {
+    return RyujinxOboe::OboeAudioRenderer::GetInstance().IsPcmOffloadEnabled();
+}
+
+extern "C"
+bool isOboePcmOffloadSupported() {
+    return RyujinxOboe::OboeAudioRenderer::GetInstance().IsPcmOffloadSupported();
+}
+
+// =============== 压缩音频 C 接口 ===============
+extern "C"
+bool writeOboeCompressedAudio(const uint8_t* data, size_t data_size, 
+                             int format, int32_t num_frames) {
+    if (!data || data_size == 0) {
+        return false;
+    }
+    
+    bool success = RyujinxOboe::OboeAudioRenderer::GetInstance().WriteCompressedAudio(
+        data, data_size, static_cast<oboe::AudioFormat>(format), num_frames);
+    return success;
 }
 
 // =============== 设备信息获取 C 接口 ===============

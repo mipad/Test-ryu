@@ -57,6 +57,15 @@ extern "C" {
     int32_t getOboeBufferedFrames();
     void resetOboeAudio();
     
+    // PCM offload 功能
+    void enableOboePcmOffload(bool enable);
+    bool isOboePcmOffloadEnabled();
+    bool isOboePcmOffloadSupported();
+    
+    // 压缩音频功能
+    bool writeOboeCompressedAudio(const uint8_t* data, size_t data_size, 
+                                 int format, int32_t num_frames);
+    
     // 设备信息函数
     const char* GetAndroidDeviceModel();
     const char* GetAndroidDeviceBrand();

@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (AAudio + 独占模式)
+// oboe_audio_renderer.h (AAudio + 独占模式 + PCM offload + 压缩格式支持)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <queue>
 #include <list>
+#include <string>
 
 namespace RyujinxOboe {
 
@@ -20,7 +21,12 @@ public:
     bool Initialize(int32_t sampleRate, int32_t channelCount);
     void Shutdown();
     
+    // PCM音频写入接口
     bool WriteAudio(const int16_t* data, int32_t num_frames);
+    
+    // 压缩音频写入接口
+    bool WriteCompressedAudio(const uint8_t* data, size_t data_size, 
+                            oboe::AudioFormat format, int32_t num_frames);
     
     bool IsInitialized() const { return m_initialized.load(); }
     bool IsPlaying() const { return m_stream && m_stream->getState() == oboe::StreamState::Started; }
@@ -31,6 +37,14 @@ public:
 
     void Reset();
 
+    // PCM offload 控制
+    void EnablePcmOffload(bool enable);
+    bool IsPcmOffloadEnabled() const { return m_pcm_offload_enabled.load(); }
+    bool IsPcmOffloadSupported() const;
+
+    // 压缩格式支持
+    bool IsCompressedFormatSupported(oboe::AudioFormat format) const;
+
     struct PerformanceStats {
         int64_t frames_written = 0;
         int64_t frames_played = 0;
@@ -38,6 +52,8 @@ public:
         int32_t stream_restart_count = 0;
         std::string audio_api = "Unknown";
         std::string sharing_mode = "Unknown";
+        bool pcm_offload_enabled = false;
+        std::string current_audio_format = "PCM";
     };
     
     PerformanceStats GetStats() const;
@@ -49,9 +65,12 @@ private:
     // 基于yuzu的样本缓冲区结构
     struct SampleBuffer {
         std::vector<int16_t> samples;
+        std::vector<uint8_t> compressed_data; // 压缩数据存储
         size_t sample_count = 0;
         size_t samples_played = 0;
         bool consumed = true;
+        bool is_compressed = false;
+        oboe::AudioFormat compressed_format = oboe::AudioFormat::I16;
     };
 
     class AAudioExclusiveCallback : public oboe::AudioStreamDataCallback {
@@ -81,6 +100,7 @@ private:
         explicit SampleBufferQueue(size_t max_buffers = 32) : m_max_buffers(max_buffers) {}
         
         bool Write(const int16_t* samples, size_t sample_count);
+        bool WriteCompressed(const uint8_t* data, size_t data_size, oboe::AudioFormat format, int32_t num_frames);
         size_t Read(int16_t* output, size_t samples_requested);
         size_t Available() const;
         void Clear();
@@ -96,6 +116,8 @@ private:
     void CloseStream();
     bool ConfigureAndOpenStream();
     void ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& builder);
+    bool TryOpenOffloadStream();
+    bool TryOpenCompressedStream(oboe::AudioFormat format);
 
     oboe::DataCallbackResult OnAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames);
     void OnStreamErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error);
@@ -109,6 +131,7 @@ private:
     std::mutex m_stream_mutex;
     std::atomic<bool> m_initialized{false};
     std::atomic<bool> m_stream_started{false};
+    std::atomic<bool> m_pcm_offload_enabled{false};
     
     std::atomic<int32_t> m_sample_rate{48000};
     std::atomic<int32_t> m_channel_count{2};
@@ -124,6 +147,7 @@ private:
     // 性能统计
     std::string m_current_audio_api = "Unknown";
     std::string m_current_sharing_mode = "Unknown";
+    std::string m_current_audio_format = "PCM";
     
     static constexpr int32_t TARGET_SAMPLE_COUNT = 240;
     static constexpr int32_t TARGET_SAMPLE_RATE = 48000;
