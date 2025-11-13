@@ -2,7 +2,7 @@ name: Android CI  Fix
 
 on:
   push:
-    branches: [ "nw1" ]
+    branches: [ "nw1" ] 
   pull_request:
     branches: [ "nw1" ]
 
