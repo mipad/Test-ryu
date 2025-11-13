@@ -801,9 +801,12 @@ namespace ARMeilleure.Translation.PTC
             }
 
             int degreeOfParallelism = Environment.ProcessorCount;
+            
+            if (Optimizations.EcoFriendly)
+                degreeOfParallelism /= 3;
 
             // If there are enough cores lying around, we leave one alone for other tasks.
-            if (degreeOfParallelism > 4)
+            if (degreeOfParallelism > 4 && !Optimizations.EcoFriendly)
             {
                 degreeOfParallelism--;
             }
