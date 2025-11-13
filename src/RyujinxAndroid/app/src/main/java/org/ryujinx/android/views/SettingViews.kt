@@ -151,10 +151,16 @@ class SettingViews {
             val enablePtc = remember {
                 mutableStateOf(false)
             }
+            val enableLowPowerPptc = remember {
+                mutableStateOf(false)
+            }
             val enableJitCacheEviction = remember { 
                 mutableStateOf(false)
              }
             val ignoreMissingServices = remember {
+                mutableStateOf(false)
+            }
+            val enableFsIntegrityChecks = remember {
                 mutableStateOf(false)
             }
             val enableShaderCache = remember {
@@ -242,7 +248,7 @@ class SettingViews {
                 settingsViewModel.initializeState(
                     memoryManagerMode,  // 修改：传递memoryManagerMode参数
                     useNce,
-                    enableVsync, enableDocked, enablePtc, enableJitCacheEviction, ignoreMissingServices,
+                    enableVsync, enableDocked, enablePtc, enableLowPowerPptc, enableJitCacheEviction, enableFsIntegrityChecks, ignoreMissingServices,
                     enableShaderCache,
                     enableTextureRecompression,
                     resScale,
@@ -321,7 +327,9 @@ class SettingViews {
                                     enableVsync,
                                     enableDocked,
                                     enablePtc,
+                                    enableLowPowerPptc,
                                     enableJitCacheEviction,
+                                    enableFsIntegrityChecks,
                                     ignoreMissingServices,
                                     enableShaderCache,
                                     enableTextureRecompression,
@@ -672,6 +680,18 @@ class SettingViews {
                                 Text(text = "Enable PTC")
                                 Switch(checked = enablePtc.value, onCheckedChange = {
                                     enablePtc.value = !enablePtc.value
+                                })
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = "Enable Low Power PPTC")
+                                Switch(checked = enableLowPowerPptc.value, onCheckedChange = {
+                                    enableLowPowerPptc.value = !enableLowPowerPptc.value
                                 })
                             }
                             Row(
@@ -2093,6 +2113,20 @@ Row(
     )
 }
 
+// 新增：Enable Fs Integrity Checks 设置
+Row(
+    modifier = Modifier
+        .fillMaxWidth()
+        .padding(8.dp),
+    horizontalArrangement = Arrangement.SpaceBetween,
+    verticalAlignment = Alignment.CenterVertically
+) {
+    Text(text = "Enable Fs Integrity Checks")
+    Switch(checked = enableFsIntegrityChecks.value, onCheckedChange = {
+        enableFsIntegrityChecks.value = !enableFsIntegrityChecks.value
+    })
+}
+
 // 内存配置选择对话框
 if (showMemoryConfigDialog.value) {
     BasicAlertDialog(
@@ -2745,7 +2779,7 @@ if (showBackendThreadingDialog.value) {
                 BackHandler {
                     settingsViewModel.save(
                         memoryManagerMode,  // 修改：传递memoryManagerMode参数
-                        useNce, enableVsync, enableDocked, enablePtc, enableJitCacheEviction, ignoreMissingServices,
+                        useNce, enableVsync, enableDocked, enablePtc, enableLowPowerPptc, enableJitCacheEviction, enableFsIntegrityChecks, ignoreMissingServices,
                         enableShaderCache,
                         enableTextureRecompression,
                         resScale,
