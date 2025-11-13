@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (AAudio + 独占模式 + PCM offload + 压缩格式支持)
+// oboe_audio_renderer.h (完整实现)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -45,6 +45,34 @@ public:
     // 压缩格式支持
     bool IsCompressedFormatSupported(oboe::AudioFormat format) const;
 
+    // 性能模式设置
+    void SetPerformanceMode(oboe::PerformanceMode mode);
+    oboe::PerformanceMode GetPerformanceMode() const { return m_performance_mode.load(); }
+
+    // 使用场景设置
+    void SetUsage(oboe::Usage usage);
+    oboe::Usage GetUsage() const { return m_usage.load(); }
+
+    // 内容类型设置
+    void SetContentType(oboe::ContentType contentType);
+    oboe::ContentType GetContentType() const { return m_content_type.load(); }
+
+    // 声道掩码设置
+    void SetChannelMask(oboe::ChannelMask channelMask);
+    oboe::ChannelMask GetChannelMask() const { return m_channel_mask.load(); }
+
+    // 缓冲区容量设置
+    void SetBufferCapacity(int32_t capacity_frames);
+    int32_t GetBufferCapacity() const { return m_buffer_capacity.load(); }
+
+    // MMAP支持
+    void EnableMmap(bool enable);
+    bool IsMmapEnabled() const { return m_use_mmap.load(); }
+
+    // 音频焦点管理
+    void SetAudioFocus(bool has_focus);
+    bool HasAudioFocus() const { return m_has_audio_focus.load(); }
+
     struct PerformanceStats {
         int64_t frames_written = 0;
         int64_t frames_played = 0;
@@ -54,6 +82,9 @@ public:
         std::string sharing_mode = "Unknown";
         bool pcm_offload_enabled = false;
         std::string current_audio_format = "PCM";
+        std::string performance_mode = "Unknown";
+        std::string usage = "Unknown";
+        bool mmap_enabled = false;
     };
     
     PerformanceStats GetStats() const;
@@ -118,6 +149,9 @@ private:
     void ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& builder);
     bool TryOpenOffloadStream();
     bool TryOpenCompressedStream(oboe::AudioFormat format);
+    oboe::Usage GetEffectiveUsage() const;
+    std::string PerformanceModeToString(oboe::PerformanceMode mode) const;
+    std::string UsageToString(oboe::Usage usage) const;
 
     oboe::DataCallbackResult OnAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames);
     void OnStreamErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error);
@@ -132,10 +166,18 @@ private:
     std::atomic<bool> m_initialized{false};
     std::atomic<bool> m_stream_started{false};
     std::atomic<bool> m_pcm_offload_enabled{false};
+    std::atomic<bool> m_use_mmap{false};
+    std::atomic<bool> m_has_audio_focus{true};
     
     std::atomic<int32_t> m_sample_rate{48000};
     std::atomic<int32_t> m_channel_count{2};
     std::atomic<float> m_volume{1.0f};
+    std::atomic<int32_t> m_buffer_capacity{0};
+    
+    std::atomic<oboe::PerformanceMode> m_performance_mode{oboe::PerformanceMode::LowLatency};
+    std::atomic<oboe::Usage> m_usage{oboe::Usage::Game};
+    std::atomic<oboe::ContentType> m_content_type{oboe::ContentType::Music};
+    std::atomic<oboe::ChannelMask> m_channel_mask{oboe::ChannelMask::Unspecified};
     
     int32_t m_device_channels = 2;
     

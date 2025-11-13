@@ -66,6 +66,15 @@ extern "C" {
     bool writeOboeCompressedAudio(const uint8_t* data, size_t data_size, 
                                  int format, int32_t num_frames);
     
+    // 高级音频配置
+    void setOboePerformanceMode(int performance_mode);
+    void setOboeUsage(int usage);
+    void setOboeContentType(int content_type);
+    void setOboeChannelMask(int channel_mask);
+    void setOboeBufferCapacity(int capacity_frames);
+    void enableOboeMmap(bool enable);
+    void setOboeAudioFocus(bool has_focus);
+    
     // 设备信息函数
     const char* GetAndroidDeviceModel();
     const char* GetAndroidDeviceBrand();

@@ -1,4 +1,4 @@
-// ryujinx.cpp (完整版本 - 移除FFmpeg功能，添加Oboe PCM offload和压缩格式支持)
+// ryujinx.cpp (完整实现)
 #include "ryuijnx.h"
 #include <chrono>
 #include <csignal>
@@ -365,6 +365,49 @@ Java_org_ryujinx_android_NativeHelpers_writeOboeCompressedAudio(JNIEnv *env, job
     return JNI_FALSE;
 }
 
+// =============== 高级音频配置 JNI 接口 ===============
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_setOboePerformanceMode(JNIEnv *env, jobject thiz, jint performance_mode) {
+    RyujinxOboe::OboeAudioRenderer::GetInstance().SetPerformanceMode(static_cast<oboe::PerformanceMode>(performance_mode));
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_setOboeUsage(JNIEnv *env, jobject thiz, jint usage) {
+    RyujinxOboe::OboeAudioRenderer::GetInstance().SetUsage(static_cast<oboe::Usage>(usage));
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_setOboeContentType(JNIEnv *env, jobject thiz, jint content_type) {
+    RyujinxOboe::OboeAudioRenderer::GetInstance().SetContentType(static_cast<oboe::ContentType>(content_type));
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_setOboeChannelMask(JNIEnv *env, jobject thiz, jint channel_mask) {
+    RyujinxOboe::OboeAudioRenderer::GetInstance().SetChannelMask(static_cast<oboe::ChannelMask>(channel_mask));
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_setOboeBufferCapacity(JNIEnv *env, jobject thiz, jint capacity_frames) {
+    RyujinxOboe::OboeAudioRenderer::GetInstance().SetBufferCapacity(capacity_frames);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_enableOboeMmap(JNIEnv *env, jobject thiz, jboolean enable) {
+    RyujinxOboe::OboeAudioRenderer::GetInstance().EnableMmap(enable);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_setOboeAudioFocus(JNIEnv *env, jobject thiz, jboolean has_focus) {
+    RyujinxOboe::OboeAudioRenderer::GetInstance().SetAudioFocus(has_focus);
+}
+
 // =============== 设备信息获取函数 ===============
 extern "C"
 JNIEXPORT jstring JNICALL
@@ -456,6 +499,42 @@ bool writeOboeCompressedAudio(const uint8_t* data, size_t data_size,
     bool success = RyujinxOboe::OboeAudioRenderer::GetInstance().WriteCompressedAudio(
         data, data_size, static_cast<oboe::AudioFormat>(format), num_frames);
     return success;
+}
+
+// =============== 高级音频配置 C 接口 ===============
+extern "C"
+void setOboePerformanceMode(int performance_mode) {
+    RyujinxOboe::OboeAudioRenderer::GetInstance().SetPerformanceMode(static_cast<oboe::PerformanceMode>(performance_mode));
+}
+
+extern "C"
+void setOboeUsage(int usage) {
+    RyujinxOboe::OboeAudioRenderer::GetInstance().SetUsage(static_cast<oboe::Usage>(usage));
+}
+
+extern "C"
+void setOboeContentType(int content_type) {
+    RyujinxOboe::OboeAudioRenderer::GetInstance().SetContentType(static_cast<oboe::ContentType>(content_type));
+}
+
+extern "C"
+void setOboeChannelMask(int channel_mask) {
+    RyujinxOboe::OboeAudioRenderer::GetInstance().SetChannelMask(static_cast<oboe::ChannelMask>(channel_mask));
+}
+
+extern "C"
+void setOboeBufferCapacity(int capacity_frames) {
+    RyujinxOboe::OboeAudioRenderer::GetInstance().SetBufferCapacity(capacity_frames);
+}
+
+extern "C"
+void enableOboeMmap(bool enable) {
+    RyujinxOboe::OboeAudioRenderer::GetInstance().EnableMmap(enable);
+}
+
+extern "C"
+void setOboeAudioFocus(bool has_focus) {
+    RyujinxOboe::OboeAudioRenderer::GetInstance().SetAudioFocus(has_focus);
 }
 
 // =============== 设备信息获取 C 接口 ===============

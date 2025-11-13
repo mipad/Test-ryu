@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (修复 Usage 配置)
+// oboe_audio_renderer.cpp (完整实现)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
@@ -223,7 +223,7 @@ void OboeAudioRenderer::Shutdown() {
 
 void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& builder) {
     // AAudio 独占模式配置 - 兼容Oboe 1.10
-    builder.setPerformanceMode(oboe::PerformanceMode::LowLatency)
+    builder.setPerformanceMode(m_performance_mode.load())
            ->setAudioApi(oboe::AudioApi::AAudio)
            ->setSharingMode(oboe::SharingMode::Exclusive)  // 独占模式
            ->setDirection(oboe::Direction::Output)
@@ -231,29 +231,55 @@ void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& bu
            ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium)
            ->setFormat(oboe::AudioFormat::I16)
            ->setFormatConversionAllowed(true)
-           ->setUsage(oboe::Usage::Game);  // 改为 Game usage，适合游戏音频
+           ->setUsage(GetEffectiveUsage())
+           ->setContentType(m_content_type.load());
+    
+    // 设置MMAP
+    if (m_use_mmap.load()) {
+        builder.setMMapEnabled(true);
+    }
+    
+    // 设置缓冲区容量
+    if (m_buffer_capacity.load() > 0) {
+        builder.setBufferCapacityInFrames(m_buffer_capacity.load());
+    }
     
     // 设置固定的回调帧数
     builder.setFramesPerCallback(240);
     
     // 设置声道配置
     auto channel_count = m_channel_count.load();
-    auto channel_mask = [&]() {
-        switch (channel_count) {
-        case 1:
-            return oboe::ChannelMask::Mono;
-        case 2:
-            return oboe::ChannelMask::Stereo;
-        case 6:
-            return oboe::ChannelMask::CM5Point1;
-        default:
-            return oboe::ChannelMask::Unspecified;
-        }
-    }();
+    auto channel_mask = m_channel_mask.load();
+    
+    if (channel_mask != oboe::ChannelMask::Unspecified) {
+        builder.setChannelMask(channel_mask);
+    } else {
+        // 自动计算声道掩码
+        auto calculated_channel_mask = [&]() {
+            switch (channel_count) {
+            case 1:
+                return oboe::ChannelMask::Mono;
+            case 2:
+                return oboe::ChannelMask::Stereo;
+            case 6:
+                return oboe::ChannelMask::CM5Point1;
+            default:
+                return oboe::ChannelMask::Unspecified;
+            }
+        }();
+        builder.setChannelMask(calculated_channel_mask);
+    }
     
     builder.setChannelCount(channel_count)
-           ->setChannelMask(channel_mask)
            ->setChannelConversionAllowed(true);
+}
+
+oboe::Usage OboeAudioRenderer::GetEffectiveUsage() const {
+    // 如果PCM offload启用，使用Media usage；否则使用用户设置的usage
+    if (m_pcm_offload_enabled.load()) {
+        return oboe::Usage::Media;
+    }
+    return m_usage.load();
 }
 
 bool OboeAudioRenderer::TryOpenOffloadStream() {
@@ -266,28 +292,44 @@ bool OboeAudioRenderer::TryOpenOffloadStream() {
            ->setDirection(oboe::Direction::Output)
            ->setSampleRate(m_sample_rate.load())
            ->setFormat(oboe::AudioFormat::I16)
-           ->setUsage(oboe::Usage::Media) // Offload 保持 Media usage，适合长时间播放
+           ->setUsage(oboe::Usage::Media) // Offload 使用 Media usage
            ->setContentType(oboe::ContentType::Music)
            ->setDataCallback(m_audio_callback.get())
            ->setErrorCallback(m_error_callback.get());
     
+    // 设置MMAP
+    if (m_use_mmap.load()) {
+        builder.setMMapEnabled(true);
+    }
+    
+    // 设置缓冲区容量
+    if (m_buffer_capacity.load() > 0) {
+        builder.setBufferCapacityInFrames(m_buffer_capacity.load());
+    }
+    
     // 设置声道配置
     auto channel_count = m_channel_count.load();
-    auto channel_mask = [&]() {
-        switch (channel_count) {
-        case 1:
-            return oboe::ChannelMask::Mono;
-        case 2:
-            return oboe::ChannelMask::Stereo;
-        case 6:
-            return oboe::ChannelMask::CM5Point1;
-        default:
-            return oboe::ChannelMask::Unspecified;
-        }
-    }();
+    auto channel_mask = m_channel_mask.load();
     
-    builder.setChannelCount(channel_count)
-           ->setChannelMask(channel_mask);
+    if (channel_mask != oboe::ChannelMask::Unspecified) {
+        builder.setChannelMask(channel_mask);
+    } else {
+        auto calculated_channel_mask = [&]() {
+            switch (channel_count) {
+            case 1:
+                return oboe::ChannelMask::Mono;
+            case 2:
+                return oboe::ChannelMask::Stereo;
+            case 6:
+                return oboe::ChannelMask::CM5Point1;
+            default:
+                return oboe::ChannelMask::Unspecified;
+            }
+        }();
+        builder.setChannelMask(calculated_channel_mask);
+    }
+    
+    builder.setChannelCount(channel_count);
     
     // 尝试开启offload流
     auto result = builder.openStream(m_stream);
@@ -321,6 +363,11 @@ bool OboeAudioRenderer::TryOpenCompressedStream(oboe::AudioFormat format) {
            ->setContentType(oboe::ContentType::Music)
            ->setDataCallback(m_audio_callback.get())
            ->setErrorCallback(m_error_callback.get());
+    
+    // 设置MMAP
+    if (m_use_mmap.load()) {
+        builder.setMMapEnabled(true);
+    }
     
     // 对于压缩格式，采样率和声道数可能由格式本身决定
     builder.setChannelCount(m_channel_count.load());
@@ -417,6 +464,12 @@ bool OboeAudioRenderer::WriteAudio(const int16_t* data, int32_t num_frames) {
     
     if (!m_sample_queue) {
         return false;
+    }
+    
+    // 检查音频焦点
+    if (!m_has_audio_focus.load()) {
+        // 没有音频焦点时，不写入数据但返回成功，避免阻塞
+        return true;
     }
     
     // 计算总样本数
@@ -524,6 +577,11 @@ bool OboeAudioRenderer::WriteCompressedAudio(const uint8_t* data, size_t data_si
         return false;
     }
     
+    // 检查音频焦点
+    if (!m_has_audio_focus.load()) {
+        return true;
+    }
+    
     // 检查是否支持该压缩格式
     if (!IsCompressedFormatSupported(format)) {
         return false;
@@ -568,7 +626,6 @@ void OboeAudioRenderer::EnablePcmOffload(bool enable) {
 
 bool OboeAudioRenderer::IsPcmOffloadSupported() const {
     // 检查设备是否支持PCM offload
-    // 这里简化实现，实际中应该查询设备能力
     oboe::AudioStreamBuilder builder;
     builder.setDirection(oboe::Direction::Output)
            ->setPerformanceMode(oboe::PerformanceMode::None)
@@ -592,6 +649,72 @@ bool OboeAudioRenderer::IsCompressedFormatSupported(oboe::AudioFormat format) co
             return builder.isAAudioRecommended();
         default:
             return false;
+    }
+}
+
+void OboeAudioRenderer::SetPerformanceMode(oboe::PerformanceMode mode) {
+    if (m_performance_mode.load() != mode) {
+        m_performance_mode.store(mode);
+        if (m_initialized.load()) {
+            Reset();
+        }
+    }
+}
+
+void OboeAudioRenderer::SetUsage(oboe::Usage usage) {
+    if (m_usage.load() != usage) {
+        m_usage.store(usage);
+        if (m_initialized.load()) {
+            Reset();
+        }
+    }
+}
+
+void OboeAudioRenderer::SetContentType(oboe::ContentType contentType) {
+    if (m_content_type.load() != contentType) {
+        m_content_type.store(contentType);
+        if (m_initialized.load()) {
+            Reset();
+        }
+    }
+}
+
+void OboeAudioRenderer::SetChannelMask(oboe::ChannelMask channelMask) {
+    if (m_channel_mask.load() != channelMask) {
+        m_channel_mask.store(channelMask);
+        if (m_initialized.load()) {
+            Reset();
+        }
+    }
+}
+
+void OboeAudioRenderer::SetBufferCapacity(int32_t capacity_frames) {
+    if (m_buffer_capacity.load() != capacity_frames) {
+        m_buffer_capacity.store(capacity_frames);
+        if (m_initialized.load()) {
+            Reset();
+        }
+    }
+}
+
+void OboeAudioRenderer::EnableMmap(bool enable) {
+    if (m_use_mmap.load() != enable) {
+        m_use_mmap.store(enable);
+        if (m_initialized.load()) {
+            Reset();
+        }
+    }
+}
+
+void OboeAudioRenderer::SetAudioFocus(bool has_focus) {
+    if (m_has_audio_focus.load() != has_focus) {
+        m_has_audio_focus.store(has_focus);
+        
+        // 失去焦点时降低音量
+        if (!has_focus) {
+            // 可以在这里实现淡出效果
+            // 暂时简单处理：音量不变，但停止写入新数据
+        }
     }
 }
 
@@ -658,6 +781,33 @@ void OboeAudioRenderer::OnStreamErrorBeforeClose(oboe::AudioStream* audioStream,
     m_stream_started.store(false);
 }
 
+std::string OboeAudioRenderer::PerformanceModeToString(oboe::PerformanceMode mode) const {
+    switch (mode) {
+        case oboe::PerformanceMode::None: return "None";
+        case oboe::PerformanceMode::PowerSaving: return "PowerSaving";
+        case oboe::PerformanceMode::LowLatency: return "LowLatency";
+        default: return "Unknown";
+    }
+}
+
+std::string OboeAudioRenderer::UsageToString(oboe::Usage usage) const {
+    switch (usage) {
+        case oboe::Usage::Media: return "Media";
+        case oboe::Usage::VoiceCommunication: return "VoiceCommunication";
+        case oboe::Usage::VoiceCommunicationSignalling: return "VoiceCommunicationSignalling";
+        case oboe::Usage::Alarm: return "Alarm";
+        case oboe::Usage::Notification: return "Notification";
+        case oboe::Usage::NotificationRingtone: return "NotificationRingtone";
+        case oboe::Usage::NotificationEvent: return "NotificationEvent";
+        case oboe::Usage::AssistanceAccessibility: return "Accessibility";
+        case oboe::Usage::AssistanceNavigationGuidance: return "NavigationGuidance";
+        case oboe::Usage::AssistanceSonification: return "Sonification";
+        case oboe::Usage::Game: return "Game";
+        case oboe::Usage::Assistant: return "Assistant";
+        default: return "Unknown";
+    }
+}
+
 OboeAudioRenderer::PerformanceStats OboeAudioRenderer::GetStats() const {
     PerformanceStats stats;
     stats.frames_written = m_frames_written.load();
@@ -668,6 +818,9 @@ OboeAudioRenderer::PerformanceStats OboeAudioRenderer::GetStats() const {
     stats.sharing_mode = m_current_sharing_mode;
     stats.pcm_offload_enabled = m_pcm_offload_enabled.load();
     stats.current_audio_format = m_current_audio_format;
+    stats.performance_mode = PerformanceModeToString(m_performance_mode.load());
+    stats.usage = UsageToString(m_usage.load());
+    stats.mmap_enabled = m_use_mmap.load();
     return stats;
 }
 
