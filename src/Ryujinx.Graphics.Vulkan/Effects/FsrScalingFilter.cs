@@ -118,7 +118,7 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                 var fsrConstants = CalculateFsrConstants(source, destination, width, height);
                 var rcasConstants = CalculateRcasConstants(width, height);
 
-                // 创建目标 TextureView
+                // 创建目标 TextureView - 使用正确的格式转换
                 var textureCreateInfo = new TextureCreateInfo(
                     width, height, 1, 1, 1, 1, 1, 1,
                     ConvertVkFormatToGalFormat(format),
@@ -129,7 +129,8 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                     SwizzleComponent.Blue,
                     SwizzleComponent.Alpha);
 
-                using var dstView = new TextureView(_gd, _device, destinationTexture.GetUnsafe(), textureCreateInfo, ConvertVkFormatToGalFormat(format));
+                // 使用正确的 TextureView 构造函数，传递 VkFormat
+                using var dstView = new TextureView(_gd, _device, destinationTexture, textureCreateInfo, format);
 
                 // 执行 FSR 处理
                 RunFsrProcessing(view, dstView, cbs, source, destination, fsrConstants, rcasConstants);
@@ -267,7 +268,9 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             
             _pipeline.SetScissors(new[] { new Rectangle<int>(0, 0, dst.Width, dst.Height) });
             _pipeline.SetViewports(viewports);
-            _pipeline.SetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
+            
+            // 使用完全限定名解决 PrimitiveTopology 歧义
+            _pipeline.SetPrimitiveTopology(Ryujinx.Graphics.GAL.PrimitiveTopology.TriangleStrip);
             _pipeline.Draw(4, 1, 0, 0);
 
             Logger.Info?.Print(LogClass.Gpu, "FSR: Scaling pass completed");
@@ -349,7 +352,9 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             
             _pipeline.SetScissors(new[] { new Rectangle<int>(0, 0, dst.Width, dst.Height) });
             _pipeline.SetViewports(viewports);
-            _pipeline.SetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
+            
+            // 使用完全限定名解决 PrimitiveTopology 歧义
+            _pipeline.SetPrimitiveTopology(Ryujinx.Graphics.GAL.PrimitiveTopology.TriangleStrip);
             _pipeline.Draw(4, 1, 0, 0);
 
             Logger.Info?.Print(LogClass.Gpu, "FSR: Sharpening pass completed");
@@ -375,7 +380,8 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                 SwizzleComponent.Blue,
                 SwizzleComponent.Alpha);
 
-            using var dstView = new TextureView(_gd, _device, destinationTexture.GetUnsafe(), textureCreateInfo, ConvertVkFormatToGalFormat(format));
+            // 使用正确的 TextureView 构造函数，传递 VkFormat
+            using var dstView = new TextureView(_gd, _device, destinationTexture, textureCreateInfo, format);
 
             _gd.HelperShader.BlitColor(
                 _gd, cbs, view, dstView,
