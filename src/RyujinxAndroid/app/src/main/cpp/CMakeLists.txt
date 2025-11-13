@@ -40,6 +40,9 @@ FetchContent_Declare(
     GIT_TAG        1.10.0  # 使用与 Gradle 依赖相同的版本
 )
 
+# 设置 Oboe 构建选项，禁用格式转换以减少代码大小
+set(OBOE_DISABLE_CONVERSION ON CACHE BOOL "Disable format conversion in Oboe")
+
 FetchContent_MakeAvailable(oboe)
 
 # 使用 FetchContent 获取标准 OpenAL Soft
