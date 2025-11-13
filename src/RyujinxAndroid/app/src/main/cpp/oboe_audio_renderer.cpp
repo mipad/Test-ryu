@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (修复压缩格式枚举问题)
+// oboe_audio_renderer.cpp (修复 Usage 配置)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
@@ -231,7 +231,7 @@ void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& bu
            ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium)
            ->setFormat(oboe::AudioFormat::I16)
            ->setFormatConversionAllowed(true)
-           ->setUsage(oboe::Usage::Game);
+           ->setUsage(oboe::Usage::Game);  // 改为 Game usage，适合游戏音频
     
     // 设置固定的回调帧数
     builder.setFramesPerCallback(240);
@@ -266,7 +266,7 @@ bool OboeAudioRenderer::TryOpenOffloadStream() {
            ->setDirection(oboe::Direction::Output)
            ->setSampleRate(m_sample_rate.load())
            ->setFormat(oboe::AudioFormat::I16)
-           ->setUsage(oboe::Usage::Media) // Media usage更适合offload
+           ->setUsage(oboe::Usage::Media) // Offload 保持 Media usage，适合长时间播放
            ->setContentType(oboe::ContentType::Music)
            ->setDataCallback(m_audio_callback.get())
            ->setErrorCallback(m_error_callback.get());
@@ -317,7 +317,7 @@ bool OboeAudioRenderer::TryOpenCompressedStream(oboe::AudioFormat format) {
            ->setSharingMode(oboe::SharingMode::Shared)
            ->setDirection(oboe::Direction::Output)
            ->setFormat(format) // 设置压缩格式
-           ->setUsage(oboe::Usage::Media)
+           ->setUsage(oboe::Usage::Media) // 压缩格式通常使用 Media usage
            ->setContentType(oboe::ContentType::Music)
            ->setDataCallback(m_audio_callback.get())
            ->setErrorCallback(m_error_callback.get());
