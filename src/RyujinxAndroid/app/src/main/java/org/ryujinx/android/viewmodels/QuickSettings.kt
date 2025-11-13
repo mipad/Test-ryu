@@ -3,6 +3,7 @@ package org.ryujinx.android.viewmodels
 import android.app.Activity
 import android.content.SharedPreferences
 import androidx.preference.PreferenceManager
+import org.ryujinx.android.BackendThreading
 import org.ryujinx.android.RegionCode
 import org.ryujinx.android.SystemLanguage
 
@@ -50,6 +51,9 @@ class QuickSettings(val activity: Activity) {
 
     // 新增：Enable Color Space Passthrough
     var enableColorSpacePassthrough: Boolean
+
+    // 新增：BackendThreading
+    var backendThreading: Int // BackendThreading 枚举值
 
     // Logs
     var enableDebugLogs: Boolean
@@ -110,6 +114,9 @@ class QuickSettings(val activity: Activity) {
         // 初始化 Enable Color Space Passthrough
         enableColorSpacePassthrough = sharedPref.getBoolean("enableColorSpacePassthrough", false)
 
+        // 初始化 BackendThreading
+        backendThreading = sharedPref.getInt("backendThreading", BackendThreading.Auto.ordinal)
+
         enableDebugLogs = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs = sharedPref.getBoolean("enableStubLogs", false)
         enableInfoLogs = sharedPref.getBoolean("enableInfoLogs", true)
@@ -167,6 +174,9 @@ class QuickSettings(val activity: Activity) {
 
         // 保存 Enable Color Space Passthrough
         editor.putBoolean("enableColorSpacePassthrough", enableColorSpacePassthrough)
+
+        // 保存 BackendThreading
+        editor.putInt("backendThreading", backendThreading)
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs)
         editor.putBoolean("enableStubLogs", enableStubLogs)

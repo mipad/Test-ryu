@@ -10,6 +10,7 @@ import com.anggrayudi.storage.file.FileFullPath
 import com.anggrayudi.storage.file.copyFileTo
 import com.anggrayudi.storage.file.extension
 import com.anggrayudi.storage.file.getAbsolutePath
+import org.ryujinx.android.BackendThreading
 import org.ryujinx.android.LogLevel
 import org.ryujinx.android.MainActivity
 import org.ryujinx.android.RegionCode
@@ -92,7 +93,9 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         surfaceFormat: MutableState<Int>,
         surfaceColorSpace: MutableState<Int>,
         // 新增：Enable Color Space Passthrough 参数
-        enableColorSpacePassthrough: MutableState<Boolean>
+        enableColorSpacePassthrough: MutableState<Boolean>,
+        // 新增：BackendThreading 参数
+        backendThreading: MutableState<Int>
     ) {
 
         memoryManagerMode.value = sharedPref.getInt("memoryManagerMode", 2)  // 默认使用HostMappedUnsafe
@@ -139,6 +142,9 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         
         // 初始化 Enable Color Space Passthrough
         enableColorSpacePassthrough.value = sharedPref.getBoolean("enableColorSpacePassthrough", false)
+        
+        // 初始化 BackendThreading
+        backendThreading.value = sharedPref.getInt("backendThreading", BackendThreading.Auto.ordinal)
         
         // 如果之前保存了自定义表面格式，则恢复设置
         if (customSurfaceFormatEnabled.value && surfaceFormat.value != -1 && surfaceColorSpace.value != -1) {
@@ -209,7 +215,9 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         surfaceFormat: MutableState<Int>,
         surfaceColorSpace: MutableState<Int>,
         // 新增：Enable Color Space Passthrough 参数
-        enableColorSpacePassthrough: MutableState<Boolean>
+        enableColorSpacePassthrough: MutableState<Boolean>,
+        // 新增：BackendThreading 参数
+        backendThreading: MutableState<Int>
     ) {
         val editor = sharedPref.edit()
 
@@ -255,6 +263,9 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
 
         // 保存 Enable Color Space Passthrough
         editor.putBoolean("enableColorSpacePassthrough", enableColorSpacePassthrough.value)
+
+        // 保存 BackendThreading
+        editor.putInt("backendThreading", backendThreading.value)
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs.value)
         editor.putBoolean("enableStubLogs", enableStubLogs.value)
