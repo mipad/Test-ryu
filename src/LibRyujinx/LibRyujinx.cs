@@ -2433,7 +2433,7 @@ public static int GetScalingFilterLevel()
                                       bool enableLowPowerPtc,
                                       bool enableJitCacheEviction,
                                       bool enableInternetAccess,
-                                      bool enableFsIntegrityChecks
+                                      bool enableFsIntegrityChecks,
                                       string? timeZone,
                                       bool ignoreMissingServices,
                                       MemoryConfiguration memoryConfiguration,
