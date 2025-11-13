@@ -823,8 +823,8 @@ namespace Ryujinx.Graphics.Vulkan
             int dstX0 = crop.FlipX ? _width - dstPaddingX : dstPaddingX;
             int dstX1 = crop.FlipX ? dstPaddingX : _width - dstPaddingX;
 
-            int dstY0 = crop.FlipY ? dstPaddingY : _height - dstPaddingY;
-            int dstY1 = crop.FlipY ? _height - dstPaddingY : dstPaddingY;
+            int dstY0 = crop.FlipY ? _height - dstPaddingY : dstPaddingY;
+            int dstY1 = crop.FlipY ? dstPaddingY : _height - dstPaddingY;
 
             Logger.Info?.Print(LogClass.Gpu, $"Scaling Debug: ScalingFilter={_currentScalingFilter}, Source=({srcX0},{srcY0})-({srcX1},{srcY1}), Destination=({dstX0},{dstY0})-({dstX1},{dstY1})");
             Logger.Info?.Print(LogClass.Gpu, $"Scaling Debug: View size={view.Width}x{view.Height}, Swapchain size={_width}x{_height}");
@@ -834,12 +834,26 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 try
                 {
+                    // 验证并修正目标区域坐标
+                    var finalDstRegion = new Extents2D(
+                        Math.Min(dstX0, dstX1), 
+                        Math.Min(dstY0, dstY1),
+                        Math.Max(dstX0, dstX1), 
+                        Math.Max(dstY0, dstY1));
+
+                    // 验证坐标有效性
+                    if (finalDstRegion.X1 >= finalDstRegion.X2 || finalDstRegion.Y1 >= finalDstRegion.Y2)
+                    {
+                        Logger.Error?.Print(LogClass.Gpu, $"FSR: Invalid destination region after normalization: {finalDstRegion}");
+                        throw new InvalidOperationException("Invalid destination region coordinates");
+                    }
+
                     _scalingFilter.Run(
                         view, cbs, 
                         _swapchainImageViews[nextImage].GetImageView(),
                         _format, _width, _height,
                         new Extents2D(srcX0, srcY0, srcX1, srcY1),
-                        new Extents2D(dstX0, dstY0, dstX1, dstY1));
+                        finalDstRegion);
                 }
                 catch (Exception ex)
                 {
