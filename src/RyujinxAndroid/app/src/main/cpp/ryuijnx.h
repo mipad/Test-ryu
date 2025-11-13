@@ -20,7 +20,6 @@
 #include <fcntl.h>
 #include "adrenotools/driver.h"
 #include "native_window.h"
-#include <pthread.h>
 
 // A macro to pass call to Vulkan and check for return value for success
 #define CALL_VK(func)                                                 \
@@ -42,27 +41,21 @@ void *_ryujinxNative = NULL;
 // Ryujinx imported functions
 bool (*initialize)(char *) = NULL;
 
-// 全局变量声明 (在头文件中声明为extern)
-extern long _renderingThreadId;
-extern JavaVM *_vm;
-extern jobject _mainActivity;
-extern jclass _mainActivityClass;
-extern pthread_t _renderingThreadIdNative;
+long _renderingThreadId = 0;
+JavaVM *_vm = nullptr;
+jobject _mainActivity = nullptr;
+jclass _mainActivityClass = nullptr;
 
-// 简化 Oboe 音频函数声明
+// 添加 Oboe 音频相关的函数声明
 extern "C" {
-    bool initOboeAudio(int sample_rate, int channel_count);
+    void initOboeAudio();
     void shutdownOboeAudio();
-    bool writeOboeAudio(const int16_t* data, int32_t num_frames);
+    void writeOboeAudio(const float* data, int32_t num_frames);
+    void setOboeSampleRate(int32_t sample_rate);
+    void setOboeBufferSize(int32_t buffer_size);
     void setOboeVolume(float volume);
     bool isOboeInitialized();
-    bool isOboePlaying();
     int32_t getOboeBufferedFrames();
-    void resetOboeAudio();
-    
-    // 设备信息函数
-    const char* GetAndroidDeviceModel();
-    const char* GetAndroidDeviceBrand();
 }
 
 #endif //RYUJINXNATIVE_RYUIJNX_H
