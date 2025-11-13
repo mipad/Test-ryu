@@ -8,15 +8,17 @@ import java.util.Collections
 
 interface RyujinxNativeJna : Library {
     fun deviceInitialize(
-        memoryManagerMode: Int,  // 修改：使用MemoryManagerMode枚举值
+        memoryManagerMode: Int,  
         useNce: Boolean,
         systemLanguage: Int,
         regionCode: Int,
         enableVsync: Boolean,
         enableDockedMode: Boolean,
         enablePtc: Boolean,
+        enableLowPowerPptc: Boolean,
         enableJitCacheEviction: Boolean,
         enableInternetAccess: Boolean,
+        enableFsIntegrityChecks: Boolean,
         timeZone: String,
         ignoreMissingServices: Boolean,
         audioEngineType: Int,
