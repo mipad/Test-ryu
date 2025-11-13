@@ -1,5 +1,5 @@
+using Ryujinx.Common;
 using Ryujinx.Common.Logging;
-using Ryujinx.Common.Memory;
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Shader;
 using Ryujinx.Graphics.Shader.Translation;
@@ -206,7 +206,7 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             const int FsrConstantsSize = 64;
 
             ISampler sampler = _samplerLinear;
-            _pipeline.SetTextureAndSampler(0, src, sampler);
+            _pipeline.SetTextureAndSampler(ShaderStage.Fragment, 0, src, sampler);
 
             Span<float> region = stackalloc float[RegionBufferSize / sizeof(float)];
 
@@ -236,14 +236,15 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                 new BufferAssignment(2, fsrConstantsBuffer.Range)
             });
 
-            Span<Viewport> viewports = stackalloc Viewport[1];
+            // 使用完全限定名解决 Viewport 歧义
+            Span<Ryujinx.Graphics.GAL.Viewport> viewports = stackalloc Ryujinx.Graphics.GAL.Viewport[1];
             Rectangle<float> rect = new(
                 MathF.Min(dstRegion.X1, dstRegion.X2),
                 MathF.Min(dstRegion.Y1, dstRegion.Y2),
                 MathF.Abs(dstRegion.X2 - dstRegion.X1),
                 MathF.Abs(dstRegion.Y2 - dstRegion.Y1));
 
-            viewports[0] = new Viewport(
+            viewports[0] = new Ryujinx.Graphics.GAL.Viewport(
                 rect,
                 ViewportSwizzle.PositiveX,
                 ViewportSwizzle.PositiveY,
@@ -260,7 +261,10 @@ namespace Ryujinx.Graphics.Vulkan.Effects
 
             _pipeline.SetProgram(_programFSRScaling);
             _pipeline.SetRenderTarget(dst, (uint)dst.Width, (uint)dst.Height);
-            _pipeline.SetRenderTargetColorMasks(new[] { 0xf });
+            
+            // 修复颜色掩码参数类型
+            _pipeline.SetRenderTargetColorMasks(new uint[] { 0xf });
+            
             _pipeline.SetScissors(new[] { new Rectangle<int>(0, 0, dst.Width, dst.Height) });
             _pipeline.SetViewports(viewports);
             _pipeline.SetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
@@ -285,7 +289,7 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             const int RcasConstantsSize = 28;
 
             ISampler sampler = _samplerLinear;
-            _pipeline.SetTextureAndSampler(0, src, sampler);
+            _pipeline.SetTextureAndSampler(ShaderStage.Fragment, 0, src, sampler);
 
             Span<float> region = stackalloc float[RegionBufferSize / sizeof(float)];
 
@@ -314,14 +318,15 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                 new BufferAssignment(2, rcasConstantsBuffer.Range)
             });
 
-            Span<Viewport> viewports = stackalloc Viewport[1];
+            // 使用完全限定名解决 Viewport 歧义
+            Span<Ryujinx.Graphics.GAL.Viewport> viewports = stackalloc Ryujinx.Graphics.GAL.Viewport[1];
             Rectangle<float> rect = new(
                 MathF.Min(dstRegion.X1, dstRegion.X2),
                 MathF.Min(dstRegion.Y1, dstRegion.Y2),
                 MathF.Abs(dstRegion.X2 - dstRegion.X1),
                 MathF.Abs(dstRegion.Y2 - dstRegion.Y1));
 
-            viewports[0] = new Viewport(
+            viewports[0] = new Ryujinx.Graphics.GAL.Viewport(
                 rect,
                 ViewportSwizzle.PositiveX,
                 ViewportSwizzle.PositiveY,
@@ -338,7 +343,10 @@ namespace Ryujinx.Graphics.Vulkan.Effects
 
             _pipeline.SetProgram(_programFSRSharpening);
             _pipeline.SetRenderTarget(dst, (uint)dst.Width, (uint)dst.Height);
-            _pipeline.SetRenderTargetColorMasks(new[] { 0xf });
+            
+            // 修复颜色掩码参数类型
+            _pipeline.SetRenderTargetColorMasks(new uint[] { 0xf });
+            
             _pipeline.SetScissors(new[] { new Rectangle<int>(0, 0, dst.Width, dst.Height) });
             _pipeline.SetViewports(viewports);
             _pipeline.SetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
