@@ -1,7 +1,6 @@
 using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.Nvdec.FFmpeg.Native;
 using System;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg
@@ -10,220 +9,64 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
     {
         private unsafe delegate int AVCodec_decode(AVCodecContext* avctx, void* outdata, int* got_frame_ptr, AVPacket* avpkt);
 
-        private AVCodec_decode _decodeFrame; // 移除了 readonly
+        private readonly AVCodec_decode _decodeFrame;
         private static readonly FFmpegApi.av_log_set_callback_callback _logFunc;
         private readonly AVCodec* _codec;
         private readonly AVPacket* _packet;
-        private AVCodecContext* _context;
-        private readonly bool _useNewApi;
-        private bool _isFirstFrame = true;
-        private bool _needsFlush = false;
-        private System.Diagnostics.Stopwatch _decodeTimer = new System.Diagnostics.Stopwatch();
-        private int _frameCount = 0;
-        private readonly bool _useHardwareDecoder;
-        private readonly string _decoderType;
-        private readonly string _hardwareDecoderName;
+        private readonly AVCodecContext* _context;
 
-        // Android 硬件解码器映射
-        private static readonly Dictionary<AVCodecID, string[]> AndroidHardwareDecoders = new()
+        public FFmpegContext(AVCodecID codecId)
         {
-            { AVCodecID.AV_CODEC_ID_H264, new[] { "h264_mediacodec" } },
-            { AVCodecID.AV_CODEC_ID_HEVC, new[] { "hevc_mediacodec" } },
-            { AVCodecID.AV_CODEC_ID_VP8, new[] { "vp8_mediacodec" } },
-            { AVCodecID.AV_CODEC_ID_VP9, new[] { "vp9_mediacodec" } },
-            { AVCodecID.AV_CODEC_ID_AV1, new[] { "av1_mediacodec" } },
-            { AVCodecID.AV_CODEC_ID_MPEG4, new[] { "mpeg4_mediacodec" } },
-            { AVCodecID.AV_CODEC_ID_MPEG2VIDEO, new[] { "mpeg2_mediacodec" } },
-        };
-
-        public FFmpegContext(AVCodecID codecId, bool preferHardware = true)
-        {
-            Logger.Info?.Print(LogClass.FFmpeg, $"Initializing FFmpeg decoder for {codecId}, Hardware preference: {preferHardware}");
-
-            // 直接初始化只读字段，而不是通过方法
-            string hardwareDecoderName = null;
-            bool useHardwareDecoder = false;
-            AVCodec* codec = null;
-
-            // 尝试硬件解码器（如果启用且可用）
-            if (preferHardware)
+            _codec = FFmpegApi.avcodec_find_decoder(codecId);
+            if (_codec == null)
             {
-                if (AndroidHardwareDecoders.TryGetValue(codecId, out string[] decoderNames))
-                {
-                    foreach (string decoderName in decoderNames)
-                    {
-                        codec = FFmpegApi.avcodec_find_decoder_by_name(decoderName);
-                        if (codec != null)
-                        {
-                            hardwareDecoderName = decoderName;
-                            useHardwareDecoder = true;
-                            Logger.Debug?.Print(LogClass.FFmpeg, $"Found hardware decoder: {decoderName}");
-                            break;
-                        }
-                        else
-                        {
-                            Logger.Debug?.Print(LogClass.FFmpeg, $"Hardware decoder not available: {decoderName}");
-                        }
-                    }
-                }
+                Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Codec wasn't found. Make sure you have the {codecId} codec present in your FFmpeg installation.");
 
-                if (codec != null)
-                {
-                    Logger.Info?.Print(LogClass.FFmpeg, $"Selected hardware decoder: {hardwareDecoderName}");
-                }
-                else
-                {
-                    Logger.Debug?.Print(LogClass.FFmpeg, $"No compatible hardware decoder found for {codecId}");
-                }
-            }
-
-            // 如果硬件解码器不可用，回退到软件解码器
-            if (codec == null)
-            {
-                codec = FFmpegApi.avcodec_find_decoder(codecId);
-                useHardwareDecoder = false;
-                
-                if (codec != null)
-                {
-                    Logger.Info?.Print(LogClass.FFmpeg, $"Selected software decoder: {GetCodecName(codec)}");
-                }
-            }
-
-            if (codec == null)
-            {
-                Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Codec wasn't found for {codecId}. Make sure you have the required codec present in your FFmpeg installation.");
                 return;
             }
-
-            // 设置只读字段
-            _codec = codec;
-            _useHardwareDecoder = useHardwareDecoder;
-            _decoderType = useHardwareDecoder ? "Hardware" : "Software";
-            _hardwareDecoderName = hardwareDecoderName;
 
             _context = FFmpegApi.avcodec_alloc_context3(_codec);
             if (_context == null)
             {
                 Logger.Error?.PrintMsg(LogClass.FFmpeg, "Codec context couldn't be allocated.");
+
                 return;
             }
 
-            // 设置解码器参数
-            ConfigureDecoderContext();
-
-            int openResult = FFmpegApi.avcodec_open2(_context, _codec, null);
-            if (openResult != 0)
+            if (FFmpegApi.avcodec_open2(_context, _codec, null) != 0)
             {
-                Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Codec couldn't be opened (Error: {openResult}). Falling back to software decoder.");
-                
-                // 如果硬件解码器打开失败，尝试软件解码器
-                if (_useHardwareDecoder)
-                {
-                    // 回退到软件解码器
-                    AVCodec* softwareCodec = FFmpegApi.avcodec_find_decoder(codecId);
-                    if (softwareCodec != null)
-                    {
-                        // 重新分配上下文
-                        fixed (AVCodecContext** ppContext = &_context)
-                        {
-                            FFmpegApi.avcodec_free_context(ppContext);
-                        }
-                        
-                        _context = FFmpegApi.avcodec_alloc_context3(softwareCodec);
-                        
-                        // 注意：这里我们不能修改只读字段，所以创建新的上下文对象
-                        // 我们保持原来的只读字段不变，但实际使用的是软件解码器
-                        ConfigureDecoderContext();
-                        
-                        if (FFmpegApi.avcodec_open2(_context, softwareCodec, null) == 0)
-                        {
-                            Logger.Info?.Print(LogClass.FFmpeg, $"Successfully opened software decoder: {GetCodecName(softwareCodec)}");
-                        }
-                        else
-                        {
-                            Logger.Error?.PrintMsg(LogClass.FFmpeg, "Software decoder also failed to open.");
-                            return;
-                        }
-                    }
-                }
-                else
-                {
-                    return;
-                }
+                Logger.Error?.PrintMsg(LogClass.FFmpeg, "Codec couldn't be opened.");
+
+                return;
             }
 
             _packet = FFmpegApi.av_packet_alloc();
             if (_packet == null)
             {
                 Logger.Error?.PrintMsg(LogClass.FFmpeg, "Packet couldn't be allocated.");
+
                 return;
             }
 
-            // 检测 API 版本
             int avCodecRawVersion = FFmpegApi.avcodec_version();
             int avCodecMajorVersion = avCodecRawVersion >> 16;
             int avCodecMinorVersion = (avCodecRawVersion >> 8) & 0xFF;
 
-            Logger.Info?.Print(LogClass.FFmpeg, $"FFmpeg version: {avCodecMajorVersion}.{avCodecMinorVersion}, using {(avCodecMajorVersion >= 58 ? "new" : "old")} API");
-
-            // 检测是否使用新版 API (avcodec_send_packet/avcodec_receive_frame)
-            _useNewApi = avCodecMajorVersion >= 58;
-
-            if (!_useNewApi)
+            // libavcodec 59.24 changed AvCodec to move its private API and also move the codec function to an union.
+            if (avCodecMajorVersion > 59 || (avCodecMajorVersion == 59 && avCodecMinorVersion > 24))
             {
-                // 旧版 API 路径 - 直接在构造函数中设置 _decodeFrame
-                // libavcodec 59.24 changed AvCodec to move its private API
-                if (avCodecMajorVersion > 59 || (avCodecMajorVersion == 59 && avCodecMinorVersion > 24))
-                {
-                    _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodec<AVCodec>*)_codec)->CodecCallback);
-                }
-                // libavcodec 59.x changed AvCodec private API layout.
-                else if (avCodecMajorVersion == 59)
-                {
-                    _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec501>*)_codec)->Decode);
-                }
-                // libavcodec 58.x and lower
-                else
-                {
-                    _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec>*)_codec)->Decode);
-                }
+                _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodec<AVCodec>*)_codec)->CodecCallback);
             }
-
-            Logger.Info?.Print(LogClass.FFmpeg, $"FFmpeg {_decoderType} decoder initialized successfully (API: {(_useNewApi ? "New" : "Old")}, Codec: {GetCodecName(_codec)})");
-        }
-
-        private void ConfigureDecoderContext()
-        {
-            // 基本解码器配置
-            _context->ErrRecognition = 0x0001 | 0x0002 | 0x0004; // 多种错误识别标志
-            _context->ErrorConcealment = 0x0001 | 0x0002; // 帧和边界错误隐藏
-            _context->WorkaroundBugs = 1; // 启用bug规避
-
-            if (_useHardwareDecoder)
+            // libavcodec 59.x changed AvCodec private API layout.
+            else if (avCodecMajorVersion == 59)
             {
-                // 硬件解码器优化设置
-                _context->Flags2 |= 0x00000001; // CODEC_FLAG2_FAST - 快速解码
-                _context->ThreadCount = 1; // 硬件解码器通常单线程
-                
-                // 减少错误恢复，硬件解码器通常更稳定
-                _context->ErrRecognition = 0x0001;
-                
-                Logger.Debug?.Print(LogClass.FFmpeg, "Configured for hardware decoding");
+                _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec501>*)_codec)->Decode);
             }
+            // libavcodec 58.x and lower
             else
             {
-                // 软件解码器优化
-                _context->ThreadCount = Math.Min(Environment.ProcessorCount, 4);
-                _context->Refs = 3; // 限制参考帧数量
-                
-                Logger.Debug?.Print(LogClass.FFmpeg, $"Configured for software decoding ({_context->ThreadCount} threads)");
+                _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec>*)_codec)->Decode);
             }
-        }
-
-        private string GetCodecName(AVCodec* codec)
-        {
-            if (codec == null) return "Unknown";
-            return Marshal.PtrToStringAnsi((IntPtr)codec->Name) ?? "Unknown";
         }
 
         static FFmpegContext()
@@ -248,10 +91,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
             FFmpegApi.av_log_format_line(ptr, level, format, vl, lineBuffer, lineSize, &printPrefix);
 
-            string line = Marshal.PtrToStringAnsi((IntPtr)lineBuffer)?.Trim() ?? string.Empty;
-
-            if (string.IsNullOrEmpty(line))
-                return;
+            string line = Marshal.PtrToStringAnsi((IntPtr)lineBuffer).Trim();
 
             switch (level)
             {
@@ -278,87 +118,31 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
         public int DecodeFrame(Surface output, ReadOnlySpan<byte> bitstream)
         {
-            _decodeTimer.Start();
-            
             FFmpegApi.av_frame_unref(output.Frame);
 
-            // 如果需要刷新，先刷新解码器
-            if (_needsFlush)
-            {
-                FFmpegApi.avcodec_flush_buffers(_context);
-                _needsFlush = false;
-                Logger.Debug?.Print(LogClass.FFmpeg, "Flushed decoder buffers due to previous errors");
-            }
-
             int result;
-            if (_useNewApi)
-            {
-                // 使用新版 API: avcodec_send_packet/avcodec_receive_frame
-                result = DecodeFrameNewApi(output, bitstream);
-            }
-            else
-            {
-                // 使用旧版 API
-                result = DecodeFrameOldApi(output, bitstream);
-            }
-            
-            _decodeTimer.Stop();
-            _frameCount++;
-
-            // 性能监控
-            if (_frameCount % 100 == 0)
-            {
-                double totalTime = _decodeTimer.Elapsed.TotalMilliseconds;
-                double avgTime = totalTime / _frameCount;
-                double fps = 1000.0 / avgTime;
-                
-                Logger.Info?.Print(LogClass.FFmpeg, 
-                    $"{_decoderType} decode stats: {_frameCount} frames, {avgTime:F2}ms/frame, {fps:F1} FPS, Total: {totalTime:F0}ms");
-            }
-
-            return result;
-        }
-
-        private int DecodeFrameNewApi(Surface output, ReadOnlySpan<byte> bitstream)
-        {
-            int result;
-            int gotFrame = 0;
+            int gotFrame;
 
             fixed (byte* ptr = bitstream)
             {
                 _packet->Data = ptr;
                 _packet->Size = bitstream.Length;
-                
-                // 发送 packet 到解码器
-                result = FFmpegApi.avcodec_send_packet(_context, _packet);
-                if (result < 0 && result != FFmpegApi.EAGAIN && result != FFmpegApi.EOF)
-                {
-                    LogDecodeError("avcodec_send_packet", result);
-                    _needsFlush = true;
-                    FFmpegApi.av_packet_unref(_packet);
-                    return -1;
-                }
+                result = _decodeFrame(_context, output.Frame, &gotFrame, _packet);
+            }
 
-                // 接收解码后的 frame
-                result = FFmpegApi.avcodec_receive_frame(_context, output.Frame);
-                if (result >= 0)
-                {
-                    gotFrame = 1;
-                    _isFirstFrame = false;
-                }
-                else if (result == FFmpegApi.EAGAIN || result == FFmpegApi.EOF)
-                {
-                    // 需要更多输入数据或到达流结尾
-                    gotFrame = 0;
-                    result = 0;
-                    _isFirstFrame = false;
-                }
-                else
-                {
-                    LogDecodeError("avcodec_receive_frame", result);
-                    _needsFlush = true;
-                    gotFrame = 0;
-                }
+            if (gotFrame == 0)
+            {
+                FFmpegApi.av_frame_unref(output.Frame);
+
+                // If the frame was not delivered, it was probably delayed.
+                // Get the next delayed frame by passing a 0 length packet.
+                _packet->Data = null;
+                _packet->Size = 0;
+                result = _decodeFrame(_context, output.Frame, &gotFrame, _packet);
+
+                // We need to set B frames to 0 as we already consumed all delayed frames.
+                // This prevents the decoder from trying to return a delayed frame next time.
+                _context->HasBFrames = 0;
             }
 
             FFmpegApi.av_packet_unref(_packet);
@@ -366,118 +150,26 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             if (gotFrame == 0)
             {
                 FFmpegApi.av_frame_unref(output.Frame);
+
                 return -1;
             }
 
             return result < 0 ? result : 0;
         }
 
-        private int DecodeFrameOldApi(Surface output, ReadOnlySpan<byte> bitstream)
-        {
-            int result;
-            int gotFrame;
-
-            // 创建临时数据包用于解码
-            AVPacket* tempPacket = FFmpegApi.av_packet_alloc();
-            if (tempPacket == null)
-            {
-                Logger.Error?.Print(LogClass.FFmpeg, "Failed to allocate temporary packet");
-                return -1;
-            }
-
-            try
-            {
-                fixed (byte* ptr = bitstream)
-                {
-                    tempPacket->Data = ptr;
-                    tempPacket->Size = bitstream.Length;
-                    result = _decodeFrame(_context, output.Frame, &gotFrame, tempPacket);
-                }
-
-                if (result < 0)
-                {
-                    LogDecodeError("DecodeFrame", result);
-                    
-                    if (_isFirstFrame || result == -1094995529) // AVERROR_INVALIDDATA
-                    {
-                        _needsFlush = true;
-                        _isFirstFrame = false;
-                        FFmpegApi.av_frame_unref(output.Frame);
-                        return -1;
-                    }
-                }
-
-                if (gotFrame == 0)
-                {
-                    FFmpegApi.av_frame_unref(output.Frame);
-
-                    // 尝试获取延迟帧
-                    tempPacket->Data = null;
-                    tempPacket->Size = 0;
-                    result = _decodeFrame(_context, output.Frame, &gotFrame, tempPacket);
-                    _context->HasBFrames = 0; // 重置 B 帧计数
-                }
-
-                if (gotFrame == 0)
-                {
-                    FFmpegApi.av_frame_unref(output.Frame);
-                    return -1;
-                }
-
-                _isFirstFrame = false;
-                return result < 0 ? result : 0;
-            }
-            finally
-            {
-                FFmpegApi.av_packet_unref(tempPacket);
-                FFmpegApi.av_packet_free(&tempPacket);
-            }
-        }
-
-        private void LogDecodeError(string operation, int errorCode)
-        {
-            string errorType = _useHardwareDecoder ? "hardware" : "software";
-            Logger.Warning?.Print(LogClass.FFmpeg, $"{operation} failed with {errorType} decoder (Error: {errorCode})");
-            
-            if (_useHardwareDecoder && errorCode == -1313558101) // AVERROR_UNKNOWN
-            {
-                Logger.Warning?.Print(LogClass.FFmpeg, "Hardware decoder specific error, consider using software fallback");
-            }
-        }
-
-        // 公开属性用于查询解码器状态
-        public bool IsHardwareDecoder => _useHardwareDecoder;
-        public string DecoderType => _decoderType;
-        public string CodecName => GetCodecName(_codec);
-        public string HardwareDecoderName => _hardwareDecoderName ?? "None";
-
         public void Dispose()
         {
-            // 清理数据包
-            if (_packet != null)
+            fixed (AVPacket** ppPacket = &_packet)
             {
-                fixed (AVPacket** ppPacket = &_packet)
-                {
-                    FFmpegApi.av_packet_free(ppPacket);
-                }
+                FFmpegApi.av_packet_free(ppPacket);
             }
 
-            // 刷新解码器缓冲区
-            if (_useNewApi && _context != null)
-            {
-                FFmpegApi.avcodec_flush_buffers(_context);
-            }
+            _ = FFmpegApi.avcodec_close(_context);
 
-            // 清理编解码器上下文
-            if (_context != null)
+            fixed (AVCodecContext** ppContext = &_context)
             {
-                fixed (AVCodecContext** ppContext = &_context)
-                {
-                    FFmpegApi.avcodec_free_context(ppContext);
-                }
+                FFmpegApi.avcodec_free_context(ppContext);
             }
-            
-            Logger.Debug?.Print(LogClass.FFmpeg, $"{_decoderType} decoder disposed");
         }
     }
 }
