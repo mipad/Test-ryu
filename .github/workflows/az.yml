@@ -2,9 +2,9 @@ name: Android CI  Fix
 
 on:
   push:
-    branches: [ "安卓" ]
+    branches: [ "低ptc" ]
   pull_request:
-    branches: [ "安卓" ]
+    branches: [ "低ptc" ]
 
 jobs:
   build:
@@ -25,7 +25,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: 安卓
+        ref: 低ptc
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
