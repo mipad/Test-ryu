@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (完整实现)
+// oboe_audio_renderer.cpp (移除所有 MMAP 相关代码)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
@@ -234,11 +234,6 @@ void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& bu
            ->setUsage(GetEffectiveUsage())
            ->setContentType(m_content_type.load());
     
-    // 设置MMAP
-    if (m_use_mmap.load()) {
-        builder.setMMapEnabled(true);
-    }
-    
     // 设置缓冲区容量
     if (m_buffer_capacity.load() > 0) {
         builder.setBufferCapacityInFrames(m_buffer_capacity.load());
@@ -296,11 +291,6 @@ bool OboeAudioRenderer::TryOpenOffloadStream() {
            ->setContentType(oboe::ContentType::Music)
            ->setDataCallback(m_audio_callback.get())
            ->setErrorCallback(m_error_callback.get());
-    
-    // 设置MMAP
-    if (m_use_mmap.load()) {
-        builder.setMMapEnabled(true);
-    }
     
     // 设置缓冲区容量
     if (m_buffer_capacity.load() > 0) {
@@ -363,11 +353,6 @@ bool OboeAudioRenderer::TryOpenCompressedStream(oboe::AudioFormat format) {
            ->setContentType(oboe::ContentType::Music)
            ->setDataCallback(m_audio_callback.get())
            ->setErrorCallback(m_error_callback.get());
-    
-    // 设置MMAP
-    if (m_use_mmap.load()) {
-        builder.setMMapEnabled(true);
-    }
     
     // 对于压缩格式，采样率和声道数可能由格式本身决定
     builder.setChannelCount(m_channel_count.load());
@@ -697,15 +682,6 @@ void OboeAudioRenderer::SetBufferCapacity(int32_t capacity_frames) {
     }
 }
 
-void OboeAudioRenderer::EnableMmap(bool enable) {
-    if (m_use_mmap.load() != enable) {
-        m_use_mmap.store(enable);
-        if (m_initialized.load()) {
-            Reset();
-        }
-    }
-}
-
 void OboeAudioRenderer::SetAudioFocus(bool has_focus) {
     if (m_has_audio_focus.load() != has_focus) {
         m_has_audio_focus.store(has_focus);
@@ -820,7 +796,6 @@ OboeAudioRenderer::PerformanceStats OboeAudioRenderer::GetStats() const {
     stats.current_audio_format = m_current_audio_format;
     stats.performance_mode = PerformanceModeToString(m_performance_mode.load());
     stats.usage = UsageToString(m_usage.load());
-    stats.mmap_enabled = m_use_mmap.load();
     return stats;
 }
 

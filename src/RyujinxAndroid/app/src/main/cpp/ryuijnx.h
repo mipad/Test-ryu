@@ -72,7 +72,6 @@ extern "C" {
     void setOboeContentType(int content_type);
     void setOboeChannelMask(int channel_mask);
     void setOboeBufferCapacity(int capacity_frames);
-    void enableOboeMmap(bool enable);
     void setOboeAudioFocus(bool has_focus);
     
     // 设备信息函数

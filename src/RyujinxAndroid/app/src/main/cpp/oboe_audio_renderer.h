@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (完整实现)
+// oboe_audio_renderer.h (移除所有 MMAP 相关代码)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -65,10 +65,6 @@ public:
     void SetBufferCapacity(int32_t capacity_frames);
     int32_t GetBufferCapacity() const { return m_buffer_capacity.load(); }
 
-    // MMAP支持
-    void EnableMmap(bool enable);
-    bool IsMmapEnabled() const { return m_use_mmap.load(); }
-
     // 音频焦点管理
     void SetAudioFocus(bool has_focus);
     bool HasAudioFocus() const { return m_has_audio_focus.load(); }
@@ -84,7 +80,6 @@ public:
         std::string current_audio_format = "PCM";
         std::string performance_mode = "Unknown";
         std::string usage = "Unknown";
-        bool mmap_enabled = false;
     };
     
     PerformanceStats GetStats() const;
@@ -166,7 +161,6 @@ private:
     std::atomic<bool> m_initialized{false};
     std::atomic<bool> m_stream_started{false};
     std::atomic<bool> m_pcm_offload_enabled{false};
-    std::atomic<bool> m_use_mmap{false};
     std::atomic<bool> m_has_audio_focus{true};
     
     std::atomic<int32_t> m_sample_rate{48000};

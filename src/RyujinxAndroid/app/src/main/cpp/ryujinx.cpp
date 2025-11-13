@@ -1,4 +1,4 @@
-// ryujinx.cpp (完整实现)
+// ryujinx.cpp (完整实现 - 移除MMAP相关代码)
 #include "ryuijnx.h"
 #include <chrono>
 #include <csignal>
@@ -398,12 +398,6 @@ Java_org_ryujinx_android_NativeHelpers_setOboeBufferCapacity(JNIEnv *env, jobjec
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_org_ryujinx_android_NativeHelpers_enableOboeMmap(JNIEnv *env, jobject thiz, jboolean enable) {
-    RyujinxOboe::OboeAudioRenderer::GetInstance().EnableMmap(enable);
-}
-
-extern "C"
-JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setOboeAudioFocus(JNIEnv *env, jobject thiz, jboolean has_focus) {
     RyujinxOboe::OboeAudioRenderer::GetInstance().SetAudioFocus(has_focus);
 }
@@ -525,11 +519,6 @@ void setOboeChannelMask(int channel_mask) {
 extern "C"
 void setOboeBufferCapacity(int capacity_frames) {
     RyujinxOboe::OboeAudioRenderer::GetInstance().SetBufferCapacity(capacity_frames);
-}
-
-extern "C"
-void enableOboeMmap(bool enable) {
-    RyujinxOboe::OboeAudioRenderer::GetInstance().EnableMmap(enable);
 }
 
 extern "C"
