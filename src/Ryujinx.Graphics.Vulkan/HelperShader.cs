@@ -1215,7 +1215,7 @@ namespace Ryujinx.Graphics.Vulkan
             memoryBarrierCount: 0,
             pMemoryBarriers: null,
             bufferMemoryBarrierCount: (uint)postBarriers.Length,
-            pBufferMemoryBarriers = pPostBarriers,
+            pBufferMemoryBarriers: pPostBarriers,
             imageMemoryBarrierCount: 0,
             pImageMemoryBarriers: null
         );
