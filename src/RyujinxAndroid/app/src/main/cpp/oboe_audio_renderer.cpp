@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (兼容Oboe 1.10版本，移除所有日志，添加PCM offload和压缩格式支持)
+// oboe_audio_renderer.cpp (修复压缩格式枚举问题)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
@@ -584,11 +584,11 @@ bool OboeAudioRenderer::IsCompressedFormatSupported(oboe::AudioFormat format) co
     builder.setDirection(oboe::Direction::Output)
            ->setFormat(format);
     
-    // 这里简化实现，实际中应该查询设备的具体支持情况
+    // 根据 Oboe 1.10 的实际枚举值进行调整
     switch (format) {
-        case oboe::AudioFormat::AAC:
-        case oboe::AudioFormat::AAC_LC:
+        case oboe::AudioFormat::IEC61937:  // 压缩格式的通用标识
         case oboe::AudioFormat::MP3:
+        case oboe::AudioFormat::AAC_LC:    // 使用 AAC_LC 而不是 AAC
             return builder.isAAudioRecommended();
         default:
             return false;
