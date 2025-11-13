@@ -500,13 +500,15 @@ class MainViewModel(val activity: MainActivity) {
                     settings.enableVsync,
                     settings.enableDocked,
                     settings.enablePtc,
+                    settings.enableLowPowerPptc,
                     settings.enableJitCacheEviction,
                     false,
+                    settings.enableFsIntegrityChecks,
                     tzId, // <<< Pass through Android device time zone
                     settings.ignoreMissingServices,
-                    settings.audioEngineType, // 新增音频引擎参数
+                    settings.audioEngineType, // 音频引擎
                     settings.memoryConfiguration, // 内存配置
-                    settings.systemTimeOffset // 新增系统时间偏移参数
+                    settings.systemTimeOffset // 系统时间偏移
                 )
 
                 semaphore.release()
@@ -521,7 +523,7 @@ class MainViewModel(val activity: MainActivity) {
         success =
             RyujinxNative.jnaInstance.deviceLoadDescriptor(descriptor, game.type.ordinal, update)
 
-        // 新增：游戏启动成功后触发表面格式保存
+        // 游戏启动成功后触发表面格式保存
         if (success) {
             CoroutineScope(Dispatchers.IO).launch {
                 delay(5000) // 延迟5秒确保游戏完全启动
@@ -623,13 +625,15 @@ class MainViewModel(val activity: MainActivity) {
                     settings.enableVsync,
                     settings.enableDocked,
                     settings.enablePtc,
+                    settings.enableLowPowerPptc,
                     settings.enableJitCacheEviction,
                     false,
+                    settings.enableFsIntegrityChecks,
                     tzId, // <<< Pass through Android device time zone
                     settings.ignoreMissingServices,
-                    settings.audioEngineType, // 新增音频引擎参数
+                    settings.audioEngineType, // 音频引擎
                     settings.memoryConfiguration, // 内存配置
-                    settings.systemTimeOffset // 新增系统时间偏移参数
+                    settings.systemTimeOffset // 系统时间偏移
                 )
 
                 semaphore.release()
@@ -643,7 +647,7 @@ class MainViewModel(val activity: MainActivity) {
 
         success = RyujinxNative.jnaInstance.deviceLaunchMiiEditor()
 
-        // 新增：Mii编辑器启动成功后触发表面格式保存
+        // Mii编辑器启动成功后触发表面格式保存
         if (success) {
             CoroutineScope(Dispatchers.IO).launch {
                 delay(5000) // 延迟5秒确保Mii编辑器完全启动

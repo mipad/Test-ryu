@@ -10,12 +10,14 @@ import org.ryujinx.android.SystemLanguage
 class QuickSettings(val activity: Activity) {
     var ignoreMissingServices: Boolean
     var enablePtc: Boolean
+    var enableLowPowerPptc: Boolean
     var enableJitCacheEviction: Boolean
+    var enableFsIntegrityChecks: Boolean
     var enableDocked: Boolean
     var enableVsync: Boolean
     var useNce: Boolean
     var useVirtualController: Boolean
-    var memoryManagerMode: Int // 新增：内存管理器模式 0=SoftwarePageTable, 1=HostMapped, 2=HostMappedUnsafe
+    var memoryManagerMode: Int 
     var enableShaderCache: Boolean
     var enableTextureRecompression: Boolean
     var resScale: Float
@@ -25,34 +27,34 @@ class QuickSettings(val activity: Activity) {
     var enableMotion: Boolean
     var enablePerformanceMode: Boolean
     var controllerStickSensitivity: Float
-    var skipMemoryBarriers: Boolean // 新增：跳过内存屏障
-    var regionCode: Int // 新增：区域代码
-    var systemLanguage: Int // 新增：系统语言
+    var skipMemoryBarriers: Boolean
+    var regionCode: Int // 区域代码
+    var systemLanguage: Int // 系统语言
     var audioEngineType: Int // 0=禁用，1=OpenAL
     var scalingFilter: Int // 新增：缩放过滤器
     var scalingFilterLevel: Int // 新增：缩放过滤器级别
     var antiAliasing: Int // 新增：抗锯齿模式 0=None, 1=Fxaa, 2=SmaaLow, 3=SmaaMedium, 4=SmaaHigh, 5=SmaaUltra
     var memoryConfiguration: Int // 新增：内存配置 0=4GB, 1=4GB Applet Dev, 2=4GB System Dev, 3=6GB, 4=6GB Applet Dev, 5=8GB
-    var systemTimeOffset: Long // 新增：系统时间偏移（秒）
+    var systemTimeOffset: Long //系统时间偏移（秒）
     
-    // 新增：自定义时间相关字段
-    var customTimeEnabled: Boolean // 新增：自定义时间开关
-    var customTimeYear: Int // 新增：自定义时间-年
-    var customTimeMonth: Int // 新增：自定义时间-月
-    var customTimeDay: Int // 新增：自定义时间-日
-    var customTimeHour: Int // 新增：自定义时间-时
-    var customTimeMinute: Int // 新增：自定义时间-分
-    var customTimeSecond: Int // 新增：自定义时间-秒
+    // 自定义时间相关字段
+    var customTimeEnabled: Boolean //自定义时间开关
+    var customTimeYear: Int // 自定义时间-年
+    var customTimeMonth: Int // 自定义时间-月
+    var customTimeDay: Int // 自定义时间-日
+    var customTimeHour: Int // 自定义时间-时
+    var customTimeMinute: Int // 自定义时间-分
+    var customTimeSecond: Int // 自定义时间-秒
 
-    // 新增：表面格式相关字段
+    // 表面格式相关字段
     var customSurfaceFormatEnabled: Boolean // 是否启用自定义表面格式
     var surfaceFormat: Int // 表面格式值
     var surfaceColorSpace: Int // 颜色空间值
 
-    // 新增：Enable Color Space Passthrough
+    // Enable Color Space Passthrough
     var enableColorSpacePassthrough: Boolean
 
-    // 新增：BackendThreading
+    // BackendThreading
     var backendThreading: Int // BackendThreading 枚举值
 
     // Logs
@@ -75,7 +77,9 @@ class QuickSettings(val activity: Activity) {
         enableVsync = sharedPref.getBoolean("enableVsync", true)
         enableDocked = sharedPref.getBoolean("enableDocked", true)
         enablePtc = sharedPref.getBoolean("enablePtc", true)
+        enableLowPowerPptc = sharedPref.getBoolean("enableLowPowerPptc", false)
         enableJitCacheEviction = sharedPref.getBoolean("enableJitCacheEviction", true)
+        enableFsIntegrityChecks = sharedPref.getBoolean("enableFsIntegrityChecks", false)
         ignoreMissingServices = sharedPref.getBoolean("ignoreMissingServices", false)
         enableShaderCache = sharedPref.getBoolean("enableShaderCache", true)
         enableTextureRecompression = sharedPref.getBoolean("enableTextureRecompression", false)
@@ -136,7 +140,9 @@ class QuickSettings(val activity: Activity) {
         editor.putBoolean("enableVsync", enableVsync)
         editor.putBoolean("enableDocked", enableDocked)
         editor.putBoolean("enablePtc", enablePtc)
+        editor.putBoolean("enableLowPowerPptc", enableLowPowerPptc)
         editor.putBoolean("enableJitCacheEviction", enableJitCacheEviction)
+        editor.putBoolean("enableFsIntegrityChecks", enableFsIntegrityChecks)
         editor.putBoolean("ignoreMissingServices", ignoreMissingServices)
         editor.putBoolean("enableShaderCache", enableShaderCache)
         editor.putBoolean("enableTextureRecompression", enableTextureRecompression)
