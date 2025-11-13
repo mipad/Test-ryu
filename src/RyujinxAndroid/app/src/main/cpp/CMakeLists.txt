@@ -90,13 +90,18 @@ target_compile_definitions(ryujinxjni PRIVATE
     # 如果需要，可以添加更多音频优化标志
 )
 
-# 添加编译选项
+# 为音频渲染器文件单独启用快速数学优化
+set_source_files_properties(oboe_audio_renderer.cpp PROPERTIES
+    COMPILE_FLAGS "-ffast-math"
+)
+
+# 为主目标添加编译选项（不包含 -ffast-math）
 target_compile_options(ryujinxjni PRIVATE
     -std=c++20
     -O3
     -DNDEBUG
-    -ffast-math
     -march=armv8-a
+    # 注意：移除了全局的 -ffast-math
 )
 
 # 查找系统库
