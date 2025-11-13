@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (兼容Oboe 1.10版本，修复LOG_TAG)
+// oboe_audio_renderer.cpp (兼容Oboe 1.10版本，移除所有日志)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
@@ -6,13 +6,6 @@
 #include <chrono>
 #include <cmath>
 #include <array>
-
-// 在 cpp 文件中定义 LOG_TAG，避免头文件冲突
-#define LOG_TAG "RyujinxOboe"
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
-#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
-#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
 
 namespace RyujinxOboe {
 
@@ -117,12 +110,10 @@ oboe::DataCallbackResult OboeAudioRenderer::AAudioExclusiveCallback::onAudioRead
 }
 
 void OboeAudioRenderer::AAudioExclusiveErrorCallback::onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) {
-    LOGW("AAudio stream closed with error: %d", error);
     m_renderer->OnStreamErrorAfterClose(audioStream, error);
 }
 
 void OboeAudioRenderer::AAudioExclusiveErrorCallback::onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) {
-    LOGE("AAudio stream error before close: %d", error);
     m_renderer->OnStreamErrorBeforeClose(audioStream, error);
 }
 
@@ -144,8 +135,6 @@ OboeAudioRenderer& OboeAudioRenderer::GetInstance() {
 bool OboeAudioRenderer::Initialize(int32_t sampleRate, int32_t channelCount) {
     if (m_initialized.load()) {
         if (m_sample_rate.load() != sampleRate || m_channel_count.load() != channelCount) {
-            LOGI("Audio parameters changed: %dHz %dch -> %dHz %dch", 
-                 m_sample_rate.load(), m_channel_count.load(), sampleRate, channelCount);
             Shutdown();
         } else {
             return true;
@@ -157,18 +146,14 @@ bool OboeAudioRenderer::Initialize(int32_t sampleRate, int32_t channelCount) {
     m_sample_rate.store(sampleRate);
     m_channel_count.store(channelCount);
     
-    LOGI("Initializing AAudio (Exclusive Mode): %dHz %dch", sampleRate, channelCount);
-    
     // 使用样本缓冲区队列
     m_sample_queue = std::make_unique<SampleBufferQueue>(32);
     
     if (!ConfigureAndOpenStream()) {
-        LOGE("Failed to open AAudio exclusive stream");
         return false;
     }
     
     m_initialized.store(true);
-    LOGI("AAudio exclusive initialization complete");
     return true;
 }
 
@@ -184,7 +169,6 @@ void OboeAudioRenderer::Shutdown() {
     
     m_initialized.store(false);
     m_stream_started.store(false);
-    LOGI("OboeAudioRenderer shutdown");
 }
 
 void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& builder) {
@@ -236,22 +220,17 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() {
     auto result = builder.openStream(m_stream);
     
     if (result != oboe::Result::OK) {
-        LOGW("AAudio exclusive failed, trying AAudio shared mode");
-        
         // 回退到AAudio共享模式
         builder.setSharingMode(oboe::SharingMode::Shared);
         result = builder.openStream(m_stream);
         
         if (result != oboe::Result::OK) {
-            LOGW("AAudio shared failed, trying OpenSLES");
-            
             // 最终回退到OpenSLES
             builder.setAudioApi(oboe::AudioApi::OpenSLES)
                    ->setSharingMode(oboe::SharingMode::Shared);
             result = builder.openStream(m_stream);
             
             if (result != oboe::Result::OK) {
-                LOGE("All audio API attempts failed");
                 return false;
             } else {
                 m_current_audio_api = "OpenSLES";
@@ -269,24 +248,12 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() {
     // 优化缓冲区大小
     int32_t desired_buffer_size = TARGET_SAMPLE_COUNT * 4; // 更大的缓冲区减少underrun
     auto setBufferResult = m_stream->setBufferSizeInFrames(desired_buffer_size);
-    if (setBufferResult) {
-        LOGD("Buffer size set to %d frames", setBufferResult.value());
-    }
     
     m_device_channels = m_stream->getChannelCount();
-    const auto sample_rate = m_stream->getSampleRate();
-    const auto buffer_capacity = m_stream->getBufferCapacityInFrames();
-    const auto actual_buffer_size = m_stream->getBufferSizeInFrames();
-    const auto frames_per_callback = m_stream->getFramesPerCallback();
-
-    LOGI("Opened %s %s stream: %d channels, %d Hz, buffer: %d/%d frames, %d frames/callback",
-         m_current_audio_api.c_str(), m_current_sharing_mode.c_str(),
-         m_device_channels, sample_rate, actual_buffer_size, buffer_capacity, frames_per_callback);
     
     // 启动流
     result = m_stream->requestStart();
     if (result != oboe::Result::OK) {
-        LOGE("Failed to start audio stream: %d", result);
         CloseStream();
         return false;
     }
@@ -409,8 +376,6 @@ bool OboeAudioRenderer::WriteAudio(const int16_t* data, int32_t num_frames) {
         m_frames_written += num_frames;
     } else {
         m_underrun_count++;
-        LOGW("Audio sample queue full: %d frames (%zu samples) dropped", 
-             num_frames, total_samples);
     }
     
     return success;
@@ -441,7 +406,6 @@ void OboeAudioRenderer::Reset() {
     ConfigureAndOpenStream();
     
     m_stream_restart_count++;
-    LOGI("Audio stream reset (count: %d)", m_stream_restart_count.load());
 }
 
 oboe::DataCallbackResult OboeAudioRenderer::OnAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) {
@@ -462,12 +426,6 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReady(oboe::AudioStream* audi
     if (samples_read < samples_requested) {
         size_t samples_remaining = samples_requested - samples_read;
         std::memset(output + samples_read, 0, samples_remaining * sizeof(int16_t));
-        
-        static int underflow_log_counter = 0;
-        if (++underflow_log_counter >= 10) {
-            LOGW("Audio underflow: %zu/%zu samples available", samples_read, samples_requested);
-            underflow_log_counter = 0;
-        }
     }
     
     m_frames_played += num_frames;
@@ -475,23 +433,15 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReady(oboe::AudioStream* audi
 }
 
 void OboeAudioRenderer::OnStreamErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) {
-    LOGI("Audio stream closed, reinitializing");
-    
     std::lock_guard<std::mutex> lock(m_stream_mutex);
     
     if (m_initialized.load()) {
         CloseStream();
-        if (ConfigureAndOpenStream()) {
-            LOGI("Audio stream recovered successfully");
-        } else {
-            LOGE("Failed to recover audio stream");
-        }
+        ConfigureAndOpenStream();
     }
 }
 
 void OboeAudioRenderer::OnStreamErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) {
-    LOGE("Audio stream error before close: %d", error);
-    
     std::lock_guard<std::mutex> lock(m_stream_mutex);
     m_stream_started.store(false);
 }

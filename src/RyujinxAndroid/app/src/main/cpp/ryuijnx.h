@@ -20,13 +20,11 @@
 #include <fcntl.h>
 #include "adrenotools/driver.h"
 #include "native_window.h"
+#include <pthread.h>
 
 // A macro to pass call to Vulkan and check for return value for success
 #define CALL_VK(func)                                                 \
   if (VK_SUCCESS != (func)) {                                         \
-    __android_log_print(ANDROID_LOG_ERROR, "Tutorial ",               \
-                        "Vulkan error. File[%s], line[%d]", __FILE__, \
-                        __LINE__);                                    \
     assert(false);                                                    \
   }
 
@@ -41,21 +39,47 @@ void *_ryujinxNative = NULL;
 // Ryujinx imported functions
 bool (*initialize)(char *) = NULL;
 
-long _renderingThreadId = 0;
-JavaVM *_vm = nullptr;
-jobject _mainActivity = nullptr;
-jclass _mainActivityClass = nullptr;
+// 全局变量声明 (在头文件中声明为extern)
+extern long _renderingThreadId;
+extern JavaVM *_vm;
+extern jobject _mainActivity;
+extern jclass _mainActivityClass;
+extern pthread_t _renderingThreadIdNative;
 
-// 添加 Oboe 音频相关的函数声明
+// =============== Oboe 音频函数声明 ===============
 extern "C" {
-    void initOboeAudio();
+    bool initOboeAudio(int sample_rate, int channel_count);
     void shutdownOboeAudio();
-    void writeOboeAudio(const float* data, int32_t num_frames);
-    void setOboeSampleRate(int32_t sample_rate);
-    void setOboeBufferSize(int32_t buffer_size);
+    bool writeOboeAudio(const int16_t* data, int32_t num_frames);
     void setOboeVolume(float volume);
     bool isOboeInitialized();
+    bool isOboePlaying();
     int32_t getOboeBufferedFrames();
+    void resetOboeAudio();
+    
+    // 设备信息函数
+    const char* GetAndroidDeviceModel();
+    const char* GetAndroidDeviceBrand();
+}
+
+// =============== 其他全局函数声明 ===============
+extern "C" {
+    // 渲染线程相关
+    void setRenderingThread();
+    
+    // 窗口变换相关
+    void setCurrentTransform(long native_window, int transform);
+    
+    // 调试相关
+    void debug_break(int code);
+    
+    // 字符串处理函数（在 ryujinx.cpp 中定义）
+    char *getStringPointer(JNIEnv *env, jstring jS);
+    jstring createString(JNIEnv *env, char *ch);
+    jstring createStringFromStdString(JNIEnv *env, std::string s);
+    
+    // 表面创建函数
+    long createSurface(long native_surface, long instance);
 }
 
 #endif //RYUJINXNATIVE_RYUIJNX_H

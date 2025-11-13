@@ -10,10 +10,6 @@
 #include <cstdint>
 #include <queue>
 #include <list>
-#include <android/log.h>
-
-// 移除 LOG_TAG 定义，避免与 ryujinx.cpp 冲突
-// 在每个 cpp 文件中单独定义 LOG_TAG
 
 namespace RyujinxOboe {
 
