@@ -2610,5 +2610,6 @@ public static int GetScalingFilterLevel()
         public string TitleId { get; set; } = string.Empty; // 游戏标题ID
         public string TitleName { get; set; } = string.Empty; // 游戏名称
         public DateTime LastModified { get; set; } // 最后修改时间
+        public long Size { get; set; } // 存档大小
     }
 }
