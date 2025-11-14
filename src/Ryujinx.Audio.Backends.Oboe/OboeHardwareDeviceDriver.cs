@@ -54,7 +54,6 @@ namespace Ryujinx.Audio.Backends.Oboe
         private bool _stillRunning = true;
         private readonly object _initLock = new object();
 
-        // 移除性能统计相关字段
         private int _currentChannelCount = 2;
 
         public float Volume
@@ -95,7 +94,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                     }
                     catch (Exception ex)
                     {
-                        // 只保留错误日志
+                        Logger.Error?.Print(LogClass.Audio, $"Update thread error: {ex.Message}");
                     }
                 }
             })
@@ -180,7 +179,6 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
                 else if (_currentChannelCount != channelCount)
                 {
-                    // 声道数变化时重新初始化
                     ReinitializeOboe(sampleRate, channelCount);
                 }
             }
@@ -228,7 +226,6 @@ namespace Ryujinx.Audio.Backends.Oboe
         {
             bool removed = _sessions.TryRemove(session, out _);
             
-            // 如果没有会话了，关闭音频
             if (_sessions.IsEmpty && _isOboeInitialized)
             {
                 shutdownOboeAudio();
@@ -345,10 +342,8 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 try
                 {
-                    // 计算已播放的样本数
                     ulong playedSamples = _totalWrittenSamples - (ulong)(bufferedFrames * _channelCount);
                     
-                    // 防止回退
                     if (playedSamples < _totalPlayedSamples)
                     {
                         _totalPlayedSamples = playedSamples;
@@ -357,7 +352,6 @@ namespace Ryujinx.Audio.Backends.Oboe
                     
                     ulong availableSampleCount = playedSamples - _totalPlayedSamples;
                     
-                    // 更新缓冲区播放状态
                     while (availableSampleCount > 0 && _queuedBuffers.TryPeek(out OboeAudioBuffer driverBuffer))
                     {
                         ulong sampleStillNeeded = driverBuffer.SampleCount - driverBuffer.SamplePlayed;
@@ -367,7 +361,6 @@ namespace Ryujinx.Audio.Backends.Oboe
                         availableSampleCount -= playedAudioBufferSampleCount;
                         _totalPlayedSamples += playedAudioBufferSampleCount;
                         
-                        // 如果缓冲区播放完毕，移除它
                         if (driverBuffer.SamplePlayed == driverBuffer.SampleCount)
                         {
                             _queuedBuffers.TryDequeue(out _);
@@ -375,9 +368,9 @@ namespace Ryujinx.Audio.Backends.Oboe
                         }
                     }
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
-                    // 静默处理错误
+                    Logger.Error?.Print(LogClass.Audio, $"Error in UpdatePlaybackStatus: {ex.Message}");
                 }
             }
 
@@ -422,6 +415,10 @@ namespace Ryujinx.Audio.Backends.Oboe
                 // 格式转换：将任意格式转换为PCM16
                 if (_sourceFormat != SampleFormat.PcmInt16)
                 {
+                    // 保留格式转换日志
+                    Logger.Debug?.Print(LogClass.Audio, 
+                        $"Converting audio from {_sourceFormat} to PCM16 for Oboe output");
+                    
                     audioData = ConvertToPcm16(buffer.Data, _sourceFormat, _channelCount);
                     sampleCount = audioData.Length;
                     frameCount = sampleCount / _channelCount;
