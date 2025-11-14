@@ -190,7 +190,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
             }
 
-            var session = new OboeAudioSession(this, memoryManager, sampleFormat, sampleRate, channelCount);
+            var session = new OboeAudioSession(this, sampleFormat, sampleRate, channelCount);
             _sessions.TryAdd(session, 0);
             
             return session;
@@ -249,7 +249,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         }
 
         // ========== 音频会话类 ==========
-        private class OboeAudioSession : HardwareDeviceSessionOutputBase
+        private class OboeAudioSession : IHardwareDeviceSession
         {
             private readonly OboeHardwareDeviceDriver _driver;
             private readonly ConcurrentQueue<OboeAudioBuffer> _queuedBuffers = new();
@@ -259,18 +259,22 @@ namespace Ryujinx.Audio.Backends.Oboe
             private float _volume;
             private readonly int _channelCount;
             private readonly uint _sampleRate;
+            private readonly SampleFormat _sampleFormat;
+
+            public SampleFormat RequestedSampleFormat => _sampleFormat;
+            public uint RequestedSampleRate => _sampleRate;
+            public uint RequestedChannelCount => (uint)_channelCount;
 
             public OboeAudioSession(
                 OboeHardwareDeviceDriver driver,
-                IVirtualMemoryManager memoryManager,
                 SampleFormat sampleFormat,
                 uint sampleRate,
-                uint channelCount) 
-                : base(memoryManager, sampleFormat, sampleRate, channelCount)
+                uint channelCount)
             {
                 _driver = driver;
-                _channelCount = (int)channelCount;
+                _sampleFormat = sampleFormat;
                 _sampleRate = sampleRate;
+                _channelCount = (int)channelCount;
                 _volume = 1.0f;
             }
 
@@ -310,19 +314,19 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
             }
 
-            public override void Dispose()
+            public void Dispose()
             {
                 Stop();
                 _driver.Unregister(this);
                 Logger.Debug?.Print(LogClass.Audio, "OboeAudioSession disposed");
             }
 
-            public override void PrepareToClose() 
+            public void PrepareToClose() 
             {
                 Stop();
             }
 
-            public override void Start() 
+            public void Start() 
             {
                 if (!_active)
                 {
@@ -331,7 +335,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
             }
 
-            public override void Stop() 
+            public void Stop() 
             {
                 if (_active)
                 {
@@ -341,7 +345,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
             }
 
-            public override void QueueBuffer(AudioBuffer buffer)
+            public void QueueBuffer(AudioBuffer buffer)
             {
                 if (!_active) Start();
 
@@ -432,15 +436,14 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
             }
 
-            // 重写 RegisterBuffer 方法，不依赖基类的 GetBufferSamples
-            public override bool RegisterBuffer(AudioBuffer buffer)
+            public bool RegisterBuffer(AudioBuffer buffer)
             {
                 // 直接返回 true，因为我们不依赖 MemoryManager 来读取数据
-                // 数据已经在 buffer.Data 中
+                // 数据应该在 buffer.Data 中已经提供
                 return buffer.Data != null;
             }
 
-            public override bool RegisterBuffer(AudioBuffer buffer, byte[] samples)
+            public bool RegisterBuffer(AudioBuffer buffer, byte[] samples)
             {
                 if (samples == null)
                 {
@@ -451,7 +454,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 return true;
             }
 
-            public override void UnregisterBuffer(AudioBuffer buffer)
+            public void UnregisterBuffer(AudioBuffer buffer)
             {
                 if (_queuedBuffers.TryPeek(out var driverBuffer) && 
                     driverBuffer.DriverIdentifier == buffer.DataPointer)
@@ -460,22 +463,22 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
             }
 
-            public override bool WasBufferFullyConsumed(AudioBuffer buffer)
+            public bool WasBufferFullyConsumed(AudioBuffer buffer)
             {
                 return !_queuedBuffers.TryPeek(out var driverBuffer) || 
                        driverBuffer.DriverIdentifier != buffer.DataPointer;
             }
 
-            public override void SetVolume(float volume)
+            public void SetVolume(float volume)
             {
                 _volume = Math.Clamp(volume, 0.0f, 1.0f);
                 setOboeVolume(_volume);
                 Logger.Debug?.Print(LogClass.Audio, $"Session volume set to {_volume:F2}");
             }
 
-            public override float GetVolume() => _volume;
+            public float GetVolume() => _volume;
 
-            public override ulong GetPlayedSampleCount()
+            public ulong GetPlayedSampleCount()
             {
                 return _totalPlayedSamples;
             }
