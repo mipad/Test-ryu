@@ -53,6 +53,10 @@ namespace Ryujinx.Audio.Backends.Oboe
         private readonly object _initLock = new object();
         private int _currentChannelCount = 2;
 
+        // 性能监控变量
+        private int _consecutiveFailures = 0;
+        private readonly object _performanceLock = new object();
+
         public float Volume
         {
             get => _volume;
@@ -79,7 +83,8 @@ namespace Ryujinx.Audio.Backends.Oboe
                 {
                     try
                     {
-                        Thread.Sleep(Constants.TargetSampleCount * 1000 / (int)Constants.TargetSampleRate);
+                        // 增加更新间隔，减少CPU占用 (从5ms增加到20ms)
+                        Thread.Sleep(20);
 
                         if (_isOboeInitialized)
                         {
@@ -100,7 +105,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 Name = "Audio.Oboe.UpdateThread",
                 IsBackground = true,
-                Priority = ThreadPriority.Normal
+                Priority = ThreadPriority.BelowNormal // 降低线程优先级
             };
             _updateThread.Start();
         }
@@ -355,27 +360,70 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 try
                 {
+                    var startTime = DateTime.Now.Ticks;
+                    
                     // 转换为short数组用于Oboe
                     int sampleCount = buffer.Data.Length / 2; // PCM16每个样本2字节
                     int frameCount = sampleCount / _channelCount;
                     
-                    short[] audioData = new short[sampleCount];
-                    Buffer.BlockCopy(buffer.Data, 0, audioData, 0, buffer.Data.Length);
-
-                    bool writeSuccess = writeOboeAudio(audioData, frameCount);
-
-                    if (writeSuccess)
+                    // 如果连续失败，尝试调整缓冲区大小
+                    int adaptiveFrameCount = frameCount;
+                    if (_driver._consecutiveFailures > 3 && frameCount > 480)
                     {
-                        _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, (ulong)sampleCount));
-                        _totalWrittenSamples += (ulong)sampleCount;
-                        
-                        Logger.Debug?.Print(LogClass.Audio, 
-                            $"Queued audio buffer: {frameCount} frames, {sampleCount} samples");
+                        adaptiveFrameCount = 480; // 限制最大帧数
+                        sampleCount = adaptiveFrameCount * _channelCount;
                     }
-                    else
+                    
+                    short[] audioData = new short[sampleCount];
+                    Buffer.BlockCopy(buffer.Data, 0, audioData, 0, Math.Min(buffer.Data.Length, sampleCount * 2));
+
+                    bool writeSuccess = writeOboeAudio(audioData, adaptiveFrameCount);
+
+                    var endTime = DateTime.Now.Ticks;
+                    var processTime = (endTime - startTime) / TimeSpan.TicksPerMillisecond;
+                    
+                    lock (_driver._performanceLock)
                     {
-                        Logger.Warning?.Print(LogClass.Audio, $"Audio write failed: {frameCount} frames");
-                        resetOboeAudio();
+                        if (writeSuccess)
+                        {
+                            _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, (ulong)sampleCount));
+                            _totalWrittenSamples += (ulong)sampleCount;
+                            _driver._consecutiveFailures = 0;
+                            
+                            // 减少调试日志频率，只在必要时记录
+                            if (frameCount > 480) // 只记录较大的缓冲区
+                            {
+                                Logger.Debug?.Print(LogClass.Audio, 
+                                    $"Queued audio buffer: {frameCount} frames, {sampleCount} samples");
+                            }
+                            
+                            // 记录处理时间过长的操作
+                            if (processTime > 10) // 超过 10ms
+                            {
+                                Logger.Warning?.Print(LogClass.Audio, 
+                                    $"Audio processing took {processTime}ms for {frameCount} frames");
+                            }
+                        }
+                        else
+                        {
+                            _driver._consecutiveFailures++;
+                            
+                            // 连续失败时降低日志级别，避免日志风暴
+                            if (_driver._consecutiveFailures % 10 == 1) // 每10次失败记录一次
+                            {
+                                Logger.Warning?.Print(LogClass.Audio, 
+                                    $"Audio write failed: {frameCount} frames (consecutive failures: {_driver._consecutiveFailures})");
+                            }
+                            
+                            // 只有在连续失败很多次时才考虑重置
+                            if (_driver._consecutiveFailures > 20)
+                            {
+                                Logger.Error?.Print(LogClass.Audio, 
+                                    $"Multiple audio write failures, resetting audio system: {_driver._consecutiveFailures}");
+                                resetOboeAudio();
+                                _driver._consecutiveFailures = 0; // 重置计数器
+                            }
+                        }
                     }
                 }
                 catch (Exception ex)
