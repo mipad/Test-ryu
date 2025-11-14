@@ -4,7 +4,6 @@ using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
 using Ryujinx.Audio.Integration;
 using Ryujinx.Common.Logging;
-using Ryujinx.Memory;
 using System;
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
@@ -58,6 +57,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         private bool _stillRunning = true;
         private readonly object _initLock = new object();
         private int _currentChannelCount = 2;
+        private int _updateIntervalMs = 20; // 降低更新频率到20ms
 
         public float Volume
         {
@@ -74,7 +74,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         public OboeHardwareDeviceDriver()
         {
             StartUpdateThread();
-            Logger.Info?.Print(LogClass.Audio, "OboeHardwareDeviceDriver initialized");
+            Logger.Info?.Print(LogClass.Audio, "OboeHardwareDeviceDriver initialized (Optimized Version)");
         }
 
         private void StartUpdateThread()
@@ -85,7 +85,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 {
                     try
                     {
-                        Thread.Sleep(Constants.TargetSampleCount * 1000 / (int)Constants.TargetSampleRate);
+                        Thread.Sleep(_updateIntervalMs); // 使用固定间隔，减少更新频率
 
                         if (_isOboeInitialized)
                         {
@@ -106,7 +106,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 Name = "Audio.Oboe.UpdateThread",
                 IsBackground = true,
-                Priority = ThreadPriority.Normal
+                Priority = ThreadPriority.BelowNormal // 降低优先级
             };
             _updateThread.Start();
         }
@@ -188,7 +188,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
             }
 
-            var session = new OboeAudioSession(this, memoryManager, sampleFormat, sampleRate, channelCount);
+            var session = new OboeAudioSession(this, sampleFormat, sampleRate, channelCount);
             _sessions.TryAdd(session, 0);
             
             return session;
@@ -247,7 +247,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         }
 
         // ========== 音频会话类 ==========
-        private class OboeAudioSession : HardwareDeviceSessionOutputBase
+        private class OboeAudioSession : IHardwareDeviceSession
         {
             private readonly OboeHardwareDeviceDriver _driver;
             private readonly ConcurrentQueue<OboeAudioBuffer> _queuedBuffers = new();
@@ -257,18 +257,22 @@ namespace Ryujinx.Audio.Backends.Oboe
             private float _volume;
             private readonly int _channelCount;
             private readonly uint _sampleRate;
+            private readonly SampleFormat _sampleFormat;
+
+            public SampleFormat RequestedSampleFormat => _sampleFormat;
+            public uint RequestedSampleRate => _sampleRate;
+            public uint RequestedChannelCount => (uint)_channelCount;
 
             public OboeAudioSession(
                 OboeHardwareDeviceDriver driver,
-                IVirtualMemoryManager memoryManager,
                 SampleFormat sampleFormat,
                 uint sampleRate,
-                uint channelCount) 
-                : base(memoryManager, sampleFormat, sampleRate, channelCount)
+                uint channelCount)
             {
                 _driver = driver;
                 _channelCount = (int)channelCount;
                 _sampleRate = sampleRate;
+                _sampleFormat = sampleFormat;
                 _volume = 1.0f;
             }
 
@@ -308,19 +312,19 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
             }
 
-            public override void Dispose()
+            public void Dispose()
             {
                 Stop();
                 _driver.Unregister(this);
                 Logger.Debug?.Print(LogClass.Audio, "OboeAudioSession disposed");
             }
 
-            public override void PrepareToClose() 
+            public void PrepareToClose() 
             {
                 Stop();
             }
 
-            public override void Start() 
+            public void Start() 
             {
                 if (!_active)
                 {
@@ -329,7 +333,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
             }
 
-            public override void Stop() 
+            public void Stop() 
             {
                 if (_active)
                 {
@@ -339,16 +343,9 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
             }
 
-            public override void QueueBuffer(AudioBuffer buffer)
+            public void QueueBuffer(AudioBuffer buffer)
             {
                 if (!_active) Start();
-
-                // 使用基类方法注册缓冲区
-                if (!RegisterBuffer(buffer))
-                {
-                    Logger.Warning?.Print(LogClass.Audio, "Failed to register audio buffer");
-                    return;
-                }
 
                 if (buffer.Data == null || buffer.Data.Length == 0) return;
 
@@ -359,18 +356,18 @@ namespace Ryujinx.Audio.Backends.Oboe
             private void ProcessAudioData(AudioBuffer buffer)
             {
                 // 计算帧数
-                int sampleSize = BackendHelper.GetSampleSize(RequestedSampleFormat);
+                int sampleSize = BackendHelper.GetSampleSize(_sampleFormat);
                 int sampleCount = buffer.Data.Length / sampleSize;
-                int frameCount = sampleCount / (int)RequestedChannelCount;
+                int frameCount = sampleCount / _channelCount;
 
                 bool writeSuccess = false;
 
                 // 根据情况选择最优的C++接口
-                if (RequestedSampleFormat != SampleFormat.PcmInt16)
+                if (_sampleFormat != SampleFormat.PcmInt16)
                 {
                     // 使用C++端的格式转换和声道下混
                     writeSuccess = writeOboeAudioConverted(buffer.Data, frameCount, 
-                        (int)RequestedSampleFormat, (int)RequestedChannelCount);
+                        (int)_sampleFormat, _channelCount);
                 }
                 else if (RequestedChannelCount != _channelCount)
                 {
@@ -379,7 +376,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                     Buffer.BlockCopy(buffer.Data, 0, audioData, 0, buffer.Data.Length);
                     
                     writeSuccess = writeOboeAudioWithDownmix(audioData, frameCount,
-                        (int)RequestedChannelCount, _channelCount);
+                        _channelCount, _channelCount);
                 }
                 else
                 {
@@ -404,7 +401,12 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
             }
 
-            public override bool RegisterBuffer(AudioBuffer buffer, byte[] samples)
+            public bool RegisterBuffer(AudioBuffer buffer)
+            {
+                return buffer.Data != null;
+            }
+
+            public bool RegisterBuffer(AudioBuffer buffer, byte[] samples)
             {
                 if (samples == null)
                 {
@@ -415,7 +417,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 return true;
             }
 
-            public override void UnregisterBuffer(AudioBuffer buffer)
+            public void UnregisterBuffer(AudioBuffer buffer)
             {
                 if (_queuedBuffers.TryPeek(out var driverBuffer) && 
                     driverBuffer.DriverIdentifier == buffer.DataPointer)
@@ -424,22 +426,22 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
             }
 
-            public override bool WasBufferFullyConsumed(AudioBuffer buffer)
+            public bool WasBufferFullyConsumed(AudioBuffer buffer)
             {
                 return !_queuedBuffers.TryPeek(out var driverBuffer) || 
                        driverBuffer.DriverIdentifier != buffer.DataPointer;
             }
 
-            public override void SetVolume(float volume)
+            public void SetVolume(float volume)
             {
                 _volume = Math.Clamp(volume, 0.0f, 1.0f);
                 setOboeVolume(_volume);
                 Logger.Debug?.Print(LogClass.Audio, $"Session volume set to {_volume:F2}");
             }
 
-            public override float GetVolume() => _volume;
+            public float GetVolume() => _volume;
 
-            public override ulong GetPlayedSampleCount()
+            public ulong GetPlayedSampleCount()
             {
                 return _totalPlayedSamples;
             }
