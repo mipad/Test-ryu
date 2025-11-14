@@ -2024,7 +2024,7 @@ public static int GetScalingFilterLevel()
         }
 
         /// <summary>
-        /// 导出存档为ZIP文件（只导出0和1文件夹）
+        /// 导出存档为ZIP文件（只导出0文件夹里的所有文件）
         /// </summary>
         public static bool ExportSaveData(string titleId, string outputZipPath)
         {
@@ -2033,39 +2033,50 @@ public static int GetScalingFilterLevel()
                 string saveId = GetSaveIdByTitleId(titleId);
                 if (string.IsNullOrEmpty(saveId))
                 {
+                    Logger.Error?.Print(LogClass.Application, $"No save data found for titleId: {titleId}");
                     return false;
                 }
 
                 string savePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "save", saveId);
                 if (!Directory.Exists(savePath))
                 {
+                    Logger.Error?.Print(LogClass.Application, $"Save path does not exist: {savePath}");
                     return false;
                 }
 
                 // 确保输出目录存在
                 Directory.CreateDirectory(Path.GetDirectoryName(outputZipPath));
 
-                // 创建临时目录用于存放0和1文件夹
+                // 创建临时目录用于存放0文件夹的文件
                 string tempPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
                 Directory.CreateDirectory(tempPath);
 
                 try
                 {
-                    // 只复制0和1文件夹
-                    string[] foldersToExport = { "0", "1" };
-                    foreach (string folder in foldersToExport)
+                    // 只复制0文件夹里的所有文件（不包括子文件夹）
+                    string sourceFolder0 = Path.Combine(savePath, "0");
+                    if (Directory.Exists(sourceFolder0))
                     {
-                        string sourceFolder = Path.Combine(savePath, folder);
-                        string destFolder = Path.Combine(tempPath, folder);
+                        var directoryInfo = new DirectoryInfo(sourceFolder0);
                         
-                        if (Directory.Exists(sourceFolder))
+                        // 复制所有文件（不包括子目录）
+                        foreach (var file in directoryInfo.GetFiles())
                         {
-                            CopyDirectory(sourceFolder, destFolder);
+                            string destFile = Path.Combine(tempPath, file.Name);
+                            file.CopyTo(destFile, true);
                         }
+                        
+                        Logger.Info?.Print(LogClass.Application, $"Exported {directoryInfo.GetFiles().Length} files from folder 0");
+                    }
+                    else
+                    {
+                        Logger.Warning?.Print(LogClass.Application, "Folder 0 does not exist, nothing to export");
+                        return false;
                     }
 
                     // 使用 System.IO.Compression 创建ZIP文件
                     ZipFile.CreateFromDirectory(tempPath, outputZipPath, CompressionLevel.Optimal, false);
+                    Logger.Info?.Print(LogClass.Application, $"Save data exported successfully to: {outputZipPath}");
                     return true;
                 }
                 finally
@@ -2079,12 +2090,13 @@ public static int GetScalingFilterLevel()
             }
             catch (Exception ex)
             {
+                Logger.Error?.Print(LogClass.Application, $"Error exporting save data: {ex.Message}");
                 return false;
             }
         }
 
         /// <summary>
-        /// 从ZIP文件导入存档（只导入0和1文件夹）
+        /// 从ZIP文件导入存档（ZIP里的文件分别导入到0和1文件夹）
         /// </summary>
         public static bool ImportSaveData(string titleId, string zipFilePath)
         {
@@ -2092,6 +2104,7 @@ public static int GetScalingFilterLevel()
             {
                 if (!File.Exists(zipFilePath))
                 {
+                    Logger.Error?.Print(LogClass.Application, "ZIP file does not exist");
                     return false;
                 }
 
@@ -2100,6 +2113,7 @@ public static int GetScalingFilterLevel()
                 {
                     // 如果没有现有的存档文件夹，创建一个新的
                     saveId = FindNextAvailableSaveId();
+                    Logger.Info?.Print(LogClass.Application, $"Creating new save folder with ID: {saveId}");
                 }
 
                 string savePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "save", saveId);
@@ -2116,26 +2130,50 @@ public static int GetScalingFilterLevel()
                     // 解压ZIP文件到临时目录
                     ZipFile.ExtractToDirectory(zipFilePath, tempPath);
                     
-                    // 只复制0和1文件夹到目标目录
-                    string[] foldersToImport = { "0", "1" };
-                    foreach (string folder in foldersToImport)
+                    // 获取临时目录中的所有文件（不包括子目录）
+                    var filesToImport = Directory.GetFiles(tempPath, "*", SearchOption.TopDirectoryOnly);
+                    Logger.Info?.Print(LogClass.Application, $"Found {filesToImport.Length} files to import");
+                    
+                    if (filesToImport.Length == 0)
                     {
-                        string sourceFolder = Path.Combine(tempPath, folder);
-                        string destFolder = Path.Combine(savePath, folder);
+                        Logger.Warning?.Print(LogClass.Application, "No files found in ZIP archive");
+                        return false;
+                    }
+
+                    bool success = true;
+                    
+                    // 将文件分别复制到0和1文件夹
+                    string[] targetFolders = { "0", "1" };
+                    foreach (string folder in targetFolders)
+                    {
+                        string targetFolderPath = Path.Combine(savePath, folder);
                         
-                        if (Directory.Exists(sourceFolder))
+                        // 确保目标文件夹存在
+                        Directory.CreateDirectory(targetFolderPath);
+                        
+                        Logger.Info?.Print(LogClass.Application, $"Copying files to folder: {folder}");
+                        
+                        // 复制所有文件到目标文件夹
+                        foreach (string sourceFile in filesToImport)
                         {
-                            // 如果目标文件夹已存在，先删除
-                            if (Directory.Exists(destFolder))
+                            try
                             {
-                                Directory.Delete(destFolder, true);
+                                string fileName = Path.GetFileName(sourceFile);
+                                string destFile = Path.Combine(targetFolderPath, fileName);
+                                
+                                File.Copy(sourceFile, destFile, true);
+                                Logger.Info?.Print(LogClass.Application, $"  - Copied: {fileName}");
                             }
-                            
-                            CopyDirectory(sourceFolder, destFolder);
+                            catch (Exception ex)
+                            {
+                                Logger.Error?.Print(LogClass.Application, $"Error copying file {Path.GetFileName(sourceFile)}: {ex.Message}");
+                                success = false;
+                            }
                         }
                     }
                     
-                    return true;
+                    Logger.Info?.Print(LogClass.Application, $"Import completed. Success: {success}");
+                    return success;
                 }
                 finally
                 {
@@ -2148,6 +2186,7 @@ public static int GetScalingFilterLevel()
             }
             catch (Exception ex)
             {
+                Logger.Error?.Print(LogClass.Application, $"Error importing save data: {ex.Message}");
                 return false;
             }
         }
@@ -2571,6 +2610,5 @@ public static int GetScalingFilterLevel()
         public string TitleId { get; set; } = string.Empty; // 游戏标题ID
         public string TitleName { get; set; } = string.Empty; // 游戏名称
         public DateTime LastModified { get; set; } // 最后修改时间
-        public long Size { get; set; } // 存档大小
     }
 }
