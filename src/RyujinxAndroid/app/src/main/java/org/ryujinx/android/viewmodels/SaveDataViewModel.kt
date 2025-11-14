@@ -172,6 +172,20 @@ class SaveDataViewModel : ViewModel() {
     }
 
     /**
+     * 生成格式化的文件名
+     */
+    private fun generateFormattedFileName(): String {
+        val gameName = currentGameName.value
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd HH_mm", Locale.getDefault())
+        val timestamp = dateFormat.format(Date())
+        
+        // 清理游戏名称，移除或替换特殊字符
+        val cleanGameName = gameName.replace("[^a-zA-Z0-9\\u4e00-\\u9fa5\\s]".toRegex(), " ").trim()
+        
+        return "$cleanGameName 存档管理 - $timestamp.zip"
+    }
+
+    /**
      * 导出存档到指定URI - 改进版本：先导出到应用目录，然后复制到URI
      */
     fun exportSaveDataToUri(uri: android.net.Uri, context: Context) {
@@ -180,8 +194,8 @@ class SaveDataViewModel : ViewModel() {
 
         Thread {
             try {
-                // 创建导出文件名
-                val fileName = "${currentGameName.value.replace("[^a-zA-Z0-9]".toRegex(), "_")}_save_${System.currentTimeMillis()}.zip"
+                // 使用格式化的文件名
+                val fileName = generateFormattedFileName()
                 val exportDir = File(context.getExternalFilesDir(null), "exports")
                 exportDir.mkdirs()
                 val exportPath = File(exportDir, fileName).absolutePath
@@ -238,7 +252,7 @@ class SaveDataViewModel : ViewModel() {
                 
                 // 清理可能存在的临时文件
                 try {
-                    val fileName = "${currentGameName.value.replace("[^a-zA-Z0-9]".toRegex(), "_")}_save_${System.currentTimeMillis()}.zip"
+                    val fileName = generateFormattedFileName()
                     val exportDir = File(context.getExternalFilesDir(null), "exports")
                     val exportPath = File(exportDir, fileName).absolutePath
                     File(exportPath).delete()
@@ -258,8 +272,8 @@ class SaveDataViewModel : ViewModel() {
 
         Thread {
             try {
-                // 创建导出文件名
-                val fileName = "${currentGameName.value.replace("[^a-zA-Z0-9]".toRegex(), "_")}_save_${System.currentTimeMillis()}.zip"
+                // 使用格式化的文件名
+                val fileName = generateFormattedFileName()
                 val exportDir = File(context.getExternalFilesDir(null), "exports")
                 exportDir.mkdirs()
                 val exportPath = File(exportDir, fileName).absolutePath
