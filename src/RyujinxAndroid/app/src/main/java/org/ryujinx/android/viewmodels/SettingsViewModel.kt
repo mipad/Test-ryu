@@ -328,7 +328,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         RyujinxNative.jnaInstance.setSkipMemoryBarriers(skipMemoryBarriers.value)
 
         // 设置画面比例
-        RyujujinxNative.jnaInstance.setAspectRatio(aspectRatio.value)
+        RyujinxNative.jnaInstance.setAspectRatio(aspectRatio.value)
 
         // 设置缩放过滤器和级别
         RyujinxNative.jnaInstance.setScalingFilter(scalingFilter.value)
