@@ -1,13 +1,15 @@
-// OboeHardwareDeviceDriver.cs (优化版本)
+// OboeHardwareDeviceDriver.cs (修复版本)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
 using Ryujinx.Audio.Integration;
 using Ryujinx.Common.Logging;
+using Ryujinx.Memory; // 添加 Memory 引用
 using System;
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Threading;
+using static Ryujinx.Audio.Integration.IHardwareDeviceDriver; // 添加 Direction 枚举
 
 namespace Ryujinx.Audio.Backends.Oboe
 {
@@ -57,7 +59,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         private bool _stillRunning = true;
         private readonly object _initLock = new object();
         private int _currentChannelCount = 2;
-        private int _updateIntervalMs = 20; // 降低更新频率到20ms
+        private int _updateIntervalMs = 20;
 
         public float Volume
         {
@@ -74,7 +76,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         public OboeHardwareDeviceDriver()
         {
             StartUpdateThread();
-            Logger.Info?.Print(LogClass.Audio, "OboeHardwareDeviceDriver initialized (Optimized Version)");
+            Logger.Info?.Print(LogClass.Audio, "OboeHardwareDeviceDriver initialized");
         }
 
         private void StartUpdateThread()
@@ -85,7 +87,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 {
                     try
                     {
-                        Thread.Sleep(_updateIntervalMs); // 使用固定间隔，减少更新频率
+                        Thread.Sleep(_updateIntervalMs);
 
                         if (_isOboeInitialized)
                         {
@@ -106,7 +108,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 Name = "Audio.Oboe.UpdateThread",
                 IsBackground = true,
-                Priority = ThreadPriority.BelowNormal // 降低优先级
+                Priority = ThreadPriority.BelowNormal
             };
             _updateThread.Start();
         }
@@ -147,8 +149,8 @@ namespace Ryujinx.Audio.Backends.Oboe
         public bool SupportsChannelCount(uint channelCount) =>
             channelCount == 1 || channelCount == 2 || channelCount == Constants.ChannelCountMax;
 
-        public bool SupportsDirection(IHardwareDeviceDriver.Direction direction) =>
-            direction == IHardwareDeviceDriver.Direction.Output;
+        public bool SupportsDirection(Direction direction) =>
+            direction == Direction.Output;
 
         // ========== 事件 ==========
         public ManualResetEvent GetPauseEvent() => _pauseEvent;
@@ -156,13 +158,13 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         // ========== 打开设备会话 ==========
         public IHardwareDeviceSession OpenDeviceSession(
-            IHardwareDeviceDriver.Direction direction,
+            Direction direction,
             IVirtualMemoryManager memoryManager,
             SampleFormat sampleFormat,
             uint sampleRate,
             uint channelCount)
         {
-            if (direction != IHardwareDeviceDriver.Direction.Output)
+            if (direction != Direction.Output)
                 throw new ArgumentException($"Unsupported direction: {direction}");
 
             if (!SupportsChannelCount(channelCount))
@@ -188,7 +190,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
             }
 
-            var session = new OboeAudioSession(this, sampleFormat, sampleRate, channelCount);
+            var session = new OboeAudioSession(this, memoryManager, sampleFormat, sampleRate, channelCount);
             _sessions.TryAdd(session, 0);
             
             return session;
@@ -233,7 +235,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             _currentChannelCount = (int)channelCount;
         }
 
-        private bool Unregister(OboeAudioSession session) 
+        internal bool Unregister(OboeAudioSession session) 
         {
             bool removed = _sessions.TryRemove(session, out _);
             
@@ -250,6 +252,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         private class OboeAudioSession : IHardwareDeviceSession
         {
             private readonly OboeHardwareDeviceDriver _driver;
+            private readonly IVirtualMemoryManager _memoryManager;
             private readonly ConcurrentQueue<OboeAudioBuffer> _queuedBuffers = new();
             private ulong _totalWrittenSamples;
             private ulong _totalPlayedSamples;
@@ -265,11 +268,13 @@ namespace Ryujinx.Audio.Backends.Oboe
 
             public OboeAudioSession(
                 OboeHardwareDeviceDriver driver,
+                IVirtualMemoryManager memoryManager,
                 SampleFormat sampleFormat,
                 uint sampleRate,
                 uint channelCount)
             {
                 _driver = driver;
+                _memoryManager = memoryManager;
                 _channelCount = (int)channelCount;
                 _sampleRate = sampleRate;
                 _sampleFormat = sampleFormat;
@@ -347,10 +352,29 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 if (!_active) Start();
 
+                // 使用基类方法注册缓冲区
+                if (!RegisterBuffer(buffer))
+                {
+                    Logger.Warning?.Print(LogClass.Audio, "Failed to register audio buffer");
+                    return;
+                }
+
                 if (buffer.Data == null || buffer.Data.Length == 0) return;
 
                 // 使用C++端的高性能处理
                 ProcessAudioData(buffer);
+            }
+
+            private byte[] GetBufferSamples(AudioBuffer buffer)
+            {
+                if (buffer.DataPointer == 0)
+                {
+                    return null;
+                }
+
+                byte[] data = new byte[buffer.DataSize];
+                _memoryManager.Read(buffer.DataPointer, data);
+                return data;
             }
 
             private void ProcessAudioData(AudioBuffer buffer)
@@ -403,7 +427,7 @@ namespace Ryujinx.Audio.Backends.Oboe
 
             public bool RegisterBuffer(AudioBuffer buffer)
             {
-                return buffer.Data != null;
+                return RegisterBuffer(buffer, GetBufferSamples(buffer));
             }
 
             public bool RegisterBuffer(AudioBuffer buffer, byte[] samples)
