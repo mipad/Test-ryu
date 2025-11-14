@@ -3,15 +3,11 @@ package org.ryujinx.android.viewmodels
 import android.content.Intent
 import android.net.Uri
 import android.os.Environment
-import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.text.toLowerCase
-import com.anggrayudi.storage.SimpleStorageHelper
-import com.anggrayudi.storage.file.extension
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import org.ryujinx.android.MainActivity
@@ -20,9 +16,7 @@ import java.io.File
 
 class DlcViewModel(val titleId: String) {
     private var canClose: MutableState<Boolean>? = null
-    private var storageHelper: SimpleStorageHelper
     private var dlcItemsState: SnapshotStateList<DlcItem>? = null
-    private lateinit var filePickerLauncher: ActivityResultLauncher<Array<String>>
 
     companion object {
         const val UpdateRequestCode = 1002
@@ -41,17 +35,163 @@ class DlcViewModel(val titleId: String) {
         }
     }
 
-    fun add() {
-        // 使用 Android 原生的文件选择器，支持多选
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = "*/*"
-            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/x-nx-nsp", "application/x-nx-xci"))
-            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true) // 启用多选
+    // 新增方法：处理选中的多个文件
+    fun addSelectedFiles(uris: List<Uri>, context: android.content.Context) {
+        if (uris.isNotEmpty()) {
+            for (uri in uris) {
+                processDlcFile(uri, context)
+            }
+            refreshDlcItems()
+            saveChanges()
         }
-        
-        // 启动文件选择器
-        filePickerLauncher.launch(arrayOf("*/*"))
+    }
+
+    private fun processDlcFile(uri: Uri, context: android.content.Context) {
+        try {
+            // 获取文件扩展名
+            val mimeType = context.contentResolver.getType(uri)
+            val fileName = getFileNameFromUri(context, uri)
+            val fileExtension = fileName?.substringAfterLast('.', "")?.toLowerCase()
+
+            if (fileExtension == "nsp" || fileExtension == "xci") {
+                // 获取持久化权限
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+
+                var filePath: String? = null
+                var path = uri.pathSegments.joinToString("/")
+
+                if (path.startsWith("document/")) {
+                    val relativePath = Uri.decode(path.substring("document/".length))
+
+                    if (relativePath.startsWith("root/")) {
+                        val rootRelativePath = relativePath.substring("root/".length)
+
+                        val baseDirectories = listOf(
+                            context.filesDir,
+                            context.getExternalFilesDir(null),
+                            Environment.getExternalStorageDirectory()
+                        )
+
+                        for (baseDir in baseDirectories) {
+                            val potentialFile = File(baseDir, rootRelativePath)
+                            if (potentialFile.exists()) {
+                                filePath = potentialFile.absolutePath
+                                break
+                            }
+                        }
+                    } else if (relativePath.startsWith("primary:")) {
+                        val rootRelativePath = relativePath.substring("primary:".length)
+
+                        val baseDirectories = listOf(
+                            context.filesDir,
+                            context.getExternalFilesDir(null),
+                            Environment.getExternalStorageDirectory()
+                        )
+
+                        for (baseDir in baseDirectories) {
+                            val potentialFile = File(baseDir, rootRelativePath)
+                            if (potentialFile.exists()) {
+                                filePath = potentialFile.absolutePath
+                                break
+                            }
+                        }
+                    }
+                }
+
+                // 如果无法通过路径解析，尝试使用文件名
+                if (filePath == null) {
+                    filePath = getFilePathFromUri(context, uri)
+                }
+
+                if (!filePath.isNullOrEmpty()) {
+                    data?.apply {
+                        val isDuplicate = this.any { it.path == filePath }
+
+                        if (!isDuplicate) {
+                            val contents =
+                                RyujinxNative.jnaInstance.deviceGetDlcContentList(
+                                    filePath,
+                                    titleId.toLong(16)
+                                )
+
+                            if (contents.isNotEmpty()) {
+                                val contentPath = filePath
+                                val container = DlcContainerList(contentPath)
+
+                                for (content in contents)
+                                    container.dlc_nca_list.add(
+                                        DlcContainer(
+                                            true,
+                                            RyujinxNative.jnaInstance.deviceGetDlcTitleId(
+                                                contentPath,
+                                                content
+                                            ).toLong(16),
+                                            content
+                                        )
+                                    )
+
+                                this.add(container)
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun getFileNameFromUri(context: android.content.Context, uri: Uri): String? {
+        return try {
+            var result: String? = null
+            if (uri.scheme == "content") {
+                val cursor = context.contentResolver.query(uri, null, null, null, null)
+                cursor?.use {
+                    if (it.moveToFirst()) {
+                        val displayNameIndex = it.getColumnIndex("_display_name")
+                        if (displayNameIndex != -1) {
+                            result = it.getString(displayNameIndex)
+                        }
+                    }
+                }
+            }
+            if (result == null) {
+                result = uri.path?.let { path ->
+                    path.substringAfterLast('/')
+                }
+            }
+            result
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    private fun getFilePathFromUri(context: android.content.Context, uri: Uri): String? {
+        return try {
+            var filePath: String? = null
+            if (uri.scheme == "file") {
+                filePath = uri.path
+            } else if (uri.scheme == "content") {
+                // 尝试从content URI获取实际文件路径
+                val cursor = context.contentResolver.query(uri, arrayOf("_data"), null, null, null)
+                cursor?.use {
+                    if (it.moveToFirst()) {
+                        val columnIndex = it.getColumnIndex("_data")
+                        if (columnIndex != -1) {
+                            filePath = it.getString(columnIndex)
+                        }
+                    }
+                }
+            }
+            filePath
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
     }
 
     fun save(openDialog: MutableState<Boolean>) {
@@ -129,100 +269,6 @@ class DlcViewModel(val titleId: String) {
     init {
         jsonPath =
             MainActivity.AppPath + "/games/" + titleId.toLowerCase(Locale.current) + "/dlc.json"
-        storageHelper = MainActivity.StorageHelper!!
-
-        // 初始化文件选择器
-        filePickerLauncher = MainActivity.activityResultRegistry.register(
-            "dlc_file_picker",
-            ActivityResultContracts.OpenMultipleDocuments()
-        ) { uris ->
-            // 处理选中的文件
-            if (uris.isNotEmpty()) {
-                for (uri in uris) {
-                    storageHelper.storage.context.contentResolver.takePersistableUriPermission(
-                        uri,
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION
-                    )
-
-                    var filePath: String? = null
-                    var path = uri.pathSegments.joinToString("/")
-
-                    if (path.startsWith("document/")) {
-                        val relativePath = Uri.decode(path.substring("document/".length))
-
-                        if (relativePath.startsWith("root/")) {
-                            val rootRelativePath = relativePath.substring("root/".length)
-
-                            val baseDirectories = listOf(
-                                storageHelper.storage.context.filesDir,
-                                storageHelper.storage.context.getExternalFilesDir(null),
-                                Environment.getExternalStorageDirectory()
-                            )
-
-                            for (baseDir in baseDirectories) {
-                                val potentialFile = File(baseDir, rootRelativePath)
-                                if (potentialFile.exists()) {
-                                    filePath = potentialFile.absolutePath
-                                    break
-                                }
-                            }
-                        } else if (relativePath.startsWith("primary:")) {
-                            val rootRelativePath = relativePath.substring("primary:".length)
-
-                            val baseDirectories = listOf(
-                                storageHelper.storage.context.filesDir,
-                                storageHelper.storage.context.getExternalFilesDir(null),
-                                Environment.getExternalStorageDirectory()
-                            )
-
-                            for (baseDir in baseDirectories) {
-                                val potentialFile = File(baseDir, rootRelativePath)
-                                if (potentialFile.exists()) {
-                                    filePath = potentialFile.absolutePath
-                                    break
-                                }
-                            }
-                        }
-                    }
-
-                    if (filePath != null && filePath.isNotEmpty()) {
-                        data?.apply {
-                            val isDuplicate = this.any { it.path == filePath }
-
-                            if (!isDuplicate) {
-                                val contents =
-                                    RyujinxNative.jnaInstance.deviceGetDlcContentList(
-                                        filePath,
-                                        titleId.toLong(16)
-                                    )
-
-                                if (contents.isNotEmpty()) {
-                                    val contentPath = filePath
-                                    val container = DlcContainerList(contentPath)
-
-                                    for (content in contents)
-                                        container.dlc_nca_list.add(
-                                            DlcContainer(
-                                                true,
-                                                RyujinxNative.jnaInstance.deviceGetDlcTitleId(
-                                                    contentPath,
-                                                    content
-                                                ).toLong(16),
-                                                content
-                                            )
-                                        )
-
-                                    this.add(container)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                refreshDlcItems()
-                saveChanges()
-            }
-        }
 
         reloadFromDisk()
     }
