@@ -363,11 +363,6 @@ namespace Ryujinx.Audio.Renderer.Server
                 }
 
                 effect.StoreStatus(ref outStatus, isAudioRendererActive);
-                
-                if (!parameter.IsEnabled && parameter.Type != EffectType.Invalid)
-                {
-                    effect.UsageState = UsageState.Disabled;
-                }
 
                 if (parameter.IsNew)
                 {
