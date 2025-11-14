@@ -97,7 +97,9 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         // 新增：Enable Color Space Passthrough 参数
         enableColorSpacePassthrough: MutableState<Boolean>,
         // 新增：BackendThreading 参数
-        backendThreading: MutableState<Int>
+        backendThreading: MutableState<Int>,
+        // 新增：各向异性过滤参数
+        maxAnisotropy: MutableState<Float>
     ) {
 
         memoryManagerMode.value = sharedPref.getInt("memoryManagerMode", 2)  // 默认使用HostMappedUnsafe
@@ -149,7 +151,10 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         
         // 初始化 BackendThreading
         backendThreading.value = sharedPref.getInt("backendThreading", BackendThreading.Auto.ordinal)
-        
+
+        // 初始化各向异性过滤设置
+        maxAnisotropy.value = sharedPref.getFloat("maxAnisotropy", 1f)
+
         // 如果之前保存了自定义表面格式，则恢复设置
         if (customSurfaceFormatEnabled.value && surfaceFormat.value != -1 && surfaceColorSpace.value != -1) {
             RyujinxNative.setCustomSurfaceFormat(surfaceFormat.value, surfaceColorSpace.value)
@@ -223,7 +228,9 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         // 新增：Enable Color Space Passthrough 参数
         enableColorSpacePassthrough: MutableState<Boolean>,
         // 新增：BackendThreading 参数
-        backendThreading: MutableState<Int>
+        backendThreading: MutableState<Int>,
+        // 新增：各向异性过滤参数
+        maxAnisotropy: MutableState<Float>
     ) {
         val editor = sharedPref.edit()
 
@@ -275,6 +282,9 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         // 保存 BackendThreading
         editor.putInt("backendThreading", backendThreading.value)
 
+        // 保存各向异性过滤设置
+        editor.putFloat("maxAnisotropy", maxAnisotropy.value)
+
         editor.putBoolean("enableDebugLogs", enableDebugLogs.value)
         editor.putBoolean("enableStubLogs", enableStubLogs.value)
         editor.putBoolean("enableInfoLogs", enableInfoLogs.value)
@@ -318,7 +328,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         RyujinxNative.jnaInstance.setSkipMemoryBarriers(skipMemoryBarriers.value)
 
         // 设置画面比例
-        RyujinxNative.jnaInstance.setAspectRatio(aspectRatio.value)
+        RyujujinxNative.jnaInstance.setAspectRatio(aspectRatio.value)
 
         // 设置缩放过滤器和级别
         RyujinxNative.jnaInstance.setScalingFilter(scalingFilter.value)

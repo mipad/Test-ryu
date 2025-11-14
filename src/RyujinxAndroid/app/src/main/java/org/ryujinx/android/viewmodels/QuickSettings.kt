@@ -57,6 +57,9 @@ class QuickSettings(val activity: Activity) {
     // BackendThreading
     var backendThreading: Int // BackendThreading 枚举值
 
+    // 新增：各向异性过滤
+    var maxAnisotropy: Float // 各向异性过滤级别：0=关闭, 2=2x, 4=4x, 8=8x, 16=16x
+
     // Logs
     var enableDebugLogs: Boolean
     var enableStubLogs: Boolean
@@ -121,6 +124,9 @@ class QuickSettings(val activity: Activity) {
         // 初始化 BackendThreading
         backendThreading = sharedPref.getInt("backendThreading", BackendThreading.Auto.ordinal)
 
+        // 初始化各向异性过滤 - 默认值为1f（关闭）
+        maxAnisotropy = sharedPref.getFloat("maxAnisotropy", 1f)
+
         enableDebugLogs = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs = sharedPref.getBoolean("enableStubLogs", false)
         enableInfoLogs = sharedPref.getBoolean("enableInfoLogs", true)
@@ -183,6 +189,9 @@ class QuickSettings(val activity: Activity) {
 
         // 保存 BackendThreading
         editor.putInt("backendThreading", backendThreading)
+
+        // 保存各向异性过滤设置
+        editor.putFloat("maxAnisotropy", maxAnisotropy)
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs)
         editor.putBoolean("enableStubLogs", enableStubLogs)
