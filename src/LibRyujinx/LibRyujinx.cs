@@ -2024,7 +2024,7 @@ public static int GetScalingFilterLevel()
         }
 
         /// <summary>
-        /// 导出存档为ZIP文件（包含游戏ID文件夹结构）
+        /// 导出存档为ZIP文件（包含游戏ID文件夹结构，使用大写格式）
         /// </summary>
         public static bool ExportSaveData(string titleId, string outputZipPath)
         {
@@ -2053,8 +2053,9 @@ public static int GetScalingFilterLevel()
 
                 try
                 {
-                    // 在临时目录中创建游戏ID文件夹
-                    string gameIdFolder = Path.Combine(tempPath, titleId);
+                    // 在临时目录中创建游戏ID文件夹（使用大写格式）
+                    string uppercaseTitleId = titleId.ToUpperInvariant();
+                    string gameIdFolder = Path.Combine(tempPath, uppercaseTitleId);
                     Directory.CreateDirectory(gameIdFolder);
 
                     // 只复制0文件夹里的所有文件（不包括子文件夹）到游戏ID文件夹中
@@ -2070,7 +2071,7 @@ public static int GetScalingFilterLevel()
                             file.CopyTo(destFile, true);
                         }
                         
-                        Logger.Info?.Print(LogClass.Application, $"Exported {directoryInfo.GetFiles().Length} files from folder 0 to {titleId} folder");
+                        Logger.Info?.Print(LogClass.Application, $"Exported {directoryInfo.GetFiles().Length} files from folder 0 to {uppercaseTitleId} folder");
                     }
                     else
                     {
@@ -2081,7 +2082,7 @@ public static int GetScalingFilterLevel()
                     // 使用 System.IO.Compression 创建ZIP文件
                     ZipFile.CreateFromDirectory(tempPath, outputZipPath, CompressionLevel.Optimal, false);
                     Logger.Info?.Print(LogClass.Application, $"Save data exported successfully to: {outputZipPath}");
-                    Logger.Info?.Print(LogClass.Application, $"ZIP structure: root/{titleId}/[save files]");
+                    Logger.Info?.Print(LogClass.Application, $"ZIP structure: root/{uppercaseTitleId}/[save files]");
                     return true;
                 }
                 finally
@@ -2101,7 +2102,7 @@ public static int GetScalingFilterLevel()
         }
 
         /// <summary>
-        /// 从ZIP文件导入存档（从ZIP里的游戏ID文件夹导入文件到0和1文件夹）
+        /// 从ZIP文件导入存档（从ZIP里的游戏ID文件夹导入文件到0和1文件夹，支持大小写不敏感）
         /// </summary>
         public static bool ImportSaveData(string titleId, string zipFilePath)
         {
@@ -2135,21 +2136,43 @@ public static int GetScalingFilterLevel()
                     // 解压ZIP文件到临时目录
                     ZipFile.ExtractToDirectory(zipFilePath, tempPath);
                     
-                    // 检查是否存在游戏ID文件夹
-                    string gameIdFolder = Path.Combine(tempPath, titleId);
-                    if (!Directory.Exists(gameIdFolder))
+                    // 检查是否存在游戏ID文件夹（支持大小写不敏感）
+                    string uppercaseTitleId = titleId.ToUpperInvariant();
+                    string lowercaseTitleId = titleId.ToLowerInvariant();
+                    
+                    string gameIdFolder = null;
+                    
+                    // 首先尝试大写
+                    string uppercaseFolder = Path.Combine(tempPath, uppercaseTitleId);
+                    if (Directory.Exists(uppercaseFolder))
                     {
-                        Logger.Error?.Print(LogClass.Application, $"Game ID folder '{titleId}' not found in ZIP file");
+                        gameIdFolder = uppercaseFolder;
+                        Logger.Info?.Print(LogClass.Application, $"Found uppercase game ID folder: {uppercaseTitleId}");
+                    }
+                    // 然后尝试小写
+                    else
+                    {
+                        string lowercaseFolder = Path.Combine(tempPath, lowercaseTitleId);
+                        if (Directory.Exists(lowercaseFolder))
+                        {
+                            gameIdFolder = lowercaseFolder;
+                            Logger.Info?.Print(LogClass.Application, $"Found lowercase game ID folder: {lowercaseTitleId}");
+                        }
+                    }
+                    
+                    if (gameIdFolder == null)
+                    {
+                        Logger.Error?.Print(LogClass.Application, $"Game ID folder '{uppercaseTitleId}' or '{lowercaseTitleId}' not found in ZIP file");
                         return false;
                     }
 
                     // 获取游戏ID文件夹中的所有文件（不包括子目录）
                     var filesToImport = Directory.GetFiles(gameIdFolder, "*", SearchOption.TopDirectoryOnly);
-                    Logger.Info?.Print(LogClass.Application, $"Found {filesToImport.Length} files in {titleId} folder to import");
+                    Logger.Info?.Print(LogClass.Application, $"Found {filesToImport.Length} files in game ID folder to import");
                     
                     if (filesToImport.Length == 0)
                     {
-                        Logger.Warning?.Print(LogClass.Application, $"No files found in {titleId} folder in ZIP archive");
+                        Logger.Warning?.Print(LogClass.Application, $"No files found in game ID folder in ZIP archive");
                         return false;
                     }
 
