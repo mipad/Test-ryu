@@ -244,6 +244,10 @@ class SettingViews {
             val backendThreading = remember { mutableStateOf(BackendThreading.Auto.ordinal) }
             val showBackendThreadingDialog = remember { mutableStateOf(false) } // 控制BackendThreading对话框显示
 
+            // 新增：各向异性过滤状态变量
+            val maxAnisotropy = remember { mutableStateOf(1f) } // 默认1f（关闭）
+            val showAnisotropyOptions = remember { mutableStateOf(false) } // 控制各向异性过滤选项显示
+
             if (!loaded.value) {
                 settingsViewModel.initializeState(
                     memoryManagerMode,  // 修改：传递memoryManagerMode参数
@@ -291,7 +295,9 @@ class SettingViews {
                     // 新增：Enable Color Space Passthrough 参数
                     enableColorSpacePassthrough,
                     // 新增：BackendThreading 参数
-                    backendThreading
+                    backendThreading,
+                    // 新增：各向异性过滤参数
+                    maxAnisotropy
                 )
                 
                 // 修改：直接从MainViewModel获取已保存的表面格式列表，不重新获取
@@ -373,7 +379,9 @@ class SettingViews {
                                     // 新增：Enable Color Space Passthrough 参数
                                     enableColorSpacePassthrough,
                                     // 新增：BackendThreading 参数
-                                    backendThreading
+                                    backendThreading,
+                                    // 新增：各向异性过滤参数
+                                    maxAnisotropy
                                 )
                                 settingsViewModel.navController.popBackStack()
                             }) {
@@ -920,7 +928,7 @@ class SettingViews {
                                         // 当显示分辨率选项时，隐藏其他选项
                                         if (showResScaleOptions.value) {
                                             showAspectRatioOptions.value = false
-                                            
+                                            showAnisotropyOptions.value = false
                                         }
                                     }
                                 )
@@ -996,6 +1004,7 @@ AnimatedVisibility(visible = showResScaleOptions.value) {
                                         // 当显示画面比例选项时，隐藏其他选项
                                         if (showAspectRatioOptions.value) {
                                             showResScaleOptions.value = false
+                                            showAnisotropyOptions.value = false
                                         }
                                     }
                                 )
@@ -1053,6 +1062,94 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                         textAlign = TextAlign.Center,
                         color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer 
                                else MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+        
+                            // 各向异性过滤显示
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = "Anisotropic Filtering")
+                                Text(
+                                    text = when (maxAnisotropy.value) {
+                                        0f -> "Off"
+                                        2f -> "2x"
+                                        4f -> "4x"
+                                        8f -> "8x"
+                                        16f -> "16x"
+                                        else -> "Off"
+                                    },
+                                    modifier = Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) { 
+                                        showAnisotropyOptions.value = !showAnisotropyOptions.value
+                                        // 当显示各向异性过滤选项时，隐藏其他选项
+                                        if (showAnisotropyOptions.value) {
+                                            showResScaleOptions.value = false
+                                            showAspectRatioOptions.value = false
+                                        }
+                                    }
+                                )
+                            }
+                            
+                            // 各向异性过滤选项
+                            AnimatedVisibility(visible = showAnisotropyOptions.value) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    val anisotropyOptions = listOf(0f, 2f, 4f, 8f, 16f)
+                                    
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                            .horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        anisotropyOptions.forEach { option ->
+                                            val isSelected = maxAnisotropy.value == option
+                                            
+                                            TextButton(
+                                                onClick = {
+                                                    maxAnisotropy.value = option
+                                                    showAnisotropyOptions.value = false // 选择后隐藏选项
+                                                },
+                                                modifier = Modifier
+                                                    .height(36.dp)
+                                                    .then(
+                                                        if (isSelected) {
+                                                            Modifier.border(
+                                                                width = 1.dp,
+                                                                color = MaterialTheme.colorScheme.primary,
+                                                                shape = MaterialTheme.shapes.small
+                                                            )
+                                                        } else {
+                                                            Modifier
+                                                        }
+                                                    ),
+                                                colors = ButtonDefaults.textButtonColors(
+                                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else Color.Transparent,
+                                                    contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer 
+                                                                 else MaterialTheme.colorScheme.onSurface
+                                                )
+                                            ) {
+                                                Text(
+                                                    text = when (option) {
+                                                        0f -> "Off"
+                                                        2f -> "2x"
+                                                        4f -> "4x"
+                                                        8f -> "8x"
+                                                        16f -> "16x"
+                                                        else -> "Off"
+                                                    },
+                                                    fontSize = 12.sp
                                                 )
                                             }
                                         }
@@ -2822,7 +2919,9 @@ if (showBackendThreadingDialog.value) {
                         // 新增：Enable Color Space Passthrough 参数
                         enableColorSpacePassthrough,
                         // 新增：BackendThreading 参数
-                        backendThreading
+                        backendThreading,
+                        // 新增：各向异性过滤参数
+                        maxAnisotropy
                     )
                     settingsViewModel.navController.popBackStack()
                 }
