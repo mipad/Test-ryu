@@ -2024,7 +2024,7 @@ public static int GetScalingFilterLevel()
         }
 
         /// <summary>
-        /// 导出存档为ZIP文件（只导出0文件夹里的所有文件）
+        /// 导出存档为ZIP文件（包含游戏ID文件夹结构）
         /// </summary>
         public static bool ExportSaveData(string titleId, string outputZipPath)
         {
@@ -2047,13 +2047,17 @@ public static int GetScalingFilterLevel()
                 // 确保输出目录存在
                 Directory.CreateDirectory(Path.GetDirectoryName(outputZipPath));
 
-                // 创建临时目录用于存放0文件夹的文件
+                // 创建临时目录用于构建ZIP结构
                 string tempPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
                 Directory.CreateDirectory(tempPath);
 
                 try
                 {
-                    // 只复制0文件夹里的所有文件（不包括子文件夹）
+                    // 在临时目录中创建游戏ID文件夹
+                    string gameIdFolder = Path.Combine(tempPath, titleId);
+                    Directory.CreateDirectory(gameIdFolder);
+
+                    // 只复制0文件夹里的所有文件（不包括子文件夹）到游戏ID文件夹中
                     string sourceFolder0 = Path.Combine(savePath, "0");
                     if (Directory.Exists(sourceFolder0))
                     {
@@ -2062,11 +2066,11 @@ public static int GetScalingFilterLevel()
                         // 复制所有文件（不包括子目录）
                         foreach (var file in directoryInfo.GetFiles())
                         {
-                            string destFile = Path.Combine(tempPath, file.Name);
+                            string destFile = Path.Combine(gameIdFolder, file.Name);
                             file.CopyTo(destFile, true);
                         }
                         
-                        Logger.Info?.Print(LogClass.Application, $"Exported {directoryInfo.GetFiles().Length} files from folder 0");
+                        Logger.Info?.Print(LogClass.Application, $"Exported {directoryInfo.GetFiles().Length} files from folder 0 to {titleId} folder");
                     }
                     else
                     {
@@ -2077,6 +2081,7 @@ public static int GetScalingFilterLevel()
                     // 使用 System.IO.Compression 创建ZIP文件
                     ZipFile.CreateFromDirectory(tempPath, outputZipPath, CompressionLevel.Optimal, false);
                     Logger.Info?.Print(LogClass.Application, $"Save data exported successfully to: {outputZipPath}");
+                    Logger.Info?.Print(LogClass.Application, $"ZIP structure: root/{titleId}/[save files]");
                     return true;
                 }
                 finally
@@ -2096,7 +2101,7 @@ public static int GetScalingFilterLevel()
         }
 
         /// <summary>
-        /// 从ZIP文件导入存档（ZIP里的文件分别导入到0和1文件夹）
+        /// 从ZIP文件导入存档（从ZIP里的游戏ID文件夹导入文件到0和1文件夹）
         /// </summary>
         public static bool ImportSaveData(string titleId, string zipFilePath)
         {
@@ -2130,13 +2135,21 @@ public static int GetScalingFilterLevel()
                     // 解压ZIP文件到临时目录
                     ZipFile.ExtractToDirectory(zipFilePath, tempPath);
                     
-                    // 获取临时目录中的所有文件（不包括子目录）
-                    var filesToImport = Directory.GetFiles(tempPath, "*", SearchOption.TopDirectoryOnly);
-                    Logger.Info?.Print(LogClass.Application, $"Found {filesToImport.Length} files to import");
+                    // 检查是否存在游戏ID文件夹
+                    string gameIdFolder = Path.Combine(tempPath, titleId);
+                    if (!Directory.Exists(gameIdFolder))
+                    {
+                        Logger.Error?.Print(LogClass.Application, $"Game ID folder '{titleId}' not found in ZIP file");
+                        return false;
+                    }
+
+                    // 获取游戏ID文件夹中的所有文件（不包括子目录）
+                    var filesToImport = Directory.GetFiles(gameIdFolder, "*", SearchOption.TopDirectoryOnly);
+                    Logger.Info?.Print(LogClass.Application, $"Found {filesToImport.Length} files in {titleId} folder to import");
                     
                     if (filesToImport.Length == 0)
                     {
-                        Logger.Warning?.Print(LogClass.Application, "No files found in ZIP archive");
+                        Logger.Warning?.Print(LogClass.Application, $"No files found in {titleId} folder in ZIP archive");
                         return false;
                     }
 
