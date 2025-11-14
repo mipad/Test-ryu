@@ -46,15 +46,15 @@ extern jobject _mainActivity;
 extern jclass _mainActivityClass;
 extern pthread_t _renderingThreadIdNative;
 
-// =============== Oboe 音频函数声明 ===============
+// =============== Oboe 音频 C 接口声明 (供C# P/Invoke调用) ===============
 extern "C" {
     bool initOboeAudio(int sample_rate, int channel_count);
     void shutdownOboeAudio();
-    bool writeOboeAudio(const int16_t* data, int32_t num_frames);
+    bool writeOboeAudio(short audioData[], int num_frames);  // 修改为匹配C#的short[]
     void setOboeVolume(float volume);
     bool isOboeInitialized();
     bool isOboePlaying();
-    int32_t getOboeBufferedFrames();
+    int getOboeBufferedFrames();  // 修改返回类型为int
     void resetOboeAudio();
     
     // 设备信息函数
@@ -73,7 +73,7 @@ extern "C" {
     // 调试相关
     void debug_break(int code);
     
-    // 字符串处理函数（在 ryujinx.cpp 中定义）
+    // 字符串处理函数
     char *getStringPointer(JNIEnv *env, jstring jS);
     jstring createString(JNIEnv *env, char *ch);
     jstring createStringFromStdString(JNIEnv *env, std::string s);

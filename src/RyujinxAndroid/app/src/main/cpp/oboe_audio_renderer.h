@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (AAudio + 独占模式)
+// oboe_audio_renderer.h (简化版本)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -31,22 +31,10 @@ public:
 
     void Reset();
 
-    struct PerformanceStats {
-        int64_t frames_written = 0;
-        int64_t frames_played = 0;
-        int32_t underrun_count = 0;
-        int32_t stream_restart_count = 0;
-        std::string audio_api = "Unknown";
-        std::string sharing_mode = "Unknown";
-    };
-    
-    PerformanceStats GetStats() const;
-
 private:
     OboeAudioRenderer();
     ~OboeAudioRenderer();
 
-    // 基于yuzu的样本缓冲区结构
     struct SampleBuffer {
         std::vector<int16_t> samples;
         size_t sample_count = 0;
@@ -75,7 +63,6 @@ private:
         OboeAudioRenderer* m_renderer;
     };
 
-    // 基于yuzu的样本缓冲区队列
     class SampleBufferQueue {
     public:
         explicit SampleBufferQueue(size_t max_buffers = 32) : m_max_buffers(max_buffers) {}
@@ -116,14 +103,9 @@ private:
     
     int32_t m_device_channels = 2;
     
+    // 基本统计（用于调试）
     std::atomic<int64_t> m_frames_written{0};
-    std::atomic<int64_t> m_frames_played{0};
     std::atomic<int32_t> m_underrun_count{0};
-    std::atomic<int32_t> m_stream_restart_count{0};
-    
-    // 性能统计
-    std::string m_current_audio_api = "Unknown";
-    std::string m_current_sharing_mode = "Unknown";
     
     static constexpr int32_t TARGET_SAMPLE_COUNT = 240;
     static constexpr int32_t TARGET_SAMPLE_RATE = 48000;
