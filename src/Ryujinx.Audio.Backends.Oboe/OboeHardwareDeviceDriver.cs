@@ -60,7 +60,6 @@ namespace Ryujinx.Audio.Backends.Oboe
         private readonly object _initLock = new object();
         private int _currentChannelCount = 2;
         private int _updateIntervalMs = 20;
-        private int _logCounter = 0; // 日志计数器，用于减少日志频率
 
         public float Volume
         {
@@ -69,12 +68,6 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 _volume = Math.Clamp(value, 0.0f, 1.0f);
                 setOboeVolume(_volume);
-                // 减少音量设置日志
-                if (_logCounter % 50 == 0)
-                {
-                    Logger.Debug?.Print(LogClass.Audio, $"Oboe volume set to {_volume:F2}");
-                }
-                _logCounter++;
             }
         }
 
@@ -89,7 +82,6 @@ namespace Ryujinx.Audio.Backends.Oboe
         {
             _updateThread = new Thread(() =>
             {
-                int updateCount = 0;
                 while (_stillRunning)
                 {
                     try
@@ -104,28 +96,11 @@ namespace Ryujinx.Audio.Backends.Oboe
                             {
                                 session.UpdatePlaybackStatus(bufferedFrames);
                             }
-
-                            // 每50次更新记录一次统计信息（约1秒）
-                            updateCount++;
-                            if (updateCount % 50 == 0)
-                            {
-                                // 减少更新线程的日志输出
-                                if (Logger.Debug != null)
-                                {
-                                    Logger.Debug.Print(LogClass.Audio, 
-                                        $"Oboe update: {_sessions.Count} sessions, {bufferedFrames} buffered frames");
-                                }
-                            }
                         }
                     }
                     catch (Exception ex)
                     {
-                        // 错误日志仍然保留，但减少频率
-                        if (_logCounter % 10 == 0)
-                        {
-                            Logger.Error?.Print(LogClass.Audio, $"Update thread error: {ex.Message}");
-                        }
-                        _logCounter++;
+                        // 仅记录重要错误
                     }
                 }
             })
@@ -285,7 +260,6 @@ namespace Ryujinx.Audio.Backends.Oboe
             private readonly int _channelCount;
             private readonly uint _sampleRate;
             private readonly SampleFormat _sampleFormat;
-            private int _bufferLogCounter = 0; // 缓冲区日志计数器
 
             public SampleFormat RequestedSampleFormat => _sampleFormat;
             public uint RequestedSampleRate => _sampleRate;
@@ -336,14 +310,9 @@ namespace Ryujinx.Audio.Backends.Oboe
                         }
                     }
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
-                    // 减少错误日志频率
-                    if (_bufferLogCounter % 20 == 0)
-                    {
-                        Logger.Error?.Print(LogClass.Audio, $"Error in UpdatePlaybackStatus: {ex.Message}");
-                    }
-                    _bufferLogCounter++;
+                    // 静默处理错误，不记录日志
                 }
             }
 
@@ -351,7 +320,6 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 Stop();
                 _driver.Unregister(this);
-                // 移除调试日志
             }
 
             public void PrepareToClose() 
@@ -364,7 +332,6 @@ namespace Ryujinx.Audio.Backends.Oboe
                 if (!_active)
                 {
                     _active = true;
-                    // 移除调试日志
                 }
             }
 
@@ -374,7 +341,6 @@ namespace Ryujinx.Audio.Backends.Oboe
                 {
                     _active = false;
                     _queuedBuffers.Clear();
-                    // 移除调试日志
                 }
             }
 
@@ -382,21 +348,13 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 if (!_active) Start();
 
-                // 使用基类方法注册缓冲区
                 if (!RegisterBuffer(buffer))
                 {
-                    // 减少警告日志频率
-                    if (_bufferLogCounter % 10 == 0)
-                    {
-                        Logger.Warning?.Print(LogClass.Audio, "Failed to register audio buffer");
-                    }
-                    _bufferLogCounter++;
                     return;
                 }
 
                 if (buffer.Data == null || buffer.Data.Length == 0) return;
 
-                // 使用C++端的高性能处理
                 ProcessAudioData(buffer);
             }
 
@@ -414,23 +372,19 @@ namespace Ryujinx.Audio.Backends.Oboe
 
             private void ProcessAudioData(AudioBuffer buffer)
             {
-                // 计算帧数
                 int sampleSize = BackendHelper.GetSampleSize(_sampleFormat);
                 int sampleCount = buffer.Data.Length / sampleSize;
                 int frameCount = sampleCount / _channelCount;
 
                 bool writeSuccess = false;
 
-                // 根据情况选择最优的C++接口
                 if (_sampleFormat != SampleFormat.PcmInt16)
                 {
-                    // 使用C++端的格式转换和声道下混
                     writeSuccess = writeOboeAudioConverted(buffer.Data, frameCount, 
                         (int)_sampleFormat, _channelCount);
                 }
                 else if (RequestedChannelCount != _channelCount)
                 {
-                    // 仅使用C++端的声道下混
                     short[] audioData = new short[sampleCount];
                     Buffer.BlockCopy(buffer.Data, 0, audioData, 0, buffer.Data.Length);
                     
@@ -439,7 +393,6 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
                 else
                 {
-                    // 直接写入PCM16数据
                     short[] audioData = new short[sampleCount];
                     Buffer.BlockCopy(buffer.Data, 0, audioData, 0, buffer.Data.Length);
                     writeSuccess = writeOboeAudio(audioData, frameCount);
@@ -449,23 +402,9 @@ namespace Ryujinx.Audio.Backends.Oboe
                 {
                     _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, (ulong)sampleCount));
                     _totalWrittenSamples += (ulong)sampleCount;
-                    
-                    // 减少缓冲区队列日志频率
-                    if (_bufferLogCounter % 100 == 0)
-                    {
-                        Logger.Debug?.Print(LogClass.Audio, 
-                            $"Queued audio buffer: {frameCount} frames, {sampleCount} samples");
-                    }
-                    _bufferLogCounter++;
                 }
                 else
                 {
-                    // 减少错误日志频率
-                    if (_bufferLogCounter % 5 == 0)
-                    {
-                        Logger.Warning?.Print(LogClass.Audio, $"Audio write failed: {frameCount} frames");
-                    }
-                    _bufferLogCounter++;
                     resetOboeAudio();
                 }
             }
@@ -505,12 +444,6 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 _volume = Math.Clamp(volume, 0.0f, 1.0f);
                 setOboeVolume(_volume);
-                // 减少音量设置日志
-                if (_bufferLogCounter % 50 == 0)
-                {
-                    Logger.Debug?.Print(LogClass.Audio, $"Session volume set to {_volume:F2}");
-                }
-                _bufferLogCounter++;
             }
 
             public float GetVolume() => _volume;
