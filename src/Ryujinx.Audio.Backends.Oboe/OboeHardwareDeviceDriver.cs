@@ -507,34 +507,6 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 return _totalPlayedSamples;
             }
-
-            // 添加安全的 GetBufferSamples 实现
-            public override int GetBufferSamples(AudioBuffer buffer)
-            {
-                try
-                {
-                    if (buffer == null)
-                    {
-                        Logger.Warning?.Print(LogClass.Audio, "AudioBuffer is null in GetBufferSamples");
-                        return 0;
-                    }
-                    
-                    if (buffer.Data == null)
-                    {
-                        Logger.Warning?.Print(LogClass.Audio, 
-                            $"AudioBuffer data is null. Handle: {buffer.TrackingHandle}, Size: {buffer.Size}");
-                        return 0;
-                    }
-                    
-                    // 简单的计算：数据长度 / (声道数 * 2字节每样本)
-                    return buffer.Data.Length / (_channelCount * 2);
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error?.Print(LogClass.Audio, $"Error in GetBufferSamples: {ex}");
-                    return 0;
-                }
-            }
         }
 
         // ========== 内部缓冲区类 ==========
