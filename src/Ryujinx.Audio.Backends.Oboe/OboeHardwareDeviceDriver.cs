@@ -168,12 +168,8 @@ namespace Ryujinx.Audio.Backends.Oboe
             if (!SupportsSampleRate(sampleRate))
                 throw new ArgumentException($"Unsupported sample rate: {sampleRate}");
 
-            // 检查 memoryManager 是否为 null
-            if (memoryManager == null)
-            {
-                Logger.Error?.Print(LogClass.Audio, "MemoryManager is null when opening device session");
-                throw new ArgumentNullException(nameof(memoryManager));
-            }
+            // 允许 memoryManager 为 null，像 OpenAL 后端一样
+            Logger.Debug?.Print(LogClass.Audio, $"Opening Oboe device session - MemoryManager: {(memoryManager == null ? "null" : "provided")}");
 
             lock (_initLock)
             {
@@ -271,12 +267,6 @@ namespace Ryujinx.Audio.Backends.Oboe
                 _channelCount = (int)channelCount;
                 _sampleRate = sampleRate;
                 _volume = 1.0f;
-                
-                // 验证基类属性是否正常初始化
-                if (MemoryManager == null)
-                {
-                    Logger.Error?.Print(LogClass.Audio, "MemoryManager is null in OboeAudioSession constructor");
-                }
             }
 
             public void UpdatePlaybackStatus(int bufferedFrames)
@@ -350,27 +340,14 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 if (!_active) Start();
 
-                // 添加安全检查
-                if (MemoryManager == null)
-                {
-                    Logger.Error?.Print(LogClass.Audio, "MemoryManager is null in QueueBuffer");
-                    return;
-                }
-
-                // 使用基类方法注册缓冲区
-                if (!RegisterBuffer(buffer))
-                {
-                    Logger.Warning?.Print(LogClass.Audio, "Failed to register audio buffer");
-                    return;
-                }
-
+                // 直接使用 buffer.Data，不依赖 MemoryManager
                 if (buffer.Data == null || buffer.Data.Length == 0) 
                 {
                     Logger.Warning?.Print(LogClass.Audio, "Audio buffer data is null or empty");
                     return;
                 }
 
-                // 直接处理音频数据，不使用环形缓冲区
+                // 直接处理音频数据
                 ProcessAudioData(buffer);
             }
 
@@ -407,11 +384,18 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
             }
 
+            // 重写 RegisterBuffer 方法，不依赖基类的 GetBufferSamples
+            public override bool RegisterBuffer(AudioBuffer buffer)
+            {
+                // 直接返回 true，因为我们不依赖 MemoryManager 来读取数据
+                // 数据已经在 buffer.Data 中
+                return buffer.Data != null;
+            }
+
             public override bool RegisterBuffer(AudioBuffer buffer, byte[] samples)
             {
                 if (samples == null)
                 {
-                    Logger.Warning?.Print(LogClass.Audio, "RegisterBuffer: samples is null");
                     return false;
                 }
 
