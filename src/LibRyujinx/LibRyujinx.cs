@@ -2024,7 +2024,33 @@ public static int GetScalingFilterLevel()
         }
 
         /// <summary>
-        /// 导出存档为ZIP文件（包含游戏ID文件夹结构，使用大写格式）
+        /// 递归复制源目录下的所有内容（文件和子文件夹）到目标目录
+        /// </summary>
+        private static void CopyDirectoryContents(string sourceDir, string destinationDir)
+        {
+            // 创建目标目录
+            Directory.CreateDirectory(destinationDir);
+
+            // 复制所有文件
+            foreach (string file in Directory.GetFiles(sourceDir))
+            {
+                string fileName = Path.GetFileName(file);
+                string destFile = Path.Combine(destinationDir, fileName);
+                File.Copy(file, destFile, true);
+                Logger.Info?.Print(LogClass.Application, $"  - Copied file: {fileName}");
+            }
+
+            // 递归复制所有子目录
+            foreach (string subDir in Directory.GetDirectories(sourceDir))
+            {
+                string dirName = Path.GetFileName(subDir);
+                string destSubDir = Path.Combine(destinationDir, dirName);
+                CopyDirectoryContents(subDir, destSubDir);
+            }
+        }
+
+        /// <summary>
+        /// 导出存档为ZIP文件（包含游戏ID文件夹结构，使用大写格式，递归复制所有内容）
         /// </summary>
         public static bool ExportSaveData(string titleId, string outputZipPath)
         {
@@ -2058,20 +2084,17 @@ public static int GetScalingFilterLevel()
                     string gameIdFolder = Path.Combine(tempPath, uppercaseTitleId);
                     Directory.CreateDirectory(gameIdFolder);
 
-                    // 只复制0文件夹里的所有文件（不包括子文件夹）到游戏ID文件夹中
+                    // 递归复制0文件夹里的所有内容和子文件夹到游戏ID文件夹中
                     string sourceFolder0 = Path.Combine(savePath, "0");
                     if (Directory.Exists(sourceFolder0))
                     {
-                        var directoryInfo = new DirectoryInfo(sourceFolder0);
+                        CopyDirectoryContents(sourceFolder0, gameIdFolder);
                         
-                        // 复制所有文件（不包括子目录）
-                        foreach (var file in directoryInfo.GetFiles())
-                        {
-                            string destFile = Path.Combine(gameIdFolder, file.Name);
-                            file.CopyTo(destFile, true);
-                        }
+                        // 记录复制的文件数量
+                        int fileCount = Directory.GetFiles(gameIdFolder, "*", SearchOption.AllDirectories).Length;
+                        int folderCount = Directory.GetDirectories(gameIdFolder, "*", SearchOption.AllDirectories).Length;
                         
-                        Logger.Info?.Print(LogClass.Application, $"Exported {directoryInfo.GetFiles().Length} files from folder 0 to {uppercaseTitleId} folder");
+                        Logger.Info?.Print(LogClass.Application, $"Exported {fileCount} files and {folderCount} folders from folder 0 to {uppercaseTitleId} folder");
                     }
                     else
                     {
@@ -2082,7 +2105,7 @@ public static int GetScalingFilterLevel()
                     // 使用 System.IO.Compression 创建ZIP文件
                     ZipFile.CreateFromDirectory(tempPath, outputZipPath, CompressionLevel.Optimal, false);
                     Logger.Info?.Print(LogClass.Application, $"Save data exported successfully to: {outputZipPath}");
-                    Logger.Info?.Print(LogClass.Application, $"ZIP structure: root/{uppercaseTitleId}/[save files]");
+                    Logger.Info?.Print(LogClass.Application, $"ZIP structure: root/{uppercaseTitleId}/[complete save structure]");
                     return true;
                 }
                 finally
@@ -2102,7 +2125,7 @@ public static int GetScalingFilterLevel()
         }
 
         /// <summary>
-        /// 从ZIP文件导入存档（从ZIP里的游戏ID文件夹导入文件到0和1文件夹，支持大小写不敏感）
+        /// 从ZIP文件导入存档（从ZIP里的游戏ID文件夹递归导入所有内容到0和1文件夹，支持大小写不敏感）
         /// </summary>
         public static bool ImportSaveData(string titleId, string zipFilePath)
         {
@@ -2166,11 +2189,13 @@ public static int GetScalingFilterLevel()
                         return false;
                     }
 
-                    // 获取游戏ID文件夹中的所有文件（不包括子目录）
-                    var filesToImport = Directory.GetFiles(gameIdFolder, "*", SearchOption.TopDirectoryOnly);
-                    Logger.Info?.Print(LogClass.Application, $"Found {filesToImport.Length} files in game ID folder to import");
+                    // 统计要导入的文件和文件夹
+                    var allFiles = Directory.GetFiles(gameIdFolder, "*", SearchOption.AllDirectories);
+                    var allFolders = Directory.GetDirectories(gameIdFolder, "*", SearchOption.AllDirectories);
                     
-                    if (filesToImport.Length == 0)
+                    Logger.Info?.Print(LogClass.Application, $"Found {allFiles.Length} files and {allFolders.Length} folders in game ID folder to import");
+                    
+                    if (allFiles.Length == 0)
                     {
                         Logger.Warning?.Print(LogClass.Application, $"No files found in game ID folder in ZIP archive");
                         return false;
@@ -2178,7 +2203,7 @@ public static int GetScalingFilterLevel()
 
                     bool success = true;
                     
-                    // 将文件分别复制到0和1文件夹
+                    // 将整个游戏ID文件夹结构递归复制到0和1文件夹
                     string[] targetFolders = { "0", "1" };
                     foreach (string folder in targetFolders)
                     {
@@ -2187,24 +2212,18 @@ public static int GetScalingFilterLevel()
                         // 确保目标文件夹存在
                         Directory.CreateDirectory(targetFolderPath);
                         
-                        Logger.Info?.Print(LogClass.Application, $"Copying files to folder: {folder}");
+                        Logger.Info?.Print(LogClass.Application, $"Copying complete folder structure to: {folder}");
                         
-                        // 复制所有文件到目标文件夹
-                        foreach (string sourceFile in filesToImport)
+                        // 递归复制整个游戏ID文件夹结构到目标文件夹
+                        try
                         {
-                            try
-                            {
-                                string fileName = Path.GetFileName(sourceFile);
-                                string destFile = Path.Combine(targetFolderPath, fileName);
-                                
-                                File.Copy(sourceFile, destFile, true);
-                                Logger.Info?.Print(LogClass.Application, $"  - Copied: {fileName}");
-                            }
-                            catch (Exception ex)
-                            {
-                                Logger.Error?.Print(LogClass.Application, $"Error copying file {Path.GetFileName(sourceFile)}: {ex.Message}");
-                                success = false;
-                            }
+                            CopyDirectoryContents(gameIdFolder, targetFolderPath);
+                            Logger.Info?.Print(LogClass.Application, $"  - Successfully copied folder structure to {folder}");
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Error?.Print(LogClass.Application, $"Error copying folder structure to {folder}: {ex.Message}");
+                            success = false;
                         }
                     }
                     
