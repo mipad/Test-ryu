@@ -8,7 +8,9 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
@@ -82,10 +84,12 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
             )
         }
     ) { contentPadding ->
+        // 使用垂直滚动，特别是在横屏时
         Column(
             modifier = Modifier
                 .padding(contentPadding)
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
             // 游戏信息
@@ -162,7 +166,7 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
                     enabled = viewModel.hasSaveData() && !viewModel.operationInProgress.value
                 ) {
                     // 使用URI导出，让用户选择保存位置
-                    val fileName = "${gameName.replace("[^a-zA-Z0-9]".toRegex(), "_")}_save_${System.currentTimeMillis()}.zip"
+                    val fileName = "${gameName.replace("[^a-zA-Z0-9\\u4e00-\\u9fa5\\s]".toRegex(), " ").trim()} 存档管理 - ${java.text.SimpleDateFormat("yyyy-MM-dd HH_mm", java.util.Locale.getDefault()).format(java.util.Date())}.zip"
                     exportFileLauncher.launch(fileName)
                 }
                 
@@ -193,6 +197,9 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
                     showDeleteFolderConfirmation = true
                 }
             }
+            
+            // 在底部添加一些额外的空间，确保在横屏时滚动有足够的余地
+            Spacer(modifier = Modifier.height(32.dp))
         }
     }
     
