@@ -333,7 +333,7 @@ namespace Ryujinx.Audio.Renderer.Server
         
         public ResultCode UpdateEffectsVersion2(EffectContext context, bool isAudioRendererActive, PoolMapper mapper)
         {
-            if (context.GetCount() * Unsafe.SizeOf<EffectInParameterVersion3>() != _inputHeader.EffectsSize)
+            if (context.GetCount() * Unsafe.SizeOf<EffectInParameterVersion2>() != _inputHeader.EffectsSize)
             {
                 return ResultCode.InvalidUpdateInfo;
             }
