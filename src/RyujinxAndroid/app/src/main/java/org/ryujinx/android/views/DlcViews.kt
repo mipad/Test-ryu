@@ -1,6 +1,8 @@
 package org.ryujinx.android.views
 
 import android.content.res.Configuration
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,6 +18,7 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import org.ryujinx.android.viewmodels.DlcItem
@@ -25,10 +28,21 @@ class DlcViews {
     companion object {
         @Composable
         fun Main(titleId: String, name: String, openDialog: MutableState<Boolean>, canClose: MutableState<Boolean>) {
-            val viewModel = DlcViewModel(titleId)
+            val viewModel = remember { DlcViewModel(titleId) }
             val dlcItems = remember { SnapshotStateList<DlcItem>() }
             val configuration = LocalConfiguration.current
             val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+            val context = LocalContext.current
+            
+            // 使用 OpenMultipleDocuments 来支持多选文件
+            val filePickerLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.OpenMultipleDocuments()
+            ) { uris ->
+                // 处理选中的多个文件
+                if (uris.isNotEmpty()) {
+                    viewModel.addSelectedFiles(uris, context)
+                }
+            }
             
             // 根据屏幕方向调整布局
             if (isLandscape) {
@@ -107,7 +121,8 @@ class DlcViews {
                         IconButton(
                             modifier = Modifier.padding(8.dp),
                             onClick = {
-                                viewModel.add()
+                                // 启动文件选择器，支持多选
+                                filePickerLauncher.launch(arrayOf("application/x-nx-nsp", "application/x-nx-xci", "*/*"))
                             }
                         ) {
                             Icon(
@@ -205,7 +220,8 @@ class DlcViews {
                         IconButton(
                             modifier = Modifier.padding(4.dp),
                             onClick = {
-                                viewModel.add()
+                                // 启动文件选择器，支持多选
+                                filePickerLauncher.launch(arrayOf("application/x-nx-nsp", "application/x-nx-xci", "*/*"))
                             }
                         ) {
                             Icon(
