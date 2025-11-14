@@ -141,6 +141,8 @@ class DlcViewModel(val titleId: String) {
             }
         }
 
+        // 启用多选模式
+        storageHelper.allowMultipleSelection = true
         storageHelper.openFilePicker(UpdateRequestCode)
     }
 
