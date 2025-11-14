@@ -168,6 +168,13 @@ namespace Ryujinx.Audio.Backends.Oboe
             if (!SupportsSampleRate(sampleRate))
                 throw new ArgumentException($"Unsupported sample rate: {sampleRate}");
 
+            // 检查 memoryManager 是否为 null
+            if (memoryManager == null)
+            {
+                Logger.Error?.Print(LogClass.Audio, "MemoryManager is null when opening device session");
+                throw new ArgumentNullException(nameof(memoryManager));
+            }
+
             lock (_initLock)
             {
                 if (!_isOboeInitialized)
@@ -264,6 +271,12 @@ namespace Ryujinx.Audio.Backends.Oboe
                 _channelCount = (int)channelCount;
                 _sampleRate = sampleRate;
                 _volume = 1.0f;
+                
+                // 验证基类属性是否正常初始化
+                if (MemoryManager == null)
+                {
+                    Logger.Error?.Print(LogClass.Audio, "MemoryManager is null in OboeAudioSession constructor");
+                }
             }
 
             public void UpdatePlaybackStatus(int bufferedFrames)
@@ -337,6 +350,13 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 if (!_active) Start();
 
+                // 添加安全检查
+                if (MemoryManager == null)
+                {
+                    Logger.Error?.Print(LogClass.Audio, "MemoryManager is null in QueueBuffer");
+                    return;
+                }
+
                 // 使用基类方法注册缓冲区
                 if (!RegisterBuffer(buffer))
                 {
@@ -344,36 +364,46 @@ namespace Ryujinx.Audio.Backends.Oboe
                     return;
                 }
 
-                if (buffer.Data == null || buffer.Data.Length == 0) return;
+                if (buffer.Data == null || buffer.Data.Length == 0) 
+                {
+                    Logger.Warning?.Print(LogClass.Audio, "Audio buffer data is null or empty");
+                    return;
+                }
 
                 // 直接处理音频数据，不使用环形缓冲区
-                // C++端已经有自己的缓冲区管理
                 ProcessAudioData(buffer);
             }
 
             private void ProcessAudioData(AudioBuffer buffer)
             {
-                // 转换为short数组用于Oboe
-                int sampleCount = buffer.Data.Length / 2; // PCM16每个样本2字节
-                int frameCount = sampleCount / _channelCount;
-                
-                short[] audioData = new short[sampleCount];
-                Buffer.BlockCopy(buffer.Data, 0, audioData, 0, buffer.Data.Length);
-
-                bool writeSuccess = writeOboeAudio(audioData, frameCount);
-
-                if (writeSuccess)
+                try
                 {
-                    _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, (ulong)sampleCount));
-                    _totalWrittenSamples += (ulong)sampleCount;
+                    // 转换为short数组用于Oboe
+                    int sampleCount = buffer.Data.Length / 2; // PCM16每个样本2字节
+                    int frameCount = sampleCount / _channelCount;
                     
-                    Logger.Debug?.Print(LogClass.Audio, 
-                        $"Queued audio buffer: {frameCount} frames, {sampleCount} samples");
+                    short[] audioData = new short[sampleCount];
+                    Buffer.BlockCopy(buffer.Data, 0, audioData, 0, buffer.Data.Length);
+
+                    bool writeSuccess = writeOboeAudio(audioData, frameCount);
+
+                    if (writeSuccess)
+                    {
+                        _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, (ulong)sampleCount));
+                        _totalWrittenSamples += (ulong)sampleCount;
+                        
+                        Logger.Debug?.Print(LogClass.Audio, 
+                            $"Queued audio buffer: {frameCount} frames, {sampleCount} samples");
+                    }
+                    else
+                    {
+                        Logger.Warning?.Print(LogClass.Audio, $"Audio write failed: {frameCount} frames");
+                        resetOboeAudio();
+                    }
                 }
-                else
+                catch (Exception ex)
                 {
-                    Logger.Warning?.Print(LogClass.Audio, $"Audio write failed: {frameCount} frames");
-                    resetOboeAudio();
+                    Logger.Error?.Print(LogClass.Audio, $"Error in ProcessAudioData: {ex.Message}");
                 }
             }
 
@@ -381,6 +411,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 if (samples == null)
                 {
+                    Logger.Warning?.Print(LogClass.Audio, "RegisterBuffer: samples is null");
                     return false;
                 }
 
