@@ -19,7 +19,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
@@ -128,17 +130,13 @@ class ModViews {
                 topBar = {
                     TopAppBar(
                         title = { 
-                            Column {
-                                Text(
-                                    text = "Mod Management",
-                                    style = MaterialTheme.typography.titleLarge
-                                )
-                                Text(
-                                    text = "$gameName ($titleId)",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                            // 移除Column包装，直接在一行显示标题和游戏信息
+                            Text(
+                                text = "Mod Management - $gameName ($titleId)",
+                                style = MaterialTheme.typography.titleLarge,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         },
                         navigationIcon = {
                             IconButton(onClick = { navController.popBackStack() }) {
@@ -184,14 +182,16 @@ class ModViews {
                             verticalArrangement = Arrangement.Center
                         ) {
                             CircularProgressIndicator()
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(12.dp)) // 减少间距
                             Text("Loading mods...")
                         }
                     } else {
+                        // 使用可滚动的Column
                         Column(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(16.dp)
+                                .padding(8.dp) // 减少内边距
+                                .verticalScroll(rememberScrollState()) // 添加垂直滚动
                         ) {
                             // 统计信息和删除所有按钮 - 放在左侧
                             Row(
@@ -212,12 +212,14 @@ class ModViews {
                                 }
                             }
                             
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(12.dp)) // 减少间距
                             
                             // Mod列表
                             if (viewModel.mods.isEmpty()) {
                                 Column(
-                                    modifier = Modifier.fillMaxSize(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(200.dp), // 减少高度
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.Center
                                 ) {
@@ -225,7 +227,7 @@ class ModViews {
                                         text = "📁",
                                         style = MaterialTheme.typography.displayMedium
                                     )
-                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Spacer(modifier = Modifier.height(8.dp)) // 减少间距
                                     Text(
                                         text = "No mods found",
                                         style = MaterialTheme.typography.bodyLarge,
@@ -236,7 +238,7 @@ class ModViews {
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Spacer(modifier = Modifier.height(8.dp)) // 减少间距
                                     // 添加手动刷新按钮
                                     OutlinedButton(
                                         onClick = {
@@ -247,21 +249,21 @@ class ModViews {
                                         }
                                     ) {
                                         Icon(Icons.Default.Refresh, contentDescription = "Refresh", modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Spacer(modifier = Modifier.width(6.dp)) // 减少间距
                                         Text("Refresh List")
                                     }
                                 }
                             } else {
-                                // 使用类似DLC的列表布局
+                                // 使用类似DLC的列表布局，移除固定高度
                                 Surface(
-                                    modifier = Modifier.padding(8.dp),
+                                    modifier = Modifier.padding(4.dp), // 减少内边距
                                     color = MaterialTheme.colorScheme.surfaceVariant,
                                     shape = MaterialTheme.shapes.medium
                                 ) {
                                     LazyColumn(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .height(400.dp) // 固定高度，确保内容可滚动
+                                            .heightIn(min = 200.dp) // 只设置最小高度
                                     ) {
                                         items(viewModel.mods) { mod ->
                                             ModListItem(
@@ -280,6 +282,9 @@ class ModViews {
                                     }
                                 }
                             }
+                            
+                            // 添加底部间距，确保内容不会被FAB遮挡
+                            Spacer(modifier = Modifier.height(60.dp)) // 减少底部间距
                         }
                     }
                 }
@@ -386,11 +391,11 @@ class ModViews {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp, horizontal = 8.dp),
-                shape = RoundedCornerShape(8.dp)
+                    .padding(vertical = 3.dp, horizontal = 6.dp), // 减少内边距
+                shape = RoundedCornerShape(6.dp) // 减少圆角
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp)
+                    modifier = Modifier.padding(12.dp) // 减少内边距
                 ) {
                     // 第一行：开关、Mod名称和删除按钮
                     Row(
@@ -403,7 +408,7 @@ class ModViews {
                             onCheckedChange = onEnabledChanged
                         )
                         
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(8.dp)) // 减少间距
                         
                         // Mod名称 - 占用剩余空间
                         Column(
@@ -433,7 +438,7 @@ class ModViews {
                         }
                     }
                     
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(6.dp)) // 减少间距
                     
                     // 存储位置信息
                     Text(
@@ -442,14 +447,14 @@ class ModViews {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(3.dp)) // 减少间距
                     
                     // 路径信息 - 允许更多行显示
                     Text(
                         text = mod.path,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 4, // 增加到4行，允许更多换行
+                        maxLines = 3, // 减少到3行
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.fillMaxWidth()
                     )

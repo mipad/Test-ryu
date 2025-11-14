@@ -190,40 +190,33 @@ fun CheatsViews(
     
     Scaffold(
         topBar = {
-            Column {
-                TopAppBar(
-                    title = { Text("Manage Cheats") },
-                    navigationIcon = {
-                        IconButton(onClick = { navController.popBackStack() }) {
-                            Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
-                        }
-                    },
-                    actions = {
-                        TextButton(
-                            onClick = { viewModel.saveCheats() },
-                            enabled = !isLoading
-                        ) {
-                            Text("Save")
-                        }
+            // 移除Column包装，直接使用TopAppBar，减少间距
+            TopAppBar(
+                title = { 
+                    Column {
+                        Text("Manage Cheats")
+                        // 添加JIT模式提示 - 直接在标题下方显示，不额外占用空间
+                        Text(
+                            text = "暂时只在JIT模式可用",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
                     }
-                )
-                // 添加JIT模式提示
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer
-                    )
-                ) {
-                    Text(
-                        text = "暂时只在JIT模式可用",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    TextButton(
+                        onClick = { viewModel.saveCheats() },
+                        enabled = !isLoading
+                    ) {
+                        Text("Save")
+                    }
                 }
-            }
+            )
         },
         bottomBar = {
             // 在底部添加操作按钮
@@ -255,21 +248,23 @@ fun CheatsViews(
             }
         }
     ) { innerPadding ->
+        // 使用可滚动的Column替代固定的Column
         Column(
             modifier = Modifier
                 .padding(innerPadding)
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState()) // 添加垂直滚动
         ) {
             // 显示金手指文件统计信息
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp)
+                    .padding(8.dp) // 减少内边距
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
+                        .padding(12.dp), // 减少内边距
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text("Cheat Files:")
@@ -280,8 +275,8 @@ fun CheatsViews(
             if (isLoading) {
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .weight(1f),
+                        .fillMaxWidth()
+                        .height(120.dp), // 减少高度
                     contentAlignment = Alignment.Center
                 ) {
                     CircularProgressIndicator()
@@ -289,13 +284,13 @@ fun CheatsViews(
             } else if (cheats.isEmpty()) {
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .weight(1f),
+                        .fillMaxWidth()
+                        .height(120.dp), // 减少高度
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("No cheats found for this game")
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(4.dp)) // 减少间距
                         Text(
                             text = "Click 'Add Cheats' below to import .txt files",
                             style = MaterialTheme.typography.bodySmall,
@@ -304,8 +299,11 @@ fun CheatsViews(
                     }
                 }
             } else {
+                // 移除weight修饰符，使用固定高度确保可以滚动
                 LazyColumn(
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 200.dp) // 只设置最小高度
                 ) {
                     items(cheats) { item ->
                         when (item) {
@@ -314,14 +312,14 @@ fun CheatsViews(
                                 Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                                        .padding(horizontal = 8.dp, vertical = 4.dp), // 减少内边距
                                     colors = CardDefaults.cardColors(
                                         containerColor = MaterialTheme.colorScheme.surfaceVariant
                                     )
                                 ) {
                                     Text(
                                         text = item.displayName,
-                                        modifier = Modifier.padding(16.dp),
+                                        modifier = Modifier.padding(12.dp), // 减少内边距
                                         style = MaterialTheme.typography.titleMedium
                                     )
                                 }
@@ -331,7 +329,7 @@ fun CheatsViews(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(16.dp),
+                                        .padding(12.dp), // 减少内边距
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Column(
@@ -360,6 +358,9 @@ fun CheatsViews(
                     }
                 }
             }
+            
+            // 添加一些底部间距，确保内容不会被底部栏遮挡
+            Spacer(modifier = Modifier.height(60.dp)) // 减少底部间距
         }
     }
 }
