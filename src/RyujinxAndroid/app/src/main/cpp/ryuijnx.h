@@ -50,11 +50,13 @@ extern pthread_t _renderingThreadIdNative;
 extern "C" {
     bool initOboeAudio(int sample_rate, int channel_count);
     void shutdownOboeAudio();
-    bool writeOboeAudio(short audioData[], int num_frames);  // 修改为匹配C#的short[]
+    bool writeOboeAudio(short audioData[], int num_frames);
+    bool writeOboeAudioConverted(uint8_t audioData[], int num_frames, int sample_format, int input_channels);
+    bool writeOboeAudioWithDownmix(short audioData[], int num_frames, int input_channels, int output_channels);
     void setOboeVolume(float volume);
     bool isOboeInitialized();
     bool isOboePlaying();
-    int getOboeBufferedFrames();  // 修改返回类型为int
+    int getOboeBufferedFrames();
     void resetOboeAudio();
     
     // 设备信息函数

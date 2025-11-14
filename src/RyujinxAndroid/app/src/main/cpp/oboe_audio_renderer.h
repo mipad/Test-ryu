@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (简化版本)
+// oboe_audio_renderer.h (完整优化版本)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -13,6 +13,79 @@
 
 namespace RyujinxOboe {
 
+// 采样格式枚举
+enum class SampleFormat {
+    PCM8,
+    PCM16,
+    PCM24,
+    PCM32,
+    PCMFloat
+};
+
+// 音频格式转换类
+class AudioFormatConverter {
+public:
+    static bool ConvertToPCM16(const uint8_t* input, int16_t* output,
+                              size_t sample_count, SampleFormat format);
+    
+    static void ApplyVolume(int16_t* samples, size_t sample_count, float volume);
+    
+    // 支持从各种格式转换到PCM16
+    static void ConvertPCM8ToPCM16(const uint8_t* input, int16_t* output, size_t sample_count);
+    static void ConvertPCM24ToPCM16(const uint8_t* input, int16_t* output, size_t sample_count);
+    static void ConvertPCM32ToPCM16(const int32_t* input, int16_t* output, size_t sample_count);
+    static void ConvertFloatToPCM16(const float* input, int16_t* output, size_t sample_count);
+};
+
+// 声道下混类
+class ChannelDownmixer {
+public:
+    // 6声道到2声道下混
+    static void Downmix51ToStereo(const int16_t* input, int16_t* output,
+                                 size_t frame_count, const float* coefficients = nullptr);
+    
+    // 立体声到单声道下混
+    static void DownmixStereoToMono(const int16_t* input, int16_t* output,
+                                   size_t frame_count);
+    
+    // 通用的声道重映射
+    static void RemapChannels(const int16_t* input, int16_t* output,
+                             size_t frame_count, int input_channels,
+                             int output_channels, const int* channel_map);
+};
+
+// 高性能环形缓冲区
+class HighPerformanceRingBuffer {
+private:
+    std::vector<int16_t> buffer_;
+    size_t head_ = 0;
+    size_t tail_ = 0;
+    size_t size_ = 0;
+    size_t capacity_;
+    mutable std::mutex mutex_;
+    
+public:
+    explicit HighPerformanceRingBuffer(size_t capacity);
+    size_t WriteBulk(const int16_t* data, size_t sample_count);
+    size_t ReadBulk(int16_t* output, size_t samples_requested);
+    size_t Available() const;
+    void Clear();
+};
+
+// 音频重采样类
+class AudioResampler {
+public:
+    // 简单的线性重采样
+    static void ResampleLinear(const int16_t* input, int16_t* output,
+                              size_t input_frames, size_t output_frames,
+                              int channels, double ratio);
+    
+    // 高质量的重采样
+    static void ResampleHighQuality(const int16_t* input, int16_t* output,
+                                   size_t input_frames, size_t output_frames,
+                                   int channels, double ratio);
+};
+
 class OboeAudioRenderer {
 public:
     static OboeAudioRenderer& GetInstance();
@@ -20,7 +93,16 @@ public:
     bool Initialize(int32_t sampleRate, int32_t channelCount);
     void Shutdown();
     
+    // 基本音频写入（PCM16格式）
     bool WriteAudio(const int16_t* data, int32_t num_frames);
+    
+    // 高级音频写入（支持格式转换和声道下混）
+    bool WriteAudioConverted(const uint8_t* data, int32_t num_frames, 
+                            SampleFormat format, int32_t input_channels);
+    
+    // 带声道下混的音频写入
+    bool WriteAudioWithDownmix(const int16_t* data, int32_t num_frames,
+                              int32_t input_channels, int32_t output_channels);
     
     bool IsInitialized() const { return m_initialized.load(); }
     bool IsPlaying() const { return m_stream && m_stream->getState() == oboe::StreamState::Started; }

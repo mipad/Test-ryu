@@ -1,4 +1,4 @@
-// ryujinx.cpp (清理优化版本)
+// ryujinx.cpp (完整优化版本)
 #include "ryuijnx.h"
 #include <chrono>
 #include <csignal>
@@ -285,9 +285,31 @@ bool writeOboeAudio(short audioData[], int num_frames) {
         return false;
     }
     
-    // 直接使用short数组，避免额外的转换
     bool success = RyujinxOboe::OboeAudioRenderer::GetInstance().WriteAudio(
         reinterpret_cast<int16_t*>(audioData), num_frames);
+    return success;
+}
+
+extern "C"
+bool writeOboeAudioConverted(uint8_t audioData[], int num_frames, int sample_format, int input_channels) {
+    if (!audioData || num_frames <= 0) {
+        return false;
+    }
+    
+    auto format = static_cast<RyujinxOboe::SampleFormat>(sample_format);
+    bool success = RyujinxOboe::OboeAudioRenderer::GetInstance().WriteAudioConverted(
+        audioData, num_frames, format, input_channels);
+    return success;
+}
+
+extern "C"
+bool writeOboeAudioWithDownmix(short audioData[], int num_frames, int input_channels, int output_channels) {
+    if (!audioData || num_frames <= 0) {
+        return false;
+    }
+    
+    bool success = RyujinxOboe::OboeAudioRenderer::GetInstance().WriteAudioWithDownmix(
+        reinterpret_cast<int16_t*>(audioData), num_frames, input_channels, output_channels);
     return success;
 }
 
