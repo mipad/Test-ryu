@@ -45,87 +45,89 @@ class DlcViewModel(val titleId: String) {
             run {
                 storageHelper.onFileSelected = callBack
                 if (requestCode == UpdateRequestCode) {
-                    val file = files.firstOrNull()
-                    file?.apply {
-                        if (file.extension == "nsp" || file.extension == "xci") {
-                            storageHelper.storage.context.contentResolver.takePersistableUriPermission(
-                                file.uri,
-                                Intent.FLAG_GRANT_READ_URI_PERMISSION
-                            )
+                    // 遍历所有选中的文件，支持多选
+                    for (file in files) {
+                        file.apply {
+                            if (extension == "nsp" || extension == "xci") {
+                                storageHelper.storage.context.contentResolver.takePersistableUriPermission(
+                                    file.uri,
+                                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                )
 
-                            val uri = file.uri
+                                val uri = file.uri
 
-                            var filePath: String? = null
+                                var filePath: String? = null
 
-                            var path = uri.pathSegments.joinToString("/")
+                                var path = uri.pathSegments.joinToString("/")
 
-                            if (path.startsWith("document/")) {
-                                val relativePath = Uri.decode(path.substring("document/".length))
+                                if (path.startsWith("document/")) {
+                                    val relativePath = Uri.decode(path.substring("document/".length))
 
-                                if (relativePath.startsWith("root/")) {
-                                    val rootRelativePath = relativePath.substring("root/".length)
+                                    if (relativePath.startsWith("root/")) {
+                                        val rootRelativePath = relativePath.substring("root/".length)
 
-                                    val baseDirectories = listOf(
-                                        storageHelper.storage.context.filesDir,
-                                        storageHelper.storage.context.getExternalFilesDir(null),
-                                        Environment.getExternalStorageDirectory()
-                                    )
+                                        val baseDirectories = listOf(
+                                            storageHelper.storage.context.filesDir,
+                                            storageHelper.storage.context.getExternalFilesDir(null),
+                                            Environment.getExternalStorageDirectory()
+                                        )
 
-                                    for (baseDir in baseDirectories) {
-                                        val potentialFile = File(baseDir, rootRelativePath)
-                                        if (potentialFile.exists()) {
-                                            filePath = potentialFile.absolutePath
-                                            break
+                                        for (baseDir in baseDirectories) {
+                                            val potentialFile = File(baseDir, rootRelativePath)
+                                            if (potentialFile.exists()) {
+                                                filePath = potentialFile.absolutePath
+                                                break
+                                            }
                                         }
-                                    }
-                                } else if (relativePath.startsWith("primary:")) {
-                                    val rootRelativePath = relativePath.substring("primary:".length)
+                                    } else if (relativePath.startsWith("primary:")) {
+                                        val rootRelativePath = relativePath.substring("primary:".length)
 
-                                    val baseDirectories = listOf(
-                                        storageHelper.storage.context.filesDir,
-                                        storageHelper.storage.context.getExternalFilesDir(null),
-                                        Environment.getExternalStorageDirectory()
-                                    )
+                                        val baseDirectories = listOf(
+                                            storageHelper.storage.context.filesDir,
+                                            storageHelper.storage.context.getExternalFilesDir(null),
+                                            Environment.getExternalStorageDirectory()
+                                        )
 
-                                    for (baseDir in baseDirectories) {
-                                        val potentialFile = File(baseDir, rootRelativePath)
-                                        if (potentialFile.exists()) {
-                                            filePath = potentialFile.absolutePath
-                                            break
+                                        for (baseDir in baseDirectories) {
+                                            val potentialFile = File(baseDir, rootRelativePath)
+                                            if (potentialFile.exists()) {
+                                                filePath = potentialFile.absolutePath
+                                                break
+                                            }
                                         }
                                     }
                                 }
-                            }
 
-                            path = filePath!!
-                            if (path.isNotEmpty()) {
-                                data?.apply {
-                                    val isDuplicate = this.any { it.path == path }
+                                path = filePath!!
+                                if (path.isNotEmpty()) {
+                                    data?.apply {
+                                        val isDuplicate = this.any { it.path == path }
 
-                                    if (!isDuplicate) {
-                                        val contents =
-                                            RyujinxNative.jnaInstance.deviceGetDlcContentList(
-                                                path,
-                                                titleId.toLong(16)
-                                            )
-
-                                        if (contents.isNotEmpty()) {
-                                            val contentPath = path
-                                            val container = DlcContainerList(contentPath)
-
-                                            for (content in contents)
-                                                container.dlc_nca_list.add(
-                                                    DlcContainer(
-                                                        true,
-                                                        RyujinxNative.jnaInstance.deviceGetDlcTitleId(
-                                                            contentPath,
-                                                            content
-                                                        ).toLong(16),
-                                                        content
-                                                    )
+                                        if (!isDuplicate) {
+                                            val contents =
+                                                RyujinxNative.jnaInstance.deviceGetDlcContentList(
+                                                    path,
+                                                    titleId.toLong(16)
                                                 )
 
-                                            this.add(container)
+                                            if (contents.isNotEmpty()) {
+                                                val contentPath = path
+                                                val container = DlcContainerList(contentPath)
+
+                                                for (content in contents)
+                                                    container.dlc_nca_list.add(
+                                                        DlcContainer(
+                                                            true,
+                                                            RyujinxNative.jnaInstance.deviceGetDlcTitleId(
+                                                                contentPath,
+                                                                content
+                                                            ).toLong(16),
+                                                            content
+                                                        )
+                                                    )
+
+                                                this.add(container)
+                                            }
                                         }
                                     }
                                 }
