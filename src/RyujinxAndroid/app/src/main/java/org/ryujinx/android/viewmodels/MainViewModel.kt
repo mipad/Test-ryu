@@ -59,6 +59,16 @@ data class SurfaceFormatInfo(
     }
 }
 
+// 新增：性能统计显示设置数据类
+data class PerformanceStatsSettings(
+    val showStats: Boolean = true,
+    val showFps: Boolean = true,
+    val showRam: Boolean = true,
+    val showBatteryTemperature: Boolean = false,
+    val showBatteryLevel: Boolean = false,
+    val showFifo: Boolean = true
+)
+
 @SuppressLint("WrongConstant")
 class MainViewModel(val activity: MainActivity) {
     var physicalControllerManager: PhysicalControllerManager? = null
@@ -95,6 +105,10 @@ class MainViewModel(val activity: MainActivity) {
     private var selectedSurfaceFormat: SurfaceFormatInfo? = null
     private var isCustomFormatEnabled: Boolean = false
 
+    // 新增：性能统计显示设置
+    private var performanceStatsSettings: PerformanceStatsSettings = PerformanceStatsSettings()
+    private val performanceStatsLock = Any()
+
     var gameHost: GameHost? = null
         set(value) {
             field = value
@@ -110,6 +124,8 @@ class MainViewModel(val activity: MainActivity) {
         loadInitialSurfaceFormats()
         // 加载自定义表面格式设置
         loadCustomSurfaceFormatSettings()
+        // 加载性能统计显示设置
+        loadPerformanceStatsSettings()
     }
 
     /**
@@ -380,6 +396,65 @@ class MainViewModel(val activity: MainActivity) {
             android.util.Log.i("Ryujinx", "Game started, surface formats save triggered")
         } catch (e: Exception) {
             android.util.Log.e("Ryujinx", "Failed to trigger surface formats save: ${e.message}")
+        }
+    }
+
+    // 新增：性能统计显示设置相关方法
+
+    /**
+     * 加载性能统计显示设置
+     */
+    private fun loadPerformanceStatsSettings() {
+        try {
+            val prefs = activity.getSharedPreferences("RyujinxSettings", Context.MODE_PRIVATE)
+            synchronized(performanceStatsLock) {
+                performanceStatsSettings = PerformanceStatsSettings(
+                    showStats = prefs.getBoolean("performance_stats_show_stats", true),
+                    showFps = prefs.getBoolean("performance_stats_show_fps", true),
+                    showRam = prefs.getBoolean("performance_stats_show_ram", true),
+                    showBatteryTemperature = prefs.getBoolean("performance_stats_show_battery_temp", false),
+                    showBatteryLevel = prefs.getBoolean("performance_stats_show_battery_level", false),
+                    showFifo = prefs.getBoolean("performance_stats_show_fifo", true)
+                )
+            }
+            android.util.Log.i("Ryujinx", "Loaded performance stats settings: $performanceStatsSettings")
+        } catch (e: Exception) {
+            android.util.Log.e("Ryujinx", "Failed to load performance stats settings: ${e.message}")
+        }
+    }
+
+    /**
+     * 保存性能统计显示设置
+     */
+    fun savePerformanceStatsSettings(settings: PerformanceStatsSettings) {
+        try {
+            synchronized(performanceStatsLock) {
+                performanceStatsSettings = settings
+            }
+            
+            val prefs = activity.getSharedPreferences("RyujinxSettings", Context.MODE_PRIVATE)
+            val editor = prefs.edit()
+            
+            editor.putBoolean("performance_stats_show_stats", settings.showStats)
+            editor.putBoolean("performance_stats_show_fps", settings.showFps)
+            editor.putBoolean("performance_stats_show_ram", settings.showRam)
+            editor.putBoolean("performance_stats_show_battery_temp", settings.showBatteryTemperature)
+            editor.putBoolean("performance_stats_show_battery_level", settings.showBatteryLevel)
+            editor.putBoolean("performance_stats_show_fifo", settings.showFifo)
+            
+            editor.apply()
+            android.util.Log.i("Ryujinx", "Saved performance stats settings: $settings")
+        } catch (e: Exception) {
+            android.util.Log.e("Ryujinx", "Failed to save performance stats settings: ${e.message}")
+        }
+    }
+
+    /**
+     * 获取性能统计显示设置
+     */
+    fun getPerformanceStatsSettings(): PerformanceStatsSettings {
+        synchronized(performanceStatsLock) {
+            return performanceStatsSettings.copy()
         }
     }
 
@@ -802,4 +877,3 @@ class MainViewModel(val activity: MainActivity) {
         gameHost?.setProgressStates(showLoading, progressValue, progress)
     }
 }
-
