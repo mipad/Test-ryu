@@ -33,6 +33,21 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(adrenotools)
 
+# 为 adrenotools 相关目标添加 PAGE_SIZE 定义
+if(TARGET adrenotools)
+    target_compile_definitions(adrenotools PRIVATE PAGE_SIZE=4096)
+endif()
+
+if(TARGET linkernsbypass)
+    target_compile_definitions(linkernsbypass PRIVATE PAGE_SIZE=4096)
+endif()
+
+# 为 adrenotools 的子目录目标也添加定义
+get_target_property(adrenotools_sources adrenotools SOURCES)
+if(adrenotools_sources)
+    target_compile_definitions(adrenotools PRIVATE PAGE_SIZE=4096)
+endif()
+
 # 使用 FetchContent 获取 Oboe 源码
 FetchContent_Declare(
     oboe
