@@ -263,7 +263,6 @@ class ModViews {
                                     LazyColumn(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .heightIn(min = 200.dp) // 只设置最小高度
                                     ) {
                                         items(viewModel.mods) { mod ->
                                             ModListItem(

@@ -5,6 +5,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
@@ -13,7 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import org.ryujinx.android.viewmodels.CheatsViewModel
-import org.ryujinx.android.viewmodels.CheatListItem // 添加这个导入
+import org.ryujinx.android.viewmodels.CheatListItem 
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import java.io.File
@@ -39,6 +41,20 @@ fun CheatsViews(
     var showAddCheatDialog by remember { mutableStateOf(false) }
     var selectedCheatFile by remember { mutableStateOf<File?>(null) }
     var customDisplayName by remember { mutableStateOf("") }
+    
+    // 底部按钮显示状态
+    var showBottomButtons by remember { mutableStateOf(true) }
+    val scrollState = rememberScrollState()
+    
+    // 监听滚动状态来控制底部按钮显示/隐藏
+    LaunchedEffect(scrollState.value) {
+        // 简单逻辑：向下滚动时隐藏，向上滚动到顶部时显示
+        if (scrollState.value > 100) {
+            showBottomButtons = false
+        } else {
+            showBottomButtons = true
+        }
+    }
     
     // 文件选择器 - 使用 OpenDocument 契约
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -219,31 +235,34 @@ fun CheatsViews(
             )
         },
         bottomBar = {
-            // 在底部添加操作按钮
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                Button(
-                    onClick = { 
-                        // 启动文件选择器，只显示txt文件
-                        filePickerLauncher.launch(arrayOf("text/plain"))
-                    },
-                    enabled = !isLoading
+            // 根据滚动状态显示或隐藏底部按钮
+            if (showBottomButtons) {
+                // 在底部添加操作按钮
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    Text("Add Cheats")
-                }
-                
-                Button(
-                    onClick = { showDeleteConfirmDialog = true },
-                    enabled = !isLoading && viewModel.getCheatFileCount() > 0,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error
-                    )
-                ) {
-                    Text("Delete All")
+                    Button(
+                        onClick = { 
+                            // 启动文件选择器，只显示txt文件
+                            filePickerLauncher.launch(arrayOf("text/plain"))
+                        },
+                        enabled = !isLoading
+                    ) {
+                        Text("Add Cheats")
+                    }
+                    
+                    Button(
+                        onClick = { showDeleteConfirmDialog = true },
+                        enabled = !isLoading && viewModel.getCheatFileCount() > 0,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Text("Delete All")
+                    }
                 }
             }
         }
@@ -253,7 +272,7 @@ fun CheatsViews(
             modifier = Modifier
                 .padding(innerPadding)
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState()) // 添加垂直滚动
+                .verticalScroll(scrollState) // 使用可滚动的Column并传递scrollState
         ) {
             // 显示金手指文件统计信息
             Card(
@@ -299,11 +318,10 @@ fun CheatsViews(
                     }
                 }
             } else {
-                // 移除weight修饰符，使用固定高度确保可以滚动
+                // 使用LazyColumn显示金手指列表
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 200.dp) // 只设置最小高度
                 ) {
                     items(cheats) { item ->
                         when (item) {
