@@ -15,7 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import org.ryujinx.android.viewmodels.CheatsViewModel
-import org.ryujinx.android.viewmodels.CheatListItem 
+import org.ryujinx.android.viewmodels.CheatListItem
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import java.io.File
@@ -28,7 +28,7 @@ fun CheatsViews(
     gamePath: String
 ) {
     val context = LocalContext.current
-    val packageName = context.packageName // 动态获取包名
+    val packageName = context.packageName
     
     // 传递包名和 Context 给 ViewModel
     val viewModel = remember { CheatsViewModel(titleId, gamePath, packageName, context) }
@@ -318,59 +318,67 @@ fun CheatsViews(
                     }
                 }
             } else {
-                // 使用LazyColumn显示金手指列表
-                LazyColumn(
+                // 修复：使用Column而不是LazyColumn来显示金手指列表，避免嵌套滚动问题
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                 ) {
-                    items(cheats) { item ->
+                    cheats.forEach { item ->
                         when (item) {
                             is CheatListItem.GroupHeader -> {
                                 // 显示分组标题
                                 Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 8.dp, vertical = 4.dp), // 减少内边距
+                                        .padding(horizontal = 8.dp, vertical = 4.dp),
                                     colors = CardDefaults.cardColors(
                                         containerColor = MaterialTheme.colorScheme.surfaceVariant
                                     )
                                 ) {
                                     Text(
                                         text = item.displayName,
-                                        modifier = Modifier.padding(12.dp), // 减少内边距
+                                        modifier = Modifier.padding(12.dp),
                                         style = MaterialTheme.typography.titleMedium
                                     )
                                 }
                             }
                             is CheatListItem.CheatItem -> {
                                 // 显示金手指项
-                                Row(
+                                Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(12.dp), // 减少内边距
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surface
+                                    )
                                 ) {
-                                    Column(
-                                        modifier = Modifier.weight(1f)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Text(
-                                            text = item.name,
-                                            style = MaterialTheme.typography.bodyLarge
-                                        )
-                                        Text(
-                                            text = "ID: ${item.id}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        Column(
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text(
+                                                text = item.name,
+                                                style = MaterialTheme.typography.bodyLarge
+                                            )
+                                            Text(
+                                                text = "ID: ${item.id}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Switch(
+                                            checked = item.enabled,
+                                            onCheckedChange = { enabled ->
+                                                viewModel.setCheatEnabled(item.id, enabled)
+                                            }
                                         )
                                     }
-                                    Switch(
-                                        checked = item.enabled,
-                                        onCheckedChange = { enabled ->
-                                            viewModel.setCheatEnabled(item.id, enabled)
-                                        }
-                                    )
                                 }
-                                Divider()
                             }
                         }
                     }
