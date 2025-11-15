@@ -94,6 +94,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         customSurfaceFormatEnabled: MutableState<Boolean>,
         surfaceFormat: MutableState<Int>,
         surfaceColorSpace: MutableState<Int>,
+        surfaceFormatDisplayName: MutableState<String>, // 新增：表面格式显示名称参数
         // 新增：Enable Color Space Passthrough 参数
         enableColorSpacePassthrough: MutableState<Boolean>,
         // 新增：BackendThreading 参数
@@ -145,6 +146,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         customSurfaceFormatEnabled.value = sharedPref.getBoolean("customSurfaceFormatEnabled", false)
         surfaceFormat.value = sharedPref.getInt("surfaceFormat", -1)
         surfaceColorSpace.value = sharedPref.getInt("surfaceColorSpace", -1)
+        surfaceFormatDisplayName.value = sharedPref.getString("surfaceFormatDisplayName", "Auto") ?: "Auto" // 新增：初始化显示名称
         
         // 初始化 Enable Color Space Passthrough
         enableColorSpacePassthrough.value = sharedPref.getBoolean("enableColorSpacePassthrough", false)
@@ -225,6 +227,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         customSurfaceFormatEnabled: MutableState<Boolean>,
         surfaceFormat: MutableState<Int>,
         surfaceColorSpace: MutableState<Int>,
+        surfaceFormatDisplayName: MutableState<String>, // 新增：表面格式显示名称参数
         // 新增：Enable Color Space Passthrough 参数
         enableColorSpacePassthrough: MutableState<Boolean>,
         // 新增：BackendThreading 参数
@@ -275,6 +278,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         editor.putBoolean("customSurfaceFormatEnabled", customSurfaceFormatEnabled.value)
         editor.putInt("surfaceFormat", surfaceFormat.value)
         editor.putInt("surfaceColorSpace", surfaceColorSpace.value)
+        editor.putString("surfaceFormatDisplayName", surfaceFormatDisplayName.value) // 新增：保存显示名称
 
         // 保存 Enable Color Space Passthrough
         editor.putBoolean("enableColorSpacePassthrough", enableColorSpacePassthrough.value)

@@ -50,6 +50,7 @@ class QuickSettings(val activity: Activity) {
     var customSurfaceFormatEnabled: Boolean // 是否启用自定义表面格式
     var surfaceFormat: Int // 表面格式值
     var surfaceColorSpace: Int // 颜色空间值
+    var surfaceFormatDisplayName: String // 新增：表面格式显示名称
 
     // Enable Color Space Passthrough
     var enableColorSpacePassthrough: Boolean
@@ -117,6 +118,7 @@ class QuickSettings(val activity: Activity) {
         customSurfaceFormatEnabled = sharedPref.getBoolean("customSurfaceFormatEnabled", false)
         surfaceFormat = sharedPref.getInt("surfaceFormat", -1)
         surfaceColorSpace = sharedPref.getInt("surfaceColorSpace", -1)
+        surfaceFormatDisplayName = sharedPref.getString("surfaceFormatDisplayName", "Auto") ?: "Auto" // 新增：初始化显示名称
 
         // 初始化 Enable Color Space Passthrough
         enableColorSpacePassthrough = sharedPref.getBoolean("enableColorSpacePassthrough", false)
@@ -183,6 +185,7 @@ class QuickSettings(val activity: Activity) {
         editor.putBoolean("customSurfaceFormatEnabled", customSurfaceFormatEnabled)
         editor.putInt("surfaceFormat", surfaceFormat)
         editor.putInt("surfaceColorSpace", surfaceColorSpace)
+        editor.putString("surfaceFormatDisplayName", surfaceFormatDisplayName) // 新增：保存显示名称
 
         // 保存 Enable Color Space Passthrough
         editor.putBoolean("enableColorSpacePassthrough", enableColorSpacePassthrough)
