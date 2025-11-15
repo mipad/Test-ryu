@@ -51,7 +51,7 @@ android {
                 removeUnusedResources true
                 obfuscate true
                 optimizeCode true
-                proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+                // 移除了 proguardFiles 配置
             }
             signingConfig signingConfigs.debug
             debuggable false
