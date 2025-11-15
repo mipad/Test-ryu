@@ -33,6 +33,7 @@ import org.ryujinx.android.Icons
 import org.ryujinx.android.MainActivity
 import org.ryujinx.android.RyujinxNative
 import org.ryujinx.android.viewmodels.MainViewModel
+import org.ryujinx.android.viewmodels.PerformanceStatsSettings
 import org.ryujinx.android.viewmodels.QuickSettings
 import kotlin.math.roundToInt
 
@@ -64,17 +65,20 @@ class GameViews {
         @OptIn(ExperimentalMaterial3Api::class)
         @Composable
         fun GameOverlay(mainViewModel: MainViewModel) {
+            // 从MainViewModel加载持久化的性能统计显示设置
+            val initialStatsSettings = mainViewModel.getPerformanceStatsSettings()
+            
             // 全局显示/隐藏状态
             val showStats = remember {
-                mutableStateOf(true)
+                mutableStateOf(initialStatsSettings.showStats)
             }
             
             // 各个统计项的独立显示状态
-            val showFps = remember { mutableStateOf(true) }
-            val showRam = remember { mutableStateOf(true) }
-            val showBatteryTemperature = remember { mutableStateOf(false) }
-            val showBatteryLevel = remember { mutableStateOf(false) }
-            val showFifo = remember { mutableStateOf(true) } // 添加FIFO显示状态
+            val showFps = remember { mutableStateOf(initialStatsSettings.showFps) }
+            val showRam = remember { mutableStateOf(initialStatsSettings.showRam) }
+            val showBatteryTemperature = remember { mutableStateOf(initialStatsSettings.showBatteryTemperature) }
+            val showBatteryLevel = remember { mutableStateOf(initialStatsSettings.showBatteryLevel) }
+            val showFifo = remember { mutableStateOf(initialStatsSettings.showFifo) } // 添加FIFO显示状态
 
             // 编辑模式状态
             val isEditing = remember { mutableStateOf(false) }
@@ -286,6 +290,7 @@ class GameViews {
                     // 性能设置对话框
                     if (showPerformanceSettings.value) {
                         PerformanceSettingsDialog(
+                            mainViewModel = mainViewModel,
                             showStats = showStats,
                             showFps = showFps,
                             showRam = showRam,
@@ -401,6 +406,7 @@ class GameViews {
 
         @Composable
         fun PerformanceSettingsDialog(
+            mainViewModel: MainViewModel,
             showStats: androidx.compose.runtime.MutableState<Boolean>,
             showFps: androidx.compose.runtime.MutableState<Boolean>,
             showRam: androidx.compose.runtime.MutableState<Boolean>,
@@ -409,6 +415,19 @@ class GameViews {
             showFifo: androidx.compose.runtime.MutableState<Boolean>,
             onDismiss: () -> Unit
         ) {
+            // 保存设置到MainViewModel
+            fun saveSettings() {
+                val settings = PerformanceStatsSettings(
+                    showStats = showStats.value,
+                    showFps = showFps.value,
+                    showRam = showRam.value,
+                    showBatteryTemperature = showBatteryTemperature.value,
+                    showBatteryLevel = showBatteryLevel.value,
+                    showFifo = showFifo.value
+                )
+                mainViewModel.savePerformanceStatsSettings(settings)
+            }
+
             BasicAlertDialog(onDismissRequest = onDismiss) {
                 Surface(
                     modifier = Modifier
@@ -450,7 +469,10 @@ class GameViews {
                                     Text(text = "FIFO")
                                     Switch(
                                         checked = showFifo.value,
-                                        onCheckedChange = { showFifo.value = it },
+                                        onCheckedChange = { 
+                                            showFifo.value = it
+                                            saveSettings()
+                                        },
                                         modifier = Modifier.size(width = 36.dp, height = 24.dp)
                                     )
                                 }
@@ -464,7 +486,10 @@ class GameViews {
                                     Text(text = "FPS")
                                     Switch(
                                         checked = showFps.value,
-                                        onCheckedChange = { showFps.value = it },
+                                        onCheckedChange = { 
+                                            showFps.value = it
+                                            saveSettings()
+                                        },
                                         modifier = Modifier.size(width = 36.dp, height = 24.dp)
                                     )
                                 }
@@ -478,7 +503,10 @@ class GameViews {
                                     Text(text = "RAM")
                                     Switch(
                                         checked = showRam.value,
-                                        onCheckedChange = { showRam.value = it },
+                                        onCheckedChange = { 
+                                            showRam.value = it
+                                            saveSettings()
+                                        },
                                         modifier = Modifier.size(width = 36.dp, height = 24.dp)
                                     )
                                 }
@@ -498,7 +526,10 @@ class GameViews {
                                     Text(text = "Battery Temp")
                                     Switch(
                                         checked = showBatteryTemperature.value,
-                                        onCheckedChange = { showBatteryTemperature.value = it },
+                                        onCheckedChange = { 
+                                            showBatteryTemperature.value = it
+                                            saveSettings()
+                                        },
                                         modifier = Modifier.size(width = 36.dp, height = 24.dp)
                                     )
                                 }
@@ -512,7 +543,10 @@ class GameViews {
                                     Text(text = "Level")
                                     Switch(
                                         checked = showBatteryLevel.value,
-                                        onCheckedChange = { showBatteryLevel.value = it },
+                                        onCheckedChange = { 
+                                            showBatteryLevel.value = it
+                                            saveSettings()
+                                        },
                                         modifier = Modifier.size(width = 36.dp, height = 24.dp)
                                     )
                                 }
@@ -542,7 +576,10 @@ class GameViews {
                             )
                             Switch(
                                 checked = showStats.value,
-                                onCheckedChange = { showStats.value = it },
+                                onCheckedChange = { 
+                                    showStats.value = it
+                                    saveSettings()
+                                },
                                 modifier = Modifier.size(width = 36.dp, height = 24.dp)
                             )
                         }
