@@ -213,7 +213,7 @@ dependencies {
     implementation 'androidx.multidex:multidex:2.0.1'
     
     // 性能优化
-    implementation 'androidx.startup:startup-runtime:1.2.1'
+    implementation 'androidx.startup:startup-runtime:1.2.0'
 }
 
 // 预构建任务
