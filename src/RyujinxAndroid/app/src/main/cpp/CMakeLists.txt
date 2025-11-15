@@ -24,6 +24,27 @@ set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 set(ANDROID_STL c++_shared)
 set(ANDROID_ARM_NEON TRUE)
 
+# 启用链接时优化
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+
+# 性能优化标志
+set(PERFORMANCE_FLAGS
+    -O3
+    -DNDEBUG
+    -march=armv8.2-a+fp16+rcpc+dotprod+crypto
+    -mtune=cortex-a76
+    -flto=full
+    -fomit-frame-pointer
+    -fno-stack-protector
+    -fvisibility=hidden
+    -fvisibility-inlines-hidden
+    -funroll-loops
+    -fvectorize
+    -fslp-vectorize
+    -fno-rtti
+    -fno-exceptions
+)
+
 # 使用 FetchContent 获取 adrenotools
 FetchContent_Declare(
     adrenotools
@@ -33,19 +54,22 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(adrenotools)
 
-# 为 adrenotools 相关目标添加 PAGE_SIZE 定义
+# 为 adrenotools 相关目标添加 PAGE_SIZE 定义和性能优化
 if(TARGET adrenotools)
     target_compile_definitions(adrenotools PRIVATE PAGE_SIZE=4096)
+    target_compile_options(adrenotools PRIVATE ${PERFORMANCE_FLAGS})
 endif()
 
 if(TARGET linkernsbypass)
     target_compile_definitions(linkernsbypass PRIVATE PAGE_SIZE=4096)
+    target_compile_options(linkernsbypass PRIVATE ${PERFORMANCE_FLAGS})
 endif()
 
 # 为 adrenotools 的子目录目标也添加定义
 get_target_property(adrenotools_sources adrenotools SOURCES)
 if(adrenotools_sources)
     target_compile_definitions(adrenotools PRIVATE PAGE_SIZE=4096)
+    target_compile_options(adrenotools PRIVATE ${PERFORMANCE_FLAGS})
 endif()
 
 # 使用 FetchContent 获取 Oboe 源码
@@ -57,8 +81,18 @@ FetchContent_Declare(
 
 # 设置 Oboe 构建选项，禁用格式转换以减少代码大小
 set(OBOE_DISABLE_CONVERSION ON CACHE BOOL "Disable format conversion in Oboe")
+set(OBOE_DISABLE_AAUDIO OFF CACHE BOOL "Enable AAudio for lower latency")
 
 FetchContent_MakeAvailable(oboe)
+
+# 为 Oboe 添加性能优化
+if(TARGET oboe)
+    target_compile_options(oboe PRIVATE ${PERFORMANCE_FLAGS})
+    target_compile_definitions(oboe PRIVATE 
+        OBOE_ENABLE_OPTIMIZATIONS=1
+        OBOE_USE_AAUDIO=1
+    )
+endif()
 
 # 使用 FetchContent 获取标准 OpenAL Soft
 FetchContent_Declare(
@@ -93,6 +127,15 @@ set(ALSOFT_DEFAULT_MODULATION OFF CACHE BOOL "Disable default modulation")
 
 FetchContent_MakeAvailable(openal)
 
+# 为 OpenAL 添加性能优化
+if(TARGET OpenAL)
+    target_compile_options(OpenAL PRIVATE ${PERFORMANCE_FLAGS})
+    target_compile_definitions(OpenAL PRIVATE
+        ALSOFT_OPTIMIZE_FOR_PERFORMANCE=1
+        ALSOFT_DISABLE_HRTF=1
+    )
+endif()
+
 # 创建主库
 add_library(
     ryujinxjni
@@ -102,30 +145,42 @@ add_library(
     oboe_audio_renderer.cpp
 )
 
+# 设置目标属性以启用链接时优化
+set_target_properties(ryujinxjni PROPERTIES
+    INTERPROCEDURAL_OPTIMIZATION TRUE
+    C_VISIBILITY_PRESET hidden
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN TRUE
+)
+
 # 添加编译定义以优化音频处理
 target_compile_definitions(ryujinxjni PRIVATE
     RYUJINX_AUDIO_OPTIMIZE=1
-    # 如果需要，可以添加更多音频优化标志
+    ENABLE_HIGH_PERF=1
+    PAGE_SIZE=4096
+    # 音频缓冲区优化
+    RYUJINX_AUDIO_BUFFER_SIZE=256
+    RYUJINX_AUDIO_LOW_LATENCY=1
 )
 
 # 为音频渲染器文件单独启用快速数学优化
 set_source_files_properties(oboe_audio_renderer.cpp PROPERTIES
-    COMPILE_FLAGS "-ffast-math"
+    COMPILE_FLAGS "-ffast-math -ftree-vectorize"
 )
 
-# 为主目标添加编译选项（不包含 -ffast-math）
+# 为主目标添加编译选项
 target_compile_options(ryujinxjni PRIVATE
-    -std=c++20
-    -O3
-    -DNDEBUG
-    -march=armv8-a
-    # 注意：移除了全局的 -ffast-math
+    ${PERFORMANCE_FLAGS}
+    # 向量化优化
+    -ftree-vectorize
+    -fno-semantic-interposition
 )
 
 # 查找系统库
 find_library(log-lib log)
 find_library(opensles-lib OpenSLES)
 find_library(android-lib android)
+find_library(vulkan-lib vulkan)
 
 # 添加 Oboe 包含目录
 include_directories(${oboe_SOURCE_DIR}/include)
@@ -136,10 +191,12 @@ target_link_libraries(
     ${log-lib}
     ${opensles-lib}
     ${android-lib}
-    -lvulkan
+    ${vulkan-lib}
     adrenotools
     oboe
     OpenAL
+    # 添加数学库
+    m
 )
 
 # 设置 JNI 库输出路径
@@ -160,4 +217,10 @@ set_target_properties(OpenAL PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
     ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
     RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
+)
+
+# 添加自定义目标以优化最终二进制文件
+add_custom_command(TARGET ryujinxjni POST_BUILD
+    COMMAND ${CMAKE_STRIP} -s $<TARGET_FILE:ryujinxjni>
+    COMMENT "Stripping debug symbols from ryujinxjni"
 )
