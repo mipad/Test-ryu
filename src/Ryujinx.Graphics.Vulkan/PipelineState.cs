@@ -9,7 +9,6 @@ namespace Ryujinx.Graphics.Vulkan
     {
         private const int RequiredSubgroupSize = 32;
         private const int MaxDynamicStatesCount = 9;
-        private const uint DefaultMaxTessellationPatchSize = 32; // Vulkan 规范要求的最小值
 
         public PipelineUid Internal;
 
@@ -387,13 +386,6 @@ namespace Ryujinx.Graphics.Vulkan
             RenderPass renderPass,
             bool throwOnError = false)
         {
-            // 添加管道状态验证
-            if (!ValidatePipelineState(gd))
-            {
-                program.AddGraphicsPipeline(ref Internal, null);
-                return null;
-            }
-
             if (program.TryGetGraphicsPipeline(ref Internal, out var pipeline))
             {
                 return pipeline;
@@ -427,6 +419,7 @@ namespace Ryujinx.Graphics.Vulkan
                 if (Topology == PrimitiveTopology.PatchList && !HasTessellationControlShader)
                 {
                     program.AddGraphicsPipeline(ref Internal, null);
+
                     return null;
                 }
 
@@ -654,6 +647,7 @@ namespace Ryujinx.Graphics.Vulkan
                 else if (result.IsError())
                 {
                     program.AddGraphicsPipeline(ref Internal, null);
+
                     return null;
                 }
 
@@ -672,87 +666,6 @@ namespace Ryujinx.Graphics.Vulkan
             program.AddGraphicsPipeline(ref Internal, pipeline);
 
             return pipeline;
-        }
-
-        /// <summary>
-        /// 验证管道状态是否有效，避免无效的管道编译
-        /// </summary>
-        private bool ValidatePipelineState(VulkanRenderer gd)
-        {
-            // 检查顶点属性描述数量是否超出限制
-            if (VertexAttributeDescriptionsCount > Constants.MaxVertexAttributes)
-            {
-                return false;
-            }
-
-            // 检查顶点绑定描述数量是否超出限制
-            if (VertexBindingDescriptionsCount > Constants.MaxVertexBuffers)
-            {
-                return false;
-            }
-
-            // 检查颜色混合附件状态数量是否合理
-            if (ColorBlendAttachmentStateCount > Constants.MaxRenderTargets)
-            {
-                return false;
-            }
-
-            // 检查视口和剪刀数量是否匹配且合理
-            if (ViewportsCount != ScissorsCount || ViewportsCount > Constants.MaxViewports)
-            {
-                return false;
-            }
-
-            // 检查着色器阶段数量是否合理
-            if (StagesCount > Constants.MaxShaderStages || StagesCount == 0)
-            {
-                return false;
-            }
-
-            // 检查细分控制点数量是否合理 - 使用默认值而不是不存在的属性
-            if (HasTessellationControlShader && PatchControlPoints > DefaultMaxTessellationPatchSize)
-            {
-                return false;
-            }
-
-            // 检查采样数量是否支持
-            if ((SamplesCount & (SamplesCount - 1)) != 0 || // 必须是2的幂
-                !gd.Capabilities.SupportedSampleCounts.HasFlag((SampleCountFlags)SamplesCount))
-            {
-                return false;
-            }
-
-            return true;
-        }
-
-        /// <summary>
-        /// 检查管道状态是否适合后台编译
-        /// </summary>
-        public readonly bool IsSuitableForBackgroundCompilation()
-        {
-            // 如果启用了太多动态状态，可能不适合后台编译
-            if (RasterizerDiscardEnable || 
-                DepthBoundsTestEnable || 
-                LogicOpEnable)
-            {
-                return false;
-            }
-
-            // 如果使用了高级混合模式，可能状态变化频繁
-            if (!AdvancedBlendSrcPreMultiplied || 
-                !AdvancedBlendDstPreMultiplied || 
-                AdvancedBlendOverlap != BlendOverlapEXT.UncorrelatedExt)
-            {
-                return false;
-            }
-
-            // 如果有细分着色器，状态可能复杂
-            if (HasTessellationControlShader)
-            {
-                return false;
-            }
-
-            return true;
         }
 
         private void UpdateVertexAttributeDescriptions(VulkanRenderer gd)
