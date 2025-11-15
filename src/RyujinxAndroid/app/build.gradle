@@ -22,7 +22,7 @@ android {
             useSupportLibrary true
         }
 
-        // 移除 ndk 配置块中的 abiFilters，使用 splits 替代
+        // 重新添加 ndk abiFilters，但只在没有 splits 时使用
         externalNativeBuild {
             cmake {
                 cppFlags "-std=c++20", "-O3", "-DNDEBUG", "-DENABLE_HIGH_PERF=1", "-ffast-math", "-march=armv8.2-a+fp16+rcpc+dotprod+crypto", "-funroll-loops", "-DPAGE_SIZE=4096", "-flto=full", "-fomit-frame-pointer", "-fvisibility=hidden"
@@ -53,7 +53,6 @@ android {
             signingConfig signingConfigs.debug
             debuggable false
             jniDebuggable false
-            // 移除已弃用的 renderscriptDebuggable
             renderscriptOptimLevel 3
             minifyEnabled true
             shrinkResources true
@@ -76,7 +75,6 @@ android {
         
         debug {
             jniDebuggable true
-            // 移除已弃用的 renderscriptDebuggable
             externalNativeBuild {
                 cmake {
                     cFlags "-O0", "-g", "-DDEBUG"
@@ -163,33 +161,11 @@ android {
         enabled = true
     }
     
-    // 配置 APK/AAB 构建 - 使用 splits 替代 ndk.abiFilters
-    bundle {
-        language {
-            enableSplit = true
-        }
-        density {
-            enableSplit = true
-        }
-        abi {
-            enableSplit = true
-            include 'arm64-v8a'
-        }
-    }
-    
-    // 使用 splits 配置替代 ndk.abiFilters
-    splits {
-        abi {
-            enable true
-            reset()
-            include 'arm64-v8a'
-            universalApk false
-        }
-    }
-    
-    // 在 defaultConfig 外部配置 ndk，但只设置版本，不设置 abiFilters
+    // 简化配置：只使用 ndk.abiFilters，移除复杂的 splits 和 bundle 配置
     ndk {
         version "29.0.14206865"
+        //noinspection ChromeOsAbiSupport
+        abiFilters 'arm64-v8a'
     }
     
     // 使用新的实验性选项来避免路径检查警告
@@ -231,8 +207,8 @@ dependencies {
     implementation 'com.google.android.material:material:1.12.0'
     
     // Compose BOM
-    implementation platform('androidx.compose:compose-bom:2024.08.00')
-    androidTestImplementation platform('androidx.compose:compose-bom:2024.08.00')
+    implementation platform('androidx.compose:compose-bom:2025.01.01')
+    androidTestImplementation platform('androidx.compose:compose-bom:2025.01.01')
     
     // 核心运行时依赖
     runtimeOnly project(":libryujinx")
