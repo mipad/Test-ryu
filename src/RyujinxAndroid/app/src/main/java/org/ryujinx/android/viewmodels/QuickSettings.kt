@@ -61,14 +61,6 @@ class QuickSettings(val activity: Activity) {
     // 新增：各向异性过滤
     var maxAnisotropy: Float // 各向异性过滤级别：0=关闭, 2=2x, 4=4x, 8=8x, 16=16x
 
-    // 新增：性能统计显示设置
-    var performanceStatsShowStats: Boolean // 是否显示所有统计
-    var performanceStatsShowFps: Boolean // 是否显示FPS
-    var performanceStatsShowRam: Boolean // 是否显示内存使用
-    var performanceStatsShowBatteryTemperature: Boolean // 是否显示电池温度
-    var performanceStatsShowBatteryLevel: Boolean // 是否显示电池电量
-    var performanceStatsShowFifo: Boolean // 是否显示FIFO
-
     // Logs
     var enableDebugLogs: Boolean
     var enableStubLogs: Boolean
@@ -137,14 +129,6 @@ class QuickSettings(val activity: Activity) {
         // 初始化各向异性过滤 - 默认值为1f（关闭）
         maxAnisotropy = sharedPref.getFloat("maxAnisotropy", 1f)
 
-        // 初始化性能统计显示设置
-        performanceStatsShowStats = sharedPref.getBoolean("performance_stats_show_stats", true)
-        performanceStatsShowFps = sharedPref.getBoolean("performance_stats_show_fps", true)
-        performanceStatsShowRam = sharedPref.getBoolean("performance_stats_show_ram", true)
-        performanceStatsShowBatteryTemperature = sharedPref.getBoolean("performance_stats_show_battery_temp", false)
-        performanceStatsShowBatteryLevel = sharedPref.getBoolean("performance_stats_show_battery_level", false)
-        performanceStatsShowFifo = sharedPref.getBoolean("performance_stats_show_fifo", true)
-
         enableDebugLogs = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs = sharedPref.getBoolean("enableStubLogs", false)
         enableInfoLogs = sharedPref.getBoolean("enableInfoLogs", true)
@@ -211,14 +195,6 @@ class QuickSettings(val activity: Activity) {
 
         // 保存各向异性过滤设置
         editor.putFloat("maxAnisotropy", maxAnisotropy)
-
-        // 保存性能统计显示设置
-        editor.putBoolean("performance_stats_show_stats", performanceStatsShowStats)
-        editor.putBoolean("performance_stats_show_fps", performanceStatsShowFps)
-        editor.putBoolean("performance_stats_show_ram", performanceStatsShowRam)
-        editor.putBoolean("performance_stats_show_battery_temp", performanceStatsShowBatteryTemperature)
-        editor.putBoolean("performance_stats_show_battery_level", performanceStatsShowBatteryLevel)
-        editor.putBoolean("performance_stats_show_fifo", performanceStatsShowFifo)
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs)
         editor.putBoolean("enableStubLogs", enableStubLogs)

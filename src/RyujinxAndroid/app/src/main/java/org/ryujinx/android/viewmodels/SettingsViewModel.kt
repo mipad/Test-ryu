@@ -100,14 +100,8 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         // 新增：BackendThreading 参数
         backendThreading: MutableState<Int>,
         // 新增：各向异性过滤参数
-        maxAnisotropy: MutableState<Float>,
-        // 新增：性能统计显示设置参数
-        performanceStatsShowStats: MutableState<Boolean>,
-        performanceStatsShowFps: MutableState<Boolean>,
-        performanceStatsShowRam: MutableState<Boolean>,
-        performanceStatsShowBatteryTemperature: MutableState<Boolean>,
-        performanceStatsShowBatteryLevel: MutableState<Boolean>,
-        performanceStatsShowFifo: MutableState<Boolean>
+        maxAnisotropy: MutableState<Float>
+        // 移除：性能统计显示设置参数 - 这些与设置页面无关
     ) {
 
         memoryManagerMode.value = sharedPref.getInt("memoryManagerMode", 2)  // 默认使用HostMappedUnsafe
@@ -163,14 +157,6 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
 
         // 初始化各向异性过滤设置
         maxAnisotropy.value = sharedPref.getFloat("maxAnisotropy", 1f)
-
-        // 初始化性能统计显示设置
-        performanceStatsShowStats.value = sharedPref.getBoolean("performance_stats_show_stats", true)
-        performanceStatsShowFps.value = sharedPref.getBoolean("performance_stats_show_fps", true)
-        performanceStatsShowRam.value = sharedPref.getBoolean("performance_stats_show_ram", true)
-        performanceStatsShowBatteryTemperature.value = sharedPref.getBoolean("performance_stats_show_battery_temp", false)
-        performanceStatsShowBatteryLevel.value = sharedPref.getBoolean("performance_stats_show_battery_level", false)
-        performanceStatsShowFifo.value = sharedPref.getBoolean("performance_stats_show_fifo", true)
 
         // 如果之前保存了自定义表面格式，则恢复设置
         if (customSurfaceFormatEnabled.value && surfaceFormat.value != -1 && surfaceColorSpace.value != -1) {
@@ -248,14 +234,8 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         // 新增：BackendThreading 参数
         backendThreading: MutableState<Int>,
         // 新增：各向异性过滤参数
-        maxAnisotropy: MutableState<Float>,
-        // 新增：性能统计显示设置参数
-        performanceStatsShowStats: MutableState<Boolean>,
-        performanceStatsShowFps: MutableState<Boolean>,
-        performanceStatsShowRam: MutableState<Boolean>,
-        performanceStatsShowBatteryTemperature: MutableState<Boolean>,
-        performanceStatsShowBatteryLevel: MutableState<Boolean>,
-        performanceStatsShowFifo: MutableState<Boolean>
+        maxAnisotropy: MutableState<Float>
+        // 移除：性能统计显示设置参数 - 这些与设置页面无关
     ) {
         val editor = sharedPref.edit()
 
@@ -310,14 +290,6 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
 
         // 保存各向异性过滤设置
         editor.putFloat("maxAnisotropy", maxAnisotropy.value)
-
-        // 保存性能统计显示设置
-        editor.putBoolean("performance_stats_show_stats", performanceStatsShowStats.value)
-        editor.putBoolean("performance_stats_show_fps", performanceStatsShowFps.value)
-        editor.putBoolean("performance_stats_show_ram", performanceStatsShowRam.value)
-        editor.putBoolean("performance_stats_show_battery_temp", performanceStatsShowBatteryTemperature.value)
-        editor.putBoolean("performance_stats_show_battery_level", performanceStatsShowBatteryLevel.value)
-        editor.putBoolean("performance_stats_show_fifo", performanceStatsShowFifo.value)
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs.value)
         editor.putBoolean("enableStubLogs", enableStubLogs.value)
