@@ -22,7 +22,7 @@ android {
             useSupportLibrary true
         }
 
-        // 将 ndk 配置移到 defaultConfig 内部
+        // ndk 配置
         ndk {
             //noinspection ChromeOsAbiSupport
             abiFilters 'arm64-v8a'
@@ -73,9 +73,6 @@ android {
                     cppFlags "-O3", "-DNDEBUG", "-fomit-frame-pointer", "-ffunction-sections", "-fdata-sections", "-std=c++20"
                 }
             }
-            
-            // 启用代码压缩和资源压缩
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
         
         debug {
@@ -102,11 +99,7 @@ android {
             "-opt-in=kotlin.RequiresOptIn",
             "-Xjvm-default=all",
             "-Xopt-in=kotlin.Experimental",
-            "-Xuse-experimental=kotlin.Experimental",
-            "-P",
-            "plugin:androidx.compose.compiler.plugins.kotlin:reportsDestination=${project.buildDir}/compose_metrics",
-            "-P",
-            "plugin:androidx.compose.compiler.plugins.kotlin:metricsDestination=${project.buildDir}/compose_metrics"
+            "-Xuse-experimental=kotlin.Experimental"
         ]
         allWarningsAsErrors = false
         suppressWarnings = true
@@ -127,10 +120,6 @@ android {
         jniLibs {
             keepDebugSymbols += '**/libryujinx.so'
             useLegacyPackaging true
-            excludes += [
-                '**/libopenal.so',
-                '**/liboboe.so'
-            ]
         }
         resources {
             excludes += [
@@ -149,9 +138,6 @@ android {
                 'lib/arm64-v8a/libryujinxjni.so'
             ]
         }
-        dex {
-            useLegacyPackaging false
-        }
     }
     
     externalNativeBuild {
@@ -166,65 +152,32 @@ android {
         enabled = true
     }
     
-    // 使用新的实验性选项来避免路径检查警告
     lintOptions {
         checkReleaseBuilds false
         abortOnError false
     }
 }
 
-// 配置依赖
-configurations {
-    configureEach {
-        // 避免传递依赖冲突
-        transitive = true
-        // 排除不需要的模块
-        exclude group: 'androidx.lifecycle', module: 'lifecycle-process'
-        exclude group: 'androidx.arch.core', module: 'core-runtime'
-        
-        // 解决依赖冲突
-        resolutionStrategy {
-            force 'androidx.core:core-ktx:1.17.0'
-            force 'androidx.appcompat:appcompat:1.7.0'
-            force 'org.jetbrains.kotlin:kotlin-stdlib:1.9.25'
-            force 'org.jetbrains.kotlin:kotlin-stdlib-common:1.9.25'
-            force 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0'
-            force 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0'
-            
-            // 缓存动态版本
-            cacheDynamicVersionsFor 10, 'minutes'
-            cacheChangingModulesFor 4, 'hours'
-        }
-    }
-}
-
+// 简化的依赖配置
 dependencies {
     // 核心库
     implementation 'net.java.dev.jna:jna:5.17.0@aar'
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'com.google.android.material:material:1.12.0'
     
-    // Compose BOM
+    // Compose
     implementation platform('androidx.compose:compose-bom:2025.01.01')
-    androidTestImplementation platform('androidx.compose:compose-bom:2025.01.01')
-    
-    // 核心运行时依赖
-    runtimeOnly project(":libryujinx")
-    implementation 'androidx.core:core-ktx:1.17.0'
-    implementation platform('org.jetbrains.kotlin:kotlin-bom:1.9.25')
-    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.9.0'
-    implementation "androidx.navigation:navigation-compose:2.9.0"
-    implementation 'androidx.activity:activity-compose:1.10.1'
-    
-    // Compose UI
     implementation 'androidx.compose.ui:ui'
     implementation 'androidx.compose.ui:ui-graphics'
     implementation 'androidx.compose.ui:ui-tooling-preview'
     implementation 'androidx.compose.material3:material3'
     
-    // 性能优化库
-    implementation 'androidx.compose.ui:ui-text-google-fonts'
-    implementation 'androidx.compose.runtime:runtime-livedata'
+    // 核心运行时依赖
+    runtimeOnly project(":libryujinx")
+    implementation 'androidx.core:core-ktx:1.17.0'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.9.0'
+    implementation "androidx.navigation:navigation-compose:2.9.0"
+    implementation 'androidx.activity:activity-compose:1.10.1'
     
     // 游戏相关
     implementation 'com.github.swordfish90:radialgamepad:2.0.0'
@@ -244,15 +197,12 @@ dependencies {
     implementation("com.halilibo.compose-richtext:richtext-commonmark:0.20.0")
     implementation("com.halilibo.compose-richtext:richtext-ui-material3:0.20.0")
     
-    // 性能监控（仅调试）
-    debugImplementation 'com.github.markzhai:blockcanary-android:1.5.0'
-    
     // 测试依赖
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
+    androidTestImplementation platform('androidx.compose:compose-bom:2025.01.01')
     androidTestImplementation 'androidx.compose.ui:ui-test-junit4'
-    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0'
     
     // 调试工具
     debugImplementation 'androidx.compose.ui:ui-tooling'
@@ -266,14 +216,6 @@ dependencies {
     
     // 性能优化
     implementation 'androidx.startup:startup-runtime:1.2.1'
-    implementation 'androidx.profileinstaller:profileinstaller:1.3.1'
-}
-
-// 构建任务优化
-tasks.whenTaskAdded { task ->
-    if (task.name.contains("lint") || task.name.contains("Lint")) {
-        task.enabled = false
-    }
 }
 
 // 预构建任务
@@ -281,23 +223,6 @@ tasks.named("preBuild") {
     dependsOn ':libryujinx:assemble'
     doFirst {
         println "Optimizing build for performance..."
-    }
-}
-
-// 配置构建性能监控
-gradle.taskGraph.beforeTask { Task task ->
-    if (task.name.contains("Compile") || task.name.contains("compile")) {
-        println "Starting compilation task: ${task.name}"
-    }
-}
-
-gradle.taskGraph.afterTask { Task task, TaskState state ->
-    if (task.name.contains("Compile") || task.name.contains("compile")) {
-        if (state.failure) {
-            println "Compilation failed: ${task.name}"
-        } else {
-            println "Compilation completed: ${task.name}"
-        }
     }
 }
 
@@ -322,21 +247,4 @@ tasks.withType(JavaCompile).configureEach {
     options.fork = true
     options.forkOptions.memoryMaximumSize = '2g'
     options.incremental = true
-}
-
-// 资源处理优化
-android.applicationVariants.all { variant ->
-    variant.outputs.all { output ->
-        if (outputFileName != null && outputFileName.endsWith('.apk')) {
-            def version = variant.versionName.replace('.', '_')
-            outputFileName = "ryujinx_${version}_${variant.buildType.name}.apk"
-        }
-    }
-    
-    // 优化资源处理
-    variant.mergeResourcesProvider.configure {
-        doLast {
-            println "Resources merged for variant: ${variant.name}"
-        }
-    }
 }
