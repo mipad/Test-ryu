@@ -236,9 +236,7 @@ class SettingViews {
             val customSurfaceFormatEnabled = remember { mutableStateOf(false) }
             val surfaceFormat = remember { mutableStateOf(-1) }
             val surfaceColorSpace = remember { mutableStateOf(-1) }
-            
-            // 新增：当前表面格式显示名称
-            val currentSurfaceFormatName = remember { mutableStateOf("Auto") }
+            val surfaceFormatDisplayName = remember { mutableStateOf("Auto") } // 新增：表面格式显示名称
 
             // 新增：Enable Color Space Passthrough 状态变量
             val enableColorSpacePassthrough = remember { mutableStateOf(false) }
@@ -295,6 +293,7 @@ class SettingViews {
                     customSurfaceFormatEnabled,
                     surfaceFormat,
                     surfaceColorSpace,
+                    surfaceFormatDisplayName, // 新增：表面格式显示名称参数
                     // 新增：Enable Color Space Passthrough 参数
                     enableColorSpacePassthrough,
                     // 新增：BackendThreading 参数
@@ -307,35 +306,8 @@ class SettingViews {
                 availableSurfaceFormats.value = mainViewModel.getSurfaceFormats()
                 android.util.Log.i("Ryujinx", "Settings: Loaded ${availableSurfaceFormats.value.size} surface formats from MainViewModel cache")
                 
-                // 检查自定义表面格式状态并更新显示名称
+                // 检查自定义表面格式状态
                 isCustomSurfaceFormatValid.value = RyujinxNative.isCustomSurfaceFormatValid()
-                if (isCustomSurfaceFormatValid.value) {
-                    // 获取当前表面格式信息并显示
-                    val currentFormatInfo = RyujinxNative.getCurrentSurfaceFormatInfo()
-                    if (currentFormatInfo.contains("Format=") && currentFormatInfo.contains("ColorSpace=")) {
-                        // 从格式信息中提取显示名称
-                        val formatPart = currentFormatInfo.substringAfter("Format=").substringBefore(",")
-                        val colorSpacePart = currentFormatInfo.substringAfter("ColorSpace=")
-                        
-                        // 在可用格式中查找匹配的显示名称
-                        val matchedFormat = availableSurfaceFormats.value.find { formatString ->
-                            val formatInfo = SurfaceFormatInfo.fromString(formatString)
-                            formatInfo != null && 
-                            formatInfo.format.toString() == formatPart && 
-                            formatInfo.colorSpace.toString() == colorSpacePart
-                        }
-                        
-                        currentSurfaceFormatName.value = if (matchedFormat != null) {
-                            SurfaceFormatInfo.fromString(matchedFormat)?.displayName ?: "Custom"
-                        } else {
-                            "Custom"
-                        }
-                    } else {
-                        currentSurfaceFormatName.value = "Custom"
-                    }
-                } else {
-                    currentSurfaceFormatName.value = "Auto"
-                }
                 
                 loaded.value = true
             }
@@ -406,6 +378,7 @@ class SettingViews {
                                     customSurfaceFormatEnabled,
                                     surfaceFormat,
                                     surfaceColorSpace,
+                                    surfaceFormatDisplayName, // 新增：表面格式显示名称参数
                                     // 新增：Enable Color Space Passthrough 参数
                                     enableColorSpacePassthrough,
                                     // 新增：BackendThreading 参数
@@ -930,7 +903,7 @@ class SettingViews {
                             ) {
                                 Text(text = "Surface Format")
                                 Text(
-                                    text = currentSurfaceFormatName.value,
+                                    text = surfaceFormatDisplayName.value,
                                     color = MaterialTheme.colorScheme.primary
                                 )
                             }
@@ -1396,7 +1369,7 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                                 customSurfaceFormatEnabled.value = false
                                                 surfaceFormat.value = -1
                                                 surfaceColorSpace.value = -1
-                                                currentSurfaceFormatName.value = "Auto" // 更新显示名称
+                                                surfaceFormatDisplayName.value = "Auto" // 更新持久化的显示名称
                                                 showSurfaceFormatDialog.value = false
                                             }
                                             .padding(vertical = 12.dp),
@@ -1410,7 +1383,7 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                                 customSurfaceFormatEnabled.value = false
                                                 surfaceFormat.value = -1
                                                 surfaceColorSpace.value = -1
-                                                currentSurfaceFormatName.value = "Auto" // 更新显示名称
+                                                surfaceFormatDisplayName.value = "Auto" // 更新持久化的显示名称
                                                 showSurfaceFormatDialog.value = false
                                             }
                                         )
@@ -1449,7 +1422,7 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                                                 customSurfaceFormatEnabled.value = true
                                                                 surfaceFormat.value = formatInfo.format
                                                                 surfaceColorSpace.value = formatInfo.colorSpace
-                                                                currentSurfaceFormatName.value = formatInfo.displayName // 更新显示名称
+                                                                surfaceFormatDisplayName.value = formatInfo.displayName // 更新持久化的显示名称
                                                                 showSurfaceFormatDialog.value = false
                                                             }
                                                             .padding(vertical = 8.dp),
@@ -1463,7 +1436,7 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                                                 customSurfaceFormatEnabled.value = true
                                                                 surfaceFormat.value = formatInfo.format
                                                                 surfaceColorSpace.value = formatInfo.colorSpace
-                                                                currentSurfaceFormatName.value = formatInfo.displayName // 更新显示名称
+                                                                surfaceFormatDisplayName.value = formatInfo.displayName // 更新持久化的显示名称
                                                                 showSurfaceFormatDialog.value = false
                                                             }
                                                         )
@@ -2952,6 +2925,7 @@ if (showBackendThreadingDialog.value) {
                         customSurfaceFormatEnabled,
                         surfaceFormat,
                         surfaceColorSpace,
+                        surfaceFormatDisplayName, // 新增：表面格式显示名称参数
                         // 新增：Enable Color Space Passthrough 参数
                         enableColorSpacePassthrough,
                         // 新增：BackendThreading 参数
