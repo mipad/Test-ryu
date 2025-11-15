@@ -19,7 +19,7 @@ jobs:
       DOTNET_VERSION: "10.0.100"
       ANDROID_API_LEVEL: "36"
       GRADLE_VERSION: "9.2.0"
-      ANDROID_BUILD_TOOLS: "34.0.0"
+      ANDROID_BUILD_TOOLS: "36.0.0"
 
     steps:
     # ========== 1. 代码检出 ==========
