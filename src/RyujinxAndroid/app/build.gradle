@@ -1,6 +1,8 @@
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
+    id 'kotlin-parcelize'
+    id 'kotlin-kapt'
 }
 
 android {
@@ -27,102 +29,348 @@ android {
 
         externalNativeBuild {
             cmake {
-                cppFlags "-std=c++20", "-O3", "-DNDEBUG", "-DENABLE_HIGH_PERF=1", "-ffast-math", "-march=armv8-a", "-funroll-loops", "-DPAGE_SIZE=4096"
-                arguments "-DCMAKE_BUILD_TYPE=Release", "-DANDROID_ARM_NEON=TRUE"
+                cppFlags "-std=c++20", "-O3", "-DNDEBUG", "-DENABLE_HIGH_PERF=1", "-ffast-math", "-march=armv8.2-a+fp16+rcpc+dotprod+crypto", "-funroll-loops", "-DPAGE_SIZE=4096", "-flto=full", "-fomit-frame-pointer", "-fvisibility=hidden"
+                arguments "-DCMAKE_BUILD_TYPE=Release", "-DANDROID_ARM_NEON=TRUE", "-DANDROID_PLATFORM=android-30"
                 arguments "-DANDROID_STL=c++_shared"
+                arguments "-DANDROID_TOOLCHAIN=clang"
+                arguments "-DANDROID_CPP_FEATURES=rtti exceptions"
             }
         }
+        
+        // 启用多dex（如果需要）
+        multiDexEnabled true
+        
+        // 构建配置字段
+        buildConfigField "boolean", "ENABLE_PERFORMANCE_OPTIMIZATIONS", "true"
+        buildConfigField "String", "NATIVE_BUILD_TYPE", "\"RELEASE\""
     }
 
     buildTypes {
         release {
             postprocessing {
-                removeUnusedCode false
-                removeUnusedResources false
-                obfuscate false
+                removeUnusedCode true
+                removeUnusedResources true
+                obfuscate true
                 optimizeCode true
-                proguardFiles 'proguard-rules.pro'
+                proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             }
             signingConfig signingConfigs.debug
             debuggable false
             jniDebuggable false
+            renderscriptDebuggable false
+            renderscriptOptimLevel 3
+            minifyEnabled true
+            shrinkResources true
+            crunchPngs true
+            zipAlignEnabled true
+            
+            // 原生构建配置
+            externalNativeBuild {
+                cmake {
+                    targets "ryujinxjni"
+                    arguments "-DANDROID_TOOLCHAIN=clang", "-DANDROID_ARM_MODE=arm", "-DANDROID_ARM_NEON=TRUE"
+                    cFlags "-O3", "-DNDEBUG", "-fomit-frame-pointer", "-ffunction-sections", "-fdata-sections"
+                    cppFlags "-O3", "-DNDEBUG", "-fomit-frame-pointer", "-ffunction-sections", "-fdata-sections", "-std=c++20"
+                }
+            }
+            
+            // 启用代码压缩和资源压缩
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        
+        debug {
+            jniDebuggable true
+            renderscriptDebuggable true
+            externalNativeBuild {
+                cmake {
+                    cFlags "-O0", "-g", "-DDEBUG"
+                    cppFlags "-O0", "-g", "-DDEBUG"
+                }
+            }
         }
     }
+    
+    // 编译选项优化
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
+        coreLibraryDesugaringEnabled true
     }
+    
     kotlinOptions {
         jvmTarget = '21'
-        freeCompilerArgs += ["-opt-in=kotlin.RequiresOptIn",
-            "-Xjvm-default=all"]
+        freeCompilerArgs += [
+            "-opt-in=kotlin.RequiresOptIn",
+            "-Xjvm-default=all",
+            "-Xopt-in=kotlin.Experimental",
+            "-Xuse-experimental=kotlin.Experimental",
+            "-P",
+            "plugin:androidx.compose.compiler.plugins.kotlin:reportsDestination=${project.buildDir}/compose_metrics",
+            "-P",
+            "plugin:androidx.compose.compiler.plugins.kotlin:metricsDestination=${project.buildDir}/compose_metrics"
+        ]
+        allWarningsAsErrors = false
+        suppressWarnings = true
     }
+    
     buildFeatures {
         compose true
         prefab true
         buildConfig true
+        viewBinding true
     }
+    
     composeOptions {
         kotlinCompilerExtensionVersion '1.5.15'
     }
+    
     packagingOptions {
         jniLibs {
             keepDebugSymbols += '**/libryujinx.so'
             useLegacyPackaging true
+            excludes += [
+                '**/libopenal.so',
+                '**/liboboe.so'
+            ]
         }
         resources {
-            excludes += '/META-INF/{AL2.0,LGPL2.1}'
+            excludes += [
+                '/META-INF/{AL2.0,LGPL2.1}',
+                'META-INF/*.kotlin_module',
+                'META-INF/*.version',
+                'META-INF/proguard/**',
+                'META-INF/services/**',
+                '**/*.proto',
+                '**/kotlin/**',
+                '**/*.txt',
+                '**/*.bin'
+            ]
+            pickFirsts += [
+                'lib/arm64-v8a/libc++_shared.so',
+                'lib/arm64-v8a/libryujinxjni.so'
+            ]
+        }
+        dex {
+            useLegacyPackaging false
         }
     }
+    
     externalNativeBuild {
         cmake {
             path file('src/main/cpp/CMakeLists.txt')
             version '3.22.1'
         }
     }
+    
+    // 启用数据绑定
+    dataBinding {
+        enabled = true
+    }
+    
+    // 启用构建缓存
+    buildCache {
+        local {
+            enabled = true
+            directory = new File(rootDir, 'build-cache')
+        }
+    }
+    
+    // 配置 APK/AAB 构建
+    bundle {
+        language {
+            enableSplit = true
+        }
+        density {
+            enableSplit = true
+        }
+        abi {
+            enableSplit = true
+        }
+    }
+    
+    // 拆分配置
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'arm64-v8a'
+            universalApk false
+        }
+    }
 }
 
-tasks.named("preBuild") {
-    dependsOn ':libryujinx:assemble'
+// 配置依赖
+configurations {
+    configureEach {
+        // 避免传递依赖冲突
+        transitive = true
+        // 排除不需要的模块
+        exclude group: 'androidx.lifecycle', module: 'lifecycle-process'
+        exclude group: 'androidx.arch.core', module: 'core-runtime'
+        
+        // 解决依赖冲突
+        resolutionStrategy {
+            force 'androidx.core:core-ktx:1.17.0'
+            force 'androidx.appcompat:appcompat:1.7.0'
+            force 'org.jetbrains.kotlin:kotlin-stdlib:1.9.25'
+            force 'org.jetbrains.kotlin:kotlin-stdlib-common:1.9.25'
+            force 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0'
+            force 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0'
+            
+            // 缓存动态版本
+            cacheDynamicVersionsFor 10, 'minutes'
+            cacheChangingModulesFor 4, 'hours'
+        }
+    }
 }
 
 dependencies {
+    // 核心库
     implementation 'net.java.dev.jna:jna:5.17.0@aar'
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'com.google.android.material:material:1.12.0'
+    
+    // Compose BOM
     implementation platform('androidx.compose:compose-bom:2025.01.01')
     implementation platform('androidx.compose:compose-bom:2025.01.01')
     androidTestImplementation platform('androidx.compose:compose-bom:2025.01.01')
     androidTestImplementation platform('androidx.compose:compose-bom:2025.01.01')
+    
+    // 核心运行时依赖
     runtimeOnly project(":libryujinx")
     implementation 'androidx.core:core-ktx:1.17.0'
     implementation platform('org.jetbrains.kotlin:kotlin-bom:1.9.25')
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.9.0'
     implementation "androidx.navigation:navigation-compose:2.9.0"
     implementation 'androidx.activity:activity-compose:1.10.1'
-    implementation platform('androidx.compose:compose-bom:2025.01.01')
+    
+    // Compose UI
     implementation 'androidx.compose.ui:ui'
     implementation 'androidx.compose.ui:ui-graphics'
     implementation 'androidx.compose.ui:ui-tooling-preview'
     implementation 'androidx.compose.material3:material3'
+    
+    // 性能优化库
+    implementation 'androidx.compose.ui:ui-text-google-fonts'
+    implementation 'androidx.compose.runtime:runtime-livedata'
+    
+    // 游戏相关
     implementation 'com.github.swordfish90:radialgamepad:2.0.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
+    
+    // 工具库
     implementation "com.anggrayudi:storage:1.5.6"
     implementation "androidx.preference:preference-ktx:1.2.1"
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0'
     implementation 'com.google.code.gson:gson:2.11.0'
     implementation 'net.lingala.zip4j:zip4j:2.11.5'
+    
+    // UI 组件
     implementation("br.com.devsrsouza.compose.icons:css-gg:1.1.1")
     implementation 'io.coil-kt:coil-compose:2.6.0'
     implementation("com.halilibo.compose-richtext:richtext-ui:0.20.0")
     implementation("com.halilibo.compose-richtext:richtext-commonmark:0.20.0")
     implementation("com.halilibo.compose-richtext:richtext-ui-material3:0.20.0")
+    
+    // 性能监控（仅调试）
+    debugImplementation 'com.github.markzhai:blockcanary-android:1.5.0'
+    
+    // 测试依赖
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
-    androidTestImplementation platform('androidx.compose:compose-bom:2025.01.01')
     androidTestImplementation 'androidx.compose.ui:ui-test-junit4'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0'
+    
+    // 调试工具
     debugImplementation 'androidx.compose.ui:ui-tooling'
     debugImplementation 'androidx.compose.ui:ui-test-manifest'
+    
+    // 核心库 desugaring
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
+    
+    // 多dex支持
+    implementation 'androidx.multidex:multidex:2.0.1'
+    
+    // 性能优化
+    implementation 'androidx.startup:startup-runtime:1.2.1'
+    implementation 'androidx.profileinstaller:profileinstaller:1.3.1'
+}
+
+// 构建任务优化
+tasks.whenTaskAdded { task ->
+    if (task.name.contains("lint") || task.name.contains("Lint")) {
+        task.enabled = false
+    }
+}
+
+// 预构建任务
+tasks.named("preBuild") {
+    dependsOn ':libryujinx:assemble'
+    doFirst {
+        println "Optimizing build for performance..."
+    }
+}
+
+// 清理任务
+tasks.register('cleanOptimized', Delete) {
+    delete rootProject.buildDir
+    delete "${rootDir}/build-cache"
+}
+
+// 配置构建性能监控
+gradle.taskGraph.beforeTask { Task task ->
+    if (task.name.contains("Compile") || task.name.contains("compile")) {
+        println "Starting compilation task: ${task.name}"
+    }
+}
+
+gradle.taskGraph.afterTask { Task task, TaskState state ->
+    if (task.name.contains("Compile") || task.name.contains("compile")) {
+        if (state.failure) {
+            println "Compilation failed: ${task.name}"
+        } else {
+            println "Compilation completed: ${task.name}"
+        }
+    }
+}
+
+// 配置 Kotlin 编译性能
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    kotlinOptions {
+        freeCompilerArgs += [
+            "-Xskip-metadata-version-check",
+            "-Xno-param-assertions",
+            "-Xno-call-assertions",
+            "-Xno-receiver-assertions"
+        ]
+    }
+}
+
+// 配置 Java 编译性能
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs += [
+        '-Xlint:unchecked',
+        '-Xlint:deprecation'
+    ]
+    options.fork = true
+    options.forkOptions.memoryMaximumSize = '2g'
+    options.incremental = true
+}
+
+// 资源处理优化
+android.applicationVariants.all { variant ->
+    variant.outputs.all { output ->
+        if (outputFileName != null && outputFileName.endsWith('.apk')) {
+            def version = variant.versionName.replace('.', '_')
+            outputFileName = "ryujinx_${version}_${variant.buildType.name}.apk"
+        }
+    }
+    
+    // 优化资源处理
+    variant.mergeResourcesProvider.configure {
+        doLast {
+            println "Resources merged for variant: ${variant.name}"
+        }
+    }
 }
