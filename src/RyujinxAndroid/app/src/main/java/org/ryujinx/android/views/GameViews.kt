@@ -1493,14 +1493,15 @@ class GameViews {
                         }
                     }
 
-                    // 右上角的电池信息显示
+                    // 顶部中央的电池信息显示（横屏时横向排列）
                     Box(
                         modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(16.dp)
+                            .align(Alignment.TopCenter)
+                            .padding(top = 16.dp)
                     ) {
-                        Column(
-                            horizontalAlignment = Alignment.End
+                        Row(
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             // 电池温度显示（根据设置决定是否显示）
                             if (showBatteryTemperature && batteryTemperature.value > 0) {
@@ -1510,7 +1511,7 @@ class GameViews {
                                             color = Color.Black.copy(alpha = 0.26f),
                                             shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
                                         )
-                                        //.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
                                 ) {
                                     Text(
                                         text = "${String.format("%.1f", batteryTemperature.value)}°C",
@@ -1525,14 +1526,16 @@ class GameViews {
                             
                             // 电池电量显示（根据设置决定是否显示）
                             if (showBatteryLevel && batteryLevel.value >= 0) {
-                                Spacer(modifier = Modifier.padding(2.dp))
+                                if (showBatteryTemperature && batteryTemperature.value > 0) {
+                                    Spacer(modifier = Modifier.padding(horizontal = 4.dp))
+                                }
                                 Box(
                                     modifier = Modifier
                                         .background(
                                             color = Color.Black.copy(alpha = 0.26f),
                                             shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
                                         )
-                                        //.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
                                 ) {
                                     Text(
                                         text = if (isCharging.value) {
