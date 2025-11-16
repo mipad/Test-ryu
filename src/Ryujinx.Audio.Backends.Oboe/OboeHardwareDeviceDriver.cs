@@ -146,7 +146,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         public bool SupportsSampleFormat(SampleFormat sampleFormat) =>
             sampleFormat == SampleFormat.PcmInt16 || 
             sampleFormat == SampleFormat.PcmInt32 ||
-            SampleFormat.PcmFloat;
+            sampleFormat == SampleFormat.PcmFloat;
 
         public bool SupportsChannelCount(uint channelCount) =>
             channelCount is 1 or 2 or 6; // 支持1、2、6声道
