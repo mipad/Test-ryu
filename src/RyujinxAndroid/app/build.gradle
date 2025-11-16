@@ -106,6 +106,8 @@ dependencies {
     implementation 'androidx.compose.ui:ui-graphics'
     implementation 'androidx.compose.ui:ui-tooling-preview'
     implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.compose.material:material-icons-core'  // 添加核心图标
+    implementation 'androidx.compose.material:material-icons-extended'  // 添加扩展图
     implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
     implementation "com.anggrayudi:storage:1.5.6"
     implementation "androidx.preference:preference-ktx:1.2.1"
