@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (支持原始格式)
+// oboe_audio_renderer.h (修复编译错误)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -147,7 +147,7 @@ private:
     // 格式转换函数
     oboe::AudioFormat MapSampleFormat(int32_t format);
     const char* GetFormatName(int32_t format);
-    size_t GetBytesPerSample(int32_t format);
+    static size_t GetBytesPerSample(int32_t format); // 改为静态方法
     
     // 格式转换辅助函数
     void ConvertToTargetFormat(const uint8_t* source, void* dest, size_t frame_count, 

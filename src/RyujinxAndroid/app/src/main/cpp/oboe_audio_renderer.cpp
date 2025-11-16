@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (支持原始格式)
+// oboe_audio_renderer.cpp (修复编译错误)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
@@ -434,7 +434,7 @@ int32_t OboeAudioRenderer::GetBufferedFrames() const {
     size_t total_bytes = m_raw_sample_queue->Available();
     int32_t device_channels = m_device_channels;
     int32_t current_format = m_raw_sample_queue->GetCurrentFormat();
-    size_t bytes_per_sample = GetBytesPerSample(current_format);
+    size_t bytes_per_sample = GetBytesPerSample(current_format); // 修复：使用静态方法
     
     if (device_channels == 0 || bytes_per_sample == 0) {
         return 0;
@@ -463,7 +463,7 @@ void OboeAudioRenderer::Reset() {
 
 oboe::AudioFormat OboeAudioRenderer::MapSampleFormat(int32_t format) {
     switch (format) {
-        case PCM_INT8:   return oboe::AudioFormat::I8;
+        case PCM_INT8:   return oboe::AudioFormat::I16;  // Oboe 不支持 I8，回退到 I16
         case PCM_INT16:  return oboe::AudioFormat::I16;
         case PCM_INT24:  return oboe::AudioFormat::I24;
         case PCM_INT32:  return oboe::AudioFormat::I32;
@@ -483,6 +483,7 @@ const char* OboeAudioRenderer::GetFormatName(int32_t format) {
     }
 }
 
+// 修复：改为静态方法，不需要访问实例成员
 size_t OboeAudioRenderer::GetBytesPerSample(int32_t format) {
     switch (format) {
         case PCM_INT8:   return 1;
