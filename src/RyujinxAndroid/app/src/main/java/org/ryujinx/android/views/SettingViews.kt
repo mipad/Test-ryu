@@ -3,7 +3,6 @@ package org.ryujinx.android.views
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -2496,7 +2495,9 @@ if (showBackendThreadingDialog.value) {
                                             interactionSource = interactionSource
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Filled.Circle,
+                                                imageVector = org.ryujinx.android.Icons.circle(
+                                                    color = MaterialTheme.colorScheme.primary
+                                                ),
                                                 contentDescription = null,
                                                 modifier = Modifier.size(ButtonDefaults.IconSize),
                                                 tint = MaterialTheme.colorScheme.primary
