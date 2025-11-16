@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (添加ADPCM支持)
+// oboe_audio_renderer.cpp (支持所有采样率)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
@@ -8,94 +8,6 @@
 #include <array>
 
 namespace RyujinxOboe {
-
-// ADPCM 步长表
-static const int16_t ADPCM_STEP_TABLE[89] = {
-    7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45,
-    50, 55, 60, 66, 73, 80, 88, 97, 107, 118, 130, 143, 157, 173, 190, 209, 230,
-    253, 279, 307, 337, 371, 408, 449, 494, 544, 598, 658, 724, 796, 876, 963,
-    1060, 1166, 1282, 1411, 1552, 1707, 1878, 2066, 2272, 2499, 2749, 3024, 3327,
-    3660, 4026, 4428, 4871, 5358, 5894, 6484, 7132, 7845, 8630, 9493, 10442, 11487,
-    12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767
-};
-
-// ADPCM 索引调整表
-static const int8_t ADPCM_INDEX_TABLE[16] = {
-    -1, -1, -1, -1, 2, 4, 6, 8,
-    -1, -1, -1, -1, 2, 4, 6, 8
-};
-
-// =============== ADPCM 解码实现 ===============
-void OboeAudioRenderer::ResetAdpcmState(AdpcmState& state) {
-    state.predictor = 0;
-    state.step_index = 0;
-    state.step = ADPCM_STEP_TABLE[state.step_index];
-    state.history[0] = 0;
-    state.history[1] = 0;
-}
-
-int16_t OboeAudioRenderer::DecodeAdpcmSample(uint8_t nibble, AdpcmState& state) {
-    // 获取符号和幅度
-    int8_t sign = nibble & 8;
-    int8_t delta = nibble & 7;
-    
-    // 计算差值
-    int32_t diff = state.step >> 3;
-    if (delta & 4) diff += state.step;
-    if (delta & 2) diff += state.step >> 1;
-    if (delta & 1) diff += state.step >> 2;
-    
-    // 应用符号
-    if (sign) {
-        state.predictor -= diff;
-    } else {
-        state.predictor += diff;
-    }
-    
-    // 钳制预测器值
-    if (state.predictor > 32767) {
-        state.predictor = 32767;
-    } else if (state.predictor < -32768) {
-        state.predictor = -32768;
-    }
-    
-    // 更新步长索引
-    state.step_index += ADPCM_INDEX_TABLE[delta];
-    if (state.step_index < 0) {
-        state.step_index = 0;
-    } else if (state.step_index > 88) {
-        state.step_index = 88;
-    }
-    
-    // 更新步长
-    state.step = ADPCM_STEP_TABLE[state.step_index];
-    
-    return static_cast<int16_t>(state.predictor);
-}
-
-bool OboeAudioRenderer::DecodeAdpcm(const uint8_t* adpcm_data, size_t adpcm_size, std::vector<int16_t>& pcm_output, AdpcmState& state) {
-    if (!adpcm_data || adpcm_size == 0) {
-        return false;
-    }
-    
-    // 每个ADPCM字节包含2个样本
-    size_t num_samples = adpcm_size * 2;
-    pcm_output.resize(num_samples);
-    
-    for (size_t i = 0; i < adpcm_size; ++i) {
-        uint8_t byte = adpcm_data[i];
-        
-        // 解码高4位
-        uint8_t high_nibble = (byte >> 4) & 0x0F;
-        pcm_output[i * 2] = DecodeAdpcmSample(high_nibble, state);
-        
-        // 解码低4位
-        uint8_t low_nibble = byte & 0x0F;
-        pcm_output[i * 2 + 1] = DecodeAdpcmSample(low_nibble, state);
-    }
-    
-    return true;
-}
 
 // =============== RawSampleBufferQueue Implementation ===============
 bool OboeAudioRenderer::RawSampleBufferQueue::WriteRaw(const uint8_t* data, size_t data_size, int32_t sample_format) {
@@ -212,7 +124,6 @@ void OboeAudioRenderer::AAudioExclusiveErrorCallback::onErrorBeforeClose(oboe::A
 OboeAudioRenderer::OboeAudioRenderer() {
     m_audio_callback = std::make_unique<AAudioExclusiveCallback>(this);
     m_error_callback = std::make_unique<AAudioExclusiveErrorCallback>(this);
-    ResetAdpcmState(m_adpcm_state);
 }
 
 OboeAudioRenderer::~OboeAudioRenderer() {
@@ -247,9 +158,6 @@ bool OboeAudioRenderer::InitializeWithFormat(int32_t sampleRate, int32_t channel
     m_oboe_format = MapSampleFormat(sampleFormat);
     m_current_sample_format = GetFormatName(sampleFormat);
     
-    // 重置ADPCM状态
-    ResetAdpcmState(m_adpcm_state);
-    
     // 使用原始格式样本缓冲区队列
     m_raw_sample_queue = std::make_unique<RawSampleBufferQueue>(32);
     
@@ -281,7 +189,7 @@ void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& bu
            ->setAudioApi(oboe::AudioApi::AAudio)
            ->setSharingMode(oboe::SharingMode::Exclusive)
            ->setDirection(oboe::Direction::Output)
-           ->setSampleRate(m_sample_rate.load())
+           ->setSampleRate(m_sample_rate.load()) // 使用请求的采样率
            ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium)
            ->setFormat(m_oboe_format)
            ->setFormatConversionAllowed(true)
@@ -430,56 +338,14 @@ bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int3
         return false;
     }
     
-    const uint8_t* byte_data = static_cast<const uint8_t*>(data);
-    bool success = false;
+    // 计算数据大小
+    int32_t system_channels = m_channel_count.load();
+    size_t bytes_per_sample = GetBytesPerSample(sampleFormat);
+    size_t data_size = num_frames * system_channels * bytes_per_sample;
     
-    // 处理不同的格式
-    switch (sampleFormat) {
-        case ADPCM: {
-            // ADPCM 解码为 PCM16
-            int32_t system_channels = m_channel_count.load();
-            size_t adpcm_size = num_frames * system_channels / 2; // ADPCM 是 4:1 压缩
-            
-            std::vector<int16_t> pcm_data;
-            if (DecodeAdpcm(byte_data, adpcm_size, pcm_data, m_adpcm_state)) {
-                size_t pcm_size = pcm_data.size() * sizeof(int16_t);
-                success = m_raw_sample_queue->WriteRaw(
-                    reinterpret_cast<const uint8_t*>(pcm_data.data()), 
-                    pcm_size, 
-                    PCM_INT16);
-            }
-            break;
-        }
-        
-        case PCM_INT8: {
-            // PCM8 转换为 PCM16
-            int32_t system_channels = m_channel_count.load();
-            size_t pcm8_size = num_frames * system_channels;
-            std::vector<int16_t> pcm16_data(pcm8_size);
-            
-            const int8_t* pcm8_data = reinterpret_cast<const int8_t*>(data);
-            for (size_t i = 0; i < pcm8_size; ++i) {
-                pcm16_data[i] = static_cast<int16_t>(pcm8_data[i]) * 256; // 左移8位
-            }
-            
-            size_t pcm16_size = pcm16_data.size() * sizeof(int16_t);
-            success = m_raw_sample_queue->WriteRaw(
-                reinterpret_cast<const uint8_t*>(pcm16_data.data()), 
-                pcm16_size, 
-                PCM_INT16);
-            break;
-        }
-        
-        default: {
-            // 直接支持格式：PCM16, PCM24, PCM32, Float
-            int32_t system_channels = m_channel_count.load();
-            size_t bytes_per_sample = GetBytesPerSample(sampleFormat);
-            size_t data_size = num_frames * system_channels * bytes_per_sample;
-            
-            success = m_raw_sample_queue->WriteRaw(byte_data, data_size, sampleFormat);
-            break;
-        }
-    }
+    // 直接写入原始数据
+    const uint8_t* byte_data = static_cast<const uint8_t*>(data);
+    bool success = m_raw_sample_queue->WriteRaw(byte_data, data_size, sampleFormat);
     
     if (success) {
         m_frames_written += num_frames;
@@ -517,9 +383,6 @@ void OboeAudioRenderer::Reset() {
         m_raw_sample_queue->Clear();
     }
     
-    // 重置ADPCM状态
-    ResetAdpcmState(m_adpcm_state);
-    
     CloseStream();
     ConfigureAndOpenStream();
     
@@ -528,36 +391,30 @@ void OboeAudioRenderer::Reset() {
 
 oboe::AudioFormat OboeAudioRenderer::MapSampleFormat(int32_t format) {
     switch (format) {
-        case PCM_INT8:   return oboe::AudioFormat::I16;  // PCM8 转换为 PCM16
         case PCM_INT16:  return oboe::AudioFormat::I16;
         case PCM_INT24:  return oboe::AudioFormat::I24;
         case PCM_INT32:  return oboe::AudioFormat::I32;
         case PCM_FLOAT:  return oboe::AudioFormat::Float;
-        case ADPCM:      return oboe::AudioFormat::I16;  // ADPCM 解码为 PCM16
         default:         return oboe::AudioFormat::I16; // 默认回退
     }
 }
 
 const char* OboeAudioRenderer::GetFormatName(int32_t format) {
     switch (format) {
-        case PCM_INT8:   return "PCM8";
         case PCM_INT16:  return "PCM16";
         case PCM_INT24:  return "PCM24";
         case PCM_INT32:  return "PCM32";
         case PCM_FLOAT:  return "Float32";
-        case ADPCM:      return "ADPCM";
         default:         return "Unknown";
     }
 }
 
 size_t OboeAudioRenderer::GetBytesPerSample(int32_t format) {
     switch (format) {
-        case PCM_INT8:   return 1;
         case PCM_INT16:  return 2;
         case PCM_INT24:  return 3;
         case PCM_INT32:  return 4;
         case PCM_FLOAT:  return 4;
-        case ADPCM:      return 0; // ADPCM 是压缩格式，不直接计算字节数
         default:         return 2; // 默认PCM16
     }
 }
