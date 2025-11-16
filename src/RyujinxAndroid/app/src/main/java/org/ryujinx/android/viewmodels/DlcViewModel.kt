@@ -7,7 +7,6 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.text.intl.Locale
-import androidx.compose.ui.text.toLowerCase
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import org.ryujinx.android.MainActivity
@@ -51,7 +50,7 @@ class DlcViewModel(val titleId: String) {
             // 获取文件扩展名
             val mimeType = context.contentResolver.getType(uri)
             val fileName = getFileNameFromUri(context, uri)
-            val fileExtension = fileName?.substringAfterLast('.', "")?.toLowerCase()
+            val fileExtension = fileName?.substringAfterLast('.', "")?.lowercase() // 修复：toLowerCase() -> lowercase()
 
             if (fileExtension == "nsp" || fileExtension == "xci") {
                 // 获取持久化权限
@@ -257,7 +256,7 @@ class DlcViewModel(val titleId: String) {
 
             val gson = Gson()
             val json = gson.toJson(this)
-            val savePath = MainActivity.AppPath + "/games/" + titleId.toLowerCase(Locale.current)
+            val savePath = MainActivity.AppPath + "/games/" + titleId.lowercase() // 修复：toLowerCase() -> lowercase()
             File(savePath).mkdirs()
             File("$savePath/dlc.json").writeText(json)
         }
@@ -268,7 +267,7 @@ class DlcViewModel(val titleId: String) {
 
     init {
         jsonPath =
-            MainActivity.AppPath + "/games/" + titleId.toLowerCase(Locale.current) + "/dlc.json"
+            MainActivity.AppPath + "/games/" + titleId.lowercase() + "/dlc.json" // 修复：toLowerCase() -> lowercase()
 
         reloadFromDisk()
     }
