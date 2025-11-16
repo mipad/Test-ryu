@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (完整版本 - 改进状态同步)
+// OboeHardwareDeviceDriver.cs (完整版本 - 改进状态同步，修复可访问性问题)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -261,7 +261,8 @@ namespace Ryujinx.Audio.Backends.Oboe
             };
         }
 
-        internal bool Unregister(OboeAudioSession session) 
+        // 修复：将Unregister方法改为private，与OboeAudioSession的可访问性一致
+        private bool Unregister(OboeAudioSession session) 
         {
             bool removed = _sessions.TryRemove(session, out _);
             
