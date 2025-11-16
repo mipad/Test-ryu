@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (支持所有采样率)
+// oboe_audio_renderer.cpp (完整版本 - 支持原始格式音频和改进状态同步)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
@@ -158,6 +158,12 @@ bool OboeAudioRenderer::InitializeWithFormat(int32_t sampleRate, int32_t channel
     m_oboe_format = MapSampleFormat(sampleFormat);
     m_current_sample_format = GetFormatName(sampleFormat);
     
+    // 重置统计信息
+    m_frames_written.store(0);
+    m_frames_played.store(0);
+    m_underrun_count.store(0);
+    m_stream_restart_count.store(0);
+    
     // 使用原始格式样本缓冲区队列
     m_raw_sample_queue = std::make_unique<RawSampleBufferQueue>(32);
     
@@ -270,6 +276,11 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() {
     }
     
     m_stream_started.store(true);
+    
+    // 记录流信息
+    m_frames_per_burst.store(m_stream->getFramesPerBurst());
+    m_buffer_size.store(m_stream->getBufferSizeInFrames());
+    
     return true;
 }
 
@@ -383,6 +394,9 @@ void OboeAudioRenderer::Reset() {
         m_raw_sample_queue->Clear();
     }
     
+    // 重置播放统计
+    m_frames_played.store(0);
+    
     CloseStream();
     ConfigureAndOpenStream();
     
@@ -442,7 +456,9 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioS
         m_underrun_count++;
     }
     
+    // 更新播放帧数统计（关键：精确的状态同步）
     m_frames_played += num_frames;
+    
     return oboe::DataCallbackResult::Continue;
 }
 
@@ -452,6 +468,7 @@ void OboeAudioRenderer::OnStreamErrorAfterClose(oboe::AudioStream* audioStream, 
     if (m_initialized.load()) {
         CloseStream();
         ConfigureAndOpenStream();
+        m_stream_restart_count++;
     }
 }
 

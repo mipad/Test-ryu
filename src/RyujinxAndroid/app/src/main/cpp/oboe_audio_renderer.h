@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (支持所有采样率)
+// oboe_audio_renderer.h (支持所有采样率 - 改进状态同步)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -36,6 +36,7 @@ public:
     bool IsInitialized() const { return m_initialized.load(); }
     bool IsPlaying() const { return m_stream && m_stream->getState() == oboe::StreamState::Started; }
     int32_t GetBufferedFrames() const;
+    int64_t GetTotalPlayedFrames() const { return m_frames_played.load(); }
     
     void SetVolume(float volume);
     float GetVolume() const { return m_volume.load(); }
