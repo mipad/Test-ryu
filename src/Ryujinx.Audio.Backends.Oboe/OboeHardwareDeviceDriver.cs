@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (完整实现)
+// OboeHardwareDeviceDriver.cs (支持所有采样率和原始格式)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -60,6 +60,7 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         private int _currentChannelCount = 2;
         private SampleFormat _currentSampleFormat = SampleFormat.PcmInt16;
+        private uint _currentSampleRate = 48000;
 
         public float Volume
         {
@@ -76,7 +77,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         public OboeHardwareDeviceDriver()
         {
             StartUpdateThread();
-            Logger.Info?.Print(LogClass.Audio, "OboeHardwareDeviceDriver initialized (支持原始格式)");
+            Logger.Info?.Print(LogClass.Audio, "OboeHardwareDeviceDriver initialized (支持所有采样率和原始格式)");
         }
 
         private void StartUpdateThread()
@@ -141,7 +142,7 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         // ========== 设备能力查询 ==========
         public bool SupportsSampleRate(uint sampleRate) =>
-            sampleRate == 48000; // 只支持48000Hz
+            true; // 支持所有采样率，像SDL2一样
 
         public bool SupportsSampleFormat(SampleFormat sampleFormat) =>
             sampleFormat == SampleFormat.PcmInt16 || 
@@ -175,8 +176,11 @@ namespace Ryujinx.Audio.Backends.Oboe
             if (!SupportsSampleFormat(sampleFormat))
                 throw new ArgumentException($"Unsupported sample format: {sampleFormat}");
 
-            if (!SupportsSampleRate(sampleRate))
-                throw new ArgumentException($"Unsupported sample rate: {sampleRate}");
+            // 不再检查采样率，支持所有采样率
+            if (sampleRate == 0)
+            {
+                sampleRate = 48000; // 默认采样率
+            }
 
             Logger.Info?.Print(LogClass.Audio, $"Opening Oboe device session: Format={sampleFormat}, Rate={sampleRate}Hz, Channels={channelCount}");
 
@@ -186,11 +190,11 @@ namespace Ryujinx.Audio.Backends.Oboe
                 {
                     InitializeOboe(sampleRate, channelCount, sampleFormat);
                 }
-                else if (_currentChannelCount != channelCount || _currentSampleFormat != sampleFormat)
+                else if (_currentChannelCount != channelCount || _currentSampleFormat != sampleFormat || _currentSampleRate != sampleRate)
                 {
-                    // 声道数或格式变化时重新初始化
+                    // 声道数、格式或采样率变化时重新初始化
                     Logger.Info?.Print(LogClass.Audio, 
-                        $"Audio configuration changed {_currentChannelCount}ch/{_currentSampleFormat} -> {channelCount}ch/{sampleFormat}, reinitializing");
+                        $"Audio configuration changed {_currentChannelCount}ch/{_currentSampleFormat}/{_currentSampleRate}Hz -> {channelCount}ch/{sampleFormat}/{sampleRate}Hz, reinitializing");
                     ReinitializeOboe(sampleRate, channelCount, sampleFormat);
                 }
             }
@@ -218,8 +222,9 @@ namespace Ryujinx.Audio.Backends.Oboe
                 _isOboeInitialized = true;
                 _currentChannelCount = (int)channelCount;
                 _currentSampleFormat = sampleFormat;
+                _currentSampleRate = sampleRate;
 
-                Logger.Info?.Print(LogClass.Audio, "Oboe audio initialized successfully (支持原始格式)");
+                Logger.Info?.Print(LogClass.Audio, "Oboe audio initialized successfully (支持所有采样率和原始格式)");
             }
             catch (Exception ex)
             {
@@ -242,6 +247,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             setOboeVolume(_volume);
             _currentChannelCount = (int)channelCount;
             _currentSampleFormat = sampleFormat;
+            _currentSampleRate = sampleRate;
         }
 
         private int SampleFormatToInt(SampleFormat format)
@@ -400,12 +406,12 @@ namespace Ryujinx.Audio.Backends.Oboe
                     _totalWrittenSamples += sampleCount;
                     
                     Logger.Debug?.Print(LogClass.Audio, 
-                        $"Queued audio buffer (Raw): {frameCount} frames, {sampleCount} samples, Format={_sampleFormat}");
+                        $"Queued audio buffer (Raw): {frameCount} frames, {sampleCount} samples, Format={_sampleFormat}, Rate={_sampleRate}Hz");
                 }
                 else
                 {
                     Logger.Warning?.Print(LogClass.Audio, 
-                        $"Audio write failed: {frameCount} frames dropped, Format={_sampleFormat}");
+                        $"Audio write failed: {frameCount} frames dropped, Format={_sampleFormat}, Rate={_sampleRate}Hz");
                     
                     // 减少重置频率，避免性能影响
                     Logger.Warning?.Print(LogClass.Audio, "Audio write failure, resetting audio system");
