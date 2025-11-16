@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (支持所有采样率和原始格式)
+// OboeHardwareDeviceDriver.cs (ARM 优化版 - 支持所有采样率和原始格式)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -45,6 +45,19 @@ namespace Ryujinx.Audio.Backends.Oboe
         [DllImport("libryujinxjni", EntryPoint = "resetOboeAudio")]
         private static extern void resetOboeAudio();
 
+        // ARM 稳定回调控制 P/Invoke
+        [DllImport("libryujinxjni", EntryPoint = "setOboeStabilizedCallbackEnabled")]
+        private static extern void setOboeStabilizedCallbackEnabled(bool enabled);
+
+        [DllImport("libryujinxjni", EntryPoint = "isOboeStabilizedCallbackEnabled")]
+        private static extern bool isOboeStabilizedCallbackEnabled();
+
+        [DllImport("libryujinxjni", EntryPoint = "setOboeStabilizedCallbackIntensity")]
+        private static extern void setOboeStabilizedCallbackIntensity(float intensity);
+
+        [DllImport("libryujinxjni", EntryPoint = "getOboeStabilizedCallbackIntensity")]
+        private static extern float getOboeStabilizedCallbackIntensity();
+
         // ========== 属性 ==========
         public static bool IsSupported => true;
 
@@ -62,6 +75,10 @@ namespace Ryujinx.Audio.Backends.Oboe
         private SampleFormat _currentSampleFormat = SampleFormat.PcmInt16;
         private uint _currentSampleRate = 48000;
 
+        // ARM 稳定回调设置
+        private bool _stabilizedCallbackEnabled = false;
+        private float _stabilizedCallbackIntensity = 0.3f; // ARM 默认中等偏低强度
+
         public float Volume
         {
             get => _volume;
@@ -73,11 +90,47 @@ namespace Ryujinx.Audio.Backends.Oboe
             }
         }
 
+        // ARM 稳定回调属性
+        public bool StabilizedCallbackEnabled
+        {
+            get => _stabilizedCallbackEnabled;
+            set
+            {
+                if (_stabilizedCallbackEnabled != value)
+                {
+                    _stabilizedCallbackEnabled = value;
+                    setOboeStabilizedCallbackEnabled(value);
+                    Logger.Info?.Print(LogClass.Audio, $"ARM stabilized callback {(value ? "enabled" : "disabled")}");
+                    
+                    // 如果音频已经初始化，需要重新初始化以应用设置
+                    if (_isOboeInitialized)
+                    {
+                        ReinitializeWithCurrentSettings();
+                    }
+                }
+            }
+        }
+
+        public float StabilizedCallbackIntensity
+        {
+            get => _stabilizedCallbackIntensity;
+            set
+            {
+                float clampedValue = Math.Clamp(value, 0.0f, 1.0f);
+                if (Math.Abs(_stabilizedCallbackIntensity - clampedValue) > 0.01f)
+                {
+                    _stabilizedCallbackIntensity = clampedValue;
+                    setOboeStabilizedCallbackIntensity(clampedValue);
+                    Logger.Info?.Print(LogClass.Audio, $"ARM stabilized callback intensity set to {clampedValue:F2}");
+                }
+            }
+        }
+
         // ========== 构造与生命周期 ==========
         public OboeHardwareDeviceDriver()
         {
             StartUpdateThread();
-            Logger.Info?.Print(LogClass.Audio, "OboeHardwareDeviceDriver initialized (支持所有采样率和原始格式)");
+            Logger.Info?.Print(LogClass.Audio, "OboeHardwareDeviceDriver initialized (ARM优化版 - 支持所有采样率和原始格式)");
         }
 
         private void StartUpdateThread()
@@ -182,7 +235,9 @@ namespace Ryujinx.Audio.Backends.Oboe
                 sampleRate = 48000; // 默认采样率
             }
 
-            Logger.Info?.Print(LogClass.Audio, $"Opening Oboe device session: Format={sampleFormat}, Rate={sampleRate}Hz, Channels={channelCount}");
+            Logger.Info?.Print(LogClass.Audio, 
+                $"Opening Oboe device session: Format={sampleFormat}, Rate={sampleRate}Hz, Channels={channelCount}, " +
+                $"StabilizedCallback={_stabilizedCallbackEnabled}, Intensity={_stabilizedCallbackIntensity:F2}");
 
             lock (_initLock)
             {
@@ -210,7 +265,8 @@ namespace Ryujinx.Audio.Backends.Oboe
             try
             {
                 Logger.Info?.Print(LogClass.Audio, 
-                    $"Initializing Oboe audio: sampleRate={sampleRate}, channels={channelCount}, format={sampleFormat}");
+                    $"Initializing Oboe audio (ARM优化): sampleRate={sampleRate}, channels={channelCount}, format={sampleFormat}, " +
+                    $"stabilized={_stabilizedCallbackEnabled}, intensity={_stabilizedCallbackIntensity:F2}");
 
                 int formatValue = SampleFormatToInt(sampleFormat);
                 if (!initOboeAudioWithFormat((int)sampleRate, (int)channelCount, formatValue))
@@ -219,12 +275,17 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
 
                 setOboeVolume(_volume);
+                
+                // 应用ARM稳定回调设置
+                setOboeStabilizedCallbackEnabled(_stabilizedCallbackEnabled);
+                setOboeStabilizedCallbackIntensity(_stabilizedCallbackIntensity);
+                
                 _isOboeInitialized = true;
                 _currentChannelCount = (int)channelCount;
                 _currentSampleFormat = sampleFormat;
                 _currentSampleRate = sampleRate;
 
-                Logger.Info?.Print(LogClass.Audio, "Oboe audio initialized successfully (支持所有采样率和原始格式)");
+                Logger.Info?.Print(LogClass.Audio, "Oboe audio initialized successfully (ARM优化版 - 支持所有采样率和原始格式)");
             }
             catch (Exception ex)
             {
@@ -245,9 +306,23 @@ namespace Ryujinx.Audio.Backends.Oboe
             }
             
             setOboeVolume(_volume);
+            
+            // 重新应用ARM稳定回调设置
+            setOboeStabilizedCallbackEnabled(_stabilizedCallbackEnabled);
+            setOboeStabilizedCallbackIntensity(_stabilizedCallbackIntensity);
+            
             _currentChannelCount = (int)channelCount;
             _currentSampleFormat = sampleFormat;
             _currentSampleRate = sampleRate;
+        }
+
+        private void ReinitializeWithCurrentSettings()
+        {
+            if (_isOboeInitialized)
+            {
+                Logger.Info?.Print(LogClass.Audio, "Reinitializing audio with current settings");
+                ReinitializeOboe(_currentSampleRate, (uint)_currentChannelCount, _currentSampleFormat);
+            }
         }
 
         private int SampleFormatToInt(SampleFormat format)
@@ -303,7 +378,9 @@ namespace Ryujinx.Audio.Backends.Oboe
                 _sampleFormat = sampleFormat;
                 _volume = 1.0f;
                 
-                Logger.Debug?.Print(LogClass.Audio, $"OboeAudioSession created: Format={sampleFormat}, Rate={sampleRate}Hz, Channels={channelCount}");
+                Logger.Debug?.Print(LogClass.Audio, 
+                    $"OboeAudioSession created: Format={sampleFormat}, Rate={sampleRate}Hz, Channels={channelCount}, " +
+                    $"StabilizedCallback={_driver.StabilizedCallbackEnabled}, Intensity={_driver.StabilizedCallbackIntensity:F2}");
             }
 
             public void UpdatePlaybackStatus(int bufferedFrames)
@@ -389,7 +466,8 @@ namespace Ryujinx.Audio.Backends.Oboe
                     $"Format: {_sampleFormat}, " +
                     $"Data Size: {buffer.Data.Length} bytes, " +
                     $"Channels: {_channelCount}, " +
-                    $"SampleRate: {_sampleRate}");
+                    $"SampleRate: {_sampleRate}, " +
+                    $"Stabilized: {_driver.StabilizedCallbackEnabled}");
 
                 // 计算帧数
                 int bytesPerSample = GetBytesPerSample(_sampleFormat);
@@ -406,12 +484,16 @@ namespace Ryujinx.Audio.Backends.Oboe
                     _totalWrittenSamples += sampleCount;
                     
                     Logger.Debug?.Print(LogClass.Audio, 
-                        $"Queued audio buffer (Raw): {frameCount} frames, {sampleCount} samples, Format={_sampleFormat}, Rate={_sampleRate}Hz");
+                        $"Queued audio buffer (Raw): {frameCount} frames, {sampleCount} samples, " +
+                        $"Format={_sampleFormat}, Rate={_sampleRate}Hz, " +
+                        $"Stabilized={_driver.StabilizedCallbackEnabled}");
                 }
                 else
                 {
                     Logger.Warning?.Print(LogClass.Audio, 
-                        $"Audio write failed: {frameCount} frames dropped, Format={_sampleFormat}, Rate={_sampleRate}Hz");
+                        $"Audio write failed: {frameCount} frames dropped, " +
+                        $"Format={_sampleFormat}, Rate={_sampleRate}Hz, " +
+                        $"Stabilized={_driver.StabilizedCallbackEnabled}");
                     
                     // 减少重置频率，避免性能影响
                     Logger.Warning?.Print(LogClass.Audio, "Audio write failure, resetting audio system");
