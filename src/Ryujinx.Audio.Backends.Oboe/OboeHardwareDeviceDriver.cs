@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (修复后的完整版本)
+// OboeHardwareDeviceDriver.cs (完整实现)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -108,7 +108,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 Name = "Audio.Oboe.UpdateThread",
                 IsBackground = true,
-                Priority = ThreadPriority.Normal // 调整为正常优先级
+                Priority = ThreadPriority.Normal
             };
             _updateThread.Start();
         }
@@ -146,8 +146,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         public bool SupportsSampleFormat(SampleFormat sampleFormat) =>
             sampleFormat == SampleFormat.PcmInt16 || 
             sampleFormat == SampleFormat.PcmInt32 ||
-            sampleFormat == SampleFormat.PcmFloat;
-            // 移除了 SampleFormat.PcmInt8 支持
+            SampleFormat.PcmFloat;
 
         public bool SupportsChannelCount(uint channelCount) =>
             channelCount is 1 or 2 or 6; // 支持1、2、6声道
@@ -249,9 +248,8 @@ namespace Ryujinx.Audio.Backends.Oboe
         {
             return format switch
             {
-                // SampleFormat.PcmInt8 => 0,  // 移除 PCM8 支持
                 SampleFormat.PcmInt16 => 1,
-                SampleFormat.PcmInt24 => 2,    // Oboe 支持 PCM24
+                SampleFormat.PcmInt24 => 2,
                 SampleFormat.PcmInt32 => 3,
                 SampleFormat.PcmFloat => 4,
                 _ => 1, // 默认PCM16
@@ -419,9 +417,8 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 return format switch
                 {
-                    // SampleFormat.PcmInt8 => 0,  // 移除 PCM8 支持
                     SampleFormat.PcmInt16 => 1,
-                    SampleFormat.PcmInt24 => 2,    // Oboe 支持 PCM24
+                    SampleFormat.PcmInt24 => 2,
                     SampleFormat.PcmInt32 => 3,
                     SampleFormat.PcmFloat => 4,
                     _ => 1, // 默认PCM16
@@ -432,7 +429,6 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 return format switch
                 {
-                    // SampleFormat.PcmInt8 => 1,  // 移除 PCM8 支持
                     SampleFormat.PcmInt16 => 2,
                     SampleFormat.PcmInt24 => 3,
                     SampleFormat.PcmInt32 => 4,
