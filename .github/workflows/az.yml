@@ -2,7 +2,7 @@ name: Android CI Fixed
 
 on:
   push:
-    branches: [ "各项1" ] 
+    branches: [ "各项1" ]  
   pull_request:
     branches: [ "各项1" ]
 
