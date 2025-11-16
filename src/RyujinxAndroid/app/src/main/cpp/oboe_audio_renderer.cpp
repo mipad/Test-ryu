@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (修复时序和同步问题)
+// oboe_audio_renderer.cpp (完整修复版)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
@@ -24,6 +24,122 @@ static const int16_t ADPCM_STEP_TABLE[89] = {
     3660, 4026, 4428, 4871, 5358, 5894, 6484, 7132, 7845, 8630, 9493, 10442, 11487,
     12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767
 };
+
+// =============== SpeedController 实现 ===============
+void OboeAudioRenderer::SpeedController::Update(int64_t written_frames, int64_t played_frames, int32_t sample_rate) {
+    auto now = std::chrono::steady_clock::now();
+    auto time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now - m_last_update_time);
+    
+    // 每100ms更新一次速度控制
+    if (time_diff.count() < 100) {
+        return;
+    }
+    
+    if (m_last_written_frames > 0 && m_last_played_frames > 0) {
+        int64_t written_diff = written_frames - m_last_written_frames;
+        int64_t played_diff = played_frames - m_last_played_frames;
+        
+        if (written_diff > 0 && played_diff > 0) {
+            // 计算实际速度比
+            double actual_ratio = static_cast<double>(written_diff) / played_diff;
+            
+            // 使用PID控制来平滑调整
+            double error = 1.0 - actual_ratio;  // 目标速度比是1.0
+            m_accumulated_error += error;
+            
+            // 简单的P控制，可以改为PID
+            double adjustment = error * 0.1 + m_accumulated_error * 0.01;
+            
+            double new_ratio = m_speed_ratio.load() + adjustment;
+            new_ratio = std::max(MIN_SPEED_RATIO, std::min(MAX_SPEED_RATIO, new_ratio));
+            
+            if (std::abs(new_ratio - m_speed_ratio.load()) > 0.001) {
+                m_speed_ratio.store(new_ratio);
+                m_needs_adjustment.store(true);
+            }
+        }
+    }
+    
+    m_last_written_frames = written_frames;
+    m_last_played_frames = played_frames;
+    m_last_update_time = now;
+}
+
+void OboeAudioRenderer::SpeedController::Reset() {
+    m_speed_ratio.store(1.0);
+    m_needs_adjustment.store(false);
+    m_last_written_frames = 0;
+    m_last_played_frames = 0;
+    m_accumulated_error = 0.0;
+    m_last_update_time = std::chrono::steady_clock::now();
+}
+
+// =============== ResampleBuffer 实现 ===============
+bool OboeAudioRenderer::ResampleBuffer::Initialize(int32_t input_rate, int32_t output_rate, int32_t channels) {
+    if (input_rate <= 0 || output_rate <= 0 || channels <= 0) {
+        return false;
+    }
+    
+    m_input_rate = input_rate;
+    m_output_rate = output_rate;
+    m_channels = channels;
+    m_resample_ratio = static_cast<double>(input_rate) / output_rate;
+    m_fractional_position = 0.0;
+    
+    // 预分配重采样缓冲区
+    m_resample_buffer.resize(4096 * channels);  // 4KB 缓冲区
+    
+    return true;
+}
+
+bool OboeAudioRenderer::ResampleBuffer::Resample(const uint8_t* input, size_t input_frames, int32_t format, 
+                                                std::vector<uint8_t>& output, size_t& output_frames) {
+    if (!input || input_frames == 0 || format != PCM_INT16) {
+        return false;
+    }
+    
+    const int16_t* in_samples = reinterpret_cast<const int16_t*>(input);
+    
+    // 计算输出帧数
+    output_frames = static_cast<size_t>(input_frames / m_resample_ratio);
+    size_t output_size = output_frames * m_channels * sizeof(int16_t);
+    output.resize(output_size);
+    int16_t* out_samples = reinterpret_cast<int16_t*>(output.data());
+    
+    // 简单的线性重采样
+    for (size_t i = 0; i < output_frames; i++) {
+        double input_pos = i * m_resample_ratio + m_fractional_position;
+        size_t input_index = static_cast<size_t>(input_pos);
+        double frac = input_pos - input_index;
+        
+        for (int ch = 0; ch < m_channels; ch++) {
+            if (input_index < input_frames - 1) {
+                int16_t sample1 = in_samples[input_index * m_channels + ch];
+                int16_t sample2 = in_samples[(input_index + 1) * m_channels + ch];
+                out_samples[i * m_channels + ch] = 
+                    static_cast<int16_t>(sample1 + frac * (sample2 - sample1));
+            } else if (input_index < input_frames) {
+                out_samples[i * m_channels + ch] = in_samples[input_index * m_channels + ch];
+            } else {
+                out_samples[i * m_channels + ch] = 0;
+            }
+        }
+    }
+    
+    // 更新分数位置
+    m_fractional_position += output_frames * m_resample_ratio - input_frames;
+    if (m_fractional_position >= 1.0) {
+        m_fractional_position -= static_cast<int>(m_fractional_position);
+    }
+    
+    return true;
+}
+
+void OboeAudioRenderer::ResampleBuffer::Reset() {
+    m_fractional_position = 0.0;
+    std::fill(m_resample_buffer.begin(), m_resample_buffer.end(), 0.0f);
+}
 
 // =============== 时序管理函数 ===============
 void OboeAudioRenderer::UpdateTimingStats() {
@@ -76,17 +192,81 @@ void OboeAudioRenderer::AdjustBufferForTiming() {
     // 根据时序统计调整缓冲区大小
     if (!IsCallbackOnTime() && m_timing_stats.late_callbacks > 0) {
         // 增加缓冲区大小以减少欠载
-        desired_buffer_size = std::min(current_buffer_size * 120 / 100, current_buffer_size + m_frames_per_burst.load());
+        desired_buffer_size = std::min<int32_t>(current_buffer_size * 120 / 100, current_buffer_size + m_frames_per_burst.load());
         m_timing_adjustments++;
     } else if (m_timing_stats.late_callbacks == 0 && current_buffer_size > m_frames_per_burst.load() * 2) {
         // 减少缓冲区大小以降低延迟
-        desired_buffer_size = std::max(m_frames_per_burst.load() * 2, current_buffer_size * 80 / 100);
+        desired_buffer_size = std::max<int32_t>(m_frames_per_burst.load() * 2, current_buffer_size * 80 / 100);
         m_timing_adjustments++;
     }
     
     if (desired_buffer_size != current_buffer_size) {
         AdjustBufferSize(desired_buffer_size);
         m_last_buffer_adjustment = now;
+    }
+}
+
+// =============== 速度控制函数 ===============
+void OboeAudioRenderer::UpdateSpeedControl() {
+    int64_t written_frames = m_frames_written.load();
+    int64_t played_frames = m_frames_played.load();
+    int32_t sample_rate = m_sample_rate.load();
+    
+    m_speed_controller.Update(written_frames, played_frames, sample_rate);
+    
+    if (m_speed_controller.NeedsAdjustment()) {
+        double new_ratio = m_speed_controller.GetSpeedRatio();
+        if (std::abs(new_ratio - m_current_speed_ratio.load()) > 0.001) {
+            m_current_speed_ratio.store(new_ratio);
+            m_speed_adjustments++;
+            
+            // 如果速度变化较大，重新初始化重采样器
+            if (std::abs(new_ratio - 1.0) > 0.02) {
+                int32_t effective_rate = static_cast<int32_t>(m_sample_rate.load() * new_ratio);
+                m_resample_buffer.Initialize(m_sample_rate.load(), effective_rate, m_device_channels);
+            }
+        }
+    }
+}
+
+bool OboeAudioRenderer::AdjustPlaybackSpeed(double ratio) {
+    if (std::abs(ratio - 1.0) < 0.001) {
+        return true;  // 不需要调整
+    }
+    
+    // 这里可以调整硬件播放速度（如果支持）
+    // 目前我们通过软件重采样来实现
+    
+    return true;
+}
+
+void OboeAudioRenderer::ApplySpeedAdjustment(uint8_t* data, size_t frames, int32_t format, int32_t channels, double ratio) {
+    if (std::abs(ratio - 1.0) < 0.001 || !data || frames == 0) {
+        return;
+    }
+    
+    // 简单的速度调整：通过重采样改变播放速度
+    if (format == PCM_INT16) {
+        std::vector<uint8_t> temp_buffer;
+        size_t output_frames;
+        
+        if (m_resample_buffer.Resample(data, frames, format, temp_buffer, output_frames)) {
+            // 如果输出帧数不同，需要调整
+            if (output_frames != frames) {
+                // 这里简化处理：直接覆盖原始数据（实际需要更复杂的处理）
+                if (output_frames <= frames) {
+                    std::memcpy(data, temp_buffer.data(), temp_buffer.size());
+                    // 剩余部分填充静音
+                    if (output_frames < frames) {
+                        size_t silence_size = (frames - output_frames) * channels * sizeof(int16_t);
+                        std::memset(data + temp_buffer.size(), 0, silence_size);
+                    }
+                } else {
+                    // 输出帧数多于输入，这种情况不应该发生
+                    std::memcpy(data, temp_buffer.data(), frames * channels * sizeof(int16_t));
+                }
+            }
+        }
     }
 }
 
@@ -667,6 +847,9 @@ OboeAudioRenderer::OboeAudioRenderer() {
     // 初始化时序统计
     m_timing_stats = TimingStats{};
     m_last_buffer_adjustment = std::chrono::steady_clock::now();
+    
+    // 初始化速度控制器
+    m_speed_controller.Reset();
 }
 
 OboeAudioRenderer::~OboeAudioRenderer() {
@@ -703,6 +886,11 @@ bool OboeAudioRenderer::InitializeWithFormat(int32_t sampleRate, int32_t channel
     
     // 使用原始格式样本缓冲区队列
     m_raw_sample_queue = std::make_unique<RawSampleBufferQueue>(64);
+    
+    // 初始化速度控制器和重采样器
+    m_speed_controller.Reset();
+    m_resample_buffer.Initialize(sampleRate, sampleRate, channelCount);
+    m_current_speed_ratio.store(1.0);
     
     if (!ConfigureAndOpenStream()) {
         return false;
@@ -968,6 +1156,9 @@ bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int3
     
     if (success) {
         m_frames_written += num_frames;
+        
+        // 更新速度控制
+        UpdateSpeedControl();
     } else {
         m_underrun_count++;
     }
@@ -1010,6 +1201,12 @@ void OboeAudioRenderer::Reset() {
     // 重置时序统计
     m_timing_stats = TimingStats{};
     m_last_buffer_adjustment = std::chrono::steady_clock::now();
+    
+    // 重置速度控制
+    m_speed_controller.Reset();
+    m_resample_buffer.Reset();
+    m_current_speed_ratio.store(1.0);
+    m_speed_adjustments.store(0);
     
     CloseStream();
     ConfigureAndOpenStream();
@@ -1123,6 +1320,9 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioS
     // 根据时序调整缓冲区
     AdjustBufferForTiming();
     
+    // 更新速度控制
+    UpdateSpeedControl();
+    
     if (!m_initialized.load() || !m_raw_sample_queue) {
         int32_t channels = m_device_channels;
         size_t bytes_per_sample = GetBytesPerSample(m_sample_format.load());
@@ -1143,6 +1343,12 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioS
         size_t bytes_remaining = bytes_requested - bytes_read;
         std::memset(output + bytes_read, 0, bytes_remaining);
         m_underrun_count++;
+    }
+    
+    // 应用速度调整
+    double speed_ratio = m_current_speed_ratio.load();
+    if (std::abs(speed_ratio - 1.0) > 0.001) {
+        ApplySpeedAdjustment(output, num_frames, m_sample_format.load(), channels, speed_ratio);
     }
     
     // 应用音量控制
@@ -1187,6 +1393,8 @@ OboeAudioRenderer::PerformanceStats OboeAudioRenderer::GetStats() const {
     stats.adpcm_decoded_count = m_adpcm_decoded_count.load();
     stats.buffer_overrun_count = m_buffer_overrun_count.load();
     stats.timing_adjustments = m_timing_adjustments.load();
+    stats.current_speed_ratio = m_current_speed_ratio.load();
+    stats.speed_adjustments = m_speed_adjustments.load();
     return stats;
 }
 

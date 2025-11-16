@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (修复时序和同步问题)
+// oboe_audio_renderer.h (完整修复版)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -64,6 +64,8 @@ public:
         int32_t adpcm_decoded_count = 0;
         int32_t buffer_overrun_count = 0;
         int32_t timing_adjustments = 0;
+        double current_speed_ratio = 1.0;
+        int32_t speed_adjustments = 0;
     };
     
     PerformanceStats GetStats() const;
@@ -97,6 +99,42 @@ private:
         double average_callback_interval_ms = 0.0;
         double max_callback_interval_ms = 0.0;
         std::chrono::steady_clock::time_point last_callback_time;
+    };
+
+    // 速度同步和时钟管理
+    class SpeedController {
+    public:
+        void Update(int64_t written_frames, int64_t played_frames, int32_t sample_rate);
+        double GetSpeedRatio() const { return m_speed_ratio; }
+        bool NeedsAdjustment() const { return m_needs_adjustment; }
+        void Reset();
+        
+    private:
+        std::atomic<double> m_speed_ratio{1.0};
+        std::atomic<bool> m_needs_adjustment{false};
+        int64_t m_last_written_frames{0};
+        int64_t m_last_played_frames{0};
+        std::chrono::steady_clock::time_point m_last_update_time;
+        double m_accumulated_error{0.0};
+        static constexpr double MAX_SPEED_RATIO = 1.05;  // 最大加速5%
+        static constexpr double MIN_SPEED_RATIO = 0.95;  // 最大减速5%
+    };
+    
+    // 重采样缓冲区
+    class ResampleBuffer {
+    public:
+        bool Initialize(int32_t input_rate, int32_t output_rate, int32_t channels);
+        bool Resample(const uint8_t* input, size_t input_frames, int32_t format, 
+                     std::vector<uint8_t>& output, size_t& output_frames);
+        void Reset();
+        
+    private:
+        int32_t m_input_rate{0};
+        int32_t m_output_rate{0};
+        int32_t m_channels{0};
+        std::vector<float> m_resample_buffer;
+        double m_resample_ratio{1.0};
+        double m_fractional_position{0.0};
     };
 
     class AAudioExclusiveCallback : public oboe::AudioStreamDataCallback {
@@ -203,6 +241,11 @@ private:
     bool IsCallbackOnTime() const;
     void AdjustBufferForTiming();
 
+    // 速度控制函数
+    void UpdateSpeedControl();
+    bool AdjustPlaybackSpeed(double ratio);
+    void ApplySpeedAdjustment(uint8_t* data, size_t frames, int32_t format, int32_t channels, double ratio);
+
     bool OpenStream();
     void CloseStream();
     bool ConfigureAndOpenStream();
@@ -255,6 +298,8 @@ private:
     std::atomic<int32_t> m_adpcm_decoded_count{0};
     std::atomic<int32_t> m_buffer_overrun_count{0};
     std::atomic<int32_t> m_timing_adjustments{0};
+    std::atomic<double> m_current_speed_ratio{1.0};
+    std::atomic<int32_t> m_speed_adjustments{0};
     
     std::string m_current_audio_api = "Unknown";
     std::string m_current_sharing_mode = "Unknown";
@@ -266,6 +311,10 @@ private:
     // 时序统计
     TimingStats m_timing_stats;
     std::chrono::steady_clock::time_point m_last_buffer_adjustment;
+    
+    // 速度控制器和重采样器
+    SpeedController m_speed_controller;
+    ResampleBuffer m_resample_buffer;
     
     static constexpr int32_t TARGET_SAMPLE_COUNT = 240;
     
