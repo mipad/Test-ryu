@@ -145,9 +145,12 @@ namespace Ryujinx.Audio.Backends.Oboe
             true; // 支持所有采样率，像SDL2一样
 
         public bool SupportsSampleFormat(SampleFormat sampleFormat) =>
-            sampleFormat == SampleFormat.PcmInt16 || 
-            sampleFormat == SampleFormat.PcmInt32 ||
-            sampleFormat == SampleFormat.PcmFloat;
+            sampleFormat == SampleFormat.PcmInt8 || 
+    sampleFormat == SampleFormat.PcmInt16 || 
+    sampleFormat == SampleFormat.PcmInt24 ||
+    sampleFormat == SampleFormat.PcmInt32 ||
+    sampleFormat == SampleFormat.PcmFloat ||
+    sampleFormat == SampleFormat.Adpcm; 
 
         public bool SupportsChannelCount(uint channelCount) =>
             channelCount is 1 or 2 or 6; // 支持1、2、6声道
@@ -420,28 +423,32 @@ namespace Ryujinx.Audio.Backends.Oboe
             }
 
             private int SampleFormatToInt(SampleFormat format)
-            {
-                return format switch
-                {
-                    SampleFormat.PcmInt16 => 1,
-                    SampleFormat.PcmInt24 => 2,
-                    SampleFormat.PcmInt32 => 3,
-                    SampleFormat.PcmFloat => 4,
-                    _ => 1, // 默认PCM16
-                };
-            }
+{
+    return format switch
+    {
+        SampleFormat.PcmInt8 => 1,    
+        SampleFormat.PcmInt16 => 2,   
+        SampleFormat.PcmInt24 => 3, 
+        SampleFormat.PcmInt32 => 4,   
+        SampleFormat.PcmFloat => 5,   
+        SampleFormat.Adpcm => 6,      
+        _ => 2, // 默认改为PCM16
+    };
+}
 
-            private int GetBytesPerSample(SampleFormat format)
-            {
-                return format switch
-                {
-                    SampleFormat.PcmInt16 => 2,
-                    SampleFormat.PcmInt24 => 3,
-                    SampleFormat.PcmInt32 => 4,
-                    SampleFormat.PcmFloat => 4,
-                    _ => 2, // 默认PCM16
-                };
-            }
+private int GetBytesPerSample(SampleFormat format)
+{
+    return format switch
+    {
+        SampleFormat.PcmInt8 => 1,  
+        SampleFormat.PcmInt16 => 2,
+        SampleFormat.PcmInt24 => 3,
+        SampleFormat.PcmInt32 => 4,
+        SampleFormat.PcmFloat => 4,
+        SampleFormat.Adpcm => 1,     
+        _ => 2, // 默认PCM16
+    };
+}
 
             public override bool WasBufferFullyConsumed(AudioBuffer buffer)
             {
