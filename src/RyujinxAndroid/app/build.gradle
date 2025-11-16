@@ -63,9 +63,9 @@ android {
         prefab true
         buildConfig true
     }
-    composeOptions {
+   // composeOptions {
        // kotlinCompilerExtensionVersion '1.5.15'
-    }
+    //}
     packagingOptions {
         jniLibs {
             keepDebugSymbols += '**/libryujinx.so'
