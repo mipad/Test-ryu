@@ -79,7 +79,6 @@ namespace Ryujinx.Audio.Backends.Oboe
         public OboeHardwareDeviceDriver()
         {
             StartUpdateThread();
-            StartStatsThread();
             Logger.Info?.Print(LogClass.Audio, "OboeHardwareDeviceDriver initialized (完整格式支持)");
         }
 
