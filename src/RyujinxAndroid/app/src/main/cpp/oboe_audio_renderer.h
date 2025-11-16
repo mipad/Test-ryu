@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (支持所有采样率)
+// oboe_audio_renderer.h (添加ADPCM支持)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -16,10 +16,12 @@ namespace RyujinxOboe {
 
 // 采样格式定义 (与C#层保持一致)
 enum SampleFormat {
-    PCM_INT16 = 1,
-    PCM_INT24 = 2,
-    PCM_INT32 = 3,
-    PCM_FLOAT = 4
+    PCM_INT8 = 1,
+    PCM_INT16 = 2,
+    PCM_INT24 = 3,
+    PCM_INT32 = 4,
+    PCM_FLOAT = 5,
+    ADPCM = 6
 };
 
 class OboeAudioRenderer {
@@ -61,12 +63,20 @@ private:
     OboeAudioRenderer();
     ~OboeAudioRenderer();
 
+    // ADPCM 解码状态
+    struct AdpcmState {
+        int16_t predictor;
+        int8_t step_index;
+        int16_t step;
+        int32_t history[2];
+    };
+
     // 原始格式缓冲区结构
     struct RawSampleBuffer {
         std::vector<uint8_t> data;
         size_t data_size = 0;
         size_t data_played = 0;
-        int32_t sample_format = 1; // PCM16 by default
+        int32_t sample_format = 2; // PCM16 by default (匹配C#的PcmInt16=2)
         bool consumed = true;
     };
 
@@ -108,7 +118,7 @@ private:
         RawSampleBuffer m_playing_buffer;
         size_t m_max_buffers;
         mutable std::mutex m_mutex;
-        int32_t m_current_format = 1; // PCM16 by default
+        int32_t m_current_format = 2; // PCM16 by default (匹配C#的PcmInt16=2)
     };
 
     bool OpenStream();
@@ -125,6 +135,11 @@ private:
     const char* GetFormatName(int32_t format);
     static size_t GetBytesPerSample(int32_t format);
     
+    // ADPCM 解码函数
+    bool DecodeAdpcm(const uint8_t* adpcm_data, size_t adpcm_size, std::vector<int16_t>& pcm_output, AdpcmState& state);
+    int16_t DecodeAdpcmSample(uint8_t nibble, AdpcmState& state);
+    void ResetAdpcmState(AdpcmState& state);
+    
     // 缓冲区优化
     bool OptimizeBufferSize();
 
@@ -139,11 +154,14 @@ private:
     
     std::atomic<int32_t> m_sample_rate{48000};
     std::atomic<int32_t> m_channel_count{2};
-    std::atomic<int32_t> m_sample_format{1}; // PCM16 by default
+    std::atomic<int32_t> m_sample_format{2}; // PCM16 by default (匹配C#的PcmInt16=2)
     std::atomic<float> m_volume{1.0f};
     
     int32_t m_device_channels = 2;
     oboe::AudioFormat m_oboe_format{oboe::AudioFormat::I16};
+    
+    // ADPCM 状态
+    AdpcmState m_adpcm_state;
     
     // 性能统计
     std::atomic<int64_t> m_frames_written{0};
