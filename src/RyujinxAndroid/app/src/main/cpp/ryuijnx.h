@@ -49,8 +49,10 @@ extern pthread_t _renderingThreadIdNative;
 // =============== Oboe 音频函数声明 ===============
 extern "C" {
     bool initOboeAudio(int sample_rate, int channel_count);
+    bool initOboeAudioWithFormat(int sample_rate, int channel_count, int sample_format);
     void shutdownOboeAudio();
     bool writeOboeAudio(const int16_t* data, int32_t num_frames);
+    bool writeOboeAudioRaw(const uint8_t* data, int32_t num_frames, int32_t sample_format);
     void setOboeVolume(float volume);
     bool isOboeInitialized();
     bool isOboePlaying();

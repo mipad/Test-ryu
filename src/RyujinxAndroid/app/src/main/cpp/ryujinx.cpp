@@ -1,4 +1,4 @@
-// ryujinx.cpp (完整版本 - 移除FFmpeg功能)
+// ryujinx.cpp (完整版本 - 支持原始格式音频)
 #include "ryuijnx.h"
 #include <chrono>
 #include <csignal>
@@ -258,6 +258,13 @@ Java_org_ryujinx_android_NativeHelpers_initOboeAudio(JNIEnv *env, jobject thiz, 
 }
 
 extern "C"
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_initOboeAudioWithFormat(JNIEnv *env, jobject thiz, jint sample_rate, jint channel_count, jint sample_format) {
+    bool result = RyujinxOboe::OboeAudioRenderer::GetInstance().InitializeWithFormat(sample_rate, channel_count, sample_format);
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C"
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_shutdownOboeAudio(JNIEnv *env, jobject thiz) {
     RyujinxOboe::OboeAudioRenderer::GetInstance().Shutdown();
@@ -276,6 +283,25 @@ Java_org_ryujinx_android_NativeHelpers_writeOboeAudio(JNIEnv *env, jobject thiz,
     if (data) {
         bool success = RyujinxOboe::OboeAudioRenderer::GetInstance().WriteAudio(reinterpret_cast<int16_t*>(data), num_frames);
         env->ReleaseShortArrayElements(audio_data, data, JNI_ABORT);
+        return success ? JNI_TRUE : JNI_FALSE;
+    }
+    
+    return JNI_FALSE;
+}
+
+extern "C"
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_writeOboeAudioRaw(JNIEnv *env, jobject thiz, jbyteArray audio_data, jint num_frames, jint sample_format) {
+    if (!audio_data || num_frames <= 0) {
+        return JNI_FALSE;
+    }
+
+    jsize length = env->GetArrayLength(audio_data);
+    jbyte* data = env->GetByteArrayElements(audio_data, nullptr);
+    
+    if (data) {
+        bool success = RyujinxOboe::OboeAudioRenderer::GetInstance().WriteAudioRaw(reinterpret_cast<uint8_t*>(data), num_frames, sample_format);
+        env->ReleaseByteArrayElements(audio_data, data, JNI_ABORT);
         return success ? JNI_TRUE : JNI_FALSE;
     }
     
@@ -340,6 +366,12 @@ bool initOboeAudio(int sample_rate, int channel_count) {
 }
 
 extern "C"
+bool initOboeAudioWithFormat(int sample_rate, int channel_count, int sample_format) {
+    bool result = RyujinxOboe::OboeAudioRenderer::GetInstance().InitializeWithFormat(sample_rate, channel_count, sample_format);
+    return result;
+}
+
+extern "C"
 void shutdownOboeAudio() {
     RyujinxOboe::OboeAudioRenderer::GetInstance().Shutdown();
 }
@@ -351,6 +383,16 @@ bool writeOboeAudio(const int16_t* data, int32_t num_frames) {
     }
     
     bool success = RyujinxOboe::OboeAudioRenderer::GetInstance().WriteAudio(data, num_frames);
+    return success;
+}
+
+extern "C"
+bool writeOboeAudioRaw(const uint8_t* data, int32_t num_frames, int32_t sample_format) {
+    if (!data || num_frames <= 0) {
+        return false;
+    }
+    
+    bool success = RyujinxOboe::OboeAudioRenderer::GetInstance().WriteAudioRaw(data, num_frames, sample_format);
     return success;
 }
 
