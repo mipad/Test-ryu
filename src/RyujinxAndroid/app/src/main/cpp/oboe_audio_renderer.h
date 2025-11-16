@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (完整格式支持 + 下混)
+// oboe_audio_renderer.h (修复时序和同步问题)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -12,6 +12,7 @@
 #include <list>
 #include <functional>
 #include <unordered_map>
+#include <chrono>
 
 namespace RyujinxOboe {
 
@@ -61,6 +62,8 @@ public:
         double average_latency_ms = 0.0;
         int32_t format_conversion_count = 0;
         int32_t adpcm_decoded_count = 0;
+        int32_t buffer_overrun_count = 0;
+        int32_t timing_adjustments = 0;
     };
     
     PerformanceStats GetStats() const;
@@ -77,6 +80,7 @@ private:
         int32_t sample_format = 2; // PCM16 by default (对应C#的PcmInt16=2)
         bool consumed = true;
         uint64_t session_id = 0;
+        std::chrono::steady_clock::time_point queue_time;
     };
 
     // ADPCM 解码状态
@@ -84,6 +88,15 @@ private:
         int16_t predictor = 0;
         int8_t step_index = 0;
         int16_t step = 0;
+    };
+
+    // 时序统计
+    struct TimingStats {
+        int64_t total_callbacks = 0;
+        int64_t late_callbacks = 0;
+        double average_callback_interval_ms = 0.0;
+        double max_callback_interval_ms = 0.0;
+        std::chrono::steady_clock::time_point last_callback_time;
     };
 
     class AAudioExclusiveCallback : public oboe::AudioStreamDataCallback {
@@ -120,6 +133,7 @@ private:
         void Clear();
         size_t GetMemoryUsage() const;
         bool IsEmpty() const;
+        size_t GetBufferCount() const;
         
         int32_t GetCurrentFormat() const { return m_current_format; }
         
@@ -184,6 +198,11 @@ private:
         MINUS_6DB_IN_Q15
     };
 
+    // 时序管理函数
+    void UpdateTimingStats();
+    bool IsCallbackOnTime() const;
+    void AdjustBufferForTiming();
+
     bool OpenStream();
     void CloseStream();
     bool ConfigureAndOpenStream();
@@ -201,6 +220,7 @@ private:
     
     // 缓冲区优化
     bool OptimizeBufferSize();
+    bool AdjustBufferSize(int32_t desired_size);
 
     // 重采样支持
     bool NeedsResampling() const;
@@ -233,6 +253,8 @@ private:
     std::atomic<size_t> m_buffer_memory_usage{0};
     std::atomic<int32_t> m_format_conversion_count{0};
     std::atomic<int32_t> m_adpcm_decoded_count{0};
+    std::atomic<int32_t> m_buffer_overrun_count{0};
+    std::atomic<int32_t> m_timing_adjustments{0};
     
     std::string m_current_audio_api = "Unknown";
     std::string m_current_sharing_mode = "Unknown";
@@ -241,11 +263,19 @@ private:
     // ADPCM 解码状态
     ADPCMState m_adpcm_state;
     
+    // 时序统计
+    TimingStats m_timing_stats;
+    std::chrono::steady_clock::time_point m_last_buffer_adjustment;
+    
     static constexpr int32_t TARGET_SAMPLE_COUNT = 240;
     
     // 重采样相关
     int32_t m_device_sample_rate = 48000;
     bool m_resampling_enabled = false;
+    
+    // 缓冲区管理
+    static constexpr size_t MAX_BUFFERED_MS = 100; // 最大缓冲100ms音频
+    static constexpr size_t MIN_BUFFERED_MS = 10;  // 最小缓冲10ms音频
     
     // 格式支持标志
     static constexpr bool SUPPORT_PCM8 = true;
