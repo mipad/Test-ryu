@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (修复编译错误)
+// oboe_audio_renderer.h (完整实现)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -16,7 +16,6 @@ namespace RyujinxOboe {
 
 // 采样格式定义 (与C#层保持一致)
 enum SampleFormat {
-    PCM_INT8 = 0,
     PCM_INT16 = 1,
     PCM_INT24 = 2,
     PCM_INT32 = 3,
@@ -51,6 +50,8 @@ public:
         std::string audio_api = "Unknown";
         std::string sharing_mode = "Unknown";
         std::string sample_format = "Unknown";
+        int32_t frames_per_burst = 0;
+        int32_t buffer_size = 0;
     };
     
     PerformanceStats GetStats() const;
@@ -58,14 +59,6 @@ public:
 private:
     OboeAudioRenderer();
     ~OboeAudioRenderer();
-
-    // 基于yuzu的样本缓冲区结构
-    struct SampleBuffer {
-        std::vector<int16_t> samples;
-        size_t sample_count = 0;
-        size_t samples_played = 0;
-        bool consumed = true;
-    };
 
     // 原始格式缓冲区结构
     struct RawSampleBuffer {
@@ -97,23 +90,6 @@ private:
         OboeAudioRenderer* m_renderer;
     };
 
-    // 基于yuzu的样本缓冲区队列
-    class SampleBufferQueue {
-    public:
-        explicit SampleBufferQueue(size_t max_buffers = 32) : m_max_buffers(max_buffers) {}
-        
-        bool Write(const int16_t* samples, size_t sample_count);
-        size_t Read(int16_t* output, size_t samples_requested);
-        size_t Available() const;
-        void Clear();
-        
-    private:
-        std::queue<SampleBuffer> m_buffers;
-        SampleBuffer m_playing_buffer;
-        size_t m_max_buffers;
-        mutable std::mutex m_mutex;
-    };
-
     // 原始格式缓冲区队列
     class RawSampleBufferQueue {
     public:
@@ -139,7 +115,6 @@ private:
     bool ConfigureAndOpenStream();
     void ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& builder);
 
-    oboe::DataCallbackResult OnAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames);
     oboe::DataCallbackResult OnAudioReadyMultiFormat(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames);
     void OnStreamErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error);
     void OnStreamErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error);
@@ -147,14 +122,12 @@ private:
     // 格式转换函数
     oboe::AudioFormat MapSampleFormat(int32_t format);
     const char* GetFormatName(int32_t format);
-    static size_t GetBytesPerSample(int32_t format); // 改为静态方法
+    static size_t GetBytesPerSample(int32_t format);
     
-    // 格式转换辅助函数
-    void ConvertToTargetFormat(const uint8_t* source, void* dest, size_t frame_count, 
-                              int32_t source_format, oboe::AudioFormat target_format);
+    // 缓冲区优化
+    bool OptimizeBufferSize();
 
     std::shared_ptr<oboe::AudioStream> m_stream;
-    std::unique_ptr<SampleBufferQueue> m_sample_queue;
     std::unique_ptr<RawSampleBufferQueue> m_raw_sample_queue;
     std::unique_ptr<AAudioExclusiveCallback> m_audio_callback;
     std::unique_ptr<AAudioExclusiveErrorCallback> m_error_callback;
@@ -171,12 +144,14 @@ private:
     int32_t m_device_channels = 2;
     oboe::AudioFormat m_oboe_format{oboe::AudioFormat::I16};
     
+    // 性能统计
     std::atomic<int64_t> m_frames_written{0};
     std::atomic<int64_t> m_frames_played{0};
     std::atomic<int32_t> m_underrun_count{0};
     std::atomic<int32_t> m_stream_restart_count{0};
+    std::atomic<int32_t> m_frames_per_burst{0};
+    std::atomic<int32_t> m_buffer_size{0};
     
-    // 性能统计
     std::string m_current_audio_api = "Unknown";
     std::string m_current_sharing_mode = "Unknown";
     std::string m_current_sample_format = "PCM16";
