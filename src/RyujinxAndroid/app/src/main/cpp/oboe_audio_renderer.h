@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (完整实现)
+// oboe_audio_renderer.h (支持所有采样率)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -50,6 +50,7 @@ public:
         std::string audio_api = "Unknown";
         std::string sharing_mode = "Unknown";
         std::string sample_format = "Unknown";
+        int32_t sample_rate = 0;
         int32_t frames_per_burst = 0;
         int32_t buffer_size = 0;
     };
@@ -157,7 +158,6 @@ private:
     std::string m_current_sample_format = "PCM16";
     
     static constexpr int32_t TARGET_SAMPLE_COUNT = 240;
-    static constexpr int32_t TARGET_SAMPLE_RATE = 48000;
 };
 
 } // namespace RyujinxOboe

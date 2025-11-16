@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (完整实现)
+// oboe_audio_renderer.cpp (支持所有采样率)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
@@ -189,7 +189,7 @@ void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& bu
            ->setAudioApi(oboe::AudioApi::AAudio)
            ->setSharingMode(oboe::SharingMode::Exclusive)
            ->setDirection(oboe::Direction::Output)
-           ->setSampleRate(m_sample_rate.load())
+           ->setSampleRate(m_sample_rate.load()) // 使用请求的采样率
            ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium)
            ->setFormat(m_oboe_format)
            ->setFormatConversionAllowed(true)
@@ -286,7 +286,7 @@ bool OboeAudioRenderer::OptimizeBufferSize() {
         desired_buffer_size = framesPerBurst * 2;
     } else {
         // 无法获取 FramesPerBurst，使用固定值
-        desired_buffer_size = TARGET_SAMPLE_COUNT * 4;
+        desired_buffer_size = 960; // 240 * 4
     }
     
     auto setBufferResult = m_stream->setBufferSizeInFrames(desired_buffer_size);
@@ -296,18 +296,6 @@ bool OboeAudioRenderer::OptimizeBufferSize() {
     
     m_frames_per_burst.store(framesPerBurst);
     m_buffer_size.store(actual_buffer_size);
-    
-    // 记录缓冲区配置信息
-    // Logger.Info?.Print(LogClass.Audio, 
-    //     "Oboe buffer configuration - "
-    //     "FramesPerBurst: %d, "
-    //     "RequestedBuffer: %d, "
-    //     "ActualBuffer: %d, "
-    //     "SetBufferResult: %d",
-    //     framesPerBurst, 
-    //     desired_buffer_size, 
-    //     actual_buffer_size,
-    //     setBufferResult);
     
     return true;
 }
@@ -481,6 +469,7 @@ OboeAudioRenderer::PerformanceStats OboeAudioRenderer::GetStats() const {
     stats.audio_api = m_current_audio_api;
     stats.sharing_mode = m_current_sharing_mode;
     stats.sample_format = m_current_sample_format;
+    stats.sample_rate = m_sample_rate.load();
     stats.frames_per_burst = m_frames_per_burst.load();
     stats.buffer_size = m_buffer_size.load();
     return stats;
