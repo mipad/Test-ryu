@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (修复类型问题)
+// oboe_audio_renderer.cpp (完整格式支持 + 下混)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
@@ -24,6 +24,81 @@ static const int16_t ADPCM_STEP_TABLE[89] = {
     3660, 4026, 4428, 4871, 5358, 5894, 6484, 7132, 7845, 8630, 9493, 10442, 11487,
     12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767
 };
+
+// =============== 下混函数实现 ===============
+bool OboeAudioRenderer::DownmixSurroundToStereo(const uint8_t* input, uint8_t* output, size_t frames, int32_t input_format) {
+    if (!input || !output || frames == 0) return false;
+    
+    // 目前只支持PCM16格式的下混
+    if (input_format != PCM_INT16) {
+        return false;
+    }
+    
+    const int16_t* in_samples = reinterpret_cast<const int16_t*>(input);
+    int16_t* out_samples = reinterpret_cast<int16_t*>(output);
+    
+    // 6声道布局: FrontLeft, FrontRight, FrontCenter, LowFrequency, BackLeft, BackRight
+    for (size_t i = 0; i < frames; i++) {
+        size_t base_idx = i * 6;
+        
+        int16_t front_left = in_samples[base_idx];
+        int16_t front_right = in_samples[base_idx + 1];
+        int16_t front_center = in_samples[base_idx + 2];
+        int16_t low_freq = in_samples[base_idx + 3];
+        int16_t back_left = in_samples[base_idx + 4];
+        int16_t back_right = in_samples[base_idx + 5];
+        
+        // 应用下混系数 (与C# Downmixing.cs保持一致)
+        int32_t left_mix = 
+            (front_left * SURROUND_TO_STEREO_COEFFS[0]) +  // 前左
+            (back_left * SURROUND_TO_STEREO_COEFFS[3]) +   // 后左  
+            (low_freq * SURROUND_TO_STEREO_COEFFS[2]) +    // 低频
+            (front_center * SURROUND_TO_STEREO_COEFFS[1]); // 中置
+        
+        int32_t right_mix = 
+            (front_right * SURROUND_TO_STEREO_COEFFS[0]) + // 前右
+            (back_right * SURROUND_TO_STEREO_COEFFS[3]) +  // 后右
+            (low_freq * SURROUND_TO_STEREO_COEFFS[2]) +    // 低频
+            (front_center * SURROUND_TO_STEREO_COEFFS[1]); // 中置
+        
+        // 应用Q15缩放并限制范围
+        left_mix = (left_mix + RAW_Q15_HALF_ONE) >> Q15_BITS;
+        right_mix = (right_mix + RAW_Q15_HALF_ONE) >> Q15_BITS;
+        
+        out_samples[i * 2] = static_cast<int16_t>(std::max<int32_t>(-32768, std::min<int32_t>(32767, left_mix)));
+        out_samples[i * 2 + 1] = static_cast<int16_t>(std::max<int32_t>(-32768, std::min<int32_t>(32767, right_mix)));
+    }
+    
+    return true;
+}
+
+bool OboeAudioRenderer::DownmixStereoToMono(const uint8_t* input, uint8_t* output, size_t frames, int32_t input_format) {
+    if (!input || !output || frames == 0) return false;
+    
+    // 目前只支持PCM16格式的下混
+    if (input_format != PCM_INT16) {
+        return false;
+    }
+    
+    const int16_t* in_samples = reinterpret_cast<const int16_t*>(input);
+    int16_t* out_samples = reinterpret_cast<int16_t*>(output);
+    
+    for (size_t i = 0; i < frames; i++) {
+        int16_t left = in_samples[i * 2];
+        int16_t right = in_samples[i * 2 + 1];
+        
+        // 应用下混系数
+        int32_t mono_mix = 
+            (left * STEREO_TO_MONO_COEFFS[0]) + 
+            (right * STEREO_TO_MONO_COEFFS[1]);
+        
+        // 应用Q15缩放并限制范围
+        mono_mix = mono_mix >> Q15_BITS;
+        out_samples[i] = static_cast<int16_t>(std::max<int32_t>(-32768, std::min<int32_t>(32767, mono_mix)));
+    }
+    
+    return true;
+}
 
 // =============== 格式转换函数实现 ===============
 bool OboeAudioRenderer::ConvertPCM8ToPCM16(const uint8_t* input, int16_t* output, size_t samples) {
@@ -757,9 +832,46 @@ bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int3
     size_t bytes_per_sample = GetBytesPerSample(sampleFormat);
     size_t data_size = num_frames * system_channels * bytes_per_sample;
     
-    // 直接写入原始数据
-    const uint8_t* byte_data = static_cast<const uint8_t*>(data);
-    bool success = m_raw_sample_queue->WriteRaw(byte_data, data_size, sampleFormat, 0);
+    const uint8_t* input_data = static_cast<const uint8_t*>(data);
+    
+    // 检查是否需要下混
+    bool needs_downmixing = false;
+    int32_t target_channels = system_channels;
+    
+    if (system_channels == 6 && m_device_channels == 2) {
+        // 6声道 -> 立体声下混
+        needs_downmixing = true;
+        target_channels = 2;
+    } else if (system_channels == 2 && m_device_channels == 1) {
+        // 立体声 -> 单声道下混  
+        needs_downmixing = true;
+        target_channels = 1;
+    }
+    
+    bool success = false;
+    
+    if (needs_downmixing) {
+        // 执行下混
+        size_t output_data_size = num_frames * target_channels * bytes_per_sample;
+        std::vector<uint8_t> downmixed_data(output_data_size);
+        
+        bool downmix_result = false;
+        if (system_channels == 6 && target_channels == 2) {
+            downmix_result = DownmixSurroundToStereo(input_data, downmixed_data.data(), num_frames, sampleFormat);
+        } else if (system_channels == 2 && target_channels == 1) {
+            downmix_result = DownmixStereoToMono(input_data, downmixed_data.data(), num_frames, sampleFormat);
+        }
+        
+        if (downmix_result) {
+            success = m_raw_sample_queue->WriteRaw(downmixed_data.data(), output_data_size, sampleFormat, 0);
+        } else {
+            // 下混失败，回退到直接写入
+            success = m_raw_sample_queue->WriteRaw(input_data, data_size, sampleFormat, 0);
+        }
+    } else {
+        // 不需要下混，直接写入
+        success = m_raw_sample_queue->WriteRaw(input_data, data_size, sampleFormat, 0);
+    }
     
     if (success) {
         m_frames_written += num_frames;

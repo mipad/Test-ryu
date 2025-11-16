@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (完整格式支持)
+// oboe_audio_renderer.h (完整格式支持 + 下混)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -158,6 +158,31 @@ private:
     
     // 音量应用函数
     static void ApplyVolume(void* data, size_t frames, int32_t format, int32_t channels, float volume);
+
+    // 下混函数
+    static bool DownmixSurroundToStereo(const uint8_t* input, uint8_t* output, size_t frames, int32_t input_format);
+    static bool DownmixStereoToMono(const uint8_t* input, uint8_t* output, size_t frames, int32_t input_format);
+    
+    // 下混系数 (与C# Downmixing.cs保持一致)
+    static constexpr int32_t Q15_BITS = 16;
+    static constexpr int32_t RAW_Q15_ONE = 1 << Q15_BITS;
+    static constexpr int32_t RAW_Q15_HALF_ONE = (int32_t)(0.5f * RAW_Q15_ONE);
+    static constexpr int32_t MINUS_3DB_IN_Q15 = (int32_t)(0.707f * RAW_Q15_ONE);
+    static constexpr int32_t MINUS_6DB_IN_Q15 = (int32_t)(0.501f * RAW_Q15_ONE);
+    static constexpr int32_t MINUS_12DB_IN_Q15 = (int32_t)(0.251f * RAW_Q15_ONE);
+    
+    // 下混系数数组
+    static constexpr int32_t SURROUND_TO_STEREO_COEFFS[4] = {
+        RAW_Q15_ONE,        // 前声道
+        MINUS_3DB_IN_Q15,   // 中置声道
+        MINUS_12DB_IN_Q15,  // 低频声道
+        MINUS_3DB_IN_Q15    // 环绕声道
+    };
+    
+    static constexpr int32_t STEREO_TO_MONO_COEFFS[2] = {
+        MINUS_6DB_IN_Q15,
+        MINUS_6DB_IN_Q15
+    };
 
     bool OpenStream();
     void CloseStream();
