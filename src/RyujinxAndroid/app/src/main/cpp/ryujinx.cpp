@@ -1,4 +1,4 @@
-// ryujinx.cpp (完整版本 - 支持原始格式音频，添加新函数)
+// ryujinx.cpp (完整版本 - 支持原始格式音频)
 #include "ryuijnx.h"
 #include <chrono>
 #include <csignal>
@@ -341,14 +341,6 @@ Java_org_ryujinx_android_NativeHelpers_resetOboeAudio(JNIEnv *env, jobject thiz)
     RyujinxOboe::OboeAudioRenderer::GetInstance().Reset();
 }
 
-// =============== 新增：获取总播放帧数 JNI 接口 ===============
-extern "C"
-JNIEXPORT jlong JNICALL
-Java_org_ryujinx_android_NativeHelpers_getOboeTotalPlayedFrames(JNIEnv *env, jobject thiz) {
-    int64_t totalFrames = RyujinxOboe::OboeAudioRenderer::GetInstance().GetTotalPlayedFrames();
-    return static_cast<jlong>(totalFrames);
-}
-
 // =============== 设备信息获取函数 ===============
 extern "C"
 JNIEXPORT jstring JNICALL
@@ -427,12 +419,6 @@ int32_t getOboeBufferedFrames() {
 extern "C"
 void resetOboeAudio() {
     RyujinxOboe::OboeAudioRenderer::GetInstance().Reset();
-}
-
-// =============== 新增：获取总播放帧数 C 接口 ===============
-extern "C"
-long getOboeTotalPlayedFrames() {
-    return static_cast<long>(RyujinxOboe::OboeAudioRenderer::GetInstance().GetTotalPlayedFrames());
 }
 
 // =============== 设备信息获取 C 接口 ===============

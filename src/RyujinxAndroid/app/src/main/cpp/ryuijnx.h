@@ -59,9 +59,6 @@ extern "C" {
     int32_t getOboeBufferedFrames();
     void resetOboeAudio();
     
-    // 新增：获取总播放帧数
-    long getOboeTotalPlayedFrames();
-    
     // 设备信息函数
     const char* GetAndroidDeviceModel();
     const char* GetAndroidDeviceBrand();
