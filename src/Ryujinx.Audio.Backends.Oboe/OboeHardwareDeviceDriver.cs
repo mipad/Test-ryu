@@ -45,30 +45,6 @@ namespace Ryujinx.Audio.Backends.Oboe
         [DllImport("libryujinxjni", EntryPoint = "resetOboeAudio")]
         private static extern void resetOboeAudio();
 
-        // 新增性能统计函数
-        [DllImport("libryujinxjni", EntryPoint = "getOboePerformanceStats")]
-        private static extern IntPtr getOboePerformanceStats();
-
-        // ========== 性能统计结构体 ==========
-        [StructLayout(LayoutKind.Sequential)]
-        private struct OboePerformanceStats
-        {
-            public long frames_written;
-            public long frames_played;
-            public int underrun_count;
-            public int stream_restart_count;
-            public IntPtr audio_api;
-            public IntPtr sharing_mode;
-            public IntPtr sample_format;
-            public int sample_rate;
-            public int frames_per_burst;
-            public int buffer_size;
-            public long buffer_memory_usage;
-            public double average_latency_ms;
-            public int format_conversion_count;
-            public int adpcm_decoded_count;
-        }
-
         // ========== 属性 ==========
         public static bool IsSupported => true;
 
@@ -86,9 +62,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         private SampleFormat _currentSampleFormat = SampleFormat.PcmInt16;
         private uint _currentSampleRate = 48000;
 
-        // 性能监控
-        private Thread _statsThread;
-        private bool _statsRunning = true;
+        
 
         public float Volume
         {
@@ -143,67 +117,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             _updateThread.Start();
         }
 
-        private void StartStatsThread()
-        {
-            _statsThread = new Thread(() =>
-            {
-                while (_statsRunning)
-                {
-                    try
-                    {
-                        Thread.Sleep(5000); // 5秒更新一次统计信息
-                        
-                        if (_isOboeInitialized)
-                        {
-                            LogPerformanceStats();
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error?.Print(LogClass.Audio, $"Stats thread error: {ex.Message}");
-                    }
-                }
-            })
-            {
-                Name = "Audio.Oboe.StatsThread",
-                IsBackground = true,
-                Priority = ThreadPriority.BelowNormal
-            };
-            _statsThread.Start();
-        }
-
-        private void LogPerformanceStats()
-        {
-            try
-            {
-                IntPtr statsPtr = getOboePerformanceStats();
-                if (statsPtr != IntPtr.Zero)
-                {
-                    var stats = Marshal.PtrToStructure<OboePerformanceStats>(statsPtr);
-                    
-                    string audioApi = Marshal.PtrToStringAnsi(stats.audio_api) ?? "Unknown";
-                    string sharingMode = Marshal.PtrToStringAnsi(stats.sharing_mode) ?? "Unknown";
-                    string sampleFormat = Marshal.PtrToStringAnsi(stats.sample_format) ?? "Unknown";
-                    
-                    Logger.Info?.Print(LogClass.Audio, 
-                        $"Oboe Stats: " +
-                        $"API={audioApi}, " +
-                        $"Mode={sharingMode}, " +
-                        $"Format={sampleFormat}, " +
-                        $"Rate={stats.sample_rate}Hz, " +
-                        $"Buffer={stats.buffer_size}/{stats.frames_per_burst} frames, " +
-                        $"Underruns={stats.underrun_count}, " +
-                        $"Restarts={stats.stream_restart_count}, " +
-                        $"Memory={stats.buffer_memory_usage / 1024}KB, " +
-                        $"Conversions={stats.format_conversion_count}, " +
-                        $"ADPCM={stats.adpcm_decoded_count}");
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning?.Print(LogClass.Audio, $"Failed to get Oboe performance stats: {ex.Message}");
-            }
-        }
+      
 
         public void Dispose()
         {
@@ -220,10 +134,10 @@ namespace Ryujinx.Audio.Backends.Oboe
                     Logger.Info?.Print(LogClass.Audio, "Disposing OboeHardwareDeviceDriver");
                     
                     _stillRunning = false;
-                    _statsRunning = false;
+                   
                     
                     _updateThread?.Join(100);
-                    _statsThread?.Join(100);
+                    
                     
                     shutdownOboeAudio();
                     _isOboeInitialized = false;
