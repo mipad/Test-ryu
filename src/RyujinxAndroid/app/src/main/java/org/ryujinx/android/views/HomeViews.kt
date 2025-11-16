@@ -122,7 +122,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.animation.animateItemPlacement // 添加缺失的导入
+import androidx.compose.foundation.lazy.animateItemPlacement // 保留导入，因为我们在正确的位置使用了它
 
 class HomeViews {
     companion object {
@@ -975,7 +975,12 @@ class HomeViews {
                                                 )
                                                     .contains(query))
                                             ) {
-                                                Box(modifier = Modifier.animateItemPlacement()) {
+                                                // 将 animateItemPlacement 正确应用到列表项的根布局
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .animateItemPlacement() // ✅ 现在在正确的位置
+                                                ) {
                                                     ListGameItem(
                                                         gameModel = it,
                                                         viewModel = viewModel,
