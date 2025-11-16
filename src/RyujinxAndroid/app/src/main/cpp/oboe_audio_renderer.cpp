@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (完整格式支持)
+// oboe_audio_renderer.cpp (修复类型问题)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
@@ -42,7 +42,7 @@ bool OboeAudioRenderer::ConvertPCM16ToPCM8(const int16_t* input, uint8_t* output
     for (size_t i = 0; i < samples; i++) {
         // PCM16: -32768 to 32767 to PCM8: 0-255
         int32_t sample = (static_cast<int32_t>(input[i]) / 256) + 128;
-        output[i] = static_cast<uint8_t>(std::max(0, std::min(255, sample)));
+        output[i] = static_cast<uint8_t>(std::max<int>(0, std::min<int>(255, sample)));
     }
     return true;
 }
@@ -132,10 +132,10 @@ int16_t OboeAudioRenderer::DecodeADPCMSample(uint8_t nibble, ADPCMState& state) 
     if (nibble & 8) diff = -diff;
     
     state.predictor += diff;
-    state.predictor = std::max(-32768, std::min(32767, static_cast<int>(state.predictor)));
+    state.predictor = static_cast<int16_t>(std::max<int>(-32768, std::min<int>(32767, state.predictor)));
     
     state.step_index += ADPCM_INDEX_TABLE[nibble];
-    state.step_index = std::max(0, std::min(88, state.step_index));
+    state.step_index = static_cast<int8_t>(std::max<int>(0, std::min<int>(88, state.step_index)));
     state.step = ADPCM_STEP_TABLE[state.step_index];
     
     return state.predictor;
@@ -324,7 +324,7 @@ void OboeAudioRenderer::ApplyVolume(void* data, size_t frames, int32_t format, i
             for (size_t i = 0; i < total_samples; i++) {
                 int32_t sample = static_cast<int32_t>(samples[i]);
                 sample = static_cast<int32_t>((sample - 128) * volume) + 128;
-                samples[i] = static_cast<int8_t>(std::max(-128, std::min(127, sample)));
+                samples[i] = static_cast<int8_t>(std::max<int>(-128, std::min<int>(127, sample)));
             }
             break;
         }
