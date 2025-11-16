@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (完整版本 - 改进状态同步，修复可访问性问题)
+// OboeHardwareDeviceDriver.cs (完整版本 - 修复编译错误)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -420,7 +420,8 @@ namespace Ryujinx.Audio.Backends.Oboe
                 lock (_playbackLock)
                 {
                     Stop();
-                    _ringBuffer?.Dispose();
+                    // 修复：DynamicRingBuffer没有Dispose方法，使用Clear代替
+                    _ringBuffer?.Clear();
                     _driver.Unregister(this);
                     Logger.Debug?.Print(LogClass.Audio, "OboeAudioSession disposed");
                 }
@@ -471,30 +472,30 @@ namespace Ryujinx.Audio.Backends.Oboe
                     if (!_active) 
                     {
                         // 如果会话未激活，立即标记缓冲区为已播放
-                        ulong sampleCount = GetSampleCount(buffer);
-                        _totalWrittenSamples += sampleCount;
-                        _totalPlayedSamples += sampleCount;
+                        ulong bufferSampleCount = GetBufferSampleCount(buffer); // 修复：重命名变量避免冲突
+                        _totalWrittenSamples += bufferSampleCount;
+                        _totalPlayedSamples += bufferSampleCount;
                         _driver.GetUpdateRequiredEvent().Set();
                         return;
                     }
 
                     // 计算样本数和帧数
                     int bytesPerSample = GetBytesPerSample(_sampleFormat);
-                    ulong sampleCount = (ulong)(buffer.Data.Length / bytesPerSample);
-                    ulong frameCount = sampleCount / (ulong)_channelCount;
+                    ulong totalSampleCount = (ulong)(buffer.Data.Length / bytesPerSample); // 修复：重命名变量避免冲突
+                    ulong frameCount = totalSampleCount / (ulong)_channelCount;
 
                     // 写入环形缓冲区
                     _ringBuffer.Write(buffer.Data, 0, buffer.Data.Length);
                     
                     // 记录缓冲区信息
-                    _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, sampleCount));
-                    _totalWrittenSamples += sampleCount;
+                    _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, totalSampleCount));
+                    _totalWrittenSamples += totalSampleCount;
                     
                     // 标记需要触发Native播放
                     _needsNativeTrigger = true;
 
                     Logger.Debug?.Print(LogClass.Audio, 
-                        $"Queued audio buffer: {frameCount} frames, {sampleCount} samples, " +
+                        $"Queued audio buffer: {frameCount} frames, {totalSampleCount} samples, " +
                         $"Format={_sampleFormat}, Rate={_sampleRate}Hz, " +
                         $"RingBuffer={_ringBuffer.Length} bytes");
                 }
@@ -562,7 +563,8 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
             }
 
-            private ulong GetSampleCount(AudioBuffer buffer)
+            // 修复：重命名方法避免变量名冲突
+            private ulong GetBufferSampleCount(AudioBuffer buffer)
             {
                 int bytesPerSample = GetBytesPerSample(_sampleFormat);
                 return (ulong)(buffer.Data.Length / bytesPerSample);
