@@ -102,14 +102,37 @@ tasks.register('compileLibRyujinx', Exec) {
     }
 
     executable dotnetExecutable
-    args 'publish',
-            '-r', 'linux-bionic-arm64',
-            '-c', configuration,
-            "-p:DisableUnsupportedError=true",
-            "-p:PublishAotUsingRuntimePack=true",
-            "-p:StripSymbols=${stripSymbols}",
-            "--artifacts-path", buildDir
 
+    def baseArgs = [
+        'publish',
+        '-r', 'linux-bionic-arm64',
+        '-c', configuration,
+        "-p:DisableUnsupportedError=true",
+        "-p:PublishAotUsingRuntimePack=true",
+        "-p:StripSymbols=${stripSymbols}",
+        "--artifacts-path", buildDir
+    ]
+
+    // 添加 ANDROID 常量定义
+    baseArgs.add("-p:DefineConstants=ANDROID")
+
+    // 在 Release 模式下添加优化参数
+    if (configuration == "Release") {
+        baseArgs.addAll([
+            "-p:OptimizationPreference=Speed",
+            "-p:IlcOptimizationPreference=Speed",
+            "-p:IlcOptimizationLevel=3",
+            "-p:IlcFoldIdenticalMethodBodies=true",
+            "-p:IlcGenerateStackTraceData=false",
+            "-p:TrimMode=full",
+            "-p:IlcTrimMetadata=true",
+            "-p:DebuggerSupport=false",
+            "-p:StackTraceSupport=false",
+            "-p:InvariantGlobalization=true"
+        ])
+    }
+
+    args baseArgs
     args additionalArgs.split(" ")
 
     doLast {
