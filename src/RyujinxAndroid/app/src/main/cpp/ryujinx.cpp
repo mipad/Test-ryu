@@ -1,4 +1,4 @@
-// ryujinx.cpp (完整版本 - 支持原始格式音频)
+// ryujinx.cpp (完整版本 - ARM 优化音频)
 #include "ryuijnx.h"
 #include <chrono>
 #include <csignal>
@@ -341,6 +341,33 @@ Java_org_ryujinx_android_NativeHelpers_resetOboeAudio(JNIEnv *env, jobject thiz)
     RyujinxOboe::OboeAudioRenderer::GetInstance().Reset();
 }
 
+// =============== ARM 稳定回调控制 JNI 接口 ===============
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_setOboeStabilizedCallbackEnabled(JNIEnv *env, jobject thiz, jboolean enabled) {
+    RyujinxOboe::OboeAudioRenderer::GetInstance().SetStabilizedCallbackEnabled(enabled == JNI_TRUE);
+}
+
+extern "C"
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_isOboeStabilizedCallbackEnabled(JNIEnv *env, jobject thiz) {
+    bool enabled = RyujinxOboe::OboeAudioRenderer::GetInstance().IsStabilizedCallbackEnabled();
+    return enabled ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_setOboeStabilizedCallbackIntensity(JNIEnv *env, jobject thiz, jfloat intensity) {
+    RyujinxOboe::OboeAudioRenderer::GetInstance().SetStabilizedCallbackIntensity(intensity);
+}
+
+extern "C"
+JNIEXPORT jfloat JNICALL
+Java_org_ryujinx_android_NativeHelpers_getOboeStabilizedCallbackIntensity(JNIEnv *env, jobject thiz) {
+    float intensity = RyujinxOboe::OboeAudioRenderer::GetInstance().GetStabilizedCallbackIntensity();
+    return static_cast<jfloat>(intensity);
+}
+
 // =============== 设备信息获取函数 ===============
 extern "C"
 JNIEXPORT jstring JNICALL
@@ -419,6 +446,27 @@ int32_t getOboeBufferedFrames() {
 extern "C"
 void resetOboeAudio() {
     RyujinxOboe::OboeAudioRenderer::GetInstance().Reset();
+}
+
+// =============== ARM 稳定回调控制 C 接口 (for C# P/Invoke) ===============
+extern "C"
+void setOboeStabilizedCallbackEnabled(bool enabled) {
+    RyujinxOboe::OboeAudioRenderer::GetInstance().SetStabilizedCallbackEnabled(enabled);
+}
+
+extern "C"
+bool isOboeStabilizedCallbackEnabled() {
+    return RyujinxOboe::OboeAudioRenderer::GetInstance().IsStabilizedCallbackEnabled();
+}
+
+extern "C"
+void setOboeStabilizedCallbackIntensity(float intensity) {
+    RyujinxOboe::OboeAudioRenderer::GetInstance().SetStabilizedCallbackIntensity(intensity);
+}
+
+extern "C"
+float getOboeStabilizedCallbackIntensity() {
+    return RyujinxOboe::OboeAudioRenderer::GetInstance().GetStabilizedCallbackIntensity();
 }
 
 // =============== 设备信息获取 C 接口 ===============

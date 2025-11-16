@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (支持所有采样率)
+// oboe_audio_renderer.cpp (ARM 优化版)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
@@ -202,7 +202,7 @@ void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& bu
            ->setFormatConversionAllowed(true)
            ->setUsage(oboe::Usage::Game);
     
-    // 设置固定的回调帧数
+    // 设置固定的回调帧数 - ARM 优化值
     builder.setFramesPerCallback(240);
     
     // 设置声道配置
@@ -229,8 +229,23 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() {
     oboe::AudioStreamBuilder builder;
     
     ConfigureForAAudioExclusive(builder);
-    builder.setDataCallback(m_audio_callback.get())
-           ->setErrorCallback(m_error_callback.get());
+    
+    // 根据设置选择使用稳定回调还是普通回调
+    if (m_stabilized_callback_enabled.load()) {
+        if (!m_stabilized_callback) {
+            m_stabilized_callback = std::make_shared<StabilizedAudioCallback>(m_audio_callback.get());
+            m_stabilized_callback->setLoadIntensity(m_stabilized_callback_intensity.load());
+        }
+        builder.setDataCallback(m_stabilized_callback.get())
+               ->setErrorCallback(m_stabilized_callback.get());
+        
+        __android_log_print(ANDROID_LOG_INFO, "OboeAudioRenderer", 
+                           "Using ARM-optimized stabilized callback with intensity: %.2f", 
+                           m_stabilized_callback_intensity.load());
+    } else {
+        builder.setDataCallback(m_audio_callback.get())
+               ->setErrorCallback(m_error_callback.get());
+    }
     
     // 尝试AAudio独占模式
     auto result = builder.openStream(m_stream);
@@ -261,7 +276,7 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() {
         m_current_sharing_mode = "Exclusive";
     }
     
-    // 优化缓冲区大小
+    // ARM 优化的缓冲区大小
     if (!OptimizeBufferSize()) {
         CloseStream();
         return false;
@@ -289,11 +304,12 @@ bool OboeAudioRenderer::OptimizeBufferSize() {
     int32_t desired_buffer_size;
     
     if (framesPerBurst > 0) {
-        // 使用 FramesPerBurst * 2 作为缓冲区大小（标准低延迟配置）
-        desired_buffer_size = framesPerBurst * 2;
+        // ARM 优化：使用更适合移动设备的缓冲区大小
+        // 对于 ARM 设备，使用稍大的缓冲区以减少掉帧
+        desired_buffer_size = framesPerBurst * 3; // 比标准稍大
     } else {
-        // 无法获取 FramesPerBurst，使用固定值
-        desired_buffer_size = 960; // 240 * 4
+        // 无法获取 FramesPerBurst，使用 ARM 优化的固定值
+        desired_buffer_size = 1024; // ARM 优化值
     }
     
     auto setBufferResult = m_stream->setBufferSizeInFrames(desired_buffer_size);
@@ -303,6 +319,10 @@ bool OboeAudioRenderer::OptimizeBufferSize() {
     
     m_frames_per_burst.store(framesPerBurst);
     m_buffer_size.store(actual_buffer_size);
+    
+    __android_log_print(ANDROID_LOG_INFO, "OboeAudioRenderer", 
+                       "ARM buffer optimization: FramesPerBurst=%d, BufferSize=%d", 
+                       framesPerBurst, actual_buffer_size);
     
     return true;
 }
@@ -383,6 +403,34 @@ void OboeAudioRenderer::SetVolume(float volume) {
     m_volume.store(std::clamp(volume, 0.0f, 1.0f));
 }
 
+void OboeAudioRenderer::SetStabilizedCallbackEnabled(bool enabled) {
+    if (m_stabilized_callback_enabled.load() != enabled) {
+        m_stabilized_callback_enabled.store(enabled);
+        
+        __android_log_print(ANDROID_LOG_INFO, "OboeAudioRenderer", 
+                           "ARM stabilized callback %s", enabled ? "enabled" : "disabled");
+        
+        // 如果音频流正在运行，需要重新配置
+        if (m_initialized.load() && m_stream_started.load()) {
+            std::lock_guard<std::mutex> lock(m_stream_mutex);
+            CloseStream();
+            ConfigureAndOpenStream();
+        }
+    }
+}
+
+void OboeAudioRenderer::SetStabilizedCallbackIntensity(float intensity) {
+    float clampedIntensity = std::clamp(intensity, 0.0f, 1.0f);
+    m_stabilized_callback_intensity.store(clampedIntensity);
+    
+    if (m_stabilized_callback) {
+        m_stabilized_callback->setLoadIntensity(clampedIntensity);
+    }
+    
+    __android_log_print(ANDROID_LOG_DEBUG, "OboeAudioRenderer", 
+                       "ARM stabilized callback intensity set to: %.2f", clampedIntensity);
+}
+
 void OboeAudioRenderer::Reset() {
     std::lock_guard<std::mutex> lock(m_stream_mutex);
     
@@ -458,14 +506,19 @@ void OboeAudioRenderer::OnStreamError(oboe::AudioStream* audioStream, oboe::Resu
     __android_log_print(ANDROID_LOG_ERROR, "OboeAudioRenderer", 
                        "Audio stream error: %s", oboe::convertToText(error));
     
-    // 这里可以添加自定义错误处理逻辑
-    // 返回 false 让 Oboe 继续执行默认的错误处理流程
+    // ARM 特定错误处理
+    if (error == oboe::Result::ErrorDisconnected) {
+        __android_log_print(ANDROID_LOG_WARN, "OboeAudioRenderer", 
+                           "Audio device disconnected, will attempt recovery");
+    }
 }
 
 void OboeAudioRenderer::OnStreamErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) {
     std::lock_guard<std::mutex> lock(m_stream_mutex);
     
     if (m_initialized.load()) {
+        __android_log_print(ANDROID_LOG_INFO, "OboeAudioRenderer", 
+                           "Recovering from audio stream error");
         CloseStream();
         ConfigureAndOpenStream();
     }
@@ -488,6 +541,15 @@ OboeAudioRenderer::PerformanceStats OboeAudioRenderer::GetStats() const {
     stats.sample_rate = m_sample_rate.load();
     stats.frames_per_burst = m_frames_per_burst.load();
     stats.buffer_size = m_buffer_size.load();
+    stats.stabilized_callback_enabled = m_stabilized_callback_enabled.load();
+    stats.stabilized_callback_intensity = m_stabilized_callback_intensity.load();
+    
+    // ARM 特定的性能统计
+    if (m_stabilized_callback) {
+        stats.last_load_duration_ns = m_stabilized_callback->getLastLoadDuration();
+        stats.total_stabilized_frames = m_stabilized_callback->getTotalFramesProcessed();
+    }
+    
     return stats;
 }
 

@@ -59,6 +59,12 @@ extern "C" {
     int32_t getOboeBufferedFrames();
     void resetOboeAudio();
     
+    // ARM 稳定回调控制函数
+    void setOboeStabilizedCallbackEnabled(bool enabled);
+    bool isOboeStabilizedCallbackEnabled();
+    void setOboeStabilizedCallbackIntensity(float intensity);
+    float getOboeStabilizedCallbackIntensity();
+    
     // 设备信息函数
     const char* GetAndroidDeviceModel();
     const char* GetAndroidDeviceBrand();
