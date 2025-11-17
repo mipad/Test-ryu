@@ -32,7 +32,7 @@ OboeAudioRenderer::AudioMemoryPool::~AudioMemoryPool() {
     Clear();
 }
 
-OboeAudioRenderer::AudioMemoryBlock* OboeAudioRenderer::AudioMemoryPool::AllocateBlock() {
+AudioMemoryBlock* OboeAudioRenderer::AudioMemoryPool::AllocateBlock() {
     std::lock_guard<std::mutex> lock(m_pool_mutex);
     
     if (m_free_blocks.empty()) {

@@ -101,10 +101,6 @@ public:
     void SetStabilizedCallbackIntensity(float intensity);
     float GetStabilizedCallbackIntensity() const { return m_stabilized_callback_intensity.load(); }
 
-private:
-    OboeAudioRenderer();
-    ~OboeAudioRenderer();
-
     // 基于内存池的音频缓冲区
     struct PooledAudioBuffer {
         AudioMemoryBlock* block = nullptr;
@@ -183,6 +179,10 @@ private:
     private:
         OboeAudioRenderer* m_renderer;
     };
+
+private:
+    OboeAudioRenderer();
+    ~OboeAudioRenderer();
 
     bool OpenStream();
     void CloseStream();
