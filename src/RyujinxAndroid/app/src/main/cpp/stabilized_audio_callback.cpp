@@ -13,6 +13,11 @@ StabilizedAudioCallback::StabilizedAudioCallback(
 oboe::DataCallbackResult StabilizedAudioCallback::onAudioReady(
     oboe::AudioStream *oboeStream, void *audioData, int32_t numFrames) {
     
+    // 检查流状态
+    if (!oboeStream || oboeStream->getState() != oboe::StreamState::Started) {
+        return oboe::DataCallbackResult::Stop;
+    }
+    
     // 如果不启用稳定回调，直接传递调用
     if (!mEnabled.load() || !mDataCallback) {
         return mDataCallback->onAudioReady(oboeStream, audioData, numFrames);
@@ -26,10 +31,10 @@ oboe::DataCallbackResult StabilizedAudioCallback::onAudioReady(
     // 执行实际的音频回调
     auto result = mDataCallback->onAudioReady(oboeStream, audioData, numFrames);
     
-    // 生成可控负载以稳定CPU频率
-    if (mLoadIntensity.load() > 0.01f) {
-        // 根据负载强度计算持续时间（微秒）
-        int64_t loadDurationMicros = static_cast<int64_t>(50.0f * mLoadIntensity.load());
+    // 仅在成功时生成负载
+    if (result == oboe::DataCallbackResult::Continue && mLoadIntensity.load() > 0.01f) {
+        // 根据负载强度计算持续时间（微秒），降低默认负载
+        int64_t loadDurationMicros = static_cast<int64_t>(30.0f * mLoadIntensity.load());
         generateLoad(loadDurationMicros * 1000); // 转换为纳秒
     }
     
