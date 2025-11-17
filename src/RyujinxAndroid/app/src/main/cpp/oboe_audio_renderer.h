@@ -12,7 +12,11 @@
 #include <list>
 #include <functional>
 #include <string>
-#include "stabilized_audio_callback.h"
+
+// 前向声明
+namespace RyujinxOboe {
+    class StabilizedAudioCallback;
+}
 
 namespace RyujinxOboe {
 
@@ -142,8 +146,8 @@ private:
 
     std::shared_ptr<oboe::AudioStream> m_stream;
     std::unique_ptr<RawSampleBufferQueue> m_raw_sample_queue;
-    std::unique_ptr<AAudioExclusiveCallback> m_audio_callback;
-    std::unique_ptr<AAudioExclusiveErrorCallback> m_error_callback;
+    std::shared_ptr<AAudioExclusiveCallback> m_audio_callback;
+    std::shared_ptr<AAudioExclusiveErrorCallback> m_error_callback;
     std::shared_ptr<StabilizedAudioCallback> m_stabilized_callback;
     
     std::mutex m_stream_mutex;

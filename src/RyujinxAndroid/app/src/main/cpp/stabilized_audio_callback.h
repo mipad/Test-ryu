@@ -6,12 +6,15 @@
 #include <chrono>
 #include <atomic>
 #include <cmath>
+#include <memory>
 
 namespace RyujinxOboe {
 
 class StabilizedAudioCallback : public oboe::AudioStreamCallback {
 public:
-    explicit StabilizedAudioCallback(oboe::AudioStreamCallback *callback);
+    // 构造函数接受数据回调和错误回调
+    StabilizedAudioCallback(std::shared_ptr<oboe::AudioStreamDataCallback> dataCallback,
+                          std::shared_ptr<oboe::AudioStreamErrorCallback> errorCallback);
     ~StabilizedAudioCallback() override = default;
     
     oboe::DataCallbackResult onAudioReady(oboe::AudioStream *oboeStream, 
@@ -19,8 +22,8 @@ public:
                                          int32_t numFrames) override;
     
     void onErrorBeforeClose(oboe::AudioStream *oboeStream, oboe::Result error) override {
-        if (mCallback) {
-            mCallback->onErrorBeforeClose(oboeStream, error);
+        if (mErrorCallback) {
+            mErrorCallback->onErrorBeforeClose(oboeStream, error);
         }
     }
     
@@ -29,14 +32,14 @@ public:
         mFrameCount = 0;
         mEpochTimeNanos = 0;
         mOpsPerNano = 1.0;
-        if (mCallback) {
-            mCallback->onErrorAfterClose(oboeStream, error);
+        if (mErrorCallback) {
+            mErrorCallback->onErrorAfterClose(oboeStream, error);
         }
     }
 
     bool onError(oboe::AudioStream* audioStream, oboe::Result error) override {
-        if (mCallback) {
-            return mCallback->onError(audioStream, error);
+        if (mErrorCallback) {
+            return mErrorCallback->onError(audioStream, error);
         }
         return false;
     }
@@ -52,7 +55,8 @@ public:
     float getLoadIntensity() const { return mLoadIntensity.load(); }
 
 private:
-    oboe::AudioStreamCallback *mCallback = nullptr;
+    std::shared_ptr<oboe::AudioStreamDataCallback> mDataCallback;
+    std::shared_ptr<oboe::AudioStreamErrorCallback> mErrorCallback;
     int64_t mFrameCount = 0;
     int64_t mEpochTimeNanos = 0;
     double mOpsPerNano = 1.0;

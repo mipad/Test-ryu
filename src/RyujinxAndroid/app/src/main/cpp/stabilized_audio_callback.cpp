@@ -4,16 +4,18 @@
 
 namespace RyujinxOboe {
 
-StabilizedAudioCallback::StabilizedAudioCallback(oboe::AudioStreamCallback *callback) 
-    : mCallback(callback) {
+StabilizedAudioCallback::StabilizedAudioCallback(
+    std::shared_ptr<oboe::AudioStreamDataCallback> dataCallback,
+    std::shared_ptr<oboe::AudioStreamErrorCallback> errorCallback) 
+    : mDataCallback(dataCallback), mErrorCallback(errorCallback) {
 }
 
 oboe::DataCallbackResult StabilizedAudioCallback::onAudioReady(
     oboe::AudioStream *oboeStream, void *audioData, int32_t numFrames) {
     
     // 如果不启用稳定回调，直接传递调用
-    if (!mEnabled.load() || !mCallback) {
-        return mCallback->onAudioReady(oboeStream, audioData, numFrames);
+    if (!mEnabled.load() || !mDataCallback) {
+        return mDataCallback->onAudioReady(oboeStream, audioData, numFrames);
     }
     
     // 计算时间戳（用于性能监控）
@@ -22,7 +24,7 @@ oboe::DataCallbackResult StabilizedAudioCallback::onAudioReady(
     }
     
     // 执行实际的音频回调
-    auto result = mCallback->onAudioReady(oboeStream, audioData, numFrames);
+    auto result = mDataCallback->onAudioReady(oboeStream, audioData, numFrames);
     
     // 生成可控负载以稳定CPU频率
     if (mLoadIntensity.load() > 0.01f) {

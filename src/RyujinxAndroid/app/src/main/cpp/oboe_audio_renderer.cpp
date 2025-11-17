@@ -1,5 +1,6 @@
 // oboe_audio_renderer.cpp (支持所有采样率)
 #include "oboe_audio_renderer.h"
+#include "stabilized_audio_callback.h"
 #include <cstring>
 #include <algorithm>
 #include <thread>
@@ -129,13 +130,11 @@ void OboeAudioRenderer::AAudioExclusiveErrorCallback::onErrorBeforeClose(oboe::A
 
 // =============== OboeAudioRenderer Implementation ===============
 OboeAudioRenderer::OboeAudioRenderer() {
-    m_audio_callback = std::make_unique<AAudioExclusiveCallback>(this);
-    m_error_callback = std::make_unique<AAudioExclusiveErrorCallback>(this);
+    m_audio_callback = std::make_shared<AAudioExclusiveCallback>(this);
+    m_error_callback = std::make_shared<AAudioExclusiveErrorCallback>(this);
     
-    // 默认创建稳定回调 - 由于AAudioExclusiveCallback继承自oboe::AudioStreamDataCallback，
-    // 而oboe::AudioStreamDataCallback又继承自oboe::AudioStreamCallback，所以可以安全转换
-    m_stabilized_callback = std::shared_ptr<StabilizedAudioCallback>(
-        new StabilizedAudioCallback(static_cast<oboe::AudioStreamCallback*>(m_audio_callback.get())));
+    // 默认创建稳定回调 - 使用新的构造函数
+    m_stabilized_callback = std::make_shared<StabilizedAudioCallback>(m_audio_callback, m_error_callback);
     m_stabilized_callback->setEnabled(true);
     m_stabilized_callback->setLoadIntensity(0.3f);
 }
@@ -240,9 +239,8 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() {
     // 根据设置选择使用稳定回调还是普通回调
     if (m_stabilized_callback_enabled.load()) {
         if (!m_stabilized_callback) {
-            // 使用直接构造并显式转换类型
-            m_stabilized_callback = std::shared_ptr<StabilizedAudioCallback>(
-                new StabilizedAudioCallback(static_cast<oboe::AudioStreamCallback*>(m_audio_callback.get())));
+            // 创建新的稳定回调
+            m_stabilized_callback = std::make_shared<StabilizedAudioCallback>(m_audio_callback, m_error_callback);
             m_stabilized_callback->setLoadIntensity(m_stabilized_callback_intensity.load());
         }
         builder.setDataCallback(m_stabilized_callback.get())
