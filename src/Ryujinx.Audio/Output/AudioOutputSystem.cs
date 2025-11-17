@@ -46,9 +46,9 @@ namespace Ryujinx.Audio.Output
         private readonly AudioOutputManager _manager;
 
         /// <summary>
-        /// 每个会话独立的锁，避免全局锁竞争
+        /// THe lock of the parent.
         /// </summary>
-        private readonly object _sessionLock = new object();
+        private readonly object _parentLock;
 
         /// <summary>
         /// The dispose state.
@@ -59,11 +59,13 @@ namespace Ryujinx.Audio.Output
         /// Create a new <see cref="AudioOutputSystem"/>.
         /// </summary>
         /// <param name="manager">The manager instance</param>
+        /// <param name="parentLock">The lock of the manager</param>
         /// <param name="deviceSession">The hardware device session</param>
         /// <param name="bufferEvent">The buffer release event of the audio output</param>
-        public AudioOutputSystem(AudioOutputManager manager, IHardwareDeviceSession deviceSession, IWritableEvent bufferEvent)
+        public AudioOutputSystem(AudioOutputManager manager, object parentLock, IHardwareDeviceSession deviceSession, IWritableEvent bufferEvent)
         {
             _manager = manager;
+            _parentLock = parentLock;
             _session = new AudioDeviceSession(deviceSession, bufferEvent);
         }
 
@@ -108,7 +110,7 @@ namespace Ryujinx.Audio.Output
         /// <returns>The released buffer event</returns>
         public IWritableEvent RegisterBufferEvent()
         {
-            lock (_sessionLock)
+            lock (_parentLock)
             {
                 return _session.GetBufferEvent();
             }
@@ -119,8 +121,7 @@ namespace Ryujinx.Audio.Output
         /// </summary>
         public void Update()
         {
-            // 使用细粒度锁，只保护会话内部状态
-            lock (_sessionLock)
+            lock (_parentLock)
             {
                 _session.Update();
             }
@@ -184,8 +185,7 @@ namespace Ryujinx.Audio.Output
         /// <returns>A <see cref="ResultCode"/> reporting an error or a success.</returns>
         public ResultCode AppendBuffer(ulong bufferTag, ref AudioUserBuffer userBuffer)
         {
-            // 使用细粒度锁，避免全局锁竞争
-            lock (_sessionLock)
+            lock (_parentLock)
             {
                 AudioBuffer buffer = new()
                 {
@@ -219,8 +219,7 @@ namespace Ryujinx.Audio.Output
                 releasedBuffers[0] = 0;
             }
 
-            // 使用细粒度锁
-            lock (_sessionLock)
+            lock (_parentLock)
             {
                 for (int i = 0; i < releasedBuffers.Length; i++)
                 {
@@ -240,10 +239,11 @@ namespace Ryujinx.Audio.Output
         /// <summary>
         /// Get the current state of the <see cref="AudioOutputSystem"/>.
         /// </summary>
-        /// <returns>Return the curent state of the <see cref="AudioOutputSystem"/></returns>
+        /// <returns>Return the curent sta\te of the <see cref="AudioOutputSystem"/></returns>
+        /// <returns></returns>
         public AudioDeviceState GetState()
         {
-            lock (_sessionLock)
+            lock (_parentLock)
             {
                 return _session.GetState();
             }
@@ -255,7 +255,7 @@ namespace Ryujinx.Audio.Output
         /// <returns>A <see cref="ResultCode"/> reporting an error or a success</returns>
         public ResultCode Start()
         {
-            lock (_sessionLock)
+            lock (_parentLock)
             {
                 return _session.Start();
             }
@@ -267,7 +267,7 @@ namespace Ryujinx.Audio.Output
         /// <returns>A <see cref="ResultCode"/> reporting an error or a success</returns>
         public ResultCode Stop()
         {
-            lock (_sessionLock)
+            lock (_parentLock)
             {
                 return _session.Stop();
             }
@@ -279,7 +279,7 @@ namespace Ryujinx.Audio.Output
         /// <returns>The volume of the session</returns>
         public float GetVolume()
         {
-            lock (_sessionLock)
+            lock (_parentLock)
             {
                 return _session.GetVolume();
             }
@@ -291,7 +291,7 @@ namespace Ryujinx.Audio.Output
         /// <param name="volume">The new volume to set</param>
         public void SetVolume(float volume)
         {
-            lock (_sessionLock)
+            lock (_parentLock)
             {
                 _session.SetVolume(volume);
             }
@@ -303,7 +303,7 @@ namespace Ryujinx.Audio.Output
         /// <returns>The count of buffer currently in use</returns>
         public uint GetBufferCount()
         {
-            lock (_sessionLock)
+            lock (_parentLock)
             {
                 return _session.GetBufferCount();
             }
@@ -316,7 +316,7 @@ namespace Ryujinx.Audio.Output
         /// <returns>Return true if a buffer is present</returns>
         public bool ContainsBuffer(ulong bufferTag)
         {
-            lock (_sessionLock)
+            lock (_parentLock)
             {
                 return _session.ContainsBuffer(bufferTag);
             }
@@ -328,7 +328,7 @@ namespace Ryujinx.Audio.Output
         /// <returns>The count of sample played in this session</returns>
         public ulong GetPlayedSampleCount()
         {
-            lock (_sessionLock)
+            lock (_parentLock)
             {
                 return _session.GetPlayedSampleCount();
             }
@@ -340,7 +340,7 @@ namespace Ryujinx.Audio.Output
         /// <returns>True if any buffers was flushed</returns>
         public bool FlushBuffers()
         {
-            lock (_sessionLock)
+            lock (_parentLock)
             {
                 return _session.FlushBuffers();
             }
