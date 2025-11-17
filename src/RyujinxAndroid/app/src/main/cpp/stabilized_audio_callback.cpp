@@ -1,6 +1,7 @@
 #include "stabilized_audio_callback.h"
 #include <algorithm>
 #include <atomic>
+#include <android/log.h>
 
 namespace RyujinxOboe {
 
@@ -31,10 +32,12 @@ oboe::DataCallbackResult StabilizedAudioCallback::onAudioReady(
     // 执行实际的音频回调
     auto result = mDataCallback->onAudioReady(oboeStream, audioData, numFrames);
     
-    // 仅在成功时生成负载
-    if (result == oboe::DataCallbackResult::Continue && mLoadIntensity.load() > 0.01f) {
-        // 根据负载强度计算持续时间（微秒），降低默认负载
-        int64_t loadDurationMicros = static_cast<int64_t>(30.0f * mLoadIntensity.load());
+    // 大幅降低负载生成频率和强度
+    if (result == oboe::DataCallbackResult::Continue && 
+        mLoadIntensity.load() > 0.01f &&
+        (mFrameCount % 4 == 0)) {  // 每4次回调执行一次负载生成
+        // 大幅降低负载强度
+        int64_t loadDurationMicros = static_cast<int64_t>(10.0f * mLoadIntensity.load());
         generateLoad(loadDurationMicros * 1000); // 转换为纳秒
     }
     
@@ -49,19 +52,21 @@ void StabilizedAudioCallback::generateLoad(int64_t durationNanos) {
     int64_t currentTime = startTime;
     int64_t targetTime = startTime + durationNanos;
     
-    // 简单的负载生成循环
-    int iterations = 0;
+    // 大幅简化的负载生成 - 只做必要的最小计算
+    volatile int dummyValue = 0;  // 使用volatile防止优化
     while (currentTime < targetTime) {
-        // 执行一些计算工作
-        for (int i = 0; i < 100; ++i) {
-            double value = std::sin(static_cast<double>(iterations + i));
-            value = std::cos(value * 3.14159);
-            (void)value; // 避免编译器优化掉
-        }
+        // 极简的计算工作 - 只做1次简单计算而不是100次复杂计算
+        dummyValue += 1;
         
-        iterations++;
+        // 更频繁地检查时间，减少不必要的计算
         cpuRelax();
         currentTime = getCurrentTimeNanos();
+    }
+    
+    // 防止编译器优化掉dummyValue
+    if (dummyValue == 0) {
+        __android_log_print(ANDROID_LOG_VERBOSE, "StabilizedAudioCallback", 
+                           "Dummy value: %d", dummyValue);
     }
 }
 

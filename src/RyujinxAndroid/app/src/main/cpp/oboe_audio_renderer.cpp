@@ -122,7 +122,7 @@ OboeAudioRenderer::OboeAudioRenderer() {
     // 默认创建稳定回调 - 使用新的构造函数
     m_stabilized_callback = std::make_shared<StabilizedAudioCallback>(m_audio_callback, m_error_callback);
     m_stabilized_callback->setEnabled(true);
-    m_stabilized_callback->setLoadIntensity(0.3f);
+    m_stabilized_callback->setLoadIntensity(0.1f); // 降低默认强度
 }
 
 OboeAudioRenderer::~OboeAudioRenderer() {
@@ -222,21 +222,20 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() {
     
     ConfigureForAAudioExclusive(builder);
     
-    // 根据设置选择使用稳定回调还是普通回调
-    if (m_stabilized_callback_enabled.load()) {
-        if (!m_stabilized_callback) {
-            // 创建新的稳定回调
-            m_stabilized_callback = std::make_shared<StabilizedAudioCallback>(m_audio_callback, m_error_callback);
-            m_stabilized_callback->setLoadIntensity(m_stabilized_callback_intensity.load());
-        }
+    // 默认禁用稳定回调以提升性能
+    bool useStabilizedCallback = m_stabilized_callback_enabled.load();
+    
+    if (useStabilizedCallback && m_stabilized_callback) {
         builder.setDataCallback(m_stabilized_callback.get())
                ->setErrorCallback(m_stabilized_callback.get());
     } else {
+        // 使用轻量级错误回调
+        auto lightweightErrorCallback = std::make_shared<OboeErrorCallback>(this);
         builder.setDataCallback(m_audio_callback.get())
-               ->setErrorCallback(m_error_callback.get());
+               ->setErrorCallback(lightweightErrorCallback.get());
     }
     
-    // 尝试AAudio独占模式
+    // 简化回退策略 - 优先AAudio
     auto result = builder.openStream(m_stream);
     
     if (result != oboe::Result::OK) {
@@ -471,9 +470,11 @@ size_t OboeAudioRenderer::GetBytesPerSample(int32_t format) {
 
 oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) {
     if (!m_initialized.load() || !m_raw_sample_queue) {
+        // 快速静音填充
         int32_t channels = m_device_channels;
         size_t bytes_per_sample = GetBytesPerSample(m_sample_format.load());
-        std::memset(audioData, 0, num_frames * channels * bytes_per_sample);
+        size_t total_bytes = num_frames * channels * bytes_per_sample;
+        std::memset(audioData, 0, total_bytes);
         return oboe::DataCallbackResult::Continue;
     }
     
@@ -485,7 +486,7 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioS
     uint8_t* output = static_cast<uint8_t*>(audioData);
     size_t bytes_read = m_raw_sample_queue->ReadRaw(output, bytes_requested, m_sample_format.load());
     
-    // 如果数据不足，填充静音
+    // 如果数据不足，快速填充静音
     if (bytes_read < bytes_requested) {
         size_t bytes_remaining = bytes_requested - bytes_read;
         std::memset(output + bytes_read, 0, bytes_remaining);
