@@ -249,6 +249,10 @@ class SettingViews {
             val maxAnisotropy = remember { mutableStateOf(1f) } // 默认1f（关闭）
             val showAnisotropyOptions = remember { mutableStateOf(false) } // 控制各向异性过滤选项显示
 
+            // 新增：Macro HLE 和 Macro JIT 状态变量
+            val enableMacroHLE = remember { mutableStateOf(true) } // 默认启用Macro HLE
+            val enableMacroJIT = remember { mutableStateOf(false) } // 默认禁用Macro JIT
+
             if (!loaded.value) {
                 settingsViewModel.initializeState(
                     memoryManagerMode,  // 修改：传递memoryManagerMode参数
@@ -299,7 +303,10 @@ class SettingViews {
                     // 新增：BackendThreading 参数
                     backendThreading,
                     // 新增：各向异性过滤参数
-                    maxAnisotropy
+                    maxAnisotropy,
+                    // 新增：Macro HLE 和 Macro JIT 参数
+                    enableMacroHLE,
+                    enableMacroJIT
                 )
                 
                 // 修改：直接从MainViewModel获取已保存的表面格式列表，不重新获取
@@ -384,7 +391,10 @@ class SettingViews {
                                     // 新增：BackendThreading 参数
                                     backendThreading,
                                     // 新增：各向异性过滤参数
-                                    maxAnisotropy
+                                    maxAnisotropy,
+                                    // 新增：Macro HLE 和 Macro JIT 参数
+                                    enableMacroHLE,
+                                    enableMacroJIT
                                 )
                                 settingsViewModel.navController.popBackStack()
                             }) {
@@ -874,6 +884,57 @@ class SettingViews {
                     }
                 }
             }
+                    ExpandableView(onCardArrowClick = { }, title = "CPU") {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            // 新增：Enable Macro HLE 设置
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(text = "Enable Macro HLE")
+                                    Text(
+                                        text = "Enable macro High Level Emulation for better performance",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                    )
+                                }
+                                Switch(
+                                    checked = enableMacroHLE.value,
+                                    onCheckedChange = { enableMacroHLE.value = it }
+                                )
+                            }
+
+                            // 新增：Enable Macro JIT 设置
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(text = "Enable Macro JIT")
+                                    Text(
+                                        text = "Enable macro Just-In-Time compilation for dynamic macro instructions",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                    )
+                                }
+                                Switch(
+                                    checked = enableMacroJIT.value,
+                                    onCheckedChange = { enableMacroJIT.value = it }
+                                )
+                            }
+                        }
+                    }
                     ExpandableView(onCardArrowClick = { }, title = "Graphics") {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             Row(
@@ -2931,7 +2992,10 @@ if (showBackendThreadingDialog.value) {
                         // 新增：BackendThreading 参数
                         backendThreading,
                         // 新增：各向异性过滤参数
-                        maxAnisotropy
+                        maxAnisotropy,
+                        // 新增：Macro HLE 和 Macro JIT 参数
+                        enableMacroHLE,
+                        enableMacroJIT
                     )
                     settingsViewModel.navController.popBackStack()
                 }
