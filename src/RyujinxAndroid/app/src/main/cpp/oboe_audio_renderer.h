@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (支持所有采样率)
+// oboe_audio_renderer.h (支持所有采样率，带内存池优化)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -12,6 +12,7 @@
 #include <list>
 #include <functional>
 #include <string>
+#include <array>
 
 // 前向声明
 namespace RyujinxOboe {
@@ -27,6 +28,10 @@ enum SampleFormat {
     PCM_INT32 = 3,
     PCM_FLOAT = 4
 };
+
+// 内存池配置
+constexpr size_t AUDIO_POOL_SIZE = 32;
+constexpr size_t MAX_AUDIO_FRAME_SIZE = 1024 * 8 * 4; // 1024帧 * 8声道 * 4字节
 
 class OboeAudioRenderer {
 public:
@@ -54,34 +59,61 @@ public:
     void SetStabilizedCallbackIntensity(float intensity);
     float GetStabilizedCallbackIntensity() const { return m_stabilized_callback_intensity.load(); }
 
-    struct PerformanceStats {
-        int64_t frames_written = 0;
-        int64_t frames_played = 0;
-        int32_t underrun_count = 0;
-        int32_t stream_restart_count = 0;
-        std::string audio_api = "Unknown";
-        std::string sharing_mode = "Unknown";
-        std::string sample_format = "Unknown";
-        int32_t sample_rate = 0;
-        int32_t frames_per_burst = 0;
-        int32_t buffer_size = 0;
-        bool stabilized_callback_enabled = false;
-        float stabilized_callback_intensity = 0.0f;
-    };
-    
-    PerformanceStats GetStats() const;
-
 private:
     OboeAudioRenderer();
     ~OboeAudioRenderer();
 
-    // 原始格式缓冲区结构
-    struct RawSampleBuffer {
-        std::vector<uint8_t> data;
-        size_t data_size = 0;
+    // 音频内存池块
+    struct AudioMemoryBlock {
+        std::array<uint8_t, MAX_AUDIO_FRAME_SIZE> data;
+        size_t used_size = 0;
+        bool in_use = false;
+        int32_t sample_format = 1;
+    };
+
+    // 基于内存池的音频缓冲区
+    struct PooledAudioBuffer {
+        AudioMemoryBlock* block = nullptr;
         size_t data_played = 0;
-        int32_t sample_format = 1; // PCM16 by default
         bool consumed = true;
+    };
+
+    // 简单音频内存池
+    class AudioMemoryPool {
+    public:
+        AudioMemoryPool(size_t pool_size = AUDIO_POOL_SIZE);
+        ~AudioMemoryPool();
+        
+        AudioMemoryBlock* AllocateBlock();
+        void ReleaseBlock(AudioMemoryBlock* block);
+        void Clear();
+
+    private:
+        std::vector<AudioMemoryBlock> m_blocks;
+        std::vector<AudioMemoryBlock*> m_free_blocks;
+        mutable std::mutex m_pool_mutex;
+    };
+
+    // 原始格式缓冲区结构（使用内存池）
+    class PooledAudioBufferQueue {
+    public:
+        explicit PooledAudioBufferQueue(std::shared_ptr<AudioMemoryPool> pool, size_t max_buffers = 32);
+        ~PooledAudioBufferQueue();
+        
+        bool WriteRaw(const uint8_t* data, size_t data_size, int32_t sample_format);
+        size_t ReadRaw(uint8_t* output, size_t output_size, int32_t target_format);
+        size_t Available() const;
+        void Clear();
+        
+        int32_t GetCurrentFormat() const { return m_current_format; }
+        
+    private:
+        std::queue<PooledAudioBuffer> m_buffers;
+        PooledAudioBuffer m_playing_buffer;
+        size_t m_max_buffers;
+        mutable std::mutex m_mutex;
+        int32_t m_current_format = 1; // PCM16 by default
+        std::shared_ptr<AudioMemoryPool> m_memory_pool;
     };
 
     class AAudioExclusiveCallback : public oboe::AudioStreamDataCallback {
@@ -114,26 +146,6 @@ private:
         OboeAudioRenderer* m_renderer;
     };
 
-    // 原始格式缓冲区队列
-    class RawSampleBufferQueue {
-    public:
-        explicit RawSampleBufferQueue(size_t max_buffers = 32) : m_max_buffers(max_buffers) {}
-        
-        bool WriteRaw(const uint8_t* data, size_t data_size, int32_t sample_format);
-        size_t ReadRaw(uint8_t* output, size_t output_size, int32_t target_format);
-        size_t Available() const;
-        void Clear();
-        
-        int32_t GetCurrentFormat() const { return m_current_format; }
-        
-    private:
-        std::queue<RawSampleBuffer> m_buffers;
-        RawSampleBuffer m_playing_buffer;
-        size_t m_max_buffers;
-        mutable std::mutex m_mutex;
-        int32_t m_current_format = 1; // PCM16 by default
-    };
-
     bool OpenStream();
     void CloseStream();
     bool ConfigureAndOpenStream();
@@ -154,7 +166,8 @@ private:
     bool OptimizeBufferSize();
 
     std::shared_ptr<oboe::AudioStream> m_stream;
-    std::unique_ptr<RawSampleBufferQueue> m_raw_sample_queue;
+    std::shared_ptr<AudioMemoryPool> m_memory_pool;
+    std::unique_ptr<PooledAudioBufferQueue> m_raw_sample_queue;
     std::shared_ptr<AAudioExclusiveCallback> m_audio_callback;
     std::shared_ptr<OboeErrorCallback> m_error_callback;
     std::shared_ptr<StabilizedAudioCallback> m_stabilized_callback;
@@ -163,7 +176,7 @@ private:
     std::atomic<bool> m_initialized{false};
     std::atomic<bool> m_stream_started{false};
     std::atomic<bool> m_stabilized_callback_enabled{true}; // 默认开启
-    std::atomic<float> m_stabilized_callback_intensity{0.3f}; // 默认强度0.3
+    std::atomic<float> m_stabilized_callback_intensity{0.1f}; // 降低默认强度
     
     std::atomic<int32_t> m_sample_rate{48000};
     std::atomic<int32_t> m_channel_count{2};
@@ -173,13 +186,8 @@ private:
     int32_t m_device_channels = 2;
     oboe::AudioFormat m_oboe_format{oboe::AudioFormat::I16};
     
-    // 性能统计
-    std::atomic<int64_t> m_frames_written{0};
-    std::atomic<int64_t> m_frames_played{0};
+    // 性能统计 - 移除所有统计相关的变量
     std::atomic<int32_t> m_underrun_count{0};
-    std::atomic<int32_t> m_stream_restart_count{0};
-    std::atomic<int32_t> m_frames_per_burst{0};
-    std::atomic<int32_t> m_buffer_size{0};
     
     std::string m_current_audio_api = "Unknown";
     std::string m_current_sharing_mode = "Unknown";
