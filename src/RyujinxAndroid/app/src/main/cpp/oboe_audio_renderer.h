@@ -12,11 +12,7 @@
 #include <list>
 #include <functional>
 #include <string>
-
-// 前向声明，避免循环依赖
-namespace RyujinxOboe {
-    class StabilizedAudioCallback;
-}
+#include "stabilized_audio_callback.h"
 
 namespace RyujinxOboe {
 
