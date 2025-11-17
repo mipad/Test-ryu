@@ -4,7 +4,9 @@ using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.KHR;
 using System;
 using System.Linq;
+using System.Collections.Generic;
 using VkFormat = Silk.NET.Vulkan.Format;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -41,6 +43,12 @@ namespace Ryujinx.Graphics.Vulkan
         private bool _updateScalingFilter;
         private ScalingFilter _currentScalingFilter;
         private bool _colorSpacePassthroughEnabled;
+
+        // 自定义表面格式相关字段
+        private static bool _useCustomSurfaceFormat = false;
+        private static SurfaceFormatKHR _customSurfaceFormat;
+        private static bool _customFormatValid = false;
+        private static List<SurfaceFormatKHR> _availableSurfaceFormats = new List<SurfaceFormatKHR>();
 
         public unsafe Window(VulkanRenderer gd, SurfaceKHR surface, PhysicalDevice physicalDevice, Device device)
         {
@@ -118,6 +126,10 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 _gd.SurfaceApi.GetPhysicalDeviceSurfaceFormats(_physicalDevice, _surface, &surfaceFormatsCount, pSurfaceFormats);
             }
+
+            // 保存可用的表面格式列表
+            _availableSurfaceFormats.Clear();
+            _availableSurfaceFormats.AddRange(surfaceFormats);
 
             uint presentModesCount;
 
@@ -247,8 +259,28 @@ namespace Ryujinx.Graphics.Vulkan
             return new TextureView(_gd, _device, new DisposableImageView(_gd.Api, _device, imageView), info, format);
         }
 
+        // 增强的表面格式选择方法，支持自定义格式
         private static SurfaceFormatKHR ChooseSwapSurfaceFormat(SurfaceFormatKHR[] availableFormats, bool colorSpacePassthroughEnabled)
         {
+            // 如果启用了自定义表面格式且格式有效，优先使用自定义格式
+            if (_useCustomSurfaceFormat && _customFormatValid)
+            {
+                // 检查自定义格式是否在可用格式列表中
+                foreach (var format in availableFormats)
+                {
+                    if (format.Format == _customSurfaceFormat.Format && 
+                        format.ColorSpace == _customSurfaceFormat.ColorSpace)
+                    {
+                        Logger.Info?.Print(LogClass.Gpu, $"Using custom surface format: {GetFormatDisplayName(format.Format, format.ColorSpace)}");
+                        return format;
+                    }
+                }
+                
+                // 如果自定义格式不可用，回退到自动选择并记录警告
+                Logger.Warning?.Print(LogClass.Gpu, $"Custom surface format not available: {GetFormatDisplayName(_customSurfaceFormat.Format, _customSurfaceFormat.ColorSpace)}, falling back to automatic selection");
+                _customFormatValid = false;
+            }
+
             if (availableFormats.Length == 1 && availableFormats[0].Format == VkFormat.Undefined)
             {
                 return new SurfaceFormatKHR(VkFormat.B8G8R8A8Unorm, ColorSpaceKHR.PaceSrgbNonlinearKhr);
@@ -328,6 +360,93 @@ namespace Ryujinx.Graphics.Vulkan
             uint height = Math.Max(capabilities.MinImageExtent.Height, Math.Min(capabilities.MaxImageExtent.Height, SurfaceHeight));
 
             return new Extent2D(width, height);
+        }
+
+        // 自定义表面格式相关方法
+        public static void SetCustomSurfaceFormat(VkFormat format, ColorSpaceKHR colorSpace)
+        {
+            _customSurfaceFormat = new SurfaceFormatKHR(format, colorSpace);
+            _useCustomSurfaceFormat = true;
+            _customFormatValid = true;
+            
+            Logger.Info?.Print(LogClass.Gpu, $"Custom surface format set: {GetFormatDisplayName(format, colorSpace)}");
+        }
+
+        public static void ClearCustomSurfaceFormat()
+        {
+            _useCustomSurfaceFormat = false;
+            _customFormatValid = false;
+            Logger.Info?.Print(LogClass.Gpu, "Custom surface format cleared");
+        }
+
+        public static bool IsCustomSurfaceFormatValid()
+        {
+            return _customFormatValid;
+        }
+
+        public static string GetCurrentSurfaceFormatInfo()
+        {
+            if (_useCustomSurfaceFormat && _customFormatValid)
+            {
+                return $"Custom: Format={_customSurfaceFormat.Format}, ColorSpace={_customSurfaceFormat.ColorSpace}";
+            }
+            else
+            {
+                return "Auto-selected surface format";
+            }
+        }
+
+        public static List<SurfaceFormatKHR> GetAvailableSurfaceFormats()
+        {
+            try
+            {
+                // 返回保存的可用格式列表
+                if (_availableSurfaceFormats != null && _availableSurfaceFormats.Count > 0)
+                {
+                    return new List<SurfaceFormatKHR>(_availableSurfaceFormats);
+                }
+                else
+                {
+                    return new List<SurfaceFormatKHR>();
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Gpu, $"Error in GetAvailableSurfaceFormats: {ex.Message}");
+                return new List<SurfaceFormatKHR>();
+            }
+        }
+
+        public static string GetFormatDisplayName(VkFormat format, ColorSpaceKHR colorSpace)
+        {
+            string formatName = format.ToString();
+            string colorSpaceName = colorSpace.ToString();
+            
+            // 简化格式名称显示
+            if (formatName.StartsWith("B8G8R8A8"))
+                formatName = "BGRA8";
+            else if (formatName.StartsWith("R8G8B8A8"))
+                formatName = "RGBA8";
+            else if (formatName.StartsWith("A2B10G10R10"))
+                formatName = "A2B10G10R10";
+            else if (formatName.StartsWith("A2R10G10B10"))
+                formatName = "A2R10G10B10";
+            else if (formatName.StartsWith("R5G6B5"))
+                formatName = "RGB565";
+            else if (formatName.StartsWith("R16G16B16A16"))
+                formatName = "RGBA16F";
+                
+            // 简化色彩空间名称显示
+            if (colorSpaceName.Contains("SrgbNonlinear"))
+                colorSpaceName = "SRGB";
+            else if (colorSpaceName.Contains("PassThrough"))
+                colorSpaceName = "PassThrough";
+            else if (colorSpaceName.Contains("DisplayP3"))
+                colorSpaceName = "DisplayP3";
+            else if (colorSpaceName.Contains("ExtendedSrgb"))
+                colorSpaceName = "ExtendedSRGB";
+                
+            return $"{formatName} ({colorSpaceName})";
         }
 
         public unsafe override void Present(ITexture texture, ImageCrop crop, Action swapBuffersCallback)
