@@ -369,6 +369,27 @@ Java_org_ryujinx_android_NativeHelpers_getOboeStabilizedCallbackIntensity(JNIEnv
     return static_cast<jfloat>(intensity);
 }
 
+// =============== 音频恢复和健康检查 JNI 接口 ===============
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_recoverOboeAudio(JNIEnv *env, jobject thiz) {
+    RyujinxOboe::OboeAudioRenderer::GetInstance().ForceRecovery();
+}
+
+extern "C"
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_checkOboeStreamHealth(JNIEnv *env, jobject thiz) {
+    bool healthy = RyujinxOboe::OboeAudioRenderer::GetInstance().CheckStreamHealth();
+    return healthy ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C"
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_isOboeStreamHealthy(JNIEnv *env, jobject thiz) {
+    bool healthy = RyujinxOboe::OboeAudioRenderer::GetInstance().IsStreamHealthy();
+    return healthy ? JNI_TRUE : JNI_FALSE;
+}
+
 // =============== 设备信息获取函数 ===============
 extern "C"
 JNIEXPORT jstring JNICALL
@@ -470,6 +491,22 @@ float getOboeStabilizedCallbackIntensity() {
     return RyujinxOboe::OboeAudioRenderer::GetInstance().GetStabilizedCallbackIntensity();
 }
 
+// =============== 音频恢复和健康检查 C 接口 ===============
+extern "C"
+void recoverOboeAudio() {
+    RyujinxOboe::OboeAudioRenderer::GetInstance().ForceRecovery();
+}
+
+extern "C"
+bool checkOboeStreamHealth() {
+    return RyujinxOboe::OboeAudioRenderer::GetInstance().CheckStreamHealth();
+}
+
+extern "C"
+bool isOboeStreamHealthy() {
+    return RyujinxOboe::OboeAudioRenderer::GetInstance().IsStreamHealthy();
+}
+
 // =============== 设备信息获取 C 接口 ===============
 extern "C"
 const char* GetAndroidDeviceModel() {
@@ -487,4 +524,40 @@ const char* GetAndroidDeviceBrand() {
         __system_property_get("ro.product.brand", brand);
     }
     return brand;
+}
+
+// =============== 性能统计 JNI 接口 ===============
+extern "C"
+JNIEXPORT jlong JNICALL
+Java_org_ryujinx_android_NativeHelpers_getOboeFramesWritten(JNIEnv *env, jobject thiz) {
+    auto stats = RyujinxOboe::OboeAudioRenderer::GetInstance().GetStats();
+    return static_cast<jlong>(stats.frames_written);
+}
+
+extern "C"
+JNIEXPORT jlong JNICALL
+Java_org_ryujinx_android_NativeHelpers_getOboeFramesPlayed(JNIEnv *env, jobject thiz) {
+    auto stats = RyujinxOboe::OboeAudioRenderer::GetInstance().GetStats();
+    return static_cast<jlong>(stats.frames_played);
+}
+
+extern "C"
+JNIEXPORT jint JNICALL
+Java_org_ryujinx_android_NativeHelpers_getOboeUnderrunCount(JNIEnv *env, jobject thiz) {
+    auto stats = RyujinxOboe::OboeAudioRenderer::GetInstance().GetStats();
+    return static_cast<jint>(stats.underrun_count);
+}
+
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_org_ryujinx_android_NativeHelpers_getOboeAudioApi(JNIEnv *env, jobject thiz) {
+    auto stats = RyujinxOboe::OboeAudioRenderer::GetInstance().GetStats();
+    return env->NewStringUTF(stats.audio_api.c_str());
+}
+
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_org_ryujinx_android_NativeHelpers_getOboeSharingMode(JNIEnv *env, jobject thiz) {
+    auto stats = RyujinxOboe::OboeAudioRenderer::GetInstance().GetStats();
+    return env->NewStringUTF(stats.sharing_mode.c_str());
 }

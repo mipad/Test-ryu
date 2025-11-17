@@ -30,6 +30,8 @@ bool OboeAudioRenderer::RawSampleBufferQueue::WriteRaw(const uint8_t* data, size
     buffer.data_played = 0;
     buffer.sample_format = sample_format;
     buffer.consumed = false;
+    buffer.timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
     
     m_buffers.push(std::move(buffer));
     m_current_format = sample_format;
@@ -107,6 +109,22 @@ void OboeAudioRenderer::RawSampleBufferQueue::Clear() {
     m_playing_buffer = RawSampleBuffer{};
 }
 
+void OboeAudioRenderer::RawSampleBufferQueue::CleanupStaleBuffers(int64_t max_age_ns) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    
+    int64_t current_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+    
+    // 检查当前播放缓冲区是否过期
+    if (!m_playing_buffer.consumed && m_playing_buffer.timestamp > 0 && 
+        (current_time - m_playing_buffer.timestamp) > max_age_ns) {
+        __android_log_print(ANDROID_LOG_WARN, "RawSampleBufferQueue", 
+                           "Clearing stale playing buffer, age: %lld ms", 
+                           (current_time - m_playing_buffer.timestamp) / 1000000);
+        m_playing_buffer = RawSampleBuffer{};
+    }
+}
+
 // =============== Audio Callback Implementation ===============
 oboe::DataCallbackResult OboeAudioRenderer::AAudioExclusiveCallback::onAudioReady(
     oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) {
@@ -179,6 +197,8 @@ bool OboeAudioRenderer::InitializeWithFormat(int32_t sampleRate, int32_t channel
     }
     
     m_initialized.store(true);
+    m_stream_healthy.store(true);
+    m_last_audio_ready_time.store(getCurrentTimeNanos());
     return true;
 }
 
@@ -194,6 +214,7 @@ void OboeAudioRenderer::Shutdown() {
     
     m_initialized.store(false);
     m_stream_started.store(false);
+    m_stream_healthy.store(false);
 }
 
 void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& builder) {
@@ -295,6 +316,7 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() {
     }
     
     m_stream_started.store(true);
+    m_stream_healthy.store(true);
     return true;
 }
 
@@ -337,6 +359,7 @@ void OboeAudioRenderer::CloseStream() {
         m_stream->close();
         m_stream.reset();
         m_stream_started.store(false);
+        m_stream_healthy.store(false);
     }
 }
 
@@ -436,6 +459,59 @@ void OboeAudioRenderer::Reset() {
     m_stream_restart_count++;
 }
 
+bool OboeAudioRenderer::CheckStreamHealth() {
+    if (!m_initialized.load()) {
+        return false;
+    }
+    
+    int64_t current_time = getCurrentTimeNanos();
+    int64_t last_ready_time = m_last_audio_ready_time.load();
+    
+    // 检查音频回调是否超时（5秒）
+    if (last_ready_time > 0 && (current_time - last_ready_time) > HEALTH_CHECK_TIMEOUT_NS) {
+        __android_log_print(ANDROID_LOG_WARN, "OboeAudioRenderer", 
+                           "Stream appears stuck, last callback was %lld ms ago", 
+                           (current_time - last_ready_time) / 1000000);
+        m_stream_healthy.store(false);
+        return false;
+    }
+    
+    // 清理过期的缓冲区（10秒）
+    if (m_raw_sample_queue) {
+        m_raw_sample_queue->CleanupStaleBuffers(10000000000LL); // 10秒
+    }
+    
+    m_stream_healthy.store(true);
+    return true;
+}
+
+void OboeAudioRenderer::ForceRecovery() {
+    std::lock_guard<std::mutex> lock(m_stream_mutex);
+    
+    __android_log_print(ANDROID_LOG_WARN, "OboeAudioRenderer", "Forcing audio stream recovery");
+    
+    if (m_initialized.load()) {
+        CloseStream();
+        
+        // 添加延迟和重试机制
+        for (int retry = 0; retry < 3; retry++) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50 * (retry + 1)));
+            
+            if (ConfigureAndOpenStream()) {
+                __android_log_print(ANDROID_LOG_INFO, "OboeAudioRenderer", 
+                                   "Stream recovery successful on attempt %d", retry + 1);
+                m_stream_healthy.store(true);
+                m_last_audio_ready_time.store(getCurrentTimeNanos());
+                return;
+            }
+        }
+        
+        __android_log_print(ANDROID_LOG_ERROR, "OboeAudioRenderer", 
+                           "Stream recovery failed after 3 attempts");
+        m_stream_healthy.store(false);
+    }
+}
+
 oboe::AudioFormat OboeAudioRenderer::MapSampleFormat(int32_t format) {
     switch (format) {
         case PCM_INT16:  return oboe::AudioFormat::I16;
@@ -467,6 +543,8 @@ size_t OboeAudioRenderer::GetBytesPerSample(int32_t format) {
 }
 
 oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) {
+    m_last_audio_ready_time.store(getCurrentTimeNanos());
+    
     if (!m_initialized.load() || !m_raw_sample_queue) {
         int32_t channels = m_device_channels;
         size_t bytes_per_sample = GetBytesPerSample(m_sample_format.load());
@@ -505,15 +583,38 @@ void OboeAudioRenderer::OnStreamError(oboe::AudioStream* audioStream, oboe::Resu
 void OboeAudioRenderer::OnStreamErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) {
     std::lock_guard<std::mutex> lock(m_stream_mutex);
     
+    __android_log_print(ANDROID_LOG_ERROR, "OboeAudioRenderer", 
+                       "Stream error after close: %s, attempting recovery", 
+                       oboe::convertToText(error));
+    
     if (m_initialized.load()) {
         CloseStream();
-        ConfigureAndOpenStream();
+        
+        // 添加延迟和重试机制
+        for (int retry = 0; retry < 3; retry++) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50 * (retry + 1)));
+            
+            if (ConfigureAndOpenStream()) {
+                __android_log_print(ANDROID_LOG_INFO, "OboeAudioRenderer", 
+                                   "Stream recovery successful on attempt %d", retry + 1);
+                return;
+            }
+        }
+        
+        __android_log_print(ANDROID_LOG_ERROR, "OboeAudioRenderer", 
+                           "Stream recovery failed after 3 attempts");
     }
 }
 
 void OboeAudioRenderer::OnStreamErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) {
     std::lock_guard<std::mutex> lock(m_stream_mutex);
     m_stream_started.store(false);
+    m_stream_healthy.store(false);
+}
+
+int64_t OboeAudioRenderer::getCurrentTimeNanos() {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
 OboeAudioRenderer::PerformanceStats OboeAudioRenderer::GetStats() const {
@@ -530,6 +631,8 @@ OboeAudioRenderer::PerformanceStats OboeAudioRenderer::GetStats() const {
     stats.buffer_size = m_buffer_size.load();
     stats.stabilized_callback_enabled = m_stabilized_callback_enabled.load();
     stats.stabilized_callback_intensity = m_stabilized_callback_intensity.load();
+    stats.stream_healthy = m_stream_healthy.load();
+    stats.last_callback_time = m_last_audio_ready_time.load();
     return stats;
 }
 

@@ -12,6 +12,7 @@
 #include <list>
 #include <functional>
 #include <string>
+#include <chrono>
 
 // 前向声明
 namespace RyujinxOboe {
@@ -54,6 +55,11 @@ public:
     void SetStabilizedCallbackIntensity(float intensity);
     float GetStabilizedCallbackIntensity() const { return m_stabilized_callback_intensity.load(); }
 
+    // 健康检查和恢复
+    bool CheckStreamHealth();
+    void ForceRecovery();
+    bool IsStreamHealthy() const { return m_stream_healthy.load(); }
+
     struct PerformanceStats {
         int64_t frames_written = 0;
         int64_t frames_played = 0;
@@ -67,6 +73,8 @@ public:
         int32_t buffer_size = 0;
         bool stabilized_callback_enabled = false;
         float stabilized_callback_intensity = 0.0f;
+        bool stream_healthy = false;
+        int64_t last_callback_time = 0;
     };
     
     PerformanceStats GetStats() const;
@@ -82,6 +90,7 @@ private:
         size_t data_played = 0;
         int32_t sample_format = 1; // PCM16 by default
         bool consumed = true;
+        int64_t timestamp = 0; // 时间戳用于健康检查
     };
 
     class AAudioExclusiveCallback : public oboe::AudioStreamDataCallback {
@@ -115,6 +124,7 @@ private:
         size_t ReadRaw(uint8_t* output, size_t output_size, int32_t target_format);
         size_t Available() const;
         void Clear();
+        void CleanupStaleBuffers(int64_t max_age_ns);
         
         int32_t GetCurrentFormat() const { return m_current_format; }
         
@@ -144,6 +154,9 @@ private:
     // 缓冲区优化
     bool OptimizeBufferSize();
 
+    // 时间函数
+    int64_t getCurrentTimeNanos();
+
     std::shared_ptr<oboe::AudioStream> m_stream;
     std::unique_ptr<RawSampleBufferQueue> m_raw_sample_queue;
     std::shared_ptr<AAudioExclusiveCallback> m_audio_callback;
@@ -153,6 +166,7 @@ private:
     std::mutex m_stream_mutex;
     std::atomic<bool> m_initialized{false};
     std::atomic<bool> m_stream_started{false};
+    std::atomic<bool> m_stream_healthy{false};
     std::atomic<bool> m_stabilized_callback_enabled{true}; // 默认开启
     std::atomic<float> m_stabilized_callback_intensity{0.3f}; // 默认强度0.3
     
@@ -163,6 +177,10 @@ private:
     
     int32_t m_device_channels = 2;
     oboe::AudioFormat m_oboe_format{oboe::AudioFormat::I16};
+    
+    // 健康检查
+    std::atomic<int64_t> m_last_audio_ready_time{0};
+    static constexpr int64_t HEALTH_CHECK_TIMEOUT_NS = 5000000000; // 5秒
     
     // 性能统计
     std::atomic<int64_t> m_frames_written{0};
