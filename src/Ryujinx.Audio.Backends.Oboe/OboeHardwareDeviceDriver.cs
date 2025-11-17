@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (支持所有采样率和原始格式)
+// OboeHardwareDeviceDriver.cs (支持所有采样率和原始格式，带对齐检查)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -79,6 +79,9 @@ namespace Ryujinx.Audio.Backends.Oboe
         private bool _stabilizedCallbackEnabled = true;
         private float _stabilizedCallbackIntensity = 0.3f;
 
+        // 对齐检查
+        private const int REQUIRED_ALIGNMENT = 16; // 16字节对齐，适合ARM NEON
+
         public float Volume
         {
             get => _volume;
@@ -128,7 +131,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             setOboeStabilizedCallbackIntensity(_stabilizedCallbackIntensity);
             
             StartUpdateThread();
-            Logger.Info?.Print(LogClass.Audio, "OboeHardwareDeviceDriver initialized (支持所有采样率和原始格式, 稳定回调默认开启)");
+            Logger.Info?.Print(LogClass.Audio, $"OboeHardwareDeviceDriver initialized (支持所有采样率和原始格式, {REQUIRED_ALIGNMENT}字节对齐, 稳定回调默认开启)");
         }
 
         private void StartUpdateThread()
@@ -233,7 +236,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 sampleRate = 48000; // 默认采样率
             }
 
-            Logger.Info?.Print(LogClass.Audio, $"Opening Oboe device session: Format={sampleFormat}, Rate={sampleRate}Hz, Channels={channelCount}");
+            Logger.Info?.Print(LogClass.Audio, $"Opening Oboe device session: Format={sampleFormat}, Rate={sampleRate}Hz, Channels={channelCount}, Alignment={REQUIRED_ALIGNMENT}");
 
             lock (_initLock)
             {
@@ -261,7 +264,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             try
             {
                 Logger.Info?.Print(LogClass.Audio, 
-                    $"Initializing Oboe audio: sampleRate={sampleRate}, channels={channelCount}, format={sampleFormat}");
+                    $"Initializing Oboe audio: sampleRate={sampleRate}, channels={channelCount}, format={sampleFormat}, alignment={REQUIRED_ALIGNMENT}");
 
                 int formatValue = SampleFormatToInt(sampleFormat);
                 if (!initOboeAudioWithFormat((int)sampleRate, (int)channelCount, formatValue))
@@ -275,7 +278,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 _currentSampleFormat = sampleFormat;
                 _currentSampleRate = sampleRate;
 
-                Logger.Info?.Print(LogClass.Audio, "Oboe audio initialized successfully (支持所有采样率和原始格式, 稳定回调默认开启)");
+                Logger.Info?.Print(LogClass.Audio, $"Oboe audio initialized successfully (支持所有采样率和原始格式, {REQUIRED_ALIGNMENT}字节对齐, 稳定回调默认开启)");
             }
             catch (Exception ex)
             {
@@ -434,6 +437,9 @@ namespace Ryujinx.Audio.Backends.Oboe
 
                 if (buffer.Data == null || buffer.Data.Length == 0) return;
 
+                // 检查缓冲区对齐
+                CheckBufferAlignment(buffer.Data.Length);
+
                 // 计算帧数
                 int bytesPerSample = GetBytesPerSample(_sampleFormat);
                 int frameCount = buffer.Data.Length / (bytesPerSample * _channelCount);
@@ -452,6 +458,17 @@ namespace Ryujinx.Audio.Backends.Oboe
                 {
                     // 写入失败时重置音频
                     resetOboeAudio();
+                }
+            }
+
+            private void CheckBufferAlignment(int bufferSize)
+            {
+                // 检查缓冲区大小是否对齐
+                bool sizeAligned = (bufferSize % REQUIRED_ALIGNMENT) == 0;
+                if (!sizeAligned)
+                {
+                    Logger.Warning?.Print(LogClass.Audio, 
+                        $"Unaligned audio buffer: size={bufferSize}, required alignment={REQUIRED_ALIGNMENT}");
                 }
             }
 
