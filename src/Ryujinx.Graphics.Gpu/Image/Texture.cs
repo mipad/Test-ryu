@@ -260,8 +260,8 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             _viewStorage = this;
 
-            _views = [];
-            _poolOwners = [];
+            _views = new List<Texture>();
+            _poolOwners = new List<TexturePoolOwner>();
         }
 
         /// <summary>
@@ -1187,8 +1187,12 @@ namespace Ryujinx.Graphics.Gpu.Image
                 return matchQuality;
             }
 
-            if (!TextureCompatibility.LayoutMatches(Info, info)
-                || !TextureCompatibility.SizeMatches(Info, info, forSampler))
+            if (!TextureCompatibility.LayoutMatches(Info, info))
+            {
+                return TextureMatchQuality.NoMatch;
+            }
+
+            if (!TextureCompatibility.SizeMatches(Info, info, forSampler))
             {
                 return TextureMatchQuality.NoMatch;
             }
@@ -1273,9 +1277,17 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             int offset = Range.FindOffset(range);
 
-            if (offset < 0 || !_sizeInfo.FindView(offset, out firstLayer, out firstLevel) ||
-                !TextureCompatibility.ViewLayoutCompatible(Info, info, firstLevel) ||
-                info.GetSlices() > 1 && LayerSize != layerSize)
+            if (offset < 0 || !_sizeInfo.FindView(offset, out firstLayer, out firstLevel))
+            {
+                return TextureViewCompatibility.LayoutIncompatible;
+            }
+
+            if (!TextureCompatibility.ViewLayoutCompatible(Info, info, firstLevel))
+            {
+                return TextureViewCompatibility.LayoutIncompatible;
+            }
+
+            if (info.GetSlices() > 1 && LayerSize != layerSize)
             {
                 return TextureViewCompatibility.LayoutIncompatible;
             }
@@ -1343,7 +1355,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <returns>True if anisotropic filtering can be forced, false otherwise</returns>
         private bool CanTextureForceAnisotropy()
         {
-            if (!(Target is Target.Texture2D or Target.Texture2DArray))
+            if (!(Target == Target.Texture2D || Target == Target.Texture2DArray))
             {
                 return false;
             }
@@ -1367,16 +1379,16 @@ namespace Ryujinx.Graphics.Gpu.Image
             {
                 case Target.Texture1D:
                 case Target.Texture1DArray:
-                    return target is Target.Texture1D or Target.Texture1DArray;
+                    return target == Target.Texture1D || target == Target.Texture1DArray;
                 case Target.Texture2D:
                 case Target.Texture2DArray:
-                    return target is Target.Texture2D or Target.Texture2DArray;
+                    return target == Target.Texture2D || target == Target.Texture2DArray;
                 case Target.Cubemap:
                 case Target.CubemapArray:
-                    return target is Target.Cubemap or Target.CubemapArray;
+                    return target == Target.Cubemap || target == Target.CubemapArray;
                 case Target.Texture2DMultisample:
                 case Target.Texture2DMultisampleArray:
-                    return target is Target.Texture2DMultisample or Target.Texture2DMultisampleArray;
+                    return target == Target.Texture2DMultisample || target == Target.Texture2DMultisampleArray;
                 case Target.Texture3D:
                     return target == Target.Texture3D;
                 default:
@@ -1616,15 +1628,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         {
             lock (_poolOwners)
             {
-                int references = 0;
-                for (int i = 0; i < _poolOwners.Count; i++)
-                {
-                    if (_poolOwners[i].Pool == pool && _poolOwners[i].ID == id || id == -1)
-                    {
-                        _poolOwners.RemoveAt(i--);
-                        references++;
-                    }
-                }
+                int references = _poolOwners.RemoveAll(entry => entry.Pool == pool && entry.ID == id || id == -1);
 
                 if (references == 0)
                 {
@@ -1764,4 +1768,3 @@ namespace Ryujinx.Graphics.Gpu.Image
         }
     }
 }
-
