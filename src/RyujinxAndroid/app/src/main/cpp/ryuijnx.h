@@ -59,7 +59,7 @@ extern "C" {
     int32_t getOboeBufferedFrames();
     void resetOboeAudio();
     
-    // ARM 稳定回调控制函数
+    // 稳定回调控制
     void setOboeStabilizedCallbackEnabled(bool enabled);
     bool isOboeStabilizedCallbackEnabled();
     void setOboeStabilizedCallbackIntensity(float intensity);

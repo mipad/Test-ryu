@@ -1,6 +1,6 @@
 #include "stabilized_audio_callback.h"
-#include <chrono>
-#include <cmath>
+#include <algorithm>
+#include <atomic>
 
 namespace RyujinxOboe {
 
@@ -16,13 +16,18 @@ oboe::DataCallbackResult StabilizedAudioCallback::onAudioReady(
         return mCallback->onAudioReady(oboeStream, audioData, numFrames);
     }
     
+    // 计算时间戳（用于性能监控）
+    if (mEpochTimeNanos == 0) {
+        mEpochTimeNanos = getCurrentTimeNanos();
+    }
+    
     // 执行实际的音频回调
     auto result = mCallback->onAudioReady(oboeStream, audioData, numFrames);
     
     // 生成可控负载以稳定CPU频率
     if (mLoadIntensity.load() > 0.01f) {
-        // 根据负载强度计算持续时间
-        int64_t loadDurationMicros = static_cast<int64_t>(40.0f * mLoadIntensity.load());
+        // 根据负载强度计算持续时间（微秒）
+        int64_t loadDurationMicros = static_cast<int64_t>(50.0f * mLoadIntensity.load());
         generateLoad(loadDurationMicros * 1000); // 转换为纳秒
     }
     
@@ -31,7 +36,7 @@ oboe::DataCallbackResult StabilizedAudioCallback::onAudioReady(
 }
 
 void StabilizedAudioCallback::generateLoad(int64_t durationNanos) {
-    if (durationNanos <= 1000) return;
+    if (durationNanos <= 0) return;
     
     int64_t startTime = getCurrentTimeNanos();
     int64_t currentTime = startTime;
@@ -39,22 +44,31 @@ void StabilizedAudioCallback::generateLoad(int64_t durationNanos) {
     
     // 简单的负载生成循环
     int iterations = 0;
-    while (currentTime < targetTime && iterations < 1000) {
-        // 执行一些数学运算
-        volatile double value = 0.0;
-        for (int i = 0; i < 50; ++i) {
-            value += std::sin(static_cast<double>(i));
-            value += std::cos(value);
+    while (currentTime < targetTime) {
+        // 执行一些计算工作
+        for (int i = 0; i < 100; ++i) {
+            double value = std::sin(static_cast<double>(iterations + i));
+            value = std::cos(value * 3.14159);
+            (void)value; // 避免编译器优化掉
         }
         
         iterations++;
+        cpuRelax();
         currentTime = getCurrentTimeNanos();
     }
 }
 
-int64_t StabilizedAudioCallback::getCurrentTimeNanos() {
-    return std::chrono::duration_cast<std::chrono::nanoseconds>(
-        std::chrono::steady_clock::now().time_since_epoch()).count();
+void StabilizedAudioCallback::cpuRelax() {
+#if defined(__i386__) || defined(__x86_64__)
+    asm volatile("rep; nop" ::: "memory");
+#elif defined(__arm__) || defined(__mips__) || defined(__riscv)
+    asm volatile("" ::: "memory");
+#elif defined(__aarch64__)
+    asm volatile("yield" ::: "memory");
+#else
+    // 通用回退：简单的内存屏障
+    std::atomic_signal_fence(std::memory_order_acq_rel);
+#endif
 }
 
 } // namespace RyujinxOboe

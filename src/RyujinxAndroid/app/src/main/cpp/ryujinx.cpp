@@ -1,8 +1,9 @@
-// ryujinx.cpp (完整版本 - ARM 优化音频)
+// ryujinx.cpp (完整版本 - 支持原始格式音频和稳定回调)
 #include "ryuijnx.h"
 #include <chrono>
 #include <csignal>
 #include "oboe_audio_renderer.h"
+#include "stabilized_audio_callback.h"
 #include <android/log.h>
 #include <stdarg.h>
 #include <sys/system_properties.h>
@@ -341,7 +342,7 @@ Java_org_ryujinx_android_NativeHelpers_resetOboeAudio(JNIEnv *env, jobject thiz)
     RyujinxOboe::OboeAudioRenderer::GetInstance().Reset();
 }
 
-// =============== ARM 稳定回调控制 JNI 接口 ===============
+// =============== 稳定回调控制 JNI 接口 ===============
 extern "C"
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setOboeStabilizedCallbackEnabled(JNIEnv *env, jobject thiz, jboolean enabled) {
@@ -448,7 +449,7 @@ void resetOboeAudio() {
     RyujinxOboe::OboeAudioRenderer::GetInstance().Reset();
 }
 
-// =============== ARM 稳定回调控制 C 接口 (for C# P/Invoke) ===============
+// =============== 稳定回调控制 C 接口 ===============
 extern "C"
 void setOboeStabilizedCallbackEnabled(bool enabled) {
     RyujinxOboe::OboeAudioRenderer::GetInstance().SetStabilizedCallbackEnabled(enabled);
