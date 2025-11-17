@@ -133,7 +133,8 @@ OboeAudioRenderer::OboeAudioRenderer() {
     m_error_callback = std::make_unique<AAudioExclusiveErrorCallback>(this);
     
     // 默认创建稳定回调
-    m_stabilized_callback = std::make_shared<StabilizedAudioCallback>(m_audio_callback.get());
+    m_stabilized_callback = std::make_shared<StabilizedAudioCallback>(
+        static_cast<oboe::AudioStreamCallback*>(m_audio_callback.get()));
     m_stabilized_callback->setEnabled(true);
     m_stabilized_callback->setLoadIntensity(0.3f);
 }
@@ -238,7 +239,8 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() {
     // 根据设置选择使用稳定回调还是普通回调
     if (m_stabilized_callback_enabled.load()) {
         if (!m_stabilized_callback) {
-            m_stabilized_callback = std::make_shared<StabilizedAudioCallback>(m_audio_callback.get());
+            m_stabilized_callback = std::make_shared<StabilizedAudioCallback>(
+                static_cast<oboe::AudioStreamCallback*>(m_audio_callback.get()));
             m_stabilized_callback->setLoadIntensity(m_stabilized_callback_intensity.load());
         }
         builder.setDataCallback(m_stabilized_callback.get())
