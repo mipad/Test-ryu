@@ -100,7 +100,10 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         // 新增：BackendThreading 参数
         backendThreading: MutableState<Int>,
         // 新增：各向异性过滤参数
-        maxAnisotropy: MutableState<Float>
+        maxAnisotropy: MutableState<Float>,
+        // 新增：Macro HLE 和 Macro JIT 参数
+        enableMacroHLE: MutableState<Boolean>,
+        enableMacroJIT: MutableState<Boolean>
         // 移除：性能统计显示设置参数 - 这些与设置页面无关
     ) {
 
@@ -157,6 +160,10 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
 
         // 初始化各向异性过滤设置
         maxAnisotropy.value = sharedPref.getFloat("maxAnisotropy", 1f)
+
+        // 新增：初始化 Macro HLE 和 Macro JIT 设置
+        enableMacroHLE.value = sharedPref.getBoolean("enableMacroHLE", true) // 默认启用Macro HLE
+        enableMacroJIT.value = sharedPref.getBoolean("enableMacroJIT", false) // 默认禁用Macro JIT
 
         // 如果之前保存了自定义表面格式，则恢复设置
         if (customSurfaceFormatEnabled.value && surfaceFormat.value != -1 && surfaceColorSpace.value != -1) {
@@ -234,7 +241,10 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         // 新增：BackendThreading 参数
         backendThreading: MutableState<Int>,
         // 新增：各向异性过滤参数
-        maxAnisotropy: MutableState<Float>
+        maxAnisotropy: MutableState<Float>,
+        // 新增：Macro HLE 和 Macro JIT 参数
+        enableMacroHLE: MutableState<Boolean>,
+        enableMacroJIT: MutableState<Boolean>
         // 移除：性能统计显示设置参数 - 这些与设置页面无关
     ) {
         val editor = sharedPref.edit()
@@ -290,6 +300,10 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
 
         // 保存各向异性过滤设置
         editor.putFloat("maxAnisotropy", maxAnisotropy.value)
+
+        // 新增：保存 Macro HLE 和 Macro JIT 设置
+        editor.putBoolean("enableMacroHLE", enableMacroHLE.value)
+        editor.putBoolean("enableMacroJIT", enableMacroJIT.value)
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs.value)
         editor.putBoolean("enableStubLogs", enableStubLogs.value)

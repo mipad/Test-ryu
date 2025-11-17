@@ -61,6 +61,10 @@ class QuickSettings(val activity: Activity) {
     // 新增：各向异性过滤
     var maxAnisotropy: Float // 各向异性过滤级别：0=关闭, 2=2x, 4=4x, 8=8x, 16=16x
 
+    // 新增：Macro HLE 和 Macro JIT
+    var enableMacroHLE: Boolean // 启用宏高级仿真
+    var enableMacroJIT: Boolean // 启用宏即时编译
+
     // Logs
     var enableDebugLogs: Boolean
     var enableStubLogs: Boolean
@@ -129,6 +133,10 @@ class QuickSettings(val activity: Activity) {
         // 初始化各向异性过滤 - 默认值为1f（关闭）
         maxAnisotropy = sharedPref.getFloat("maxAnisotropy", 1f)
 
+        // 新增：初始化 Macro HLE 和 Macro JIT
+        enableMacroHLE = sharedPref.getBoolean("enableMacroHLE", true) // 默认启用Macro HLE
+        enableMacroJIT = sharedPref.getBoolean("enableMacroJIT", false) // 默认禁用Macro JIT
+
         enableDebugLogs = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs = sharedPref.getBoolean("enableStubLogs", false)
         enableInfoLogs = sharedPref.getBoolean("enableInfoLogs", true)
@@ -195,6 +203,10 @@ class QuickSettings(val activity: Activity) {
 
         // 保存各向异性过滤设置
         editor.putFloat("maxAnisotropy", maxAnisotropy)
+
+        // 新增：保存 Macro HLE 和 Macro JIT 设置
+        editor.putBoolean("enableMacroHLE", enableMacroHLE)
+        editor.putBoolean("enableMacroJIT", enableMacroJIT)
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs)
         editor.putBoolean("enableStubLogs", enableStubLogs)
