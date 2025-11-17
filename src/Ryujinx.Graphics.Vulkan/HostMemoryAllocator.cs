@@ -8,7 +8,7 @@ using System.Collections.Generic;
 
 namespace Ryujinx.Graphics.Vulkan
 {
-    internal class HostMemoryAllocator : IDisposable
+    internal class HostMemoryAllocator
     {
         private readonly struct HostMemoryAllocation
         {
@@ -55,7 +55,7 @@ namespace Ryujinx.Graphics.Vulkan
         {
             lock (_lock)
             {
-                // 检查现有分配是否覆盖请求范围
+                // Does a compatible allocation exist in the tree?
                 var allocations = new HostMemoryAllocation[10];
 
                 ulong start = (ulong)pointer;
@@ -63,7 +63,7 @@ namespace Ryujinx.Graphics.Vulkan
 
                 int count = _allocationTree.Get(start, end, ref allocations);
 
-                // 查找完全覆盖请求范围的分配
+                // A compatible range is one that where the start and end completely cover the requested range.
                 for (int i = 0; i < count; i++)
                 {
                     HostMemoryAllocation existing = allocations[i];
@@ -73,47 +73,33 @@ namespace Ryujinx.Graphics.Vulkan
                         try
                         {
                             existing.Allocation.IncrementReferenceCount();
+
                             return true;
                         }
                         catch (InvalidOperationException)
                         {
-                            // 分配已被释放，继续搜索
+                            // Can throw if the allocation has been disposed.
+                            // Just continue the search if this happens.
                         }
                     }
                 }
 
-                // 对齐指针到系统页大小
                 nint pageAlignedPointer = BitUtils.AlignDown(pointer, Environment.SystemPageSize);
                 nint pageAlignedEnd = BitUtils.AlignUp((nint)((ulong)pointer + size), Environment.SystemPageSize);
                 ulong pageAlignedSize = (ulong)(pageAlignedEnd - pageAlignedPointer);
 
-                // 获取主机指针属性
-                Result getResult = _hostMemoryApi.GetMemoryHostPointerProperties(
-                    _device,
-                    ExternalMemoryHandleTypeFlags.HostAllocationBitExt,
-                    (void*)pageAlignedPointer,
-                    out MemoryHostPointerPropertiesEXT properties
-                );
-
-                if (getResult != Result.Success)
+                Result getResult = _hostMemoryApi.GetMemoryHostPointerProperties(_device, ExternalMemoryHandleTypeFlags.HostAllocationBitExt, (void*)pageAlignedPointer, out MemoryHostPointerPropertiesEXT properties);
+                if (getResult < Result.Success)
                 {
-                    Logger.Debug?.PrintMsg(LogClass.Gpu, $"获取主机指针属性失败: {getResult}");
                     return false;
                 }
 
-                // 寻找合适的内存类型
-                int memoryTypeIndex = _allocator.FindSuitableMemoryTypeIndex(
-                    properties.MemoryTypeBits & requirements.MemoryTypeBits,
-                    flags
-                );
-
+                int memoryTypeIndex = _allocator.FindSuitableMemoryTypeIndex(properties.MemoryTypeBits & requirements.MemoryTypeBits, flags);
                 if (memoryTypeIndex < 0)
                 {
-                    Logger.Debug?.PrintMsg(LogClass.Gpu, "未找到匹配的内存类型");
                     return false;
                 }
 
-                // 配置内存导入信息
                 ImportMemoryHostPointerInfoEXT importInfo = new()
                 {
                     SType = StructureType.ImportMemoryHostPointerInfoExt,
@@ -121,7 +107,7 @@ namespace Ryujinx.Graphics.Vulkan
                     PHostPointer = (void*)pageAlignedPointer,
                 };
 
-                MemoryAllocateInfo memoryAllocateInfo = new()
+                var memoryAllocateInfo = new MemoryAllocateInfo
                 {
                     SType = StructureType.MemoryAllocateInfo,
                     AllocationSize = pageAlignedSize,
@@ -129,24 +115,23 @@ namespace Ryujinx.Graphics.Vulkan
                     PNext = &importInfo,
                 };
 
-                // 分配设备内存
-                Result result = _api.AllocateMemory(_device, in memoryAllocateInfo, null, out DeviceMemory deviceMemory);
+                Result result = _api.AllocateMemory(_device, in memoryAllocateInfo, null, out var deviceMemory);
 
-                if (result != Result.Success)
+                if (result < Result.Success)
                 {
-                    Logger.Debug?.PrintMsg(LogClass.Gpu, $"内存分配失败: {result}");
+                    Logger.Debug?.PrintMsg(LogClass.Gpu, $"Host mapping import 0x{pageAlignedPointer:x16} 0x{pageAlignedSize:x8} failed.");
                     return false;
                 }
 
-                // 记录分配信息
                 var allocation = new MemoryAllocation(this, deviceMemory, pageAlignedPointer, 0, pageAlignedSize);
                 var allocAuto = new Auto<MemoryAllocation>(allocation);
                 var hostAlloc = new HostMemoryAllocation(allocAuto, pageAlignedPointer, pageAlignedSize);
 
                 allocAuto.IncrementReferenceCount();
-                allocAuto.Dispose(); // 通过引用计数保持活跃
+                allocAuto.Dispose(); // Kept alive by ref count only.
 
-                // 注册分配
+                // Register this mapping for future use.
+
                 _allocationTree.Add(hostAlloc.Start, hostAlloc.End, hostAlloc);
                 _allocations.Add(hostAlloc);
             }
@@ -158,22 +143,26 @@ namespace Ryujinx.Graphics.Vulkan
         {
             lock (_lock)
             {
+                // Does a compatible allocation exist in the tree?
                 var allocations = new HostMemoryAllocation[10];
+
                 ulong start = (ulong)pointer;
                 ulong end = start + size;
 
                 int count = _allocationTree.Get(start, end, ref allocations);
 
+                // A compatible range is one that where the start and end completely cover the requested range.
                 for (int i = 0; i < count; i++)
                 {
                     HostMemoryAllocation existing = allocations[i];
+
                     if (start >= existing.Start && end <= existing.End)
                     {
                         return (existing.Allocation, start - existing.Start);
                     }
                 }
 
-                throw new InvalidOperationException($"未找到匹配的主机分配: 0x{pointer:x16}:0x{size:x16}");
+                throw new InvalidOperationException($"No host allocation was prepared for requested range 0x{pointer:x16}:0x{size:x16}.");
             }
         }
 
@@ -188,27 +177,12 @@ namespace Ryujinx.Graphics.Vulkan
                         _allocationTree.Remove(allocation.Start, allocation);
                         return true;
                     }
+
                     return false;
                 });
             }
 
             _api.FreeMemory(_device, memory, ReadOnlySpan<AllocationCallbacks>.Empty);
-        }
-
-        // ==================== 新增的 Dispose 方法 ====================
-        public void Dispose()
-        {
-            lock (_lock)
-            {
-                foreach (var allocation in _allocations)
-                {
-                    DeviceMemory memory = allocation.Allocation.GetUnsafe().Memory;
-                    _api.FreeMemory(_device, memory, ReadOnlySpan<AllocationCallbacks>.Empty);
-                }
-
-                _allocations.Clear();
-                _allocationTree.Clear();
-            }
         }
     }
 }
