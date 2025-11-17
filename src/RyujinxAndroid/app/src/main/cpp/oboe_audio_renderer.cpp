@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (支持所有采样率，带内存池优化)
+// oboe_audio_renderer.cpp (支持所有采样率，带内存池优化和对齐保证)
 #include "oboe_audio_renderer.h"
 #include "stabilized_audio_callback.h"
 #include <cstring>
@@ -16,7 +16,16 @@ OboeAudioRenderer::AudioMemoryPool::AudioMemoryPool(size_t pool_size) {
     m_blocks.resize(pool_size);
     for (auto& block : m_blocks) {
         m_free_blocks.push_back(&block);
+        
+        // 验证对齐
+        if (!block.isDataAligned()) {
+            __android_log_print(ANDROID_LOG_WARN, "AudioMemoryPool", 
+                               "Memory block not properly aligned: %p", block.data);
+        }
     }
+    
+    __android_log_print(ANDROID_LOG_INFO, "AudioMemoryPool", 
+                       "Created pool with %zu blocks, alignment=%zu", pool_size, ALIGNMENT);
 }
 
 OboeAudioRenderer::AudioMemoryPool::~AudioMemoryPool() {
@@ -61,6 +70,11 @@ void OboeAudioRenderer::AudioMemoryPool::Clear() {
     }
 }
 
+size_t OboeAudioRenderer::AudioMemoryPool::GetFreeBlockCount() const {
+    std::lock_guard<std::mutex> lock(m_pool_mutex);
+    return m_free_blocks.size();
+}
+
 // =============== PooledAudioBufferQueue Implementation ===============
 OboeAudioRenderer::PooledAudioBufferQueue::PooledAudioBufferQueue(std::shared_ptr<AudioMemoryPool> pool, size_t max_buffers) 
     : m_max_buffers(max_buffers), m_memory_pool(pool) {
@@ -68,6 +82,29 @@ OboeAudioRenderer::PooledAudioBufferQueue::PooledAudioBufferQueue(std::shared_pt
 
 OboeAudioRenderer::PooledAudioBufferQueue::~PooledAudioBufferQueue() {
     Clear();
+}
+
+void OboeAudioRenderer::PooledAudioBufferQueue::CopyAlignedMemory(void* dst, const void* src, size_t size) {
+    if (size == 0) return;
+    
+    // 检查是否可以使用对齐拷贝
+    bool src_aligned = AlignedMemory::IsAligned(src);
+    bool dst_aligned = AlignedMemory::IsAligned(dst);
+    bool size_aligned = (size % sizeof(uint32_t)) == 0;
+    
+    if (src_aligned && dst_aligned && size_aligned) {
+        // 使用32位对齐拷贝（比memcpy更快）
+        const uint32_t* src32 = static_cast<const uint32_t*>(src);
+        uint32_t* dst32 = static_cast<uint32_t*>(dst);
+        size_t count = size / sizeof(uint32_t);
+        
+        for (size_t i = 0; i < count; ++i) {
+            dst32[i] = src32[i];
+        }
+    } else {
+        // 回退到标准memcpy
+        std::memcpy(dst, src, size);
+    }
 }
 
 bool OboeAudioRenderer::PooledAudioBufferQueue::WriteRaw(const uint8_t* data, size_t data_size, int32_t sample_format) {
@@ -86,8 +123,8 @@ bool OboeAudioRenderer::PooledAudioBufferQueue::WriteRaw(const uint8_t* data, si
         return false; // 内存池耗尽
     }
     
-    // 复制数据到预分配的内存块
-    std::memcpy(block->data.data(), data, data_size);
+    // 使用对齐的内存拷贝
+    CopyAlignedMemory(block->data, data, data_size);
     block->used_size = data_size;
     block->sample_format = sample_format;
     
@@ -125,10 +162,10 @@ size_t OboeAudioRenderer::PooledAudioBufferQueue::ReadRaw(uint8_t* output, size_
         size_t bytes_available = m_playing_buffer.block->used_size - m_playing_buffer.data_played;
         size_t bytes_to_copy = std::min(bytes_available, output_size - bytes_written);
         
-        // 复制数据到输出
-        std::memcpy(output + bytes_written, 
-                   m_playing_buffer.block->data.data() + m_playing_buffer.data_played,
-                   bytes_to_copy);
+        // 使用对齐的内存拷贝
+        CopyAlignedMemory(output + bytes_written, 
+                         m_playing_buffer.block->data + m_playing_buffer.data_played,
+                         bytes_to_copy);
         
         bytes_written += bytes_to_copy;
         m_playing_buffer.data_played += bytes_to_copy;
@@ -210,6 +247,9 @@ OboeAudioRenderer::OboeAudioRenderer() {
     m_stabilized_callback = std::make_shared<StabilizedAudioCallback>(m_audio_callback, m_error_callback);
     m_stabilized_callback->setEnabled(true);
     m_stabilized_callback->setLoadIntensity(0.1f); // 降低默认强度
+    
+    __android_log_print(ANDROID_LOG_INFO, "OboeAudioRenderer", 
+                       "OboeAudioRenderer created with %zu-byte alignment", ALIGNMENT);
 }
 
 OboeAudioRenderer::~OboeAudioRenderer() {
@@ -219,6 +259,26 @@ OboeAudioRenderer::~OboeAudioRenderer() {
 OboeAudioRenderer& OboeAudioRenderer::GetInstance() {
     static OboeAudioRenderer instance;
     return instance;
+}
+
+void OboeAudioRenderer::FillSilenceAligned(void* data, size_t size_in_bytes) {
+    if (!data || size_in_bytes == 0) return;
+    
+    // 检查是否可以使用对齐填充
+    bool data_aligned = AlignedMemory::IsAligned(data);
+    bool size_aligned = (size_in_bytes % sizeof(uint32_t)) == 0;
+    
+    if (data_aligned && size_aligned) {
+        // 使用32位对齐填充
+        uint32_t* data32 = static_cast<uint32_t*>(data);
+        size_t count = size_in_bytes / sizeof(uint32_t);
+        for (size_t i = 0; i < count; ++i) {
+            data32[i] = 0;
+        }
+    } else {
+        // 回退到标准memset
+        std::memset(data, 0, size_in_bytes);
+    }
 }
 
 bool OboeAudioRenderer::Initialize(int32_t sampleRate, int32_t channelCount) {
@@ -247,11 +307,26 @@ bool OboeAudioRenderer::InitializeWithFormat(int32_t sampleRate, int32_t channel
     // 使用基于内存池的样本缓冲区队列
     m_raw_sample_queue = std::make_unique<PooledAudioBufferQueue>(m_memory_pool, 32);
     
+    // 验证内存池对齐
+    auto test_block = m_memory_pool->AllocateBlock();
+    if (test_block) {
+        if (!test_block->isDataAligned()) {
+            __android_log_print(ANDROID_LOG_WARN, "OboeAudioRenderer", 
+                               "Memory pool block not aligned: %p", test_block->data);
+        }
+        m_memory_pool->ReleaseBlock(test_block);
+    }
+    
     if (!ConfigureAndOpenStream()) {
         return false;
     }
     
     m_initialized.store(true);
+    
+    __android_log_print(ANDROID_LOG_INFO, "OboeAudioRenderer", 
+                       "Initialized: %dHz, %dch, %s, alignment=%zu", 
+                       sampleRate, channelCount, m_current_sample_format.c_str(), ALIGNMENT);
+    
     return true;
 }
 
@@ -271,6 +346,8 @@ void OboeAudioRenderer::Shutdown() {
     
     m_initialized.store(false);
     m_stream_started.store(false);
+    
+    __android_log_print(ANDROID_LOG_INFO, "OboeAudioRenderer", "Shutdown completed");
 }
 
 void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& builder) {
@@ -371,6 +448,11 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() {
     }
     
     m_stream_started.store(true);
+    
+    __android_log_print(ANDROID_LOG_INFO, "OboeAudioRenderer", 
+                       "Stream started: %s, %s, %d channels", 
+                       m_current_audio_api.c_str(), m_current_sharing_mode.c_str(), m_device_channels);
+    
     return true;
 }
 
@@ -556,7 +638,9 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioS
         int32_t channels = m_device_channels;
         size_t bytes_per_sample = GetBytesPerSample(m_sample_format.load());
         size_t total_bytes = num_frames * channels * bytes_per_sample;
-        std::memset(audioData, 0, total_bytes);
+        
+        // 使用对齐的静音填充
+        FillSilenceAligned(audioData, total_bytes);
         return oboe::DataCallbackResult::Continue;
     }
     
@@ -568,10 +652,10 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioS
     uint8_t* output = static_cast<uint8_t*>(audioData);
     size_t bytes_read = m_raw_sample_queue->ReadRaw(output, bytes_requested, m_sample_format.load());
     
-    // 如果数据不足，快速填充静音
+    // 如果数据不足，使用对齐的静音填充
     if (bytes_read < bytes_requested) {
         size_t bytes_remaining = bytes_requested - bytes_read;
-        std::memset(output + bytes_read, 0, bytes_remaining);
+        FillSilenceAligned(output + bytes_read, bytes_remaining);
         m_underrun_count++;
     }
     

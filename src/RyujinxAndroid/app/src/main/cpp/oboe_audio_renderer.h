@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (支持所有采样率，带内存池优化)
+// oboe_audio_renderer.h (支持所有采样率，带内存池优化和对齐保证)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -32,6 +32,48 @@ enum SampleFormat {
 // 内存池配置
 constexpr size_t AUDIO_POOL_SIZE = 32;
 constexpr size_t MAX_AUDIO_FRAME_SIZE = 1024 * 8 * 4; // 1024帧 * 8声道 * 4字节
+constexpr size_t ALIGNMENT = 16; // 16字节对齐，适合ARM NEON
+
+// 对齐的内存分配器
+class AlignedMemory {
+public:
+    static void* AllocateAligned(size_t size, size_t alignment = ALIGNMENT) {
+#if defined(_WIN32)
+        return _aligned_malloc(size, alignment);
+#else
+        void* ptr = nullptr;
+        if (posix_memalign(&ptr, alignment, size) != 0) {
+            return nullptr;
+        }
+        return ptr;
+#endif
+    }
+    
+    static void FreeAligned(void* ptr) {
+#if defined(_WIN32)
+        _aligned_free(ptr);
+#else
+        free(ptr);
+#endif
+    }
+    
+    static bool IsAligned(const void* ptr, size_t alignment = ALIGNMENT) {
+        return (reinterpret_cast<uintptr_t>(ptr) % alignment) == 0;
+    }
+};
+
+// 对齐的音频内存块
+struct alignas(ALIGNMENT) AudioMemoryBlock {
+    alignas(ALIGNMENT) uint8_t data[MAX_AUDIO_FRAME_SIZE];
+    size_t used_size = 0;
+    bool in_use = false;
+    int32_t sample_format = 1;
+    
+    // 对齐检查方法
+    bool isDataAligned() const {
+        return AlignedMemory::IsAligned(data);
+    }
+};
 
 class OboeAudioRenderer {
 public:
@@ -63,14 +105,6 @@ private:
     OboeAudioRenderer();
     ~OboeAudioRenderer();
 
-    // 音频内存池块
-    struct AudioMemoryBlock {
-        std::array<uint8_t, MAX_AUDIO_FRAME_SIZE> data;
-        size_t used_size = 0;
-        bool in_use = false;
-        int32_t sample_format = 1;
-    };
-
     // 基于内存池的音频缓冲区
     struct PooledAudioBuffer {
         AudioMemoryBlock* block = nullptr;
@@ -87,6 +121,7 @@ private:
         AudioMemoryBlock* AllocateBlock();
         void ReleaseBlock(AudioMemoryBlock* block);
         void Clear();
+        size_t GetFreeBlockCount() const;
 
     private:
         std::vector<AudioMemoryBlock> m_blocks;
@@ -114,6 +149,9 @@ private:
         mutable std::mutex m_mutex;
         int32_t m_current_format = 1; // PCM16 by default
         std::shared_ptr<AudioMemoryPool> m_memory_pool;
+        
+        // 对齐的内存拷贝函数
+        void CopyAlignedMemory(void* dst, const void* src, size_t size);
     };
 
     class AAudioExclusiveCallback : public oboe::AudioStreamDataCallback {
@@ -164,6 +202,9 @@ private:
     
     // 缓冲区优化
     bool OptimizeBufferSize();
+    
+    // 对齐的内存操作
+    void FillSilenceAligned(void* data, size_t size_in_bytes);
 
     std::shared_ptr<oboe::AudioStream> m_stream;
     std::shared_ptr<AudioMemoryPool> m_memory_pool;
@@ -186,7 +227,7 @@ private:
     int32_t m_device_channels = 2;
     oboe::AudioFormat m_oboe_format{oboe::AudioFormat::I16};
     
-    // 性能统计 - 移除所有统计相关的变量
+    // 性能统计
     std::atomic<int32_t> m_underrun_count{0};
     
     std::string m_current_audio_api = "Unknown";
