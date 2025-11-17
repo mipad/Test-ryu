@@ -569,6 +569,39 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
+        // 获取格式名称的友好显示
+        public static string GetFormatDisplayName(VkFormat format, ColorSpaceKHR colorSpace)
+        {
+            string formatName = format.ToString();
+            string colorSpaceName = colorSpace.ToString();
+            
+            // 简化格式名称显示
+            if (formatName.StartsWith("B8G8R8A8"))
+                formatName = "BGRA8";
+            else if (formatName.StartsWith("R8G8B8A8"))
+                formatName = "RGBA8";
+            else if (formatName.StartsWith("A2B10G10R10"))
+                formatName = "A2B10G10R10";
+            else if (formatName.StartsWith("A2R10G10B10"))
+                formatName = "A2R10G10B10";
+            else if (formatName.StartsWith("R5G6B5"))
+                formatName = "RGB565";
+            else if (formatName.StartsWith("R16G16B16A16"))
+                formatName = "RGBA16F";
+                
+            // 简化色彩空间名称显示
+            if (colorSpaceName.Contains("SrgbNonlinear"))
+                colorSpaceName = "SRGB";
+            else if (colorSpaceName.Contains("PassThrough"))
+                colorSpaceName = "PassThrough";
+            else if (colorSpaceName.Contains("DisplayP3"))
+                colorSpaceName = "DisplayP3";
+            else if (colorSpaceName.Contains("ExtendedSrgb"))
+                colorSpaceName = "ExtendedSRGB";
+                
+            return $"{formatName} ({colorSpaceName})";
+        }
+
         // 从版本11改进：增强的Present方法
         public unsafe override void Present(ITexture texture, ImageCrop crop, Action swapBuffersCallback)
         {
