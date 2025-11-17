@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (ARM 优化版)
+// oboe_audio_renderer.h
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -9,17 +9,10 @@
 #include <memory>
 #include <cstdint>
 #include <queue>
-#include <list>
-#include <functional>
-
-// 前向声明，避免循环包含
-namespace RyujinxOboe {
-    class StabilizedAudioCallback;
-}
 
 namespace RyujinxOboe {
 
-// 采样格式定义 (与C#层保持一致)
+// 采样格式定义
 enum SampleFormat {
     PCM_INT16 = 1,
     PCM_INT24 = 2,
@@ -47,31 +40,11 @@ public:
 
     void Reset();
 
-    // ARM 稳定回调控制
+    // 稳定回调控制
     void SetStabilizedCallbackEnabled(bool enabled);
     bool IsStabilizedCallbackEnabled() const { return m_stabilized_callback_enabled.load(); }
     void SetStabilizedCallbackIntensity(float intensity);
     float GetStabilizedCallbackIntensity() const { return m_stabilized_callback_intensity.load(); }
-
-    // ARM 性能统计
-    struct PerformanceStats {
-        int64_t frames_written = 0;
-        int64_t frames_played = 0;
-        int32_t underrun_count = 0;
-        int32_t stream_restart_count = 0;
-        std::string audio_api = "Unknown";
-        std::string sharing_mode = "Unknown";
-        std::string sample_format = "Unknown";
-        int32_t sample_rate = 0;
-        int32_t frames_per_burst = 0;
-        int32_t buffer_size = 0;
-        bool stabilized_callback_enabled = false;
-        float stabilized_callback_intensity = 0.0f;
-        int64_t last_load_duration_ns = 0;
-        int64_t total_stabilized_frames = 0;
-    };
-    
-    PerformanceStats GetStats() const;
 
 private:
     OboeAudioRenderer();
@@ -82,7 +55,7 @@ private:
         std::vector<uint8_t> data;
         size_t data_size = 0;
         size_t data_played = 0;
-        int32_t sample_format = 1; // PCM16 by default
+        int32_t sample_format = 1;
         bool consumed = true;
     };
 
@@ -125,7 +98,7 @@ private:
         RawSampleBuffer m_playing_buffer;
         size_t m_max_buffers;
         mutable std::mutex m_mutex;
-        int32_t m_current_format = 1; // PCM16 by default
+        int32_t m_current_format = 1;
     };
 
     bool OpenStream();
@@ -143,24 +116,27 @@ private:
     const char* GetFormatName(int32_t format);
     static size_t GetBytesPerSample(int32_t format);
     
-    // ARM 缓冲区优化
+    // 缓冲区优化
     bool OptimizeBufferSize();
 
     std::shared_ptr<oboe::AudioStream> m_stream;
     std::unique_ptr<RawSampleBufferQueue> m_raw_sample_queue;
     std::unique_ptr<AAudioExclusiveCallback> m_audio_callback;
     std::unique_ptr<AAudioExclusiveErrorCallback> m_error_callback;
+    
+    // 前向声明稳定回调类
+    class StabilizedAudioCallback;
     std::shared_ptr<StabilizedAudioCallback> m_stabilized_callback;
     
     std::mutex m_stream_mutex;
     std::atomic<bool> m_initialized{false};
     std::atomic<bool> m_stream_started{false};
-    std::atomic<bool> m_stabilized_callback_enabled{true};
-    std::atomic<float> m_stabilized_callback_intensity{0.3f}; // ARM 默认强度
+    std::atomic<bool> m_stabilized_callback_enabled{false};
+    std::atomic<float> m_stabilized_callback_intensity{0.3f};
     
     std::atomic<int32_t> m_sample_rate{48000};
     std::atomic<int32_t> m_channel_count{2};
-    std::atomic<int32_t> m_sample_format{1}; // PCM16 by default
+    std::atomic<int32_t> m_sample_format{1};
     std::atomic<float> m_volume{1.0f};
     
     int32_t m_device_channels = 2;
@@ -171,14 +147,6 @@ private:
     std::atomic<int64_t> m_frames_played{0};
     std::atomic<int32_t> m_underrun_count{0};
     std::atomic<int32_t> m_stream_restart_count{0};
-    std::atomic<int32_t> m_frames_per_burst{0};
-    std::atomic<int32_t> m_buffer_size{0};
-    
-    std::string m_current_audio_api = "Unknown";
-    std::string m_current_sharing_mode = "Unknown";
-    std::string m_current_sample_format = "PCM16";
-    
-    static constexpr int32_t TARGET_SAMPLE_COUNT = 240;
 };
 
 } // namespace RyujinxOboe
