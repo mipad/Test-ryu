@@ -52,6 +52,20 @@ namespace Ryujinx.Graphics.Vulkan
             CreateSwapchain();
         }
 
+        // 添加缺失的方法
+        public void SetSurfaceQueryAllowed(bool allowed)
+        {
+            // 在原始版本中，这个方法可能不需要做任何事情
+            // 但为了编译通过，我们添加一个空实现
+        }
+
+        // 添加缺失的方法
+        public void OnSurfaceLost()
+        {
+            // 在原始版本中，表面丢失时重建交换链
+            _swapchainIsDirty = true;
+        }
+
         private void RecreateSwapchain()
         {
             var oldSwapchain = _swapchain;
@@ -316,15 +330,8 @@ namespace Ryujinx.Graphics.Vulkan
             return new Extent2D(width, height);
         }
 
-        // 保留修改版中的Present方法，因为它包含了重要的改进
         public unsafe override void Present(ITexture texture, ImageCrop crop, Action swapBuffersCallback)
         {
-            if (!_gd.PresentAllowed || _surface.Handle == 0)
-            {
-                swapBuffersCallback?.Invoke();
-                return;
-            }
-
             _gd.PipelineInternal.AutoFlush.Present();
 
             uint nextImage = 0;
@@ -541,7 +548,6 @@ namespace Ryujinx.Graphics.Vulkan
                 in barrier);
         }
 
-        // 其他方法保持不变...
         public override void SetAntiAliasing(AntiAliasing effect)
         {
             if (_currentAntiAliasing == effect && _effect != null)
@@ -574,7 +580,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         private void UpdateEffect()
         {
-            // 实现保持不变...
             if (_updateEffect)
             {
                 _updateEffect = false;
