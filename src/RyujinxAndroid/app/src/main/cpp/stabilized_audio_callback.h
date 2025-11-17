@@ -12,7 +12,7 @@ namespace RyujinxOboe {
 class StabilizedAudioCallback : public oboe::AudioStreamCallback {
 public:
     explicit StabilizedAudioCallback(oboe::AudioStreamCallback *callback);
-    ~StabilizedAudioCallback() override = default;
+    virtual ~StabilizedAudioCallback() = default;
     
     oboe::DataCallbackResult onAudioReady(oboe::AudioStream *oboeStream, 
                                          void *audioData, 

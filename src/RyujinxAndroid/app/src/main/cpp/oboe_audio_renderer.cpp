@@ -1,5 +1,6 @@
 // oboe_audio_renderer.cpp (ARM 优化版)
 #include "oboe_audio_renderer.h"
+#include "stabilized_audio_callback.h"
 #include <cstring>
 #include <algorithm>
 #include <thread>
@@ -233,7 +234,8 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() {
     // 根据设置选择使用稳定回调还是普通回调
     if (m_stabilized_callback_enabled.load()) {
         if (!m_stabilized_callback) {
-            m_stabilized_callback = std::make_shared<StabilizedAudioCallback>(m_audio_callback.get());
+            // 使用直接构造而不是 make_shared 来避免 C++20 兼容性问题
+            m_stabilized_callback.reset(new StabilizedAudioCallback(m_audio_callback.get()));
             m_stabilized_callback->setLoadIntensity(m_stabilized_callback_intensity.load());
         }
         builder.setDataCallback(m_stabilized_callback.get())
