@@ -135,6 +135,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         {
             _updateThread = new Thread(() =>
             {
+                int updateCount = 0;
                 while (_stillRunning)
                 {
                     try
@@ -148,6 +149,14 @@ namespace Ryujinx.Audio.Backends.Oboe
                             foreach (var session in _sessions.Keys)
                             {
                                 session.UpdatePlaybackStatus(bufferedFrames);
+                            }
+                            
+                            // 每5秒执行一次简单健康检查
+                            updateCount++;
+                            if (updateCount >= 500) // 10ms * 500 = 5秒
+                            {
+                                HandleAudioError();
+                                updateCount = 0;
                             }
                         }
                     }
@@ -163,6 +172,47 @@ namespace Ryujinx.Audio.Backends.Oboe
                 Priority = ThreadPriority.Normal
             };
             _updateThread.Start();
+        }
+
+        private void HandleAudioError()
+        {
+            try
+            {
+                // 简单检查：如果有会话但音频没在播放，就重置
+                if (!isOboePlaying() && _sessions.Count > 0)
+                {
+                    Logger.Warning?.Print(LogClass.Audio, "Audio not playing with active sessions, resetting");
+                    ResetAudioSystem();
+                }
+            }
+            catch
+            {
+                // 忽略异常，避免错误处理本身产生更多错误
+            }
+        }
+        
+        private void ResetAudioSystem()
+        {
+            try
+            {
+                shutdownOboeAudio();
+                Thread.Sleep(100);
+                
+                if (_currentSampleRate > 0 && _currentChannelCount > 0)
+                {
+                    int formatValue = SampleFormatToInt(_currentSampleFormat);
+                    if (initOboeAudioWithFormat((int)_currentSampleRate, (int)_currentChannelCount, formatValue))
+                    {
+                        setOboeVolume(_volume);
+                        setOboeStabilizedCallbackEnabled(_stabilizedCallbackEnabled);
+                        setOboeStabilizedCallbackIntensity(_stabilizedCallbackIntensity);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Audio, $"Error resetting audio: {ex.Message}");
+            }
         }
 
         public void Dispose()
@@ -464,8 +514,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                     Logger.Warning?.Print(LogClass.Audio, 
                         $"Audio write failed: {frameCount} frames dropped, Format={_sampleFormat}, Rate={_sampleRate}Hz");
                     
-                    // 减少重置频率，避免性能影响
-                    Logger.Warning?.Print(LogClass.Audio, "Audio write failure, resetting audio system");
+                    // 写入失败时重置音频
                     resetOboeAudio();
                 }
             }
