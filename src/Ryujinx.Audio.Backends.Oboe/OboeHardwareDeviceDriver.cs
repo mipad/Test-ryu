@@ -434,14 +434,6 @@ namespace Ryujinx.Audio.Backends.Oboe
 
                 if (buffer.Data == null || buffer.Data.Length == 0) return;
 
-                // 记录原始格式信息
-                Logger.Debug?.Print(LogClass.Audio, 
-                    $"QueueBuffer (Raw Format) - " +
-                    $"Format: {_sampleFormat}, " +
-                    $"Data Size: {buffer.Data.Length} bytes, " +
-                    $"Channels: {_channelCount}, " +
-                    $"SampleRate: {_sampleRate}");
-
                 // 计算帧数
                 int bytesPerSample = GetBytesPerSample(_sampleFormat);
                 int frameCount = buffer.Data.Length / (bytesPerSample * _channelCount);
@@ -455,15 +447,9 @@ namespace Ryujinx.Audio.Backends.Oboe
                     ulong sampleCount = (ulong)(frameCount * _channelCount);
                     _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, sampleCount));
                     _totalWrittenSamples += sampleCount;
-                    
-                    Logger.Debug?.Print(LogClass.Audio, 
-                        $"Queued audio buffer (Raw): {frameCount} frames, {sampleCount} samples, Format={_sampleFormat}, Rate={_sampleRate}Hz");
                 }
                 else
                 {
-                    Logger.Warning?.Print(LogClass.Audio, 
-                        $"Audio write failed: {frameCount} frames dropped, Format={_sampleFormat}, Rate={_sampleRate}Hz");
-                    
                     // 写入失败时重置音频
                     resetOboeAudio();
                 }
