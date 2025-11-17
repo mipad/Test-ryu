@@ -121,6 +121,7 @@ target_compile_options(ryujinxjni PRIVATE
     -O3
     -DNDEBUG
     -march=armv8-a
+    -Ofast
 )
 
 # 查找系统库
