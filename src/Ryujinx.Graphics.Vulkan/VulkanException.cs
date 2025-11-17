@@ -24,15 +24,12 @@ namespace Ryujinx.Graphics.Vulkan
 
     class VulkanException : Exception
     {
-        public Result Result { get; }  // 添加Result属性
-
         public VulkanException()
         {
         }
 
         public VulkanException(Result result) : base($"Unexpected API error \"{result}\".")
         {
-            Result = result;  // 设置Result属性
         }
 
         public VulkanException(string message) : base(message)
@@ -41,19 +38,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public VulkanException(string message, Exception innerException) : base(message, innerException)
         {
-        }
-
-        // 添加序列化支持
-        protected VulkanException(SerializationInfo info, StreamingContext context)
-            : base(info, context)
-        {
-            Result = (Result)info.GetValue(nameof(Result), typeof(Result));
-        }
-
-        public override void GetObjectData(SerializationInfo info, StreamingContext context)
-        {
-            base.GetObjectData(info, context);
-            info.AddValue(nameof(Result), Result);
         }
     }
 }
