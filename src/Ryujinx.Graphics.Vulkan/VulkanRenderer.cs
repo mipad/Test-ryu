@@ -49,11 +49,11 @@ namespace Ryujinx.Graphics.Vulkan
         internal uint QueueFamilyIndex { get; private set; }
         internal Queue Queue { get; private set; }
         internal Queue BackgroundQueue { get; private set; }
-        internal Lock BackgroundQueueLock { get; private set; }
-        internal Lock QueueLock { get; private set; }
+        internal object BackgroundQueueLock { get; private set; }
+        internal object QueueLock { get; private set; }
 
         // NEU: SurfaceLock, um Create/Destroy/Queries zu serialisieren
-        internal Lock SurfaceLock { get; private set; }
+        internal object SurfaceLock { get; private set; }
 
         internal MemoryAllocator MemoryAllocator { get; private set; }
         internal HostMemoryAllocator HostMemoryAllocator { get; private set; }
