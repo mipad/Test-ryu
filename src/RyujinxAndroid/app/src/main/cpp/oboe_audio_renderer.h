@@ -155,7 +155,7 @@ private:
     std::mutex m_stream_mutex;
     std::atomic<bool> m_initialized{false};
     std::atomic<bool> m_stream_started{false};
-    std::atomic<bool> m_stabilized_callback_enabled{false};
+    std::atomic<bool> m_stabilized_callback_enabled{true};
     std::atomic<float> m_stabilized_callback_intensity{0.3f}; // ARM 默认强度
     
     std::atomic<int32_t> m_sample_rate{48000};
