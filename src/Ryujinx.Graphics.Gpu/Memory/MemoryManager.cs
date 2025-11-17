@@ -32,7 +32,6 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
         public const ulong PteUnmapped = ulong.MaxValue;
 
-        private readonly PageMemoryManager _pageManager;
         private readonly ulong[][] _pageTable;
 
         public event EventHandler<UnmapEventArgs> MemoryUnmapped;
@@ -51,26 +50,14 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// Cache of GPU counters.
         /// </summary>
         internal CounterCache CounterCache { get; }
-        
-        private delegate void WriteCallback(ulong address, ReadOnlySpan<byte> data);
-
-        private WriteCallback _write;
-        private WriteCallback _writeTrackedResource;
-        private WriteCallback _writeUntracked;
 
         /// <summary>
         /// Creates a new instance of the GPU memory manager.
         /// </summary>
         /// <param name="physicalMemory">Physical memory that this memory manager will map into</param>
-        /// <param name="cpuMemorySize">The amount of physical CPU Memory Avaiable on the device.</param>
-        internal MemoryManager(PhysicalMemory physicalMemory, ulong cpuMemorySize)
+        internal MemoryManager(PhysicalMemory physicalMemory)
         {
             Physical = physicalMemory;
-            _write = physicalMemory.Write;
-            _writeTrackedResource = physicalMemory.WriteTrackedResource;
-            _writeUntracked = physicalMemory.WriteUntracked;
-
-            _pageManager = new PageMemoryManager(1UL << AddressSpaceBits);
             VirtualRangeCache = new VirtualRangeCache(this);
             CounterCache = new CounterCache();
             _pageTable = new ulong[PtLvl0Size][];
@@ -78,7 +65,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             MemoryUnmapped += Physical.BufferCache.MemoryUnmappedHandler;
             MemoryUnmapped += VirtualRangeCache.MemoryUnmappedHandler;
             MemoryUnmapped += CounterCache.MemoryUnmappedHandler;
-            Physical.TextureCache.Initialize(cpuMemorySize);
+            Physical.TextureCache.Initialize();
         }
 
         /// <summary>
@@ -226,14 +213,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                 size = Math.Min(data.Length, (int)PageSize - (int)(va & PageMask));
 
-                if (pa == PteUnmapped)
-                {
-                    data.Slice(0, size).Fill(0);
-                }
-                else
-                {
-                    Physical.GetSpan(pa, size, tracked).CopyTo(data[..size]);
-                }
+                Physical.GetSpan(pa, size, tracked).CopyTo(data[..size]);
 
                 offset += size;
             }
@@ -244,14 +224,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                 size = Math.Min(data.Length - offset, (int)PageSize);
 
-                if (pa == PteUnmapped)
-                {
-                    data.Slice(offset, size).Fill(0);
-                }
-                else
-                {
-                    Physical.GetSpan(pa, size, tracked).CopyTo(data.Slice(offset, size));
-                }
+                Physical.GetSpan(pa, size, tracked).CopyTo(data.Slice(offset, size));
             }
         }
 
@@ -296,7 +269,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="data">The data to be written</param>
         public void Write(ulong va, ReadOnlySpan<byte> data)
         {
-            WriteImpl(va, data, _write);
+            WriteImpl(va, data, Physical.Write);
         }
 
         /// <summary>
@@ -306,7 +279,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="data">The data to be written</param>
         public void WriteTrackedResource(ulong va, ReadOnlySpan<byte> data)
         {
-            WriteImpl(va, data, _writeTrackedResource);
+            WriteImpl(va, data, Physical.WriteTrackedResource);
         }
 
         /// <summary>
@@ -316,10 +289,10 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="data">The data to be written</param>
         public void WriteUntracked(ulong va, ReadOnlySpan<byte> data)
         {
-            WriteImpl(va, data, _writeUntracked);
+            WriteImpl(va, data, Physical.WriteUntracked);
         }
 
-        
+        private delegate void WriteCallback(ulong address, ReadOnlySpan<byte> data);
 
         /// <summary>
         /// Writes data to possibly non-contiguous GPU mapped memory.
@@ -389,8 +362,6 @@ namespace Ryujinx.Graphics.Gpu.Memory
         {
             lock (_pageTable)
             {
-                _pageManager.Map(va, size);
-
                 UnmapEventArgs e = new(va, size);
                 MemoryUnmapped?.Invoke(this, e);
 
@@ -412,8 +383,6 @@ namespace Ryujinx.Graphics.Gpu.Memory
         {
             lock (_pageTable)
             {
-                _pageManager.Unmap(va, size);
-
                 // Event handlers are not expected to be thread safe.
                 UnmapEventArgs e = new(va, size);
                 MemoryUnmapped?.Invoke(this, e);
@@ -602,14 +571,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
             if (pte == PteUnmapped)
             {
-                if (_pageManager.HandlePageFault(va))
-                {
-                    pte = GetPte(va); // 重试获取PTE
-                }
-                else
-                {
-                    return PteUnmapped;
-                }
+                return PteUnmapped;
             }
 
             return UnpackPaFromPte(pte) + (va & PageMask);
