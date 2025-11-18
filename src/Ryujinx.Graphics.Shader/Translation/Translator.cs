@@ -181,10 +181,26 @@ namespace Ryujinx.Graphics.Shader.Translation
 
         private static void EmitOutputsInitialization(EmitterContext context, AttributeUsage attributeUsage, IGpuAccessor gpuAccessor, ShaderStage stage)
         {
-            // Compute has no output attributes, and fragment is the last stage, so we
-            // don't need to initialize outputs on those stages.
-            if (stage == ShaderStage.Compute || stage == ShaderStage.Fragment)
+            // Compute has no output attributes, so we
+            // don't need to initialize outputs on that stage.
+            if (stage == ShaderStage.Compute)
             {
+                return;
+            }
+
+            if (stage == ShaderStage.Fragment)
+            {
+                // Fragment is the last stage, so we don't need to
+                // initialize outputs unless we're using DSB, in which
+                // we need to make sure the ouput has a valid value.
+                if (gpuAccessor.QueryGraphicsState().DualSourceBlendEnable)
+                {
+                    for (int i = 0; i < 4; i++)
+                    {
+                        context.Store(StorageKind.Output, IoVariable.FragmentOutputColor, null, Const(1), Const(i), ConstF(0));
+                    }
+                }
+
                 return;
             }
 
@@ -298,19 +314,19 @@ namespace Ryujinx.Graphics.Shader.Translation
                 InstOp op = block.OpCodes[opIndex];
 
                 if (context.TranslatorContext.Options.Flags.HasFlag(TranslationFlags.DebugMode))
-        {
-            string instName = "Unknown"; // 初始化默认值
+                {
+                    string instName;
 
-            if (op.Emitter != null)
-            {
-                instName = op.Name.ToString();
-            }
-            else
-            {
-                instName = "???";
-                context.TranslatorContext.GpuAccessor.Log($"Invalid instruction at 0x{op.Address:X6} (0x{op.RawOpCode:X16}).");
-                return; // 提前返回，确保后续代码不依赖 instName
-            }
+                    if (op.Emitter != null)
+                    {
+                        instName = op.Name.ToString();
+                    }
+                    else
+                    {
+                        instName = "???";
+
+                        context.TranslatorContext.GpuAccessor.Log($"Invalid instruction at 0x{op.Address:X6} (0x{op.RawOpCode:X16}).");
+                    }
 
                     string dbgComment = $"0x{op.Address:X6}: 0x{op.RawOpCode:X16} {instName}";
 
