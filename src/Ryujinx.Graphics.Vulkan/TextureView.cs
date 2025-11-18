@@ -41,8 +41,7 @@ namespace Ryujinx.Graphics.Vulkan
         public VkFormat VkFormat { get; }
         private int _isValid;
         public bool Valid => Volatile.Read(ref _isValid) != 0;
-        
-        // 新增：帮助检查交换链纹理
+        // Hilft, Copy/Read-Pfade auf Swapchain-Views abzufangen
         private bool HasStorage => Storage != null;
 
         public TextureView(
@@ -66,13 +65,8 @@ namespace Ryujinx.Graphics.Vulkan
 
             bool isMsImageStorageSupported = gd.Capabilities.SupportsShaderStorageImageMultisample || !info.Target.IsMultisample();
 
-            var format = _gd.FormatCapabilities.ConvertToVkFormat(info.Format, true);
-            
-            // 修改第67行：使用新的参数调用 GetImageUsage
-            bool isNotMsOrSupportsStorage = !info.Target.IsMultisample() || gd.Capabilities.SupportsShaderStorageImageMultisample;
-            bool supportsAttachmentFeedbackLoop = gd.Capabilities.SupportsAttachmentFeedbackLoop;
-            var usage = TextureStorage.GetImageUsage(info.Format, isNotMsOrSupportsStorage, supportsAttachmentFeedbackLoop);
-            
+            var format = _gd.FormatCapabilities.ConvertToVkFormat(info.Format, isMsImageStorageSupported);
+            var usage = TextureStorage.GetImageUsage(info.Format, info.Target, gd.Capabilities);
             var levels = (uint)info.Levels;
             var layers = (uint)info.GetLayers();
 
@@ -85,9 +79,7 @@ namespace Ryujinx.Graphics.Vulkan
             var swizzleB = info.SwizzleB.Convert();
             var swizzleA = info.SwizzleA.Convert();
 
-            if (info.Format == Format.R5G5B5A1Unorm ||
-                info.Format == Format.R5G5B5X1Unorm ||
-                info.Format == Format.R5G6B5Unorm)
+            if (info.Format is Format.R5G5B5A1Unorm or Format.R5G5B5X1Unorm or Format.R5G6B5Unorm)
             {
                 (swizzleB, swizzleR) = (swizzleR, swizzleB);
             }
@@ -220,7 +212,6 @@ namespace Ryujinx.Graphics.Vulkan
             var src = this;
             var dst = (TextureView)destination;
 
-            // 新增有效性检查
             if (!Valid || !dst.Valid || !src.HasStorage || !dst.HasStorage)
             {
                 return;
@@ -281,7 +272,6 @@ namespace Ryujinx.Graphics.Vulkan
             var src = this;
             var dst = (TextureView)destination;
 
-            // 新增有效性检查
             if (!Valid || !dst.Valid || !src.HasStorage || !dst.HasStorage)
             {
                 return;
@@ -336,7 +326,7 @@ namespace Ryujinx.Graphics.Vulkan
         {
             var dst = (TextureView)destination;
 
-            // 新增保护检查
+            // NEU: Guard
             if (!Valid || !dst.Valid || !HasStorage || !dst.HasStorage)
             {
                 return;
@@ -364,7 +354,7 @@ namespace Ryujinx.Graphics.Vulkan
         {
             var src = this;
 
-            // 新增保护检查
+            // NEU: Guard
             if (!src.Valid || !dst.Valid || !src.HasStorage || !dst.HasStorage)
             {
                 return;
@@ -577,7 +567,7 @@ namespace Ryujinx.Graphics.Vulkan
                 commandBuffer,
                 srcStageMask,
                 dstStageMask,
-                DependencyFlags.None,
+                0,
                 0,
                 null,
                 0,
@@ -679,7 +669,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void CopyTo(BufferRange range, int layer, int level, int stride)
         {
-            // 防御性检查：如果 View/Storage 未准备好，直接退出
+            // Defensive: wenn View/Storage nicht bereit, einfach aussteigen.
             if (!Valid || !HasStorage)
             {
                 return;
@@ -688,10 +678,10 @@ namespace Ryujinx.Graphics.Vulkan
             _gd.PipelineInternal.EndRenderPass();
             var cbs = _gd.PipelineInternal.CurrentCommandBuffer;
 
-            int outSize = Info.GetMipSize(level);
+            int outSize  = Info.GetMipSize(level);
             int hostSize = GetBufferDataLength(outSize);
 
-            var image = GetImage().Get(cbs).Value;
+            var image  = GetImage().Get(cbs).Value;
             int offset = range.Offset;
 
             Auto<DisposableBuffer> autoBuffer = _gd.BufferManager.GetBuffer(cbs.CommandBuffer, range.Handle, true);
@@ -702,7 +692,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (PrepareOutputBuffer(cbs, hostSize, buffer, out copyToBuffer, out tempCopyHolder))
             {
-                // 临时复制缓冲区：不需要屏障，偏移量设为0
+                // Temporärer Copy-Buffer: kein Barrier nötig, Offset wird 0.
                 offset = 0;
             }
             else
@@ -719,7 +709,7 @@ namespace Ryujinx.Graphics.Vulkan
                     outSize);
             }
 
-            // 复制前：准备图像用于传输读取
+            // Vor dem Copy: Image für Transfer-Read bereit machen.
             InsertImageBarrier(
                 _gd.Api,
                 cbs.CommandBuffer,
@@ -734,7 +724,8 @@ namespace Ryujinx.Graphics.Vulkan
                 1,
                 1);
 
-            // 图像 -> 缓冲区
+            // Image -> Buffer
+            // (Achtung: hier KEIN benannter Parameter "toBuffer" verwenden; Signatur ist positional.)
             CopyFromOrToBuffer(
                 cbs.CommandBuffer,
                 copyToBuffer,
@@ -749,10 +740,10 @@ namespace Ryujinx.Graphics.Vulkan
                 offset,
                 stride);
 
-            // 复制后：缓冲区屏障恢复到默认状态（如果未使用临时缓冲区）
+            // Nach dem Copy: Buffer-Barrier zurück auf Default (falls kein temp buffer verwendet).
             if (tempCopyHolder != null)
             {
-                // 从临时缓冲区复制到实际目标缓冲区
+                // Vom temp-Buffer in den echten Ziel-Buffer kopieren.
                 CopyDataToOutputBuffer(cbs, tempCopyHolder, autoBuffer, hostSize, range.Offset);
                 tempCopyHolder.Dispose();
             }
@@ -770,7 +761,8 @@ namespace Ryujinx.Graphics.Vulkan
                     outSize);
             }
 
-            // 重要：将图像恢复为默认访问模式，避免下一帧与 TransferRead 冲突
+            // WICHTIG: Image wieder in den Default-Zugriffsmodus überführen,
+            // damit der nächste Frame nicht „gegen“ TransferRead läuft.
             InsertImageBarrier(
                 _gd.Api,
                 cbs.CommandBuffer,
@@ -832,13 +824,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         private void SetData(ReadOnlySpan<byte> data, int layer, int level, int layers, int levels, bool singleSlice, Rectangle<int>? region = null)
         {
-           // +++ 新增保护代码 +++
-           if (Storage == null)
-           {
-               // 交换链纹理不需要数据写入
-               return;
-            }
-    
             int bufferDataLength = GetBufferDataLength(data.Length);
 
             using var bufferHolder = _gd.BufferManager.Create(_gd, bufferDataLength);
@@ -884,22 +869,12 @@ namespace Ryujinx.Graphics.Vulkan
 
         private int GetBufferDataLength(int length)
         {
-            if (NeedsD24S8Conversion())
-            {
-                return length * 2;
-            }
-
-            return length;
+            return NeedsD24S8Conversion() ? length * 2 : length;
         }
 
         private Format GetCompatibleGalFormat(Format format)
         {
-            if (NeedsD24S8Conversion())
-            {
-                return Format.D32FloatS8Uint;
-            }
-
-            return format;
+            return NeedsD24S8Conversion() ? Format.D32FloatS8Uint : format;
         }
 
         private void CopyDataToBuffer(Span<byte> storage, ReadOnlySpan<byte> input)
@@ -1094,12 +1069,7 @@ namespace Ryujinx.Graphics.Vulkan
         private static int AlignUpNpot(int size, int alignment)
         {
             int remainder = size % alignment;
-            if (remainder == 0)
-            {
-                return size;
-            }
-
-            return size + (alignment - remainder);
+            return remainder == 0 ? size : size + (alignment - remainder);
         }
 
         public void SetStorage(BufferRange buffer)
@@ -1208,12 +1178,6 @@ namespace Ryujinx.Graphics.Vulkan
                     }
                 }
             }
-        }
-
-        public bool IsUnused()
-        {
-            // 当视图无效且没有外部引用时认为未使用
-            return !Valid && _hazardUses == 0;
         }
 
         public void Dispose()

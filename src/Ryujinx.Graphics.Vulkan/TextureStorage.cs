@@ -77,7 +77,9 @@ namespace Ryujinx.Graphics.Vulkan
             _device = device;
             _info = info;
 
-            var format = _gd.FormatCapabilities.ConvertToVkFormat(info.Format, true);
+            bool isMsImageStorageSupported = gd.Capabilities.SupportsShaderStorageImageMultisample || !info.Target.IsMultisample();
+
+            var format = _gd.FormatCapabilities.ConvertToVkFormat(info.Format, isMsImageStorageSupported);
             var levels = (uint)info.Levels;
             var layers = (uint)info.GetLayers();
             var depth = (uint)(info.Target == Target.Texture3D ? info.Depth : 1);
@@ -91,15 +93,12 @@ namespace Ryujinx.Graphics.Vulkan
 
             var sampleCountFlags = ConvertToSampleCountFlags(gd.Capabilities.SupportedSampleCounts, (uint)info.Samples);
 
-            // 修改调用处，传递 isNotMsOrSupportsStorage 和 supportsAttachmentFeedbackLoop 参数
-            bool isNotMsOrSupportsStorage = !info.Target.IsMultisample() || gd.Capabilities.SupportsShaderStorageImageMultisample;
-            bool supportsAttachmentFeedbackLoop = gd.Capabilities.SupportsAttachmentFeedbackLoop;
-            var usage = GetImageUsage(info.Format, isNotMsOrSupportsStorage, supportsAttachmentFeedbackLoop);
+            var usage = GetImageUsage(info.Format, info.Target, gd.Capabilities);
 
             var flags = ImageCreateFlags.CreateMutableFormatBit | ImageCreateFlags.CreateExtendedUsageBit;
 
             // This flag causes mipmapped texture arrays to break on AMD GCN, so for that copy dependencies are forced for aliasing as cube.
-            bool isCube = info.Target == Target.Cubemap || info.Target == Target.CubemapArray;
+            bool isCube = info.Target is Target.Cubemap or Target.CubemapArray;
             bool cubeCompatible = gd.IsAmdGcn ? isCube : (info.Width == info.Height && layers >= 6);
 
             if (type == ImageType.Type2D && cubeCompatible)
@@ -308,7 +307,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        public static ImageUsageFlags GetImageUsage(Format format, bool isNotMsOrSupportsStorage, bool supportsAttachmentFeedbackLoop)
+        public static ImageUsageFlags GetImageUsage(Format format, Target target, in HardwareCapabilities capabilities)
         {
             var usage = DefaultUsageFlags;
 
@@ -321,12 +320,14 @@ namespace Ryujinx.Graphics.Vulkan
                 usage |= ImageUsageFlags.ColorAttachmentBit;
             }
 
-            if (format.IsImageCompatible() && isNotMsOrSupportsStorage)
+            bool isMsImageStorageSupported = capabilities.SupportsShaderStorageImageMultisample;
+
+            if (format.IsImageCompatible() && (isMsImageStorageSupported || !target.IsMultisample()))
             {
                 usage |= ImageUsageFlags.StorageBit;
             }
 
-            if (supportsAttachmentFeedbackLoop &&
+            if (capabilities.SupportsAttachmentFeedbackLoop &&
                 (usage & (ImageUsageFlags.DepthStencilAttachmentBit | ImageUsageFlags.ColorAttachmentBit)) != 0)
             {
                 usage |= ImageUsageFlags.AttachmentFeedbackLoopBitExt;
@@ -337,7 +338,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         public static SampleCountFlags ConvertToSampleCountFlags(SampleCountFlags supportedSampleCounts, uint samples)
         {
-            if (samples == 0 || samples > (uint)SampleCountFlags.Count64Bit)
+            if (samples is 0 or > (uint)SampleCountFlags.Count64Bit)
             {
                 return SampleCountFlags.Count1Bit;
             }
@@ -444,12 +445,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         private int GetBufferDataLength(int length)
         {
-            if (NeedsD24S8Conversion())
-            {
-                return length * 2;
-            }
-
-            return length;
+            return NeedsD24S8Conversion() ? length * 2 : length;
         }
 
         private bool NeedsD24S8Conversion()
@@ -593,10 +589,6 @@ namespace Ryujinx.Graphics.Vulkan
                 _gd.PipelineInternal?.FlushCommandsIfWeightExceeding(_imageAuto, _size);
 
                 Dispose();
-            }
-            else if (_viewsCount < 0)
-            {
-                _viewsCount = 0;
             }
         }
 

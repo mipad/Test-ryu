@@ -38,7 +38,7 @@ namespace Ryujinx.Graphics.Vulkan
             bool isDepthStencil = format.IsDepthOrStencil();
 
             _device = device;
-            _attachments = new[] { view.GetImageViewForAttachment() };
+            _attachments = [view.GetImageViewForAttachment()];
             _validColorAttachments = isDepthStencil ? 0u : 1u;
             _baseAttachment = view;
 
@@ -48,7 +48,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else
             {
-                _colors = new TextureView[] { view };
+                _colors = [view];
                 _colorsCanonical = _colors;
             }
 
@@ -56,9 +56,9 @@ namespace Ryujinx.Graphics.Vulkan
             Height = height;
             Layers = 1;
 
-            AttachmentSamples = new[] { (uint)view.Info.Samples };
-            AttachmentFormats = new[] { view.VkFormat };
-            AttachmentIndices = isDepthStencil ? Array.Empty<int>() : new[] { 0 };
+            AttachmentSamples = [(uint)view.Info.Samples];
+            AttachmentFormats = [view.VkFormat];
+            AttachmentIndices = isDepthStencil ? [] : [0];
             AttachmentIntegerFormatMask = format.IsInteger() ? 1u : 0u;
             LogicOpsAllowed = !format.IsFloatOrSrgb();
 
@@ -162,22 +162,12 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableImageView> GetAttachment(int index)
         {
-            if ((uint)index >= _attachments.Length)
-            {
-                return null;
-            }
-
-            return _attachments[index];
+            return (uint)index >= _attachments.Length ? null : _attachments[index];
         }
 
         public Auto<DisposableImageView> GetDepthStencilAttachment()
         {
-            if (!HasDepthStencil)
-            {
-                return null;
-            }
-
-            return _attachments[AttachmentsCount - 1];
+            return !HasDepthStencil ? null : _attachments[AttachmentsCount - 1];
         }
 
         public ComponentType GetAttachmentComponentType(int index)
@@ -202,12 +192,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         public ImageAspectFlags GetDepthStencilAspectFlags()
         {
-            if (_depthStencil == null)
-            {
-                return ImageAspectFlags.None;
-            }
-
-            return _depthStencil.Info.Format.ConvertAspectFlags();
+            return _depthStencil == null ? ImageAspectFlags.None : _depthStencil.Info.Format.ConvertAspectFlags();
         }
 
         public bool IsValidColorAttachment(int bindIndex)
