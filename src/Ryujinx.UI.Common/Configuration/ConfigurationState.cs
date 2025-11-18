@@ -6,6 +6,7 @@ using Ryujinx.Common.Configuration.Hid.Keyboard;
 using Ryujinx.Common.Configuration.Multiplayer;
 using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.Vulkan;
+using Ryujinx.HLE;
 using Ryujinx.UI.Common.Configuration.System;
 using Ryujinx.UI.Common.Configuration.UI;
 using Ryujinx.UI.Common.Helper;
@@ -30,6 +31,7 @@ namespace Ryujinx.UI.Common.Configuration
                 public ReactiveObject<bool> AppColumn { get; private set; }
                 public ReactiveObject<bool> DevColumn { get; private set; }
                 public ReactiveObject<bool> VersionColumn { get; private set; }
+                public ReactiveObject<bool> LdnInfoColumn { get; private set; }
                 public ReactiveObject<bool> TimePlayedColumn { get; private set; }
                 public ReactiveObject<bool> LastPlayedColumn { get; private set; }
                 public ReactiveObject<bool> FileExtColumn { get; private set; }
@@ -43,6 +45,7 @@ namespace Ryujinx.UI.Common.Configuration
                     AppColumn = new ReactiveObject<bool>();
                     DevColumn = new ReactiveObject<bool>();
                     VersionColumn = new ReactiveObject<bool>();
+                    LdnInfoColumn = new ReactiveObject<bool>();
                     TimePlayedColumn = new ReactiveObject<bool>();
                     LastPlayedColumn = new ReactiveObject<bool>();
                     FileExtColumn = new ReactiveObject<bool>();
@@ -123,6 +126,11 @@ namespace Ryujinx.UI.Common.Configuration
             public ReactiveObject<List<string>> GameDirs { get; private set; }
 
             /// <summary>
+            /// A list of directories containing DLC/updates the user wants to autoload during library refreshes
+            /// </summary>
+            public ReactiveObject<List<string>> AutoloadDirs { get; private set; }
+
+            /// <summary>
             /// A list of file types to be hidden in the games List
             /// </summary>
             public ShownFileTypeSettings ShownFileTypes { get; private set; }
@@ -192,6 +200,7 @@ namespace Ryujinx.UI.Common.Configuration
                 GuiColumns = new Columns();
                 ColumnSort = new ColumnSortSettings();
                 GameDirs = new ReactiveObject<List<string>>();
+                AutoloadDirs = new ReactiveObject<List<string>>();
                 ShownFileTypes = new ShownFileTypeSettings();
                 WindowStartup = new WindowStartupSettings();
                 EnableCustomTheme = new ReactiveObject<bool>();
@@ -322,6 +331,11 @@ namespace Ryujinx.UI.Common.Configuration
             public ReactiveObject<bool> EnablePtc { get; private set; }
 
             /// <summary>
+            /// Enables or disables low-power profiled translation cache persistency loading
+            /// </summary>
+            public ReactiveObject<bool> EnableLowPowerPtc { get; private set; }
+
+            /// <summary>
             /// Enables or disables guest Internet access
             /// </summary>
             public ReactiveObject<bool> EnableInternetAccess { get; private set; }
@@ -354,7 +368,7 @@ namespace Ryujinx.UI.Common.Configuration
             /// <summary>
             /// Defines the amount of RAM available on the emulated system, and how it is distributed
             /// </summary>
-            public ReactiveObject<bool> ExpandRam { get; private set; }
+            public ReactiveObject<MemoryConfiguration> DramSize { get; private set; }
 
             /// <summary>
             /// Enable or disable ignoring missing services
@@ -376,6 +390,8 @@ namespace Ryujinx.UI.Common.Configuration
                 EnableDockedMode.Event += static (sender, e) => LogValueChange(e, nameof(EnableDockedMode));
                 EnablePtc = new ReactiveObject<bool>();
                 EnablePtc.Event += static (sender, e) => LogValueChange(e, nameof(EnablePtc));
+                EnableLowPowerPtc = new ReactiveObject<bool>();
+                EnableLowPowerPtc.Event += static (sender, e) => LogValueChange(e, nameof(EnableLowPowerPtc));
                 EnableInternetAccess = new ReactiveObject<bool>();
                 EnableInternetAccess.Event += static (sender, e) => LogValueChange(e, nameof(EnableInternetAccess));
                 EnableFsIntegrityChecks = new ReactiveObject<bool>();
@@ -386,8 +402,8 @@ namespace Ryujinx.UI.Common.Configuration
                 AudioBackend.Event += static (sender, e) => LogValueChange(e, nameof(AudioBackend));
                 MemoryManagerMode = new ReactiveObject<MemoryManagerMode>();
                 MemoryManagerMode.Event += static (sender, e) => LogValueChange(e, nameof(MemoryManagerMode));
-                ExpandRam = new ReactiveObject<bool>();
-                ExpandRam.Event += static (sender, e) => LogValueChange(e, nameof(ExpandRam));
+                DramSize = new ReactiveObject<MemoryConfiguration>();
+                DramSize.Event += static (sender, e) => LogValueChange(e, nameof(DramSize));
                 IgnoreMissingServices = new ReactiveObject<bool>();
                 IgnoreMissingServices.Event += static (sender, e) => LogValueChange(e, nameof(IgnoreMissingServices));
                 AudioVolume = new ReactiveObject<float>();
@@ -469,9 +485,19 @@ namespace Ryujinx.UI.Common.Configuration
             public ReactiveObject<string> ShadersDumpPath { get; private set; }
 
             /// <summary>
-            /// Enables or disables Vertical Sync
+            /// Toggles the present interval mode. Options are Switch (60Hz), Unbounded (previously Vsync off), and Custom, if enabled.
             /// </summary>
-            public ReactiveObject<bool> EnableVsync { get; private set; }
+            public ReactiveObject<VSyncMode> VSyncMode { get; private set; }
+
+            /// <summary>
+            /// Enables or disables the custom present interval mode.
+            /// </summary>
+            public ReactiveObject<bool> EnableCustomVSyncInterval { get; private set; }
+
+            /// <summary>
+            /// Changes the custom present interval.
+            /// </summary>
+            public ReactiveObject<int> CustomVSyncInterval { get; private set; }
 
             /// <summary>
             /// Enables or disables Shader cache
@@ -531,8 +557,12 @@ namespace Ryujinx.UI.Common.Configuration
                 AspectRatio = new ReactiveObject<AspectRatio>();
                 AspectRatio.Event += static (sender, e) => LogValueChange(e, nameof(AspectRatio));
                 ShadersDumpPath = new ReactiveObject<string>();
-                EnableVsync = new ReactiveObject<bool>();
-                EnableVsync.Event += static (sender, e) => LogValueChange(e, nameof(EnableVsync));
+                VSyncMode = new ReactiveObject<VSyncMode>();
+                VSyncMode.Event += static (sender, e) => LogValueChange(e, nameof(VSyncMode));
+                EnableCustomVSyncInterval = new ReactiveObject<bool>();
+                EnableCustomVSyncInterval.Event += static (sender, e) => LogValueChange(e, nameof(EnableCustomVSyncInterval));
+                CustomVSyncInterval = new ReactiveObject<int>();
+                CustomVSyncInterval.Event += static (sender, e) => LogValueChange(e, nameof(CustomVSyncInterval));
                 EnableShaderCache = new ReactiveObject<bool>();
                 EnableShaderCache.Event += static (sender, e) => LogValueChange(e, nameof(EnableShaderCache));
                 EnableTextureRecompression = new ReactiveObject<bool>();
@@ -569,11 +599,32 @@ namespace Ryujinx.UI.Common.Configuration
             /// </summary>
             public ReactiveObject<MultiplayerMode> Mode { get; private set; }
 
+            /// <summary>
+            /// Disable P2P
+            /// </summary>
+            public ReactiveObject<bool> DisableP2p { get; private set; }
+
+            /// <summary>
+            /// LDN PassPhrase
+            /// </summary>
+            public ReactiveObject<string> LdnPassphrase { get; private set; }
+
+            /// <summary>
+            /// LDN Server
+            /// </summary>
+            public ReactiveObject<string> LdnServer { get; private set; }
+
             public MultiplayerSection()
             {
                 LanInterfaceId = new ReactiveObject<string>();
                 Mode = new ReactiveObject<MultiplayerMode>();
                 Mode.Event += static (_, e) => LogValueChange(e, nameof(MultiplayerMode));
+                DisableP2p = new ReactiveObject<bool>();
+                DisableP2p.Event += static (_, e) => LogValueChange(e, nameof(DisableP2p));
+                LdnPassphrase = new ReactiveObject<string>();
+                LdnPassphrase.Event += static (_, e) => LogValueChange(e, nameof(LdnPassphrase));
+                LdnServer = new ReactiveObject<string>();
+                LdnServer.Event += static (_, e) => LogValueChange(e, nameof(LdnServer));
             }
         }
 
@@ -628,6 +679,11 @@ namespace Ryujinx.UI.Common.Configuration
         public ReactiveObject<bool> ShowConfirmExit { get; private set; }
 
         /// <summary>
+        /// Ignore Applet
+        /// </summary>
+        public ReactiveObject<bool> IgnoreApplet { get; private set; }
+
+        /// <summary>
         /// Enables or disables save window size, position and state on close.
         /// </summary>
         public ReactiveObject<bool> RememberWindowState { get; private set; }
@@ -653,6 +709,7 @@ namespace Ryujinx.UI.Common.Configuration
             EnableDiscordIntegration = new ReactiveObject<bool>();
             CheckUpdatesOnStart = new ReactiveObject<bool>();
             ShowConfirmExit = new ReactiveObject<bool>();
+            IgnoreApplet = new ReactiveObject<bool>();
             RememberWindowState = new ReactiveObject<bool>();
             EnableHardwareAcceleration = new ReactiveObject<bool>();
             HideCursor = new ReactiveObject<HideCursorMode>();
@@ -691,22 +748,26 @@ namespace Ryujinx.UI.Common.Configuration
                 EnableDiscordIntegration = EnableDiscordIntegration,
                 CheckUpdatesOnStart = CheckUpdatesOnStart,
                 ShowConfirmExit = ShowConfirmExit,
+                IgnoreApplet = IgnoreApplet,
                 RememberWindowState = RememberWindowState,
                 EnableHardwareAcceleration = EnableHardwareAcceleration,
                 HideCursor = HideCursor,
-                EnableVsync = Graphics.EnableVsync,
+                VSyncMode = Graphics.VSyncMode,
+                EnableCustomVSyncInterval = Graphics.EnableCustomVSyncInterval,
+                CustomVSyncInterval = Graphics.CustomVSyncInterval,
                 EnableShaderCache = Graphics.EnableShaderCache,
                 EnableTextureRecompression = Graphics.EnableTextureRecompression,
                 EnableMacroHLE = Graphics.EnableMacroHLE,
                 EnableColorSpacePassthrough = Graphics.EnableColorSpacePassthrough,
                 EnablePtc = System.EnablePtc,
+                EnableLowPowerPtc = System.EnableLowPowerPtc,
                 EnableInternetAccess = System.EnableInternetAccess,
                 EnableFsIntegrityChecks = System.EnableFsIntegrityChecks,
                 FsGlobalAccessLogMode = System.FsGlobalAccessLogMode,
                 AudioBackend = System.AudioBackend,
                 AudioVolume = System.AudioVolume,
                 MemoryManagerMode = System.MemoryManagerMode,
-                ExpandRam = System.ExpandRam,
+                DramSize = System.DramSize,
                 IgnoreMissingServices = System.IgnoreMissingServices,
                 UseHypervisor = System.UseHypervisor,
                 GuiColumns = new GuiColumns
@@ -716,6 +777,7 @@ namespace Ryujinx.UI.Common.Configuration
                     AppColumn = UI.GuiColumns.AppColumn,
                     DevColumn = UI.GuiColumns.DevColumn,
                     VersionColumn = UI.GuiColumns.VersionColumn,
+                    LdnInfoColumn = UI.GuiColumns.LdnInfoColumn,
                     TimePlayedColumn = UI.GuiColumns.TimePlayedColumn,
                     LastPlayedColumn = UI.GuiColumns.LastPlayedColumn,
                     FileExtColumn = UI.GuiColumns.FileExtColumn,
@@ -728,6 +790,7 @@ namespace Ryujinx.UI.Common.Configuration
                     SortAscending = UI.ColumnSort.SortAscending,
                 },
                 GameDirs = UI.GameDirs,
+                AutoloadDirs = UI.AutoloadDirs,
                 ShownFileTypes = new ShownFileTypes
                 {
                     NSP = UI.ShownFileTypes.NSP,
@@ -766,6 +829,9 @@ namespace Ryujinx.UI.Common.Configuration
                 PreferredGpu = Graphics.PreferredGpu,
                 MultiplayerLanInterfaceId = Multiplayer.LanInterfaceId,
                 MultiplayerMode = Multiplayer.Mode,
+                MultiplayerDisableP2p = Multiplayer.DisableP2p,
+                MultiplayerLdnPassphrase = Multiplayer.LdnPassphrase,
+                LdnServer = Multiplayer.LdnServer,
             };
 
             return configurationFile;
@@ -800,10 +866,13 @@ namespace Ryujinx.UI.Common.Configuration
             EnableDiscordIntegration.Value = true;
             CheckUpdatesOnStart.Value = true;
             ShowConfirmExit.Value = true;
+            IgnoreApplet.Value = false;
             RememberWindowState.Value = true;
             EnableHardwareAcceleration.Value = true;
             HideCursor.Value = HideCursorMode.OnIdle;
-            Graphics.EnableVsync.Value = true;
+            Graphics.VSyncMode.Value = VSyncMode.Switch;
+            Graphics.CustomVSyncInterval.Value = 120;
+            Graphics.EnableCustomVSyncInterval.Value = false;
             Graphics.EnableShaderCache.Value = true;
             Graphics.EnableTextureRecompression.Value = false;
             Graphics.EnableMacroHLE.Value = true;
@@ -818,11 +887,14 @@ namespace Ryujinx.UI.Common.Configuration
             System.AudioBackend.Value = AudioBackend.SDL2;
             System.AudioVolume.Value = 1;
             System.MemoryManagerMode.Value = MemoryManagerMode.HostMappedUnsafe;
-            System.ExpandRam.Value = false;
+            System.DramSize.Value = MemoryConfiguration.MemoryConfiguration4GiB;
             System.IgnoreMissingServices.Value = false;
             System.UseHypervisor.Value = true;
             Multiplayer.LanInterfaceId.Value = "0";
             Multiplayer.Mode.Value = MultiplayerMode.Disabled;
+            Multiplayer.DisableP2p.Value = false;
+            Multiplayer.LdnPassphrase.Value = "";
+            Multiplayer.LdnServer.Value = "";
             UI.GuiColumns.FavColumn.Value = true;
             UI.GuiColumns.IconColumn.Value = true;
             UI.GuiColumns.AppColumn.Value = true;
@@ -836,6 +908,7 @@ namespace Ryujinx.UI.Common.Configuration
             UI.ColumnSort.SortColumnId.Value = 0;
             UI.ColumnSort.SortAscending.Value = false;
             UI.GameDirs.Value = new List<string>();
+            UI.AutoloadDirs.Value = new List<string>();
             UI.ShownFileTypes.NSP.Value = true;
             UI.ShownFileTypes.PFS0.Value = true;
             UI.ShownFileTypes.XCI.Value = true;
@@ -862,7 +935,7 @@ namespace Ryujinx.UI.Common.Configuration
             Hid.EnableMouse.Value = false;
             Hid.Hotkeys.Value = new KeyboardHotkeys
             {
-                ToggleVsync = Key.F1,
+                ToggleVSyncMode = Key.F1,
                 ToggleMute = Key.F2,
                 Screenshot = Key.F8,
                 ShowUI = Key.F4,
@@ -880,7 +953,7 @@ namespace Ryujinx.UI.Common.Configuration
                     Backend = InputBackendType.WindowKeyboard,
                     Id = "0",
                     PlayerIndex = PlayerIndex.Player1,
-                    ControllerType = ControllerType.JoyconPair,
+                    ControllerType = ControllerType.ProController,
                     LeftJoycon = new LeftJoyconCommonConfig<Key>
                     {
                         DpadUp = Key.Up,
@@ -993,7 +1066,7 @@ namespace Ryujinx.UI.Common.Configuration
 
                 configurationFileFormat.Hotkeys = new KeyboardHotkeys
                 {
-                    ToggleVsync = Key.F1,
+                    ToggleVSyncMode = Key.F1,
                 };
 
                 configurationFileUpdated = true;
@@ -1109,7 +1182,7 @@ namespace Ryujinx.UI.Common.Configuration
                         Backend = InputBackendType.WindowKeyboard,
                         Id = "0",
                         PlayerIndex = PlayerIndex.Player1,
-                        ControllerType = ControllerType.JoyconPair,
+                        ControllerType = ControllerType.ProController,
                         LeftJoycon = new LeftJoyconCommonConfig<Key>
                         {
                             DpadUp = Key.Up,
@@ -1187,7 +1260,7 @@ namespace Ryujinx.UI.Common.Configuration
 
                 configurationFileFormat.Hotkeys = new KeyboardHotkeys
                 {
-                    ToggleVsync = Key.F1,
+                    ToggleVSyncMode = Key.F1,
                     Screenshot = Key.F8,
                 };
 
@@ -1200,7 +1273,7 @@ namespace Ryujinx.UI.Common.Configuration
 
                 configurationFileFormat.Hotkeys = new KeyboardHotkeys
                 {
-                    ToggleVsync = Key.F1,
+                    ToggleVSyncMode = Key.F1,
                     Screenshot = Key.F8,
                     ShowUI = Key.F4,
                 };
@@ -1243,7 +1316,7 @@ namespace Ryujinx.UI.Common.Configuration
 
                 configurationFileFormat.Hotkeys = new KeyboardHotkeys
                 {
-                    ToggleVsync = configurationFileFormat.Hotkeys.ToggleVsync,
+                    ToggleVSyncMode = Key.F1,
                     Screenshot = configurationFileFormat.Hotkeys.Screenshot,
                     ShowUI = configurationFileFormat.Hotkeys.ShowUI,
                     Pause = Key.F5,
@@ -1258,7 +1331,7 @@ namespace Ryujinx.UI.Common.Configuration
 
                 configurationFileFormat.Hotkeys = new KeyboardHotkeys
                 {
-                    ToggleVsync = configurationFileFormat.Hotkeys.ToggleVsync,
+                    ToggleVSyncMode = Key.F1,
                     Screenshot = configurationFileFormat.Hotkeys.Screenshot,
                     ShowUI = configurationFileFormat.Hotkeys.ShowUI,
                     Pause = configurationFileFormat.Hotkeys.Pause,
@@ -1332,7 +1405,7 @@ namespace Ryujinx.UI.Common.Configuration
 
                 configurationFileFormat.Hotkeys = new KeyboardHotkeys
                 {
-                    ToggleVsync = configurationFileFormat.Hotkeys.ToggleVsync,
+                    ToggleVSyncMode = Key.F1,
                     Screenshot = configurationFileFormat.Hotkeys.Screenshot,
                     ShowUI = configurationFileFormat.Hotkeys.ShowUI,
                     Pause = configurationFileFormat.Hotkeys.Pause,
@@ -1359,7 +1432,7 @@ namespace Ryujinx.UI.Common.Configuration
 
                 configurationFileFormat.Hotkeys = new KeyboardHotkeys
                 {
-                    ToggleVsync = configurationFileFormat.Hotkeys.ToggleVsync,
+                    ToggleVSyncMode = Key.F1,
                     Screenshot = configurationFileFormat.Hotkeys.Screenshot,
                     ShowUI = configurationFileFormat.Hotkeys.ShowUI,
                     Pause = configurationFileFormat.Hotkeys.Pause,
@@ -1477,6 +1550,69 @@ namespace Ryujinx.UI.Common.Configuration
                 configurationFileUpdated = true;
             }
 
+            if (configurationFileFormat.Version < 52)
+            {
+                Ryujinx.Common.Logging.Logger.Warning?.Print(LogClass.Application, $"Outdated configuration version {configurationFileFormat.Version}, migrating to version 52.");
+
+                configurationFileFormat.AutoloadDirs = new();
+
+                configurationFileUpdated = true;
+            }
+
+            if (configurationFileFormat.Version < 53)
+            {
+                Ryujinx.Common.Logging.Logger.Warning?.Print(LogClass.Application, $"Outdated configuration version {configurationFileFormat.Version}, migrating to version 53.");
+
+                configurationFileFormat.EnableLowPowerPtc = false;
+
+                configurationFileUpdated = true;
+            }
+
+            if (configurationFileFormat.Version < 54)
+            {
+                Ryujinx.Common.Logging.Logger.Warning?.Print(LogClass.Application, $"Outdated configuration version {configurationFileFormat.Version}, migrating to version 54.");
+
+                configurationFileFormat.DramSize = MemoryConfiguration.MemoryConfiguration4GiB;
+
+                configurationFileUpdated = true;
+            }
+
+            if (configurationFileFormat.Version < 55)
+            {
+                Ryujinx.Common.Logging.Logger.Warning?.Print(LogClass.Application, $"Outdated configuration version {configurationFileFormat.Version}, migrating to version 55.");
+
+                configurationFileFormat.IgnoreApplet = false;
+
+                configurationFileUpdated = true;
+            }
+
+            if (configurationFileFormat.Version < 56)
+            {
+                Ryujinx.Common.Logging.Logger.Warning?.Print(LogClass.Application, $"Outdated configuration version {configurationFileFormat.Version}, migrating to version 56.");
+
+                configurationFileFormat.VSyncMode = VSyncMode.Switch;
+                configurationFileFormat.EnableCustomVSyncInterval = false;
+
+                configurationFileFormat.Hotkeys = new KeyboardHotkeys
+                {
+                    ToggleVSyncMode = Key.F1,
+                    Screenshot = configurationFileFormat.Hotkeys.Screenshot,
+                    ShowUI = configurationFileFormat.Hotkeys.ShowUI,
+                    Pause = configurationFileFormat.Hotkeys.Pause,
+                    ToggleMute = configurationFileFormat.Hotkeys.ToggleMute,
+                    ResScaleUp = configurationFileFormat.Hotkeys.ResScaleUp,
+                    ResScaleDown = configurationFileFormat.Hotkeys.ResScaleDown,
+                    VolumeUp = configurationFileFormat.Hotkeys.VolumeUp,
+                    VolumeDown = configurationFileFormat.Hotkeys.VolumeDown,
+                    CustomVSyncIntervalIncrement = Key.Unbound,
+                    CustomVSyncIntervalDecrement = Key.Unbound,
+                };
+
+                configurationFileFormat.CustomVSyncInterval = 120;
+
+                configurationFileUpdated = true;
+            }
+
             Logger.EnableFileLog.Value = configurationFileFormat.EnableFileLog;
             Graphics.ResScale.Value = configurationFileFormat.ResScale;
             Graphics.ResScaleCustom.Value = configurationFileFormat.ResScaleCustom;
@@ -1507,22 +1643,26 @@ namespace Ryujinx.UI.Common.Configuration
             EnableDiscordIntegration.Value = configurationFileFormat.EnableDiscordIntegration;
             CheckUpdatesOnStart.Value = configurationFileFormat.CheckUpdatesOnStart;
             ShowConfirmExit.Value = configurationFileFormat.ShowConfirmExit;
+            IgnoreApplet.Value = configurationFileFormat.IgnoreApplet;
             RememberWindowState.Value = configurationFileFormat.RememberWindowState;
             EnableHardwareAcceleration.Value = configurationFileFormat.EnableHardwareAcceleration;
             HideCursor.Value = configurationFileFormat.HideCursor;
-            Graphics.EnableVsync.Value = configurationFileFormat.EnableVsync;
+            Graphics.VSyncMode.Value = configurationFileFormat.VSyncMode;
+            Graphics.EnableCustomVSyncInterval.Value = configurationFileFormat.EnableCustomVSyncInterval;
+            Graphics.CustomVSyncInterval.Value = configurationFileFormat.CustomVSyncInterval;
             Graphics.EnableShaderCache.Value = configurationFileFormat.EnableShaderCache;
             Graphics.EnableTextureRecompression.Value = configurationFileFormat.EnableTextureRecompression;
             Graphics.EnableMacroHLE.Value = configurationFileFormat.EnableMacroHLE;
             Graphics.EnableColorSpacePassthrough.Value = configurationFileFormat.EnableColorSpacePassthrough;
             System.EnablePtc.Value = configurationFileFormat.EnablePtc;
+            System.EnableLowPowerPtc.Value = configurationFileFormat.EnableLowPowerPtc;
             System.EnableInternetAccess.Value = configurationFileFormat.EnableInternetAccess;
             System.EnableFsIntegrityChecks.Value = configurationFileFormat.EnableFsIntegrityChecks;
             System.FsGlobalAccessLogMode.Value = configurationFileFormat.FsGlobalAccessLogMode;
             System.AudioBackend.Value = configurationFileFormat.AudioBackend;
             System.AudioVolume.Value = configurationFileFormat.AudioVolume;
             System.MemoryManagerMode.Value = configurationFileFormat.MemoryManagerMode;
-            System.ExpandRam.Value = configurationFileFormat.ExpandRam;
+            System.DramSize.Value = configurationFileFormat.DramSize;
             System.IgnoreMissingServices.Value = configurationFileFormat.IgnoreMissingServices;
             System.UseHypervisor.Value = configurationFileFormat.UseHypervisor;
             UI.GuiColumns.FavColumn.Value = configurationFileFormat.GuiColumns.FavColumn;
@@ -1538,6 +1678,7 @@ namespace Ryujinx.UI.Common.Configuration
             UI.ColumnSort.SortColumnId.Value = configurationFileFormat.ColumnSort.SortColumnId;
             UI.ColumnSort.SortAscending.Value = configurationFileFormat.ColumnSort.SortAscending;
             UI.GameDirs.Value = configurationFileFormat.GameDirs;
+            UI.AutoloadDirs.Value = configurationFileFormat.AutoloadDirs;
             UI.ShownFileTypes.NSP.Value = configurationFileFormat.ShownFileTypes.NSP;
             UI.ShownFileTypes.PFS0.Value = configurationFileFormat.ShownFileTypes.PFS0;
             UI.ShownFileTypes.XCI.Value = configurationFileFormat.ShownFileTypes.XCI;
@@ -1572,6 +1713,9 @@ namespace Ryujinx.UI.Common.Configuration
 
             Multiplayer.LanInterfaceId.Value = configurationFileFormat.MultiplayerLanInterfaceId;
             Multiplayer.Mode.Value = configurationFileFormat.MultiplayerMode;
+            Multiplayer.DisableP2p.Value = configurationFileFormat.MultiplayerDisableP2p;
+            Multiplayer.LdnPassphrase.Value = configurationFileFormat.MultiplayerLdnPassphrase;
+            Multiplayer.LdnServer.Value = configurationFileFormat.LdnServer;
 
             if (configurationFileUpdated)
             {
@@ -1585,7 +1729,7 @@ namespace Ryujinx.UI.Common.Configuration
         {
             // Any system running macOS or returning any amount of valid Vulkan devices should default to Vulkan.
             // Checks for if the Vulkan version and featureset is compatible should be performed within VulkanRenderer.
-            if (OperatingSystem.IsMacOS() || OperatingSystem.IsIOS() || VulkanRenderer.GetPhysicalDevices().Length > 0)
+            if (OperatingSystem.IsMacOS() || VulkanRenderer.GetPhysicalDevices().Length > 0)
             {
                 return GraphicsBackend.Vulkan;
             }
