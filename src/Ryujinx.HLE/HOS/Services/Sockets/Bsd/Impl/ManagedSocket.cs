@@ -1,5 +1,5 @@
 using Ryujinx.Common.Logging;
-using Ryujinx.HLE.HOS.Services.Sockets.Bsd.Proxy;
+//using Ryujinx.HLE.HOS.Services.Sockets.Bsd.Proxy;
 using Ryujinx.HLE.HOS.Services.Sockets.Bsd.Types;
 using System;
 using System.Collections.Generic;
@@ -28,7 +28,7 @@ namespace Ryujinx.HLE.HOS.Services.Sockets.Bsd.Impl
 
         public IPEndPoint LocalEndPoint => Socket.LocalEndPoint as IPEndPoint;
 
-        public ISocketImpl Socket { get; }
+       // public ISocketImpl Socket { get; }
 
         public ManagedSocket(AddressFamily addressFamily, SocketType socketType, ProtocolType protocolType, string lanInterfaceId)
         {
@@ -36,11 +36,11 @@ namespace Ryujinx.HLE.HOS.Services.Sockets.Bsd.Impl
             Refcount = 1;
         }
 
-        private ManagedSocket(ISocketImpl socket)
-        {
-            Socket = socket;
-            Refcount = 1;
-        }
+        //private ManagedSocket(ISocketImpl socket)
+       // {
+           // Socket = socket;
+          //  Refcount = 1;
+      //  }
 
         private static SocketFlags ConvertBsdSocketFlags(BsdSocketFlags bsdSocketFlags)
         {
