@@ -163,6 +163,21 @@ namespace Ryujinx.HLE
         /// Multiplayer Mode
         /// </summary>
         public MultiplayerMode MultiplayerMode { internal get; set; }
+        
+        /// <summary>
+        /// Disable P2P mode
+        /// </summary>
+        public bool MultiplayerDisableP2p { internal get; set; }
+
+        /// <summary>
+        /// Multiplayer Passphrase
+        /// </summary>
+        public string MultiplayerLdnPassphrase { internal get; set; }
+
+        /// <summary>
+        /// LDN Server
+        /// </summary>
+        public string MultiplayerLdnServer { internal get; set; }
 
         /// <summary>
         /// An action called when HLE force a refresh of output after docked mode changed.
@@ -194,7 +209,11 @@ namespace Ryujinx.HLE
                                 float audioVolume,
                                 bool useHypervisor,
                                 string multiplayerLanInterfaceId,
-                                MultiplayerMode multiplayerMode)
+                                MultiplayerMode multiplayerMode,
+                                bool multiplayerDisableP2p,
+                                string multiplayerLdnPassphrase,
+                                string multiplayerLdnServer
+)
         {
             VirtualFileSystem = virtualFileSystem;
             LibHacHorizonManager = libHacHorizonManager;
