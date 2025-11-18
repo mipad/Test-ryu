@@ -14,8 +14,8 @@ pthread_t _renderingThreadIdNative;
 std::chrono::time_point<std::chrono::steady_clock, std::chrono::nanoseconds> _currentTimePoint;
 bool isInitialOrientationFlipped = true;
 
-extern "C"
-{
+extern "C" {
+
 JNIEXPORT jlong JNICALL
 Java_org_ryujinx_android_NativeHelpers_getNativeWindow(JNIEnv *env, jobject instance, jobject surface) {
     auto nativeWindow = ANativeWindow_fromSurface(env, surface);
@@ -68,7 +68,10 @@ void setRenderingThread() {
     _currentTimePoint = std::chrono::high_resolution_clock::now();
 }
 
-JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) { return JNI_VERSION_1_6; }
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) { 
+    return JNI_VERSION_1_6; 
+}
+
 JNIEXPORT void JNICALL JNI_OnUnload(JavaVM* vm, void* reserved) {}
 
 JNIEXPORT void JNICALL
@@ -121,7 +124,9 @@ Java_org_ryujinx_android_NativeHelpers_loadDriver(JNIEnv *env, jobject thiz,
 }
 
 void debug_break(int code) {
-    if (code >= 3) int r = 0;
+    if (code >= 3) { 
+        // 调试断点
+    }
 }
 
 JNIEXPORT void JNICALL
@@ -236,8 +241,9 @@ Java_org_ryujinx_android_NativeHelpers_getAndroidDeviceBrand(JNIEnv *env, jobjec
     return env->NewStringUTF(brand);
 }
 
-// Oboe Audio C接口
-extern "C" {
+} // extern "C" 结束
+
+// Oboe Audio C接口 (在extern "C"外部，因为已经在头文件中声明为extern "C")
 bool initOboeAudio(int sample_rate, int channel_count) {
     return RyujinxOboe::OboeAudioRenderer::GetInstance().Initialize(sample_rate, channel_count);
 }
@@ -288,5 +294,4 @@ const char* GetAndroidDeviceBrand() {
     static char brand[PROP_VALUE_MAX] = {0};
     if (brand[0] == '\0') __system_property_get("ro.product.brand", brand);
     return brand;
-}
 }
