@@ -457,7 +457,7 @@ namespace Ryujinx.Graphics.Vulkan
                 _physicalDevice.IsDeviceExtensionPresent("VK_NV_viewport_array2"),
                 _physicalDevice.IsDeviceExtensionPresent(ExtExternalMemoryHost.ExtensionName),
                 supportsDepthClipControl && featuresDepthClipControl.DepthClipControl,
-                supportsAttachmentFeedbackLoop && featuresAttachmentFeedbackLoop.AttachmentFeedbackLoop,
+                supportsAttachmentFeedbackLoop && featuresAttachmentFeedbackLoop.AttachmentFeedbackLoopLayout,
                 supportsDynamicAttachmentFeedbackLoop && featuresDynamicAttachmentFeedbackLoop.AttachmentFeedbackLoopDynamicState,
                 propertiesSubgroup.SubgroupSize,
                 supportedSampleCounts,
@@ -899,7 +899,7 @@ namespace Ryujinx.Graphics.Vulkan
             Logger.Notice.Print(LogClass.Gpu, $"GPU Memory: {GetTotalGPUMemory() / (1024 * 1024)} MiB");
             
             // 打印feedback loop支持状态
-            if (Capabilities.SupportsAttachmentFeedbackLoopLayout)
+            if (Capabilities.SupportsAttachmentFeedbackLoop)
             {
                 if (SupportsMaliFeedbackLoop)
                 {
