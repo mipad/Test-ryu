@@ -45,19 +45,6 @@ namespace Ryujinx.Audio.Backends.Oboe
         [DllImport("libryujinxjni", EntryPoint = "resetOboeAudio")]
         private static extern void resetOboeAudio();
 
-        // 稳定回调控制
-        [DllImport("libryujinxjni", EntryPoint = "setOboeStabilizedCallbackEnabled")]
-        private static extern void setOboeStabilizedCallbackEnabled(bool enabled);
-
-        [DllImport("libryujinxjni", EntryPoint = "isOboeStabilizedCallbackEnabled")]
-        private static extern bool isOboeStabilizedCallbackEnabled();
-
-        [DllImport("libryujinxjni", EntryPoint = "setOboeStabilizedCallbackIntensity")]
-        private static extern void setOboeStabilizedCallbackIntensity(float intensity);
-
-        [DllImport("libryujinxjni", EntryPoint = "getOboeStabilizedCallbackIntensity")]
-        private static extern float getOboeStabilizedCallbackIntensity();
-
         // ========== 属性 ==========
         public static bool IsSupported => true;
 
@@ -75,10 +62,6 @@ namespace Ryujinx.Audio.Backends.Oboe
         private SampleFormat _currentSampleFormat = SampleFormat.PcmInt16;
         private uint _currentSampleRate = 48000;
 
-        // 稳定回调设置 - 默认开启
-        private bool _stabilizedCallbackEnabled = true;
-        private float _stabilizedCallbackIntensity = 0.3f;
-
         public float Volume
         {
             get => _volume;
@@ -90,45 +73,11 @@ namespace Ryujinx.Audio.Backends.Oboe
             }
         }
 
-        // 稳定回调属性
-        public bool StabilizedCallbackEnabled
-        {
-            get => _stabilizedCallbackEnabled;
-            set
-            {
-                if (_stabilizedCallbackEnabled != value)
-                {
-                    _stabilizedCallbackEnabled = value;
-                    setOboeStabilizedCallbackEnabled(value);
-                    Logger.Info?.Print(LogClass.Audio, $"Stabilized callback {(value ? "enabled" : "disabled")}");
-                }
-            }
-        }
-
-        public float StabilizedCallbackIntensity
-        {
-            get => _stabilizedCallbackIntensity;
-            set
-            {
-                float clampedValue = Math.Clamp(value, 0.0f, 1.0f);
-                if (Math.Abs(_stabilizedCallbackIntensity - clampedValue) > 0.01f)
-                {
-                    _stabilizedCallbackIntensity = clampedValue;
-                    setOboeStabilizedCallbackIntensity(clampedValue);
-                    Logger.Info?.Print(LogClass.Audio, $"Stabilized callback intensity set to {clampedValue:F2}");
-                }
-            }
-        }
-
         // ========== 构造与生命周期 ==========
         public OboeHardwareDeviceDriver()
         {
-            // 应用默认的稳定回调设置
-            setOboeStabilizedCallbackEnabled(_stabilizedCallbackEnabled);
-            setOboeStabilizedCallbackIntensity(_stabilizedCallbackIntensity);
-            
             StartUpdateThread();
-            Logger.Info?.Print(LogClass.Audio, "OboeHardwareDeviceDriver initialized (支持所有采样率和原始格式, 稳定回调默认开启)");
+            Logger.Info?.Print(LogClass.Audio, "OboeHardwareDeviceDriver initialized (支持所有采样率和原始格式)");
         }
 
         private void StartUpdateThread()
@@ -275,7 +224,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 _currentSampleFormat = sampleFormat;
                 _currentSampleRate = sampleRate;
 
-                Logger.Info?.Print(LogClass.Audio, "Oboe audio initialized successfully (支持所有采样率和原始格式, 稳定回调默认开启)");
+                Logger.Info?.Print(LogClass.Audio, "Oboe audio initialized successfully (支持所有采样率和原始格式)");
             }
             catch (Exception ex)
             {
