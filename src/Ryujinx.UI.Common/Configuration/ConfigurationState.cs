@@ -325,6 +325,11 @@ namespace Ryujinx.UI.Common.Configuration
             public ReactiveObject<bool> EnablePtc { get; private set; }
 
             /// <summary>
+            /// Enables or disables low-power profiled translation cache persistency loading
+            /// </summary>
+            public ReactiveObject<bool> EnableLowPowerPtc { get; private set; }
+
+            /// <summary>
             /// Enables or disables guest Internet access
             /// </summary>
             public ReactiveObject<bool> EnableInternetAccess { get; private set; }
