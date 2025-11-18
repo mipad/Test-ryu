@@ -2552,6 +2552,10 @@ public static int GetScalingFilterLevel()
             EnableJitCacheEviction = enableJitCacheEviction;
             EnableFsIntegrityChecks = enableFsIntegrityChecks;
 
+            // 从配置中获取多人游戏设置和音频音量
+            var multiplayerConfig = ConfigurationState.Instance.Multiplayer;
+            var audioVolume = ConfigurationState.Instance.System.AudioVolume.Value;
+            
             HLEConfiguration configuration = new HLEConfiguration(VirtualFileSystem,
                                                                   LibHacHorizonManager,
                                                                   ContentManager,
@@ -2565,7 +2569,8 @@ public static int GetScalingFilterLevel()
                                                                   regionCode,
                                                                   enableVsync,
                                                                   enableDockedMode,
-                                                                  enablePtc,enableInternetAccess,
+                                                                  enablePtc,
+                                                                  enableInternetAccess,
                                                                   EnableFsIntegrityChecks ? IntegrityCheckLevel.ErrorOnInvalid : IntegrityCheckLevel.None,
                                                                   0,
                                                                   systemTimeOffset,
@@ -2573,10 +2578,13 @@ public static int GetScalingFilterLevel()
                                                                   memoryManagerMode,  
                                                                   ignoreMissingServices,
                                                                   LibRyujinx.GetAspectRatio(),
-                                                                  100,
+                                                                  audioVolume,
                                                                   useHypervisor,
-                                                                  "",
-                                                                  Ryujinx.Common.Configuration.Multiplayer.MultiplayerMode.Disabled);
+                                                                  multiplayerConfig.LanInterfaceId.Value,
+                                                                  multiplayerConfig.Mode.Value,
+                                                                  multiplayerConfig.DisableP2p.Value,
+                                                                  multiplayerConfig.LdnPassphrase.Value,
+                                                                  multiplayerConfig.LdnServer.Value);
 
             try
             {
