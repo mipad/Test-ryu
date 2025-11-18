@@ -46,7 +46,7 @@ namespace Ryujinx.Graphics.Vulkan
         public readonly bool SupportsViewportArray2;
         public readonly bool SupportsHostImportedMemory;
         public readonly bool SupportsDepthClipControl;
-        public readonly bool SupportsAttachmentFeedbackLoopLayout; // 修改字段名
+        public readonly bool SupportsAttachmentFeedbackLoop;
         public readonly bool SupportsDynamicAttachmentFeedbackLoop;
         public readonly uint SubgroupSize;
         public readonly SampleCountFlags SupportedSampleCounts;
@@ -86,7 +86,7 @@ namespace Ryujinx.Graphics.Vulkan
             bool supportsViewportArray2,
             bool supportsHostImportedMemory,
             bool supportsDepthClipControl,
-            bool supportsAttachmentFeedbackLoopLayout, // 修改参数名
+            bool supportsAttachmentFeedbackLoop,
             bool supportsDynamicAttachmentFeedbackLoop,
             uint subgroupSize,
             SampleCountFlags supportedSampleCounts,
@@ -125,7 +125,7 @@ namespace Ryujinx.Graphics.Vulkan
             SupportsViewportArray2 = supportsViewportArray2;
             SupportsHostImportedMemory = supportsHostImportedMemory;
             SupportsDepthClipControl = supportsDepthClipControl;
-            SupportsAttachmentFeedbackLoopLayout = supportsAttachmentFeedbackLoopLayout; // 修改赋值
+            SupportsAttachmentFeedbackLoop = supportsAttachmentFeedbackLoop;
             SupportsDynamicAttachmentFeedbackLoop = supportsDynamicAttachmentFeedbackLoop;
             SubgroupSize = subgroupSize;
             SupportedSampleCounts = supportedSampleCounts;
