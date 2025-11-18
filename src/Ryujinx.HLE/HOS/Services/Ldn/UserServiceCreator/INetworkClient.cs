@@ -6,6 +6,7 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator
 {
     interface INetworkClient : IDisposable
     {
+        ProxyConfig Config { get; }
         bool NeedsRealId { get; }
 
         event EventHandler<NetworkChangeEventArgs> NetworkChange;
@@ -16,7 +17,7 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator
         NetworkError ConnectPrivate(ConnectPrivateRequest request);
         ResultCode Reject(DisconnectReason disconnectReason, uint nodeId);
         NetworkInfo[] Scan(ushort channel, ScanFilter scanFilter);
-        void SetGameVersion(ReadOnlySpan<byte> versionString);
+        void SetGameVersion(byte[] versionString);
         void SetStationAcceptPolicy(AcceptPolicy acceptPolicy);
         void SetAdvertiseData(byte[] data);
         bool CreateNetwork(CreateAccessPointRequest request, byte[] advertiseData);
