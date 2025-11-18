@@ -11,7 +11,9 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnMitm
     /// Client implementation for <a href="https://github.com/spacemeowx2/ldn_mitm">ldn_mitm</a>
     /// </summary>
     internal class LdnMitmClient : INetworkClient
-    {
+    {   
+        public ProxyConfig Config { get; }
+        
         public bool NeedsRealId => false;
 
         public event EventHandler<NetworkChangeEventArgs> NetworkChange;
