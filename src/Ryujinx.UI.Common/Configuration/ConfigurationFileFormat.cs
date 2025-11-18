@@ -164,10 +164,7 @@ namespace Ryujinx.UI.Common.Configuration
         /// </summary>
         public bool ShowConfirmExit { get; set; }
 
-        /// <summary>
-        /// ignore "Applet" dialog
-        /// </summary>
-        public bool IgnoreApplet { get; set; }
+        
 
         /// <summary>
         /// Enables or disables save window size, position and state on close.
@@ -190,21 +187,6 @@ namespace Ryujinx.UI.Common.Configuration
         /// <remarks>Kept for file format compatibility (to avoid possible failure when parsing configuration on old versions)</remarks>
         /// TODO: Remove this when those older versions aren't in use anymore.
         public bool EnableVsync { get; set; }
-
-        /// <summary>
-        /// Current VSync mode; 60 (Switch), unbounded ("Vsync off"), or custom
-        /// </summary>
-        public VSyncMode VSyncMode { get; set; }
-
-        /// <summary>
-        /// Enables or disables the custom present interval
-        /// </summary>
-        public bool EnableCustomVSyncInterval { get; set; }
-
-        /// <summary>
-        /// The custom present interval value
-        /// </summary>
-        public int CustomVSyncInterval { get; set; }
 
         /// <summary>
         /// Enables or disables Shader cache
@@ -290,11 +272,6 @@ namespace Ryujinx.UI.Common.Configuration
         /// A list of directories containing games to be used to load games into the games list
         /// </summary>
         public List<string> GameDirs { get; set; }
-
-        /// <summary>
-        /// A list of directories containing DLC/updates the user wants to autoload during library refreshes
-        /// </summary>
-        public List<string> AutoloadDirs { get; set; }
 
         /// <summary>
         /// A list of file types to be hidden in the games List
