@@ -531,6 +531,9 @@ namespace Ryujinx.Graphics.Vulkan
                 }
                 else
                 {
+                    // This is also fine because the indirect data conversion always zeros
+                    // the entries that are past the current draw count.
+
                     Gd.Api.CmdDrawIndexedIndirect(
                         CommandBuffer,
                         indirectBufferAuto.Get(Cbs, 0, indirectBuffer.Size).Value,
@@ -556,6 +559,7 @@ namespace Ryujinx.Graphics.Vulkan
                 }
                 else
                 {
+                    // Not fully correct, but we can't do much better if the host does not support indirect count.
                     Gd.Api.CmdDrawIndexedIndirect(
                         CommandBuffer,
                         buffer,
@@ -568,6 +572,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void DrawIndirect(BufferRange indirectBuffer)
         {
+            // TODO: Support quads and other unsupported topologies.
+
             var buffer = Gd.BufferManager
                 .GetBuffer(CommandBuffer, indirectBuffer.Handle, indirectBuffer.Offset, indirectBuffer.Size, false)
                 .Get(Cbs, indirectBuffer.Offset, indirectBuffer.Size, false).Value;
@@ -588,6 +594,7 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (!Gd.Capabilities.SupportsIndirectParameters)
             {
+                // TODO: Fallback for when this is not supported.
                 throw new NotSupportedException();
             }
 
@@ -598,6 +605,8 @@ namespace Ryujinx.Graphics.Vulkan
             var countBuffer = Gd.BufferManager
                 .GetBuffer(CommandBuffer, parameterBuffer.Handle, parameterBuffer.Offset, parameterBuffer.Size, false)
                 .Get(Cbs, parameterBuffer.Offset, parameterBuffer.Size, false).Value;
+
+            // TODO: Support quads and other unsupported topologies.
 
             if (!RecreateGraphicsPipelineIfNeeded())
             {
@@ -691,7 +700,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void SetAlphaTest(bool enable, float reference, CompareOp op)
         {
-            // 通过着色器特化处理
+            // This is currently handled using shader specialization, as Vulkan does not support alpha test.
+            // In the future, we may want to use this to write the reference value into the support buffer,
+            // to avoid creating one version of the shader per reference value used.
         }
 
         public void SetBlendState(AdvancedBlendDescriptor blend)
@@ -772,7 +783,7 @@ namespace Ryujinx.Graphics.Vulkan
                 blend.BlendConstant.Blue,
                 blend.BlendConstant.Alpha);
 
-            // 重置高级混合状态
+            // Reset advanced blend state back defaults to the cache to help the pipeline cache.
             _newState.AdvancedBlendSrcPreMultiplied = true;
             _newState.AdvancedBlendDstPreMultiplied = true;
             _newState.AdvancedBlendOverlap = BlendOverlapEXT.UncorrelatedExt;
@@ -884,6 +895,8 @@ namespace Ryujinx.Graphics.Vulkan
         {
             _newState.PatchControlPoints = (uint)vertices;
             SignalStateChange();
+
+            // TODO: Default levels (likely needs emulation on shaders?)
         }
 
         public void SetPointParameters(float size, bool isProgramPointSize, bool enablePointSprite, Origin origin)
@@ -899,6 +912,7 @@ namespace Ryujinx.Graphics.Vulkan
         public void SetPrimitiveRestart(bool enable, int index)
         {
             _newState.PrimitiveRestartEnable = enable;
+            // TODO: What to do about the index?
             SignalStateChange();
         }
 
@@ -960,6 +974,8 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (!discard && Gd.IsQualcommProprietary)
             {
+                // On Adreno, enabling rasterizer discard somehow corrupts the viewport state.
+                // Force it to be updated on next use to work around this bug.
                 DynamicState.ForceAllDirty();
             }
         }
@@ -976,6 +992,8 @@ namespace Ryujinx.Graphics.Vulkan
                 ref var vkBlend = ref colorBlendAttachmentStateSpan[i];
                 var newMask = (ColorComponentFlags)componentMask[i];
 
+                // When color write mask is 0, remove all blend state to help the pipeline cache.
+                // Restore it when the mask becomes non-zero.
                 if (vkBlend.ColorWriteMask != newMask)
                 {
                     if (newMask == 0)
@@ -1205,6 +1223,7 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 var vertexBuffer = vertexBuffers[i];
 
+                // TODO: Support divisor > 1
                 var inputRate = vertexBuffer.Divisor != 0 ? VertexInputRate.Instance : VertexInputRate.Vertex;
 
                 if (vertexBuffer.Buffer.Handle != BufferHandle.Null)
@@ -1229,6 +1248,9 @@ namespace Ryujinx.Graphics.Vulkan
 
                         if (Gd.Vendor == Vendor.Amd && !Gd.IsMoltenVk && vertexBuffer.Stride > 0)
                         {
+                            // AMD has a bug where if offset + stride * count is greater than
+                            // the size, then the last attribute will have the wrong value.
+                            // As a workaround, simply use the full buffer size.
                             int remainder = vbSize % vertexBuffer.Stride;
                             if (remainder != 0)
                             {
@@ -1258,6 +1280,8 @@ namespace Ryujinx.Graphics.Vulkan
                         }
                         else
                         {
+                            // May need to be rewritten. Bind this buffer before draw.
+
                             buffer.Dispose();
 
                             buffer = new VertexBufferState(
@@ -1364,6 +1388,12 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (filterWriteMasked)
             {
+                // TBDR GPUs don't work properly if the same attachment is bound to multiple targets,
+                // due to each attachment being a copy of the real attachment, rather than a direct write.
+
+                // Just try to remove duplicate attachments.
+                // Save a copy of the array to rebind when mask changes.
+
                 void MaskOut()
                 {
                     if (!_framebufferUsingColorWriteMask)
@@ -1372,8 +1402,11 @@ namespace Ryujinx.Graphics.Vulkan
                         _preMaskDepthStencil = depthStencil;
                     }
 
+                    // If true, then the framebuffer must be recreated when the mask changes.
                     _framebufferUsingColorWriteMask = true;
                 }
+
+                // Look for textures that are masked out.
 
                 Span<PipelineColorBlendAttachmentState> colorBlendAttachmentStateSpan =
                     _newState.Internal.ColorBlendAttachmentState.AsSpan();
@@ -1389,8 +1422,11 @@ namespace Ryujinx.Graphics.Vulkan
 
                     for (int j = 0; j < i; j++)
                     {
+                        // Check each binding for a duplicate binding before it.
+
                         if (colors[i] == colors[j])
                         {
+                            // Prefer the binding with no write mask.
                             ref var vkBlend2 = ref colorBlendAttachmentStateSpan[j];
                             if (vkBlend.ColorWriteMask == 0)
                             {
@@ -1452,6 +1488,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (!hasFramebuffer || FramebufferParams.AttachmentsCount == 0)
             {
+                // Use the null framebuffer.
                 _nullRenderPass ??= new RenderPassHolder(Gd, Device, new RenderPassCacheKey(), FramebufferParams);
 
                 _rpHolder = _nullRenderPass;
@@ -1482,7 +1519,9 @@ namespace Ryujinx.Graphics.Vulkan
 
                 if (_bindingBarriersDirty)
                 {
+                    // Stale barriers may have been activated by switching program. Emit any that are relevant.
                     _descriptorSetUpdater.InsertBindingBarriers(Cbs);
+
                     _bindingBarriersDirty = false;
                 }
             }
@@ -1494,9 +1533,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         private bool ChangeFeedbackLoop(FeedbackLoopAspects aspects)
         {
-            // 限制：仅在支持的GPU上启用feedback loop
-            // AMD RDNA 3, Qualcomm和部分Mali GPU支持
-            if (Gd.IsAmdRdna3 || Gd.Vendor == Vendor.Qualcomm || Gd.SupportsMaliFeedbackLoop)
+            // AMD RDNA 3 GPUs + Qualcomm SoCs only
+            if (Gd.IsAmdRdna3 || Gd.Vendor == Vendor.Qualcomm)
             {
                 if (_feedbackLoop != aspects)
                 {
@@ -1529,10 +1567,15 @@ namespace Ryujinx.Graphics.Vulkan
 
                 foreach (TextureView view in hazards)
                 {
+                    // May need to enforce feedback loop layout here in the future.
+                    // Though technically, it should always work with the general layout.
+
                     if (view.Info.Format.IsDepthOrStencil())
                     {
                         if (_passWritesDepthStencil)
                         {
+                            // If depth/stencil isn't written in the pass, it doesn't count as a feedback loop.
+
                             aspects |= FeedbackLoopAspects.Depth;
                         }
                     }
@@ -1559,6 +1602,7 @@ namespace Ryujinx.Graphics.Vulkan
                 _passWritesDepthStencil = false;
             }
 
+            // Stencil test being enabled doesn't necessarily mean a write, but it's not critical to check.
             _passWritesDepthStencil |= (_newState.DepthTestEnable && _newState.DepthWriteEnable) || _newState.StencilTestEnable;
         }
 
@@ -1605,7 +1649,9 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (_bindingBarriersDirty)
             {
+                // Stale barriers may have been activated by switching program. Emit any that are relevant.
                 _descriptorSetUpdater.InsertBindingBarriers(Cbs);
+
                 _bindingBarriersDirty = false;
             }
 
@@ -1629,6 +1675,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         private bool CreatePipeline(PipelineBindPoint pbp)
         {
+            // We can only create a pipeline if the have the shader stages set.
             if (_newState.Stages != null)
             {
                 if (pbp == PipelineBindPoint.Graphics && _renderPass == null)
@@ -1638,6 +1685,9 @@ namespace Ryujinx.Graphics.Vulkan
 
                 if (!_program.IsLinked)
                 {
+                    // Background compile failed, we likely can't create the pipeline because the shader is broken
+                    // or the driver failed to compile it.
+
                     return false;
                 }
 
@@ -1647,6 +1697,8 @@ namespace Ryujinx.Graphics.Vulkan
 
                 if (pipeline == null)
                 {
+                    // Host failed to create the pipeline, likely due to driver bugs.
+
                     return false;
                 }
 
