@@ -241,6 +241,9 @@ namespace Ryujinx.HLE
             UseHypervisor = useHypervisor;
             MultiplayerLanInterfaceId = multiplayerLanInterfaceId;
             MultiplayerMode = multiplayerMode;
+            MultiplayerDisableP2p = multiplayerDisableP2p;
+            MultiplayerLdnPassphrase = multiplayerLdnPassphrase;
+            MultiplayerLdnServer = multiplayerLdnServer;
         }
     }
 }
