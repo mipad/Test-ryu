@@ -487,7 +487,7 @@ namespace Ryujinx.UI.Common.Configuration
             /// <summary>
             /// Toggles the present interval mode. Options are Switch (60Hz), Unbounded (previously Vsync off), and Custom, if enabled.
             /// </summary>
-            public ReactiveObject<VSyncMode> VSyncMode { get; private set; }
+             public ReactiveObject<bool> EnableVsync { get; private set; }
 
             /// <summary>
             /// Enables or disables the custom present interval mode.
