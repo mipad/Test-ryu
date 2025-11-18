@@ -1,4 +1,4 @@
-// ryujinx.cpp (完整版本 - 移除FFmpeg功能)
+// ryujinx.cpp (使用LockFreeQueue版本)
 #include "ryuijnx.h"
 #include <chrono>
 #include <csignal>
@@ -258,6 +258,13 @@ Java_org_ryujinx_android_NativeHelpers_initOboeAudio(JNIEnv *env, jobject thiz, 
 }
 
 extern "C"
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_initOboeAudioWithFormat(JNIEnv *env, jobject thiz, jint sample_rate, jint channel_count, jint sample_format) {
+    bool result = RyujinxOboe::OboeAudioRenderer::GetInstance().InitializeWithFormat(sample_rate, channel_count, sample_format);
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C"
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_shutdownOboeAudio(JNIEnv *env, jobject thiz) {
     RyujinxOboe::OboeAudioRenderer::GetInstance().Shutdown();
@@ -276,6 +283,25 @@ Java_org_ryujinx_android_NativeHelpers_writeOboeAudio(JNIEnv *env, jobject thiz,
     if (data) {
         bool success = RyujinxOboe::OboeAudioRenderer::GetInstance().WriteAudio(reinterpret_cast<int16_t*>(data), num_frames);
         env->ReleaseShortArrayElements(audio_data, data, JNI_ABORT);
+        return success ? JNI_TRUE : JNI_FALSE;
+    }
+    
+    return JNI_FALSE;
+}
+
+extern "C"
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_writeOboeAudioRaw(JNIEnv *env, jobject thiz, jbyteArray audio_data, jint num_frames, jint sample_format) {
+    if (!audio_data || num_frames <= 0) {
+        return JNI_FALSE;
+    }
+
+    jsize length = env->GetArrayLength(audio_data);
+    jbyte* data = env->GetByteArrayElements(audio_data, nullptr);
+    
+    if (data) {
+        bool success = RyujinxOboe::OboeAudioRenderer::GetInstance().WriteAudioRaw(reinterpret_cast<uint8_t*>(data), num_frames, sample_format);
+        env->ReleaseByteArrayElements(audio_data, data, JNI_ABORT);
         return success ? JNI_TRUE : JNI_FALSE;
     }
     
@@ -315,6 +341,27 @@ Java_org_ryujinx_android_NativeHelpers_resetOboeAudio(JNIEnv *env, jobject thiz)
     RyujinxOboe::OboeAudioRenderer::GetInstance().Reset();
 }
 
+// =============== 新增性能统计 JNI 接口 ===============
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_getOboePerformanceStats(JNIEnv *env, jobject thiz,
+                                                              jlongArray stats_array) {
+    auto stats = RyujinxOboe::OboeAudioRenderer::GetInstance().GetStats();
+    
+    jlong stats_data[8] = {
+        static_cast<jlong>(stats.frames_written),
+        static_cast<jlong>(stats.frames_played),
+        static_cast<jlong>(stats.underrun_count),
+        static_cast<jlong>(stats.stream_restart_count),
+        static_cast<jlong>(stats.pool_hit_count),
+        static_cast<jlong>(stats.pool_miss_count),
+        static_cast<jlong>(stats.queue_size),
+        static_cast<jlong>(stats.pool_available)
+    };
+    
+    env->SetLongArrayRegion(stats_array, 0, 8, stats_data);
+}
+
 // =============== 设备信息获取函数 ===============
 extern "C"
 JNIEXPORT jstring JNICALL
@@ -340,6 +387,12 @@ bool initOboeAudio(int sample_rate, int channel_count) {
 }
 
 extern "C"
+bool initOboeAudioWithFormat(int sample_rate, int channel_count, int sample_format) {
+    bool result = RyujinxOboe::OboeAudioRenderer::GetInstance().InitializeWithFormat(sample_rate, channel_count, sample_format);
+    return result;
+}
+
+extern "C"
 void shutdownOboeAudio() {
     RyujinxOboe::OboeAudioRenderer::GetInstance().Shutdown();
 }
@@ -351,6 +404,16 @@ bool writeOboeAudio(const int16_t* data, int32_t num_frames) {
     }
     
     bool success = RyujinxOboe::OboeAudioRenderer::GetInstance().WriteAudio(data, num_frames);
+    return success;
+}
+
+extern "C"
+bool writeOboeAudioRaw(const uint8_t* data, int32_t num_frames, int32_t sample_format) {
+    if (!data || num_frames <= 0) {
+        return false;
+    }
+    
+    bool success = RyujinxOboe::OboeAudioRenderer::GetInstance().WriteAudioRaw(data, num_frames, sample_format);
     return success;
 }
 
@@ -377,6 +440,24 @@ int32_t getOboeBufferedFrames() {
 extern "C"
 void resetOboeAudio() {
     RyujinxOboe::OboeAudioRenderer::GetInstance().Reset();
+}
+
+// =============== 新增性能统计 C 接口 ===============
+extern "C"
+void getOboePerformanceStats(int64_t* frames_written, int64_t* frames_played, 
+                            int32_t* underrun_count, int32_t* restart_count,
+                            int32_t* pool_hits, int32_t* pool_misses,
+                            int32_t* queue_size, int32_t* pool_available) {
+    auto stats = RyujinxOboe::OboeAudioRenderer::GetInstance().GetStats();
+    
+    if (frames_written) *frames_written = stats.frames_written;
+    if (frames_played) *frames_played = stats.frames_played;
+    if (underrun_count) *underrun_count = stats.underrun_count;
+    if (restart_count) *restart_count = stats.stream_restart_count;
+    if (pool_hits) *pool_hits = stats.pool_hit_count;
+    if (pool_misses) *pool_misses = stats.pool_miss_count;
+    if (queue_size) *queue_size = stats.queue_size;
+    if (pool_available) *pool_available = stats.pool_available;
 }
 
 // =============== 设备信息获取 C 接口 ===============

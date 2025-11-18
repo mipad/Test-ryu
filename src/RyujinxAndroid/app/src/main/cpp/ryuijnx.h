@@ -49,13 +49,21 @@ extern pthread_t _renderingThreadIdNative;
 // =============== Oboe 音频函数声明 ===============
 extern "C" {
     bool initOboeAudio(int sample_rate, int channel_count);
+    bool initOboeAudioWithFormat(int sample_rate, int channel_count, int sample_format);
     void shutdownOboeAudio();
     bool writeOboeAudio(const int16_t* data, int32_t num_frames);
+    bool writeOboeAudioRaw(const uint8_t* data, int32_t num_frames, int32_t sample_format);
     void setOboeVolume(float volume);
     bool isOboeInitialized();
     bool isOboePlaying();
     int32_t getOboeBufferedFrames();
     void resetOboeAudio();
+    
+    // 新增性能统计函数
+    void getOboePerformanceStats(int64_t* frames_written, int64_t* frames_played, 
+                                int32_t* underrun_count, int32_t* restart_count,
+                                int32_t* pool_hits, int32_t* pool_misses,
+                                int32_t* queue_size, int32_t* pool_available);
     
     // 设备信息函数
     const char* GetAndroidDeviceModel();
