@@ -31,6 +31,7 @@ namespace Ryujinx.Graphics.Vulkan
         public readonly bool SupportsShaderStorageImageMultisample;
         public readonly bool SupportsConditionalRendering;
         public readonly bool SupportsExtendedDynamicState;
+        public readonly bool SupportsExtendedDynamicState2; // 新增：扩展动态状态2支持
         public readonly bool SupportsMultiView;
         public readonly bool SupportsNullDescriptors;
         public readonly bool SupportsPushDescriptors;
@@ -48,6 +49,9 @@ namespace Ryujinx.Graphics.Vulkan
         public readonly bool SupportsDepthClipControl;
         public readonly bool SupportsAttachmentFeedbackLoop;
         public readonly bool SupportsDynamicAttachmentFeedbackLoop;
+        public readonly bool SupportsTimelineSemaphores; // 新增：时间线信号量支持
+        public readonly bool SupportsSynchronization2; // 新增：同步2支持
+        public readonly bool SupportsDynamicRendering; // 新增：动态渲染支持
         public readonly uint SubgroupSize;
         public readonly SampleCountFlags SupportedSampleCounts;
         public readonly PortabilitySubsetFlags PortabilitySubset;
@@ -71,6 +75,7 @@ namespace Ryujinx.Graphics.Vulkan
             bool supportsShaderStorageImageMultisample,
             bool supportsConditionalRendering,
             bool supportsExtendedDynamicState,
+            bool supportsExtendedDynamicState2, // 新增参数
             bool supportsMultiView,
             bool supportsNullDescriptors,
             bool supportsPushDescriptors,
@@ -88,6 +93,9 @@ namespace Ryujinx.Graphics.Vulkan
             bool supportsDepthClipControl,
             bool supportsAttachmentFeedbackLoop,
             bool supportsDynamicAttachmentFeedbackLoop,
+            bool supportsTimelineSemaphores, // 新增参数
+            bool supportsSynchronization2, // 新增参数
+            bool supportsDynamicRendering, // 新增参数
             uint subgroupSize,
             SampleCountFlags supportedSampleCounts,
             PortabilitySubsetFlags portabilitySubset,
@@ -110,6 +118,7 @@ namespace Ryujinx.Graphics.Vulkan
             SupportsShaderStorageImageMultisample = supportsShaderStorageImageMultisample;
             SupportsConditionalRendering = supportsConditionalRendering;
             SupportsExtendedDynamicState = supportsExtendedDynamicState;
+            SupportsExtendedDynamicState2 = supportsExtendedDynamicState2; // 新增赋值
             SupportsMultiView = supportsMultiView;
             SupportsNullDescriptors = supportsNullDescriptors;
             SupportsPushDescriptors = supportsPushDescriptors;
@@ -127,6 +136,9 @@ namespace Ryujinx.Graphics.Vulkan
             SupportsDepthClipControl = supportsDepthClipControl;
             SupportsAttachmentFeedbackLoop = supportsAttachmentFeedbackLoop;
             SupportsDynamicAttachmentFeedbackLoop = supportsDynamicAttachmentFeedbackLoop;
+            SupportsTimelineSemaphores = supportsTimelineSemaphores; // 新增赋值
+            SupportsSynchronization2 = supportsSynchronization2; // 新增赋值
+            SupportsDynamicRendering = supportsDynamicRendering; // 新增赋值
             SubgroupSize = subgroupSize;
             SupportedSampleCounts = supportedSampleCounts;
             PortabilitySubset = portabilitySubset;
