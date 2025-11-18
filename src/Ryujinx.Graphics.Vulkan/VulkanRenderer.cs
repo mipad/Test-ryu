@@ -49,11 +49,11 @@ namespace Ryujinx.Graphics.Vulkan
         internal uint QueueFamilyIndex { get; private set; }
         internal Queue Queue { get; private set; }
         internal Queue BackgroundQueue { get; private set; }
-        internal Lock BackgroundQueueLock { get; private set; }
-        internal Lock QueueLock { get; private set; }
+        internal object BackgroundQueueLock { get; private set; }
+        internal object QueueLock { get; private set; }
 
         // NEU: SurfaceLock, um Create/Destroy/Queries zu serialisieren
-        internal Lock SurfaceLock { get; private set; }
+        internal object SurfaceLock { get; private set; }
 
         internal MemoryAllocator MemoryAllocator { get; private set; }
         internal HostMemoryAllocator HostMemoryAllocator { get; private set; }
@@ -105,6 +105,11 @@ namespace Ryujinx.Graphics.Vulkan
         internal bool IsTBDR { get; private set; }
         internal bool IsSharedMemory { get; private set; }
 
+        // Mali specific flags
+        internal bool IsMaliValhall { get; private set; }
+        internal bool IsMaliBifrost { get; private set; }
+        internal bool SupportsMaliFeedbackLoop { get; private set; }
+
         public string GpuVendor { get; private set; }
         public string GpuDriver { get; private set; }
         public string GpuRenderer { get; private set; }
@@ -127,8 +132,6 @@ namespace Ryujinx.Graphics.Vulkan
             if (OperatingSystem.IsMacOS())
             {
                 MVKInitialization.Initialize();
-
-                // Any device running on MacOS is using MoltenVK, even Intel and AMD vendors.
                 IsMoltenVk = true;
             }
         }
@@ -137,6 +140,7 @@ namespace Ryujinx.Graphics.Vulkan
         {
             FormatCapabilities = new FormatCapabilities(Api, _physicalDevice.PhysicalDevice);
 
+            // 扩展检测
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtConditionalRendering conditionalRenderingApi))
             {
                 ConditionalRenderingApi = conditionalRenderingApi;
@@ -162,6 +166,7 @@ namespace Ryujinx.Graphics.Vulkan
                 DrawIndirectCountApi = drawIndirectCountApi;
             }
 
+            // Feedback Loop扩展检测
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtAttachmentFeedbackLoopDynamicState dynamicFeedbackLoopApi))
             {
                 DynamicFeedbackLoopApi = dynamicFeedbackLoopApi;
@@ -365,9 +370,17 @@ namespace Ryujinx.Graphics.Vulkan
             IsTBDR =
                 Vendor is Vendor.Apple or Vendor.Qualcomm or Vendor.ARM or Vendor.Broadcom or Vendor.ImgTec;
 
+            // Mali specific detection
+            IsMaliValhall = Vendor == Vendor.ARM && GpuRenderer.Contains("Valhall");
+            IsMaliBifrost = Vendor == Vendor.ARM && GpuRenderer.Contains("Bifrost");
+            
+            // Mali feedback loop support - 仅限较新的驱动和硬件
+            SupportsMaliFeedbackLoop = Vendor == Vendor.ARM && 
+                                     (IsMaliValhall || properties.DeviceID >= 0x7000); // G71+ 支持
+
             GpuVendor = VendorUtils.GetNameFromId(properties.VendorID);
             GpuDriver = hasDriverProperties && !OperatingSystem.IsMacOS() ?
-                VendorUtils.GetFriendlyDriverName(driverProperties.DriverID) : GpuVendor; // Fallback to vendor name if driver is unavailable or on MacOS where vendor is preferred.
+                VendorUtils.GetFriendlyDriverName(driverProperties.DriverID) : GpuVendor;
 
             fixed (byte* deviceName = properties.DeviceName)
             {
@@ -379,7 +392,6 @@ namespace Ryujinx.Graphics.Vulkan
             IsAmdGcn = !IsMoltenVk && Vendor == Vendor.Amd && VendorUtils.AmdGcnRegex().IsMatch(GpuRenderer);
 
             IsAmdRdna3 = Vendor == Vendor.Amd && (VendorUtils.AmdRdna3Regex().IsMatch(GpuRenderer)
-                                                  // ROG Ally (X) Device IDs
                                                   || properties.DeviceID is 0x15BF or 0x15C8);
 
             if (Vendor == Vendor.Nvidia)
@@ -430,7 +442,7 @@ namespace Ryujinx.Graphics.Vulkan
                 features2.Features.ShaderStorageImageMultisample,
                 _physicalDevice.IsDeviceExtensionPresent(ExtConditionalRendering.ExtensionName),
                 _physicalDevice.IsDeviceExtensionPresent(ExtExtendedDynamicState.ExtensionName),
-                features2.Features.MultiViewport && !(IsMoltenVk && Vendor == Vendor.Amd), // Workaround for AMD on MoltenVK issue
+                features2.Features.MultiViewport && !(IsMoltenVk && Vendor == Vendor.Amd),
                 featuresRobustness2.NullDescriptor || IsMoltenVk,
                 supportsPushDescriptors && !IsMoltenVk,
                 propertiesPushDescriptor.MaxPushDescriptors,
@@ -526,8 +538,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         internal int[] GetPushDescriptorReservedBindings(bool isOgl)
         {
-            // The first call of this method determines what push descriptor layout is used for all shaders on this renderer.
-            // This is chosen to minimize shaders that can't fit their uniforms on the device's max number of push descriptors.
             if (_pdReservedBindings == null)
             {
                 if (Capabilities.MaxPushDescriptors <= Constants.MaxUniformBuffersPerStage * 2)
@@ -596,7 +606,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         internal TextureView CreateTextureView(TextureCreateInfo info)
         {
-            // This should be disposed when all views are destroyed.
             var storage = CreateTextureStorage(info);
             return storage.CreateView(info, 0, 0);
         }
@@ -619,8 +628,6 @@ namespace Ryujinx.Graphics.Vulkan
         internal void RegisterFlush()
         {
             SyncManager.RegisterFlush();
-
-            // Periodically free unused regions of the staging buffer to avoid doing it all at once.
             BufferManager.StagingBuffer.FreeCompleted();
         }
 
@@ -771,6 +778,7 @@ namespace Ryujinx.Graphics.Vulkan
                 supportsQuads: false,
                 supportsSeparateSampler: true,
                 supportsShaderBallot: false,
+                supportsShaderBallotDivergence: Vendor != Vendor.Qualcomm,
                 supportsShaderBarrierDivergence: Vendor != Vendor.Intel,
                 supportsShaderFloat64: Capabilities.SupportsShaderFloat64,
                 supportsTextureGatherOffsets: features2.Features.ShaderImageGatherExtended && !IsMoltenVk,
@@ -823,11 +831,6 @@ namespace Ryujinx.Graphics.Vulkan
             return new HardwareInfo(GpuVendor, GpuRenderer, GpuDriver);
         }
 
-        /// <summary>
-        /// Gets the available Vulkan devices using the default Vulkan API
-        /// object returned by <see cref="Vk.GetApi()"/>
-        /// </summary>
-        /// <returns></returns>
         public static DeviceInfo[] GetPhysicalDevices()
         {
             try
@@ -837,7 +840,6 @@ namespace Ryujinx.Graphics.Vulkan
             catch (Exception ex)
             {
                 Logger.Error?.PrintMsg(LogClass.Gpu, $"Error querying Vulkan devices: {ex.Message}");
-
                 return [];
             }
         }
@@ -850,7 +852,6 @@ namespace Ryujinx.Graphics.Vulkan
             }
             catch (Exception)
             {
-                // If we got an exception here, Vulkan is most likely not supported.
                 return [];
             }
         }
@@ -864,7 +865,6 @@ namespace Ryujinx.Graphics.Vulkan
         {
             uint driverVersionRaw = properties.DriverVersion;
 
-            // NVIDIA differ from the standard here and uses a different format.
             return properties.VendorID == 0x10DE
                 ? $"{(driverVersionRaw >> 22) & 0x3FF}.{(driverVersionRaw >> 14) & 0xFF}.{(driverVersionRaw >> 6) & 0xFF}.{driverVersionRaw & 0x3F}"
                 : ParseStandardVulkanVersion(driverVersionRaw);
@@ -897,12 +897,32 @@ namespace Ryujinx.Graphics.Vulkan
         {
             Logger.Notice.Print(LogClass.Gpu, $"{GpuVendor} {GpuRenderer} ({GpuVersion})");
             Logger.Notice.Print(LogClass.Gpu, $"GPU Memory: {GetTotalGPUMemory() / (1024 * 1024)} MiB");
+            
+            // 打印feedback loop支持状态
+            if (Capabilities.SupportsAttachmentFeedbackLoopLayout)
+            {
+                if (SupportsMaliFeedbackLoop)
+                {
+                    Logger.Notice.Print(LogClass.Gpu, "Supports: Mali Feedback Loop (Limited)");
+                }
+                else if (IsAmdRdna3)
+                {
+                    Logger.Notice.Print(LogClass.Gpu, "Supports: AMD Feedback Loop");
+                }
+                else if (IsQualcommProprietary)
+                {
+                    Logger.Notice.Print(LogClass.Gpu, "Supports: Qualcomm Feedback Loop");
+                }
+                else
+                {
+                    Logger.Notice.Print(LogClass.Gpu, "Supports: Feedback Loop Layout");
+                }
+            }
         }
 
         public void Initialize(GraphicsDebugLevel logLevel)
         {
             SetupContext(logLevel);
-
             PrintGpuInformation();
         }
 
@@ -911,22 +931,15 @@ namespace Ryujinx.Graphics.Vulkan
             if (Capabilities.VertexBufferAlignment > 1)
             {
                 alignment = (int)Capabilities.VertexBufferAlignment;
-
                 return true;
             }
             else if (Vendor != Vendor.Nvidia)
             {
-                // Vulkan requires that vertex attributes are globally aligned by their component size,
-                // so buffer strides that don't divide by the largest scalar element are invalid.
-                // Guest applications do this, NVIDIA GPUs are OK with it, others are not.
-
                 alignment = attrScalarAlignment;
-
                 return true;
             }
 
             alignment = 1;
-
             return false;
         }
 
@@ -1041,7 +1054,6 @@ namespace Ryujinx.Graphics.Vulkan
                 }
                 catch
                 {
-                    // retry später
                     return false;
                 }
             }
