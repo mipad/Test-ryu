@@ -1,7 +1,6 @@
 using Ryujinx.Memory.Range;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 
 namespace Ryujinx.Memory
@@ -106,7 +105,7 @@ namespace Ryujinx.Memory
         {
             if (size == 0)
             {
-                return Enumerable.Empty<HostMemoryRange>();
+                return [];
             }
 
             return GetHostRegionsImpl(va, size);
@@ -117,7 +116,7 @@ namespace Ryujinx.Memory
         {
             if (size == 0)
             {
-                return Enumerable.Empty<MemoryRange>();
+                return [];
             }
 
             var hostRegions = GetHostRegionsImpl(va, size);
@@ -248,8 +247,7 @@ namespace Ryujinx.Memory
         protected unsafe override Memory<byte> GetPhysicalAddressMemory(nuint pa, int size)
             => new NativeMemoryManager<byte>((byte*)pa, size).Memory;
 
-        protected override unsafe Span<byte> GetPhysicalAddressSpan(nuint pa, int size)
-            => new Span<byte>((void*)pa, size);
+        protected override unsafe Span<byte> GetPhysicalAddressSpan(nuint pa, int size) => new((void*)pa, size);
 
         protected override nuint TranslateVirtualAddressChecked(ulong va)
             => GetHostAddress(va);
