@@ -1900,7 +1900,7 @@ namespace Ryujinx.Graphics.Vulkan
             var config = TileConfig;
             
             // 在 Tile 架构上，启用早期片段测试可以提升性能
-            if (Pipeline != null && Pipeline.HasDepthAttachment)
+            if (FramebufferParams != null && FramebufferParams.HasDepthStencil)
             {
                 // 这会告诉驱动可以在片段着色器之前进行深度测试
                 // 在图形管线创建时设置会更合适，这里通过设置状态来提示驱动

@@ -180,7 +180,7 @@ namespace Ryujinx.Graphics.Vulkan
                     else if (deviceName.Contains("Valhall"))
                         return GpuArchitecture.MaliValhall;
                     else
-                        return GpuArchitecture.MaliGeneric;
+                        return GpuArchitecture.MaliValhall; // 使用 Valhall 作为通用 Mali 架构
                 }
                 else if (deviceName.Contains("Adreno"))
                 {
@@ -1199,28 +1199,29 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         // 添加 Tile 优化的内存分配提示
-        public MemoryAllocateFlags GetTileOptimizedMemoryFlags()
+        public MemoryPropertyFlags GetTileOptimizedMemoryFlags()
         {
             if (IsTileBasedGPU)
             {
                 // 对于 Tile-based GPU，优先使用设备本地内存
-                return MemoryAllocateFlags.DeviceLocal;
+                return MemoryPropertyFlags.DeviceLocalBit;
             }
             
-            return MemoryAllocateFlags.None;
+            return MemoryPropertyFlags.DeviceLocalBit | MemoryPropertyFlags.HostVisibleBit;
         }
 
         // 添加针对 Tile 架构的命令缓冲区提交优化
-        internal void SubmitTileOptimizedCommandBuffer(CommandBufferScoped cbs, Fence fence = default)
+        internal unsafe void SubmitTileOptimizedCommandBuffer(CommandBufferScoped cbs, Fence fence = default)
         {
             if (IsTileBasedGPU)
             {
                 // Tile-based GPU 上，更频繁地提交命令缓冲区可能更高效
+                var commandBuffer = cbs.CommandBuffer;
                 var submitInfo = new SubmitInfo
                 {
                     SType = StructureType.SubmitInfo,
                     CommandBufferCount = 1,
-                    PCommandBuffers = &cbs.CommandBuffer
+                    PCommandBuffers = &commandBuffer
                 };
 
                 lock (QueueLock)
@@ -1233,8 +1234,8 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else
             {
-                // 标准提交逻辑
-                SyncManager.Submit(cbs, fence);
+                // 标准提交逻辑 - 使用 SyncManager 的 QueueSubmit 方法
+                SyncManager.QueueSubmit(cbs, fence);
             }
         }
 
