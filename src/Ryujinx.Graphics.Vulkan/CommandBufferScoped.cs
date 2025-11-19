@@ -3,7 +3,7 @@ using System;
 
 namespace Ryujinx.Graphics.Vulkan
 {
-    readonly struct CommandBufferScoped : IDisposable
+    internal readonly struct CommandBufferScoped : IDisposable
     {
         private readonly CommandBufferPool _pool;
         public CommandBuffer CommandBuffer { get; }

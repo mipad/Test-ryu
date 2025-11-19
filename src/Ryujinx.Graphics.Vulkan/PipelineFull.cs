@@ -3,7 +3,6 @@ using Ryujinx.Graphics.Vulkan.Queries;
 using Silk.NET.Vulkan;
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -21,11 +20,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         private readonly List<BufferHolder> _backingSwaps;
 
-        // Tile-based GPU 优化：添加 Tile 优化相关字段
-        private int _tileOptimizedDrawCount;
-        private int _tileOptimizedAttachmentChangeCount;
-        private bool _tileOptimizationEnabled;
-
         public PipelineFull(VulkanRenderer gd, Device device) : base(gd, device)
         {
             _activeQueries = [];
@@ -36,16 +30,7 @@ namespace Ryujinx.Graphics.Vulkan
             CommandBuffer = (Cbs = gd.CommandBufferPool.Rent()).CommandBuffer;
 
             IsMainPipeline = true;
-
-            // 初始化 Tile 优化
-            _tileOptimizationEnabled = gd.IsTileBasedGPU;
-            _tileOptimizedDrawCount = 0;
-            _tileOptimizedAttachmentChangeCount = 0;
         }
-
-        // Tile-based GPU 检测
-        private bool IsTileBasedGPU => Gd.IsTileBasedGPU;
-        private TileOptimizationConfig TileConfig => Gd.TileOptimizationConfig;
 
         private void CopyPendingQuery()
         {
@@ -62,17 +47,6 @@ namespace Ryujinx.Graphics.Vulkan
             if (FramebufferParams == null)
             {
                 return;
-            }
-
-            // Tile-based GPU 优化：在 Tile 架构上使用更高效的清除方法
-            if (IsTileBasedGPU && TileConfig.OptimizeAttachmentOperations)
-            {
-                // 对于 Tile-based GPU，尽可能使用硬件清除
-                if (componentMask == 0xf && !Gd.IsQualcommProprietary)
-                {
-                    ClearRenderTargetColor(index, layer, layerCount, color);
-                    return;
-                }
             }
 
             if (componentMask != 0xf || Gd.IsQualcommProprietary)
@@ -114,17 +88,6 @@ namespace Ryujinx.Graphics.Vulkan
             if (FramebufferParams == null)
             {
                 return;
-            }
-
-            // Tile-based GPU 优化：在 Tile 架构上使用更高效的清除方法
-            if (IsTileBasedGPU && TileConfig.OptimizeAttachmentOperations)
-            {
-                // 对于 Tile-based GPU，尽可能使用硬件清除
-                if (stencilMask == 0 || stencilMask == 0xff && !Gd.IsQualcommProprietary)
-                {
-                    ClearRenderTargetDepthStencil(layer, layerCount, depthValue, depthMask, stencilValue, stencilMask != 0);
-                    return;
-                }
             }
 
             if ((stencilMask != 0 && stencilMask != 0xff) || Gd.IsQualcommProprietary)
@@ -256,15 +219,7 @@ namespace Ryujinx.Graphics.Vulkan
                 // in use by the current command buffer is above a given limit, and those resources were disposed.
                 _byteWeight += byteWeight;
 
-                // Tile-based GPU 优化：调整刷新阈值
-                ulong flushThreshold = MinByteWeightForFlush;
-                if (IsTileBasedGPU)
-                {
-                    // 在 Tile 架构上，使用更低的阈值以更频繁地刷新
-                    flushThreshold = Math.Min(flushThreshold, 128 * 1024 * 1024); // 128 MiB
-                }
-
-                if (_byteWeight >= flushThreshold)
+                if (_byteWeight >= MinByteWeightForFlush)
                 {
                     FlushCommandsImpl();
                 }
@@ -298,13 +253,6 @@ namespace Ryujinx.Graphics.Vulkan
 
             _byteWeight = 0;
 
-            // Tile-based GPU 优化：重置 Tile 优化计数器
-            if (IsTileBasedGPU)
-            {
-                _tileOptimizedDrawCount = 0;
-                _tileOptimizedAttachmentChangeCount = 0;
-            }
-
             if (PreloadCbs != null)
             {
                 PreloadCbs.Value.Dispose();
@@ -312,62 +260,6 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             Gd.Barriers.Flush(Cbs, false, null, null);
-            CommandBuffer = (Cbs = Gd.CommandBufferPool.ReturnAndRent(Cbs)).CommandBuffer;
-            Gd.RegisterFlush();
-
-            // Restore per-command buffer state.
-            foreach (BufferHolder buffer in _activeBufferMirrors)
-            {
-                buffer.ClearMirrors();
-            }
-
-            _activeBufferMirrors.Clear();
-
-            foreach ((var queryPool, var isOcclusion) in _activeQueries)
-            {
-                bool isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
-
-                Gd.Api.CmdResetQueryPool(CommandBuffer, queryPool, 0, 1);
-                Gd.Api.CmdBeginQuery(CommandBuffer, queryPool, 0, isPrecise ? QueryControlFlags.PreciseBit : 0);
-            }
-
-            Gd.ResetCounterPool();
-
-            Restore();
-        }
-
-        // Tile-based GPU 优化：添加 Tile 优化的命令刷新方法
-        private void FlushCommandsTileOptimized()
-        {
-            if (!IsTileBasedGPU)
-            {
-                FlushCommandsImpl();
-                return;
-            }
-
-            // Tile 优化的刷新逻辑
-            AutoFlush.RegisterFlush(DrawCount);
-            EndRenderPass();
-
-            foreach ((var queryPool, _) in _activeQueries)
-            {
-                Gd.Api.CmdEndQuery(CommandBuffer, queryPool, 0);
-            }
-
-            _byteWeight = 0;
-            _tileOptimizedDrawCount = 0;
-            _tileOptimizedAttachmentChangeCount = 0;
-
-            if (PreloadCbs != null)
-            {
-                PreloadCbs.Value.Dispose();
-                PreloadCbs = null;
-            }
-
-            // 使用 Tile 优化的屏障刷新
-            Gd.Barriers.Flush(Cbs, false, null, null);
-            
-            // 使用 Tile 优化的命令缓冲区提交
             CommandBuffer = (Cbs = Gd.CommandBufferPool.ReturnAndRent(Cbs)).CommandBuffer;
             Gd.RegisterFlush();
 
@@ -437,15 +329,7 @@ namespace Ryujinx.Graphics.Vulkan
         {
             _pendingQueryCopies.Add(query);
 
-            // Tile-based GPU 优化：调整查询刷新策略
-            bool shouldFlush = AutoFlush.RegisterPendingQuery();
-            if (IsTileBasedGPU)
-            {
-                // 在 Tile 架构上，更积极地刷新查询
-                shouldFlush = shouldFlush || _pendingQueryCopies.Count > 5;
-            }
-
-            if (shouldFlush)
+            if (AutoFlush.RegisterPendingQuery())
             {
                 FlushCommandsImpl();
             }
@@ -453,19 +337,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         protected override void SignalAttachmentChange()
         {
-            // Tile-based GPU 优化：跟踪附件变化次数
-            if (IsTileBasedGPU)
-            {
-                _tileOptimizedAttachmentChangeCount++;
-                
-                // 如果附件变化过于频繁，提前刷新
-                if (_tileOptimizedAttachmentChangeCount >= TileConfig.MaxRenderPassAttachmentChanges)
-                {
-                    FlushCommandsImpl();
-                    return;
-                }
-            }
-
             if (AutoFlush.ShouldFlushAttachmentChange(DrawCount))
             {
                 FlushCommandsImpl();
@@ -475,369 +346,6 @@ namespace Ryujinx.Graphics.Vulkan
         protected override void SignalRenderPassEnd()
         {
             CopyPendingQuery();
-        }
-
-        // Tile-based GPU 优化：重写绘制计数跟踪
-        public override void RecordDraw()
-        {
-            base.RecordDraw();
-
-            if (IsTileBasedGPU)
-            {
-                _tileOptimizedDrawCount++;
-                
-                // 如果绘制调用过多，提前刷新命令缓冲区
-                if (_tileOptimizedDrawCount >= TileConfig.MaxRenderPassDrawCalls)
-                {
-                    FlushCommandsImpl();
-                }
-            }
-        }
-
-        // Tile-based GPU 优化：添加 Tile 专用的渲染通道开始方法
-        protected override void BeginRenderPass()
-        {
-            if (!IsTileBasedGPU || !TileConfig.OptimizeAttachmentOperations)
-            {
-                base.BeginRenderPass();
-                return;
-            }
-
-            // Tile 优化的渲染通道开始逻辑
-            if (FramebufferParams != null)
-            {
-                var renderPass = FramebufferParams.GetRenderPass();
-                var framebuffer = FramebufferParams.Get(Gd).Get(Cbs).Value;
-
-                var renderArea = new Rect2D(null, new Extent2D(FramebufferParams.Width, FramebufferParams.Height));
-
-                // 使用优化的清除值
-                Span<ClearValue> clearValues = stackalloc ClearValue[FramebufferParams.AttachmentsCount];
-                for (int i = 0; i < FramebufferParams.AttachmentsCount; i++)
-                {
-                    if (i < FramebufferParams.ColorAttachmentsCount)
-                    {
-                        clearValues[i] = new ClearValue { Color = new ClearColorValue(0, 0, 0, 1) };
-                    }
-                    else
-                    {
-                        clearValues[i] = new ClearValue { DepthStencil = new ClearDepthStencilValue(1, 0) };
-                    }
-                }
-
-                var beginInfo = new RenderPassBeginInfo
-                {
-                    SType = StructureType.RenderPassBeginInfo,
-                    RenderPass = renderPass,
-                    Framebuffer = framebuffer,
-                    RenderArea = renderArea,
-                    ClearValueCount = (uint)FramebufferParams.AttachmentsCount,
-                    PClearValues = (ClearValue*)Unsafe.AsPointer(ref clearValues[0])
-                };
-
-                Gd.Api.CmdBeginRenderPass(CommandBuffer, beginInfo, SubpassContents.Inline);
-
-                // 设置 Tile 友好的状态
-                ConfigureTileFriendlyState();
-            }
-        }
-
-        // 配置 Tile 友好的状态
-        private void ConfigureTileFriendlyState()
-        {
-            if (!IsTileBasedGPU) return;
-
-            var config = TileConfig;
-            
-            // 在 Tile 架构上，启用早期片段测试可以提升性能
-            if (Pipeline != null && Pipeline.HasDepthAttachment)
-            {
-                // 这会告诉驱动可以在片段着色器之前进行深度测试
-                // 在图形管线创建时设置会更合适，这里通过设置状态来提示驱动
-                
-                // 设置深度测试状态以启用早期深度测试
-                if (config.OptimizeBarriers)
-                {
-                    // 在 Tile 架构上，启用保守的深度测试可以提升性能
-                    // 这会告诉驱动程序可以安全地在片段着色器之前执行深度测试
-                    var depthState = new PipelineDepthStencilStateCreateInfo
-                    {
-                        SType = StructureType.PipelineDepthStencilStateCreateInfo,
-                        DepthTestEnable = true,
-                        DepthWriteEnable = true,
-                        DepthCompareOp = CompareOp.LessOrEqual,
-                        DepthBoundsTestEnable = false,
-                        StencilTestEnable = false,
-                        MinDepthBounds = 0.0f,
-                        MaxDepthBounds = 1.0f
-                    };
-                    
-                    // 注意：这里只是示例，实际深度状态应该在管道创建时设置
-                    // 这里主要是为了记录在 Tile 架构上的优化策略
-                }
-            }
-
-            // 配置混合状态优化
-            if (config.OptimizeAttachmentOperations)
-            {
-                // 在 Tile 架构上，使用更简单的混合操作可以减少带宽使用
-                // 避免复杂的混合模式，优先使用标准混合
-                
-                // 设置标准的 Alpha 混合作为默认优化
-                var blendState = new PipelineColorBlendAttachmentState
-                {
-                    BlendEnable = true,
-                    SrcColorBlendFactor = BlendFactor.SrcAlpha,
-                    DstColorBlendFactor = BlendFactor.OneMinusSrcAlpha,
-                    ColorBlendOp = BlendOp.Add,
-                    SrcAlphaBlendFactor = BlendFactor.One,
-                    DstAlphaBlendFactor = BlendFactor.Zero,
-                    AlphaBlendOp = BlendOp.Add,
-                    ColorWriteMask = ColorComponentFlags.RBit | 
-                                   ColorComponentFlags.GBit | 
-                                   ColorComponentFlags.BBit | 
-                                   ColorComponentFlags.ABit
-                };
-                
-                // 同样，这应该在管道创建时设置，这里记录优化策略
-            }
-
-            // 配置光栅化状态优化
-            if (config.OptimizeBarriers)
-            {
-                // 在 Tile 架构上，保守的光栅化设置可以提升性能
-                var rasterizationState = new PipelineRasterizationStateCreateInfo
-                {
-                    SType = StructureType.PipelineRasterizationStateCreateInfo,
-                    DepthClampEnable = false,
-                    RasterizerDiscardEnable = false,
-                    PolygonMode = PolygonMode.Fill,
-                    CullMode = CullModeFlags.BackBit,
-                    FrontFace = FrontFace.Clockwise,
-                    DepthBiasEnable = false,
-                    DepthBiasConstantFactor = 0.0f,
-                    DepthBiasClamp = 0.0f,
-                    DepthBiasSlopeFactor = 0.0f,
-                    LineWidth = 1.0f
-                };
-                
-                // 禁用深度箝位和深度偏置可以减少带宽使用
-            }
-
-            // 配置多重采样状态优化
-            if (config.OptimizeAttachmentOperations)
-            {
-                // 在 Tile 架构上，优化多重采样设置
-                var multisampleState = new PipelineMultisampleStateCreateInfo
-                {
-                    SType = StructureType.PipelineMultisampleStateCreateInfo,
-                    RasterizationSamples = SampleCountFlags.Count1Bit,
-                    SampleShadingEnable = false,
-                    MinSampleShading = 0.0f,
-                    PSampleMask = null,
-                    AlphaToCoverageEnable = false,
-                    AlphaToOneEnable = false
-                };
-                
-                // 尽可能使用较少的采样数，禁用采样着色和 Alpha 覆盖
-            }
-
-            // 配置输入装配状态优化
-            if (config.OptimizeDependencies)
-            {
-                // 在 Tile 架构上，使用更简单的拓扑结构
-                var inputAssemblyState = new PipelineInputAssemblyStateCreateInfo
-                {
-                    SType = StructureType.PipelineInputAssemblyStateCreateInfo,
-                    Topology = PrimitiveTopology.TriangleList,
-                    PrimitiveRestartEnable = false
-                };
-                
-                // 优先使用三角形列表，避免复杂的拓扑和图元重启
-            }
-
-            // 配置视口状态优化
-            if (config.OptimizeAttachmentOperations)
-            {
-                // 在 Tile 架构上，使用单个视口通常更高效
-                var viewportState = new PipelineViewportStateCreateInfo
-                {
-                    SType = StructureType.PipelineViewportStateCreateInfo,
-                    ViewportCount = 1,
-                    PViewports = null, // 动态设置
-                    ScissorCount = 1,
-                    PScissors = null   // 动态设置
-                };
-                
-                // 使用动态视口和裁剪框，避免在管道创建时固定
-            }
-
-            // 配置动态状态优化
-            if (config.OptimizeBarriers)
-            {
-                // 在 Tile 架构上，使用动态状态可以减少管道状态变化
-                var dynamicStates = new[]
-                {
-                    DynamicState.Viewport,
-                    DynamicState.Scissor,
-                    DynamicState.LineWidth,
-                    DynamicState.DepthBias,
-                    DynamicState.BlendConstants,
-                    DynamicState.DepthBounds,
-                    DynamicState.StencilCompareMask,
-                    DynamicState.StencilWriteMask,
-                    DynamicState.StencilReference
-                };
-                
-                var dynamicState = new PipelineDynamicStateCreateInfo
-                {
-                    SType = StructureType.PipelineDynamicStateCreateInfo,
-                    DynamicStateCount = (uint)dynamicStates.Length,
-                    PDynamicStates = (DynamicState*)Unsafe.AsPointer(ref dynamicStates[0])
-                };
-                
-                // 启用尽可能多的动态状态，减少管道重新编译
-            }
-
-            // 配置顶点输入状态优化
-            if (config.OptimizeDependencies)
-            {
-                // 在 Tile 架构上，简化的顶点输入可以减少带宽使用
-                var vertexInputState = new PipelineVertexInputStateCreateInfo
-                {
-                    SType = StructureType.PipelineVertexInputStateCreateInfo,
-                    VertexBindingDescriptionCount = 0,
-                    PVertexBindingDescriptions = null,
-                    VertexAttributeDescriptionCount = 0,
-                    PVertexAttributeDescriptions = null
-                };
-                
-                // 使用动态顶点输入，避免在管道创建时固定格式
-            }
-
-            // 根据具体的 GPU 架构进行特定优化
-            switch (Gd.GpuArchitecture)
-            {
-                case GpuArchitecture.MaliValhall:
-                    // Mali Valhall 架构特定优化
-                    ConfigureMaliValhallOptimizations();
-                    break;
-                    
-                case GpuArchitecture.Adreno:
-                    // Adreno 架构特定优化
-                    ConfigureAdrenoOptimizations();
-                    break;
-                    
-                case GpuArchitecture.PowerVR:
-                    // PowerVR 架构特定优化
-                    ConfigurePowerVROptimizations();
-                    break;
-                    
-                case GpuArchitecture.Apple:
-                    // Apple 架构特定优化
-                    ConfigureAppleOptimizations();
-                    break;
-            }
-
-            // 记录优化配置
-            Logger.Debug?.Print(LogClass.Gpu, 
-                $"Tile optimization applied: DepthEarlyTest={Pipeline?.HasDepthAttachment ?? false}, " +
-                $"BlendOptimized={config.OptimizeAttachmentOperations}, " +
-                $"RasterOptimized={config.OptimizeBarriers}");
-        }
-
-        // Mali Valhall 架构特定优化
-        private void ConfigureMaliValhallOptimizations()
-        {
-            // Mali Valhall 优化策略：
-            // - 优先使用统一的着色器核心
-            // - 优化片段着色器的寄存器使用
-            // - 使用硬件特性减少带宽
-            
-            // 设置适合 Mali 的混合模式
-            var blendState = new PipelineColorBlendAttachmentState
-            {
-                BlendEnable = true,
-                SrcColorBlendFactor = BlendFactor.SrcAlpha,
-                DstColorBlendFactor = BlendFactor.OneMinusSrcAlpha,
-                ColorBlendOp = BlendOp.Add,
-                SrcAlphaBlendFactor = BlendFactor.One,
-                DstAlphaBlendFactor = BlendFactor.Zero,
-                AlphaBlendOp = BlendOp.Add,
-                ColorWriteMask = ColorComponentFlags.RBit | 
-                               ColorComponentFlags.GBit | 
-                               ColorComponentFlags.BBit | 
-                               ColorComponentFlags.ABit
-            };
-            
-            Logger.Debug?.Print(LogClass.Gpu, "Mali Valhall optimizations applied");
-        }
-
-        // Adreno 架构特定优化
-        private void ConfigureAdrenoOptimizations()
-        {
-            // Adreno 优化策略：
-            // - 减少纹理采样次数
-            // - 优化顶点处理
-            // - 使用 Adreno 特定的扩展
-            
-            // 设置适合 Adreno 的光栅化状态
-            var rasterizationState = new PipelineRasterizationStateCreateInfo
-            {
-                SType = StructureType.PipelineRasterizationStateCreateInfo,
-                DepthClampEnable = false,
-                RasterizerDiscardEnable = false,
-                PolygonMode = PolygonMode.Fill,
-                CullMode = CullModeFlags.None, // Adreno 上禁用背面剔除可能更快
-                FrontFace = FrontFace.Clockwise,
-                DepthBiasEnable = false,
-                LineWidth = 1.0f
-            };
-            
-            Logger.Debug?.Print(LogClass.Gpu, "Adreno optimizations applied");
-        }
-
-        // PowerVR 架构特定优化
-        private void ConfigurePowerVROptimizations()
-        {
-            // PowerVR 优化策略：
-            // - 最大化使用隐藏表面移除
-            // - 优化 alpha 测试和混合
-            // - 减少过度绘制
-            
-            // 设置适合 PowerVR 的深度状态
-            var depthState = new PipelineDepthStencilStateCreateInfo
-            {
-                SType = StructureType.PipelineDepthStencilStateCreateInfo,
-                DepthTestEnable = true,
-                DepthWriteEnable = true,
-                DepthCompareOp = CompareOp.Less,
-                DepthBoundsTestEnable = false,
-                StencilTestEnable = false
-            };
-            
-            Logger.Debug?.Print(LogClass.Gpu, "PowerVR optimizations applied");
-        }
-
-        // Apple 架构特定优化
-        private void ConfigureAppleOptimizations()
-        {
-            // Apple 优化策略：
-            // - 使用 Apple 特定的扩展
-            // - 优化内存访问模式
-            // - 利用 Apple GPU 的并行架构
-            
-            // 设置适合 Apple GPU 的多重采样状态
-            var multisampleState = new PipelineMultisampleStateCreateInfo
-            {
-                SType = StructureType.PipelineMultisampleStateCreateInfo,
-                RasterizationSamples = SampleCountFlags.Count1Bit,
-                SampleShadingEnable = false,
-                AlphaToCoverageEnable = false,
-                AlphaToOneEnable = false
-            };
-            
-            Logger.Debug?.Print(LogClass.Gpu, "Apple GPU optimizations applied");
         }
     }
 }

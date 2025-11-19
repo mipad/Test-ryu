@@ -1233,7 +1233,7 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         // 添加针对 Tile 架构的命令缓冲区提交优化
-        public void SubmitTileOptimizedCommandBuffer(CommandBufferScoped cbs, Fence fence = default)
+        internal void SubmitTileOptimizedCommandBuffer(CommandBufferScoped cbs, Fence fence = default)
         {
             if (IsTileBasedGPU)
             {
