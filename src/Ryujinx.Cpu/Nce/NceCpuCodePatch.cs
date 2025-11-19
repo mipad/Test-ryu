@@ -74,8 +74,7 @@ namespace Ryujinx.Cpu.Nce
         private static uint EncodeSImm26_2(int value)
         {
             uint imm = (uint)(value >> 2) & 0x3ffffff;
-            int decodedValue = (int)(imm << 2);
-            Debug.Assert(decodedValue == value, $"Failed to encode constant 0x{value:X}. Encoded value: 0x{decodedValue:X}.");
+            Debug.Assert(((int)imm << 6) >> 4 == value, $"Failed to encode constant 0x{value:X}.");
             return imm;
         }
     }
