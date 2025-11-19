@@ -1,3 +1,4 @@
+using Ryujinx.Common;
 using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -426,7 +427,7 @@ namespace Ryujinx.Memory
                     return OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17134);
                 }
 
-                return OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsIOS() || Ryujinx.Common.PlatformInfo.IsBionic;
+                return OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || PlatformInfo.IsBionic;
             }
 
             return true;
