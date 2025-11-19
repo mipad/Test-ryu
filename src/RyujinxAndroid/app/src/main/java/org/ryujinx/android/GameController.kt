@@ -1094,6 +1094,9 @@ class GameController(var activity: Activity) {
     private var dpadView: DpadOverlayView? = null
     var controllerId: Int = -1
     private var isEditing = false
+    
+    // 新增：统一触摸事件处理
+    private var activeTouches = mutableMapOf<Int, MutableList<View>>() // 记录每个触摸点激活的控件
 
     val isVisible: Boolean
         get() {
@@ -1107,6 +1110,360 @@ class GameController(var activity: Activity) {
         this.buttonContainer = buttonContainer
         val manager = buttonLayoutManager ?: return
         createControlsImmediately(buttonContainer, manager)
+        
+        // 添加统一触摸处理器
+        setupUnifiedTouchHandler()
+    }
+    
+    // 新增：设置统一触摸处理器
+    private fun setupUnifiedTouchHandler() {
+        buttonContainer?.setOnTouchListener { _, event ->
+            handleUnifiedTouchEvent(event)
+            true
+        }
+    }
+    
+    // 新增：统一触摸事件处理
+    private fun handleUnifiedTouchEvent(event: MotionEvent) {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                handleTouchDown(event, 0)
+            }
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                val pointerIndex = event.actionIndex
+                handleTouchDown(event, pointerIndex)
+            }
+            MotionEvent.ACTION_MOVE -> {
+                for (pointerIndex in 0 until event.pointerCount) {
+                    handleTouchMove(event, pointerIndex)
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                val pointerIndex = event.actionIndex
+                handleTouchUp(event, pointerIndex)
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                handleTouchCancel()
+            }
+        }
+    }
+    
+    // 新增：触摸按下处理
+    private fun handleTouchDown(event: MotionEvent, pointerIndex: Int) {
+        val pointerId = event.getPointerId(pointerIndex)
+        val x = event.getX(pointerIndex)
+        val y = event.getY(pointerIndex)
+        
+        val touchedViews = mutableListOf<View>()
+        
+        // 检查所有控件，找出被触摸的控件
+        virtualButtons.values.forEach { button ->
+            if (isPointInView(x, y, button) && button.isVisible) {
+                touchedViews.add(button)
+                // 立即触发按钮按下
+                val config = buttonLayoutManager?.getAllButtonConfigs()?.find { it.id == button.buttonId }
+                config?.let {
+                    handleButtonPress(it.keyCode, button.buttonId, true)
+                }
+            }
+        }
+        
+        virtualJoysticks.values.forEach { joystick ->
+            if (isPointInView(x, y, joystick) && joystick.isVisible) {
+                touchedViews.add(joystick)
+                // 立即触发摇杆触摸开始
+                val config = buttonLayoutManager?.getAllJoystickConfigs()?.find { it.id == joystick.stickId }
+                config?.let {
+                    handleJoystickTouchStart(event, pointerIndex, joystick.stickId, it.isLeft)
+                }
+            }
+        }
+        
+        virtualCombinations.values.forEach { combination ->
+            if (isPointInView(x, y, combination) && combination.isVisible) {
+                touchedViews.add(combination)
+                // 立即触发组合按键按下
+                val config = buttonLayoutManager?.getAllCombinationConfigs()?.find { it.id == combination.combinationId }
+                config?.let {
+                    handleCombinationPress(it.keyCodes, combination.combinationId, true)
+                }
+            }
+        }
+        
+        dpadView?.let { dpad ->
+            if (isPointInView(x, y, dpad) && dpad.isVisible) {
+                touchedViews.add(dpad)
+                // 立即触发方向键触摸开始
+                handleDpadTouchStart(event, pointerIndex)
+            }
+        }
+        
+        activeTouches[pointerId] = touchedViews
+    }
+    
+    // 新增：触摸移动处理
+    private fun handleTouchMove(event: MotionEvent, pointerIndex: Int) {
+        val pointerId = event.getPointerId(pointerIndex)
+        val x = event.getX(pointerIndex)
+        val y = event.getY(pointerIndex)
+        
+        val activeViews = activeTouches[pointerId] ?: return
+        
+        activeViews.forEach { view ->
+            when (view) {
+                is ButtonOverlayView -> {
+                    // 按钮在移动时保持按下状态
+                    val config = buttonLayoutManager?.getAllButtonConfigs()?.find { it.id == view.buttonId }
+                    config?.let {
+                        // 如果移出按钮区域，则释放按钮
+                        val stillInView = isPointInView(x, y, view)
+                        if (!stillInView) {
+                            handleButtonPress(it.keyCode, view.buttonId, false)
+                        }
+                    }
+                }
+                is JoystickOverlayView -> {
+                    // 更新摇杆位置
+                    val config = buttonLayoutManager?.getAllJoystickConfigs()?.find { it.id == view.stickId }
+                    config?.let {
+                        handleJoystickTouchMove(event, pointerIndex, view.stickId, it.isLeft)
+                    }
+                }
+                is CombinationOverlayView -> {
+                    // 组合按键在移动时保持按下状态
+                    val config = buttonLayoutManager?.getAllCombinationConfigs()?.find { it.id == view.combinationId }
+                    config?.let {
+                        // 如果移出组合按键区域，则释放
+                        val stillInView = isPointInView(x, y, view)
+                        if (!stillInView) {
+                            handleCombinationPress(it.keyCodes, view.combinationId, false)
+                        }
+                    }
+                }
+                is DpadOverlayView -> {
+                    // 更新方向键
+                    handleDpadTouchMove(event, pointerIndex)
+                }
+            }
+        }
+    }
+    
+    // 新增：触摸抬起处理
+    private fun handleTouchUp(event: MotionEvent, pointerIndex: Int) {
+        val pointerId = event.getPointerId(pointerIndex)
+        
+        val activeViews = activeTouches[pointerId] ?: return
+        
+        activeViews.forEach { view ->
+            when (view) {
+                is ButtonOverlayView -> {
+                    val config = buttonLayoutManager?.getAllButtonConfigs()?.find { it.id == view.buttonId }
+                    config?.let {
+                        handleButtonPress(it.keyCode, view.buttonId, false)
+                    }
+                }
+                is JoystickOverlayView -> {
+                    val config = buttonLayoutManager?.getAllJoystickConfigs()?.find { it.id == view.stickId }
+                    config?.let {
+                        handleJoystickTouchEnd(view.stickId, it.isLeft)
+                    }
+                }
+                is CombinationOverlayView -> {
+                    val config = buttonLayoutManager?.getAllCombinationConfigs()?.find { it.id == view.combinationId }
+                    config?.let {
+                        handleCombinationPress(it.keyCodes, view.combinationId, false)
+                    }
+                }
+                is DpadOverlayView -> {
+                    handleDpadTouchEnd()
+                }
+            }
+        }
+        
+        activeTouches.remove(pointerId)
+    }
+    
+    // 新增：触摸取消处理
+    private fun handleTouchCancel() {
+        // 取消所有激活的触摸
+        activeTouches.values.forEach { views ->
+            views.forEach { view ->
+                when (view) {
+                    is ButtonOverlayView -> {
+                        val config = buttonLayoutManager?.getAllButtonConfigs()?.find { it.id == view.buttonId }
+                        config?.let {
+                            handleButtonPress(it.keyCode, view.buttonId, false)
+                        }
+                    }
+                    is JoystickOverlayView -> {
+                        val config = buttonLayoutManager?.getAllJoystickConfigs()?.find { it.id == view.stickId }
+                        config?.let {
+                            handleJoystickTouchEnd(view.stickId, it.isLeft)
+                        }
+                    }
+                    is CombinationOverlayView -> {
+                        val config = buttonLayoutManager?.getAllCombinationConfigs()?.find { it.id == view.combinationId }
+                        config?.let {
+                            handleCombinationPress(it.keyCodes, view.combinationId, false)
+                        }
+                    }
+                    is DpadOverlayView -> {
+                        handleDpadTouchEnd()
+                    }
+                }
+            }
+        }
+        activeTouches.clear()
+    }
+    
+    // 新增：判断触摸点是否在视图内
+    private fun isPointInView(x: Float, y: Float, view: View): Boolean {
+        val location = IntArray(2)
+        view.getLocationOnScreen(location)
+        val left = location[0]
+        val top = location[1]
+        val right = left + view.width
+        val bottom = top + view.height
+        
+        val containerLocation = IntArray(2)
+        buttonContainer?.getLocationOnScreen(containerLocation)
+        val screenX = x + containerLocation[0]
+        val screenY = y + containerLocation[1]
+        
+        return screenX >= left && screenX <= right && screenY >= top && screenY <= bottom
+    }
+    
+    // 新增：按钮按下处理
+    private fun handleButtonPress(keyCode: Int, buttonId: Int, pressed: Boolean) {
+        if (controllerId == -1) {
+            controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
+        }
+        
+        virtualButtons[buttonId]?.setPressedState(pressed)
+        
+        if (pressed) {
+            RyujinxNative.jnaInstance.inputSetButtonPressed(keyCode, controllerId)
+        } else {
+            RyujinxNative.jnaInstance.inputSetButtonReleased(keyCode, controllerId)
+        }
+    }
+    
+    // 新增：组合按键按下处理
+    private fun handleCombinationPress(keyCodes: List<Int>, combinationId: Int, pressed: Boolean) {
+        if (controllerId == -1) {
+            controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
+        }
+        
+        virtualCombinations[combinationId]?.setPressedState(pressed)
+        
+        keyCodes.forEach { keyCode ->
+            val actualKeyCode = when (keyCode) {
+                0 -> GamePadButtonInputId.A.ordinal
+                1 -> GamePadButtonInputId.B.ordinal
+                2 -> GamePadButtonInputId.X.ordinal
+                3 -> GamePadButtonInputId.Y.ordinal
+                4 -> GamePadButtonInputId.LeftShoulder.ordinal
+                5 -> GamePadButtonInputId.RightShoulder.ordinal
+                6 -> GamePadButtonInputId.LeftTrigger.ordinal
+                7 -> GamePadButtonInputId.RightTrigger.ordinal
+                8 -> GamePadButtonInputId.Plus.ordinal
+                9 -> GamePadButtonInputId.Minus.ordinal
+                10 -> GamePadButtonInputId.LeftStickButton.ordinal
+                11 -> GamePadButtonInputId.RightStickButton.ordinal
+                12 -> GamePadButtonInputId.DpadUp.ordinal
+                13 -> GamePadButtonInputId.DpadDown.ordinal
+                14 -> GamePadButtonInputId.DpadLeft.ordinal
+                15 -> GamePadButtonInputId.DpadRight.ordinal
+                else -> keyCode
+            }
+            if (pressed) {
+                RyujinxNative.jnaInstance.inputSetButtonPressed(actualKeyCode, controllerId)
+            } else {
+                RyujinxNative.jnaInstance.inputSetButtonReleased(actualKeyCode, controllerId)
+            }
+        }
+    }
+    
+    // 新增：摇杆触摸开始
+    private fun handleJoystickTouchStart(event: MotionEvent, pointerIndex: Int, joystickId: Int, isLeftStick: Boolean) {
+        virtualJoysticks[joystickId]?.updateStickPosition(0f, 0f, true)
+    }
+    
+    // 新增：摇杆触摸移动
+    private fun handleJoystickTouchMove(event: MotionEvent, pointerIndex: Int, joystickId: Int, isLeftStick: Boolean) {
+        virtualJoysticks[joystickId]?.let { joystick ->
+            val centerX = joystick.width / 2f
+            val centerY = joystick.height / 2f
+            
+            val x = event.getX(pointerIndex) - (joystick.left + centerX)
+            val y = event.getY(pointerIndex) - (joystick.top + centerY)
+            
+            val maxDistance = centerX * 0.8f
+            val normalizedX = MathUtils.clamp(x / maxDistance, -1f, 1f)
+            val normalizedY = MathUtils.clamp(y / maxDistance, -1f, 1f)
+            
+            joystick.updateStickPosition(normalizedX, normalizedY, true)
+            
+            val setting = QuickSettings(activity)
+            val sensitivity = setting.controllerStickSensitivity
+            
+            val adjustedX = MathUtils.clamp(normalizedX * sensitivity, -1f, 1f)
+            val adjustedY = MathUtils.clamp(normalizedY * sensitivity, -1f, 1f)
+            
+            if (isLeftStick) {
+                RyujinxNative.jnaInstance.inputSetStickAxis(1, adjustedX, -adjustedY, controllerId)
+            } else {
+                RyujinxNative.jnaInstance.inputSetStickAxis(2, adjustedX, -adjustedY, controllerId)
+            }
+        }
+    }
+    
+    // 新增：摇杆触摸结束
+    private fun handleJoystickTouchEnd(joystickId: Int, isLeftStick: Boolean) {
+        virtualJoysticks[joystickId]?.updateStickPosition(0f, 0f, false)
+        
+        if (isLeftStick) {
+            RyujinxNative.jnaInstance.inputSetStickAxis(1, 0f, 0f, controllerId)
+        } else {
+            RyujinxNative.jnaInstance.inputSetStickAxis(2, 0f, 0f, controllerId)
+        }
+    }
+    
+    // 新增：方向键触摸开始
+    private fun handleDpadTouchStart(event: MotionEvent, pointerIndex: Int) {
+        dpadView?.let { dpad ->
+            val x = event.getX(pointerIndex) - dpad.left
+            val y = event.getY(pointerIndex) - dpad.top
+            val direction = dpad.getDirectionFromTouch(x, y)
+            if (dpad.currentDirection != direction) {
+                handleDpadDirection(dpad.currentDirection, false)
+                dpad.currentDirection = direction
+                dpad.updateDirection(direction)
+                handleDpadDirection(direction, true)
+            }
+        }
+    }
+    
+    // 新增：方向键触摸移动
+    private fun handleDpadTouchMove(event: MotionEvent, pointerIndex: Int) {
+        dpadView?.let { dpad ->
+            val x = event.getX(pointerIndex) - dpad.left
+            val y = event.getY(pointerIndex) - dpad.top
+            val direction = dpad.getDirectionFromTouch(x, y)
+            if (dpad.currentDirection != direction) {
+                handleDpadDirection(dpad.currentDirection, false)
+                dpad.currentDirection = direction
+                dpad.updateDirection(direction)
+                handleDpadDirection(direction, true)
+            }
+        }
+    }
+    
+    // 新增：方向键触摸结束
+    private fun handleDpadTouchEnd() {
+        handleDpadDirection(dpadView?.currentDirection ?: DpadOverlayView.DpadDirection.NONE, false)
+        dpadView?.currentDirection = DpadOverlayView.DpadDirection.NONE
+        dpadView?.updateDirection(DpadOverlayView.DpadDirection.NONE)
     }
     
     private fun createControlsImmediately(buttonContainer: FrameLayout, manager: ButtonLayoutManager) {
@@ -1129,14 +1486,7 @@ class GameController(var activity: Activity) {
                 
                 // 不在这里设置位置，统一在 refreshControlPositions 中设置
                 
-                setOnTouchListener { _, event ->
-                    if (isEditing) {
-                        handleJoystickDragEvent(event, config.id)
-                    } else {
-                        handleJoystickEvent(event, config.id, config.isLeft)
-                    }
-                    true
-                }
+                // 移除原有的触摸监听器，使用统一触摸处理
             }
             
             buttonContainer.addView(joystick)
@@ -1156,14 +1506,7 @@ class GameController(var activity: Activity) {
             
             // 不在这里设置位置，统一在 refreshControlPositions 中设置
             
-            setOnTouchListener { _, event ->
-                if (isEditing) {
-                    handleDpadDragEvent(event)
-                } else {
-                    handleDpadEvent(event)
-                }
-                true
-            }
+            // 移除原有的触摸监听器，使用统一触摸处理
         }
         buttonContainer.addView(dpadView)
         
@@ -1198,14 +1541,7 @@ class GameController(var activity: Activity) {
                 
                 // 不在这里设置位置，统一在 refreshControlPositions 中设置
                 
-                setOnTouchListener { _, event ->
-                    if (isEditing) {
-                        handleButtonDragEvent(event, config.id)
-                    } else {
-                        handleButtonEvent(event, config.keyCode, config.id)
-                    }
-                    true
-                }
+                // 移除原有的触摸监听器，使用统一触摸处理
             }
             
             buttonContainer.addView(button)
@@ -1229,14 +1565,7 @@ class GameController(var activity: Activity) {
                 
                 // 不在这里设置位置，统一在 refreshControlPositions 中设置
                 
-                setOnTouchListener { _, event ->
-                    if (isEditing) {
-                        handleCombinationDragEvent(event, config.id)
-                    } else {
-                        handleCombinationEvent(event, config.keyCodes, config.id)
-                    }
-                    true
-                }
+                // 移除原有的触摸监听器，使用统一触摸处理
             }
             
             buttonContainer.addView(combination)
@@ -1683,7 +2012,7 @@ class GameController(var activity: Activity) {
         ).toInt()
     }
     
-    // 事件处理方法 - 添加组合按键事件处理
+    // 保留原有的拖拽事件处理方法，用于编辑模式
     private fun handleJoystickDragEvent(event: MotionEvent, joystickId: Int): Boolean {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {}
@@ -1700,55 +2029,6 @@ class GameController(var activity: Activity) {
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {}
-        }
-        return true
-    }
-    
-    private fun handleJoystickEvent(event: MotionEvent, joystickId: Int, isLeftStick: Boolean): Boolean {
-        if (controllerId == -1) {
-            controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
-        }
-        
-        virtualJoysticks[joystickId]?.let { joystick ->
-            val centerX = joystick.width / 2f
-            val centerY = joystick.height / 2f
-            
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    joystick.updateStickPosition(0f, 0f, true)
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val x = event.x - centerX
-                    val y = event.y - centerY
-                    
-                    val maxDistance = centerX * 0.8f
-                    val normalizedX = MathUtils.clamp(x / maxDistance, -1f, 1f)
-                    val normalizedY = MathUtils.clamp(y / maxDistance, -1f, 1f)
-                    
-                    joystick.updateStickPosition(normalizedX, normalizedY, true)
-                    
-                    val setting = QuickSettings(activity)
-                    val sensitivity = setting.controllerStickSensitivity
-                    
-                    val adjustedX = MathUtils.clamp(normalizedX * sensitivity, -1f, 1f)
-                    val adjustedY = MathUtils.clamp(normalizedY * sensitivity, -1f, 1f)
-                    
-                    if (isLeftStick) {
-                        RyujinxNative.jnaInstance.inputSetStickAxis(1, adjustedX, -adjustedY, controllerId)
-                    } else {
-                        RyujinxNative.jnaInstance.inputSetStickAxis(2, adjustedX, -adjustedY, controllerId)
-                    }
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    joystick.updateStickPosition(0f, 0f, false)
-                    
-                    if (isLeftStick) {
-                        RyujinxNative.jnaInstance.inputSetStickAxis(1, 0f, 0f, controllerId)
-                    } else {
-                        RyujinxNative.jnaInstance.inputSetStickAxis(2, 0f, 0f, controllerId)
-                    }
-                }
-            }
         }
         return true
     }
@@ -1773,32 +2053,48 @@ class GameController(var activity: Activity) {
         return true
     }
     
-    private fun handleDpadEvent(event: MotionEvent): Boolean {
-        if (controllerId == -1) {
-            controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
-        }
-        
-        dpadView?.let { dpad ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
-                    val direction = dpad.getDirectionFromTouch(event.x, event.y)
-                    if (dpad.currentDirection != direction) {
-                        handleDpadDirection(dpad.currentDirection, false)
-                        dpad.currentDirection = direction
-                        dpad.updateDirection(direction)
-                        handleDpadDirection(direction, true)
-                    }
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    handleDpadDirection(dpad.currentDirection, false)
-                    dpad.currentDirection = DpadOverlayView.DpadDirection.NONE
-                    dpad.updateDirection(DpadOverlayView.DpadDirection.NONE)
+    private fun handleButtonDragEvent(event: MotionEvent, buttonId: Int): Boolean {
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {}
+            MotionEvent.ACTION_MOVE -> {
+                virtualButtons[buttonId]?.let { button ->
+                    val parent = button.parent as? ViewGroup ?: return@let
+                    val x = event.rawX.toInt() - parent.left
+                    val y = event.rawY.toInt() - parent.top
+                    
+                    val clampedX = MathUtils.clamp(x, 0, parent.width)
+                    val clampedY = MathUtils.clamp(y, 0, parent.height)
+                    
+                    button.setPosition(clampedX, clampedY)
                 }
             }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {}
         }
         return true
     }
     
+    // 新增方法：处理组合按键拖拽事件
+    private fun handleCombinationDragEvent(event: MotionEvent, combinationId: Int): Boolean {
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {}
+            MotionEvent.ACTION_MOVE -> {
+                virtualCombinations[combinationId]?.let { combination ->
+                    val parent = combination.parent as? ViewGroup ?: return@let
+                    val x = event.rawX.toInt() - parent.left
+                    val y = event.rawY.toInt() - parent.top
+                    
+                    val clampedX = MathUtils.clamp(x, 0, parent.width)
+                    val clampedY = MathUtils.clamp(y, 0, parent.height)
+                    
+                    combination.setPosition(clampedX, clampedY)
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {}
+        }
+        return true
+    }
+    
+    // 方向键方向处理
     private fun handleDpadDirection(direction: DpadOverlayView.DpadDirection, pressed: Boolean) {
         when (direction) {
             DpadOverlayView.DpadDirection.UP -> {
@@ -1872,128 +2168,6 @@ class GameController(var activity: Activity) {
                 RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadRight.ordinal, controllerId)
             }
         }
-    }
-    
-    private fun handleButtonDragEvent(event: MotionEvent, buttonId: Int): Boolean {
-        when (event.action) {
-            MotionEvent.ACTION_DOWN -> {}
-            MotionEvent.ACTION_MOVE -> {
-                virtualButtons[buttonId]?.let { button ->
-                    val parent = button.parent as? ViewGroup ?: return@let
-                    val x = event.rawX.toInt() - parent.left
-                    val y = event.rawY.toInt() - parent.top
-                    
-                    val clampedX = MathUtils.clamp(x, 0, parent.width)
-                    val clampedY = MathUtils.clamp(y, 0, parent.height)
-                    
-                    button.setPosition(clampedX, clampedY)
-                }
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {}
-        }
-        return true
-    }
-    
-    private fun handleButtonEvent(event: MotionEvent, keyCode: Int, buttonId: Int): Boolean {
-        if (controllerId == -1) {
-            controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
-        }
-        
-        when (event.action) {
-            MotionEvent.ACTION_DOWN -> {
-                virtualButtons[buttonId]?.setPressedState(true)
-                RyujinxNative.jnaInstance.inputSetButtonPressed(keyCode, controllerId)
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                virtualButtons[buttonId]?.setPressedState(false)
-                RyujinxNative.jnaInstance.inputSetButtonReleased(keyCode, controllerId)
-            }
-        }
-        return true
-    }
-    
-    // 新增方法：处理组合按键拖拽事件
-    private fun handleCombinationDragEvent(event: MotionEvent, combinationId: Int): Boolean {
-        when (event.action) {
-            MotionEvent.ACTION_DOWN -> {}
-            MotionEvent.ACTION_MOVE -> {
-                virtualCombinations[combinationId]?.let { combination ->
-                    val parent = combination.parent as? ViewGroup ?: return@let
-                    val x = event.rawX.toInt() - parent.left
-                    val y = event.rawY.toInt() - parent.top
-                    
-                    val clampedX = MathUtils.clamp(x, 0, parent.width)
-                    val clampedY = MathUtils.clamp(y, 0, parent.height)
-                    
-                    combination.setPosition(clampedX, clampedY)
-                }
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {}
-        }
-        return true
-    }
-    
-    // 新增方法：处理组合按键事件 - 修复按键代码映射问题
-    private fun handleCombinationEvent(event: MotionEvent, keyCodes: List<Int>, combinationId: Int): Boolean {
-        if (controllerId == -1) {
-            controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
-        }
-        
-        when (event.action) {
-            MotionEvent.ACTION_DOWN -> {
-                virtualCombinations[combinationId]?.setPressedState(true)
-                // 按下所有组合按键 - 修复：使用正确的按键代码映射
-                keyCodes.forEach { keyCode ->
-                    val actualKeyCode = when (keyCode) {
-                        0 -> GamePadButtonInputId.A.ordinal
-                        1 -> GamePadButtonInputId.B.ordinal
-                        2 -> GamePadButtonInputId.X.ordinal
-                        3 -> GamePadButtonInputId.Y.ordinal
-                        4 -> GamePadButtonInputId.LeftShoulder.ordinal
-                        5 -> GamePadButtonInputId.RightShoulder.ordinal
-                        6 -> GamePadButtonInputId.LeftTrigger.ordinal
-                        7 -> GamePadButtonInputId.RightTrigger.ordinal
-                        8 -> GamePadButtonInputId.Plus.ordinal
-                        9 -> GamePadButtonInputId.Minus.ordinal
-                        10 -> GamePadButtonInputId.LeftStickButton.ordinal
-                        11 -> GamePadButtonInputId.RightStickButton.ordinal
-                        12 -> GamePadButtonInputId.DpadUp.ordinal
-                        13 -> GamePadButtonInputId.DpadDown.ordinal
-                        14 -> GamePadButtonInputId.DpadLeft.ordinal
-                        15 -> GamePadButtonInputId.DpadRight.ordinal
-                        else -> keyCode
-                    }
-                    RyujinxNative.jnaInstance.inputSetButtonPressed(actualKeyCode, controllerId)
-                }
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                virtualCombinations[combinationId]?.setPressedState(false)
-                // 释放所有组合按键 - 修复：使用正确的按键代码映射
-                keyCodes.forEach { keyCode ->
-                    val actualKeyCode = when (keyCode) {
-                        0 -> GamePadButtonInputId.A.ordinal
-                        1 -> GamePadButtonInputId.B.ordinal
-                        2 -> GamePadButtonInputId.X.ordinal
-                        3 -> GamePadButtonInputId.Y.ordinal
-                        4 -> GamePadButtonInputId.LeftShoulder.ordinal
-                        5 -> GamePadButtonInputId.RightShoulder.ordinal
-                        6 -> GamePadButtonInputId.LeftTrigger.ordinal
-                        7 -> GamePadButtonInputId.RightTrigger.ordinal
-                        8 -> GamePadButtonInputId.Plus.ordinal
-                        9 -> GamePadButtonInputId.Minus.ordinal
-                        10 -> GamePadButtonInputId.LeftStickButton.ordinal
-                        11 -> GamePadButtonInputId.RightStickButton.ordinal
-                        12 -> GamePadButtonInputId.DpadUp.ordinal
-                        13 -> GamePadButtonInputId.DpadDown.ordinal
-                        14 -> GamePadButtonInputId.DpadLeft.ordinal
-                        15 -> GamePadButtonInputId.DpadRight.ordinal
-                        else -> keyCode
-                    }
-                    RyujinxNative.jnaInstance.inputSetButtonReleased(actualKeyCode, controllerId)
-                }
-            }
-        }
-        return true
     }
     
     fun setEditingMode(editing: Boolean) {
@@ -2076,4 +2250,3 @@ class GameController(var activity: Activity) {
             controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
     }
 }
-
