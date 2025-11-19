@@ -245,9 +245,9 @@ class JoystickOverlayView @JvmOverloads constructor(
         val innerSize = innerDefaultBitmap?.width ?: (w * innerRelativeScale).toInt()
         innerRect.set(0, 0, innerSize, innerSize)
         
-        // 修正移动半径计算，确保内圈能在外圈内正常移动
+        // 修正移动半径计算，确保内圈中心可以到达外圈边缘
         val outerWidth = outerBitmap?.width ?: w
-        movementRadius = (outerWidth - innerSize) / 2.5f
+        movementRadius = (outerWidth - innerSize) / 2f // 修改为2f，使内圈中心可以到达外圈边缘
     }
     
     fun setPosition(x: Int, y: Int) {
@@ -307,8 +307,8 @@ class JoystickOverlayView @JvmOverloads constructor(
             val outerCenterX = outerDrawLeft + outerWidth / 2f
             val outerCenterY = outerDrawTop + outerHeight / 2f
             
-            // 内圈在外圈内的最大移动距离 - 确保不会超出外圈边界
-            val maxMoveDistance = (outerWidth - innerWidth) / 2.8f
+            // 内圈在外圈内的最大移动距离 - 确保内圈中心可以到达外圈边缘
+            val maxMoveDistance = (outerWidth - innerWidth) / 2f // 修改为2f，使内圈中心可以到达外圈边缘
             
             // 计算内圈位置，确保在内圈始终在外圈范围内
             val innerTargetX = outerCenterX + stickX * maxMoveDistance - innerWidth / 2f
@@ -1255,14 +1255,14 @@ class GameController(var activity: Activity) {
     }
     
     // 防误触功能的方法
-    // 检查触摸点是否在有效区域内（避免边缘误触）
+    // 检查触摸点是否在有效区域内（避免边缘误触）- 修改为90%
     private fun isValidTouch(view: View, event: MotionEvent): Boolean {
         val x = event.x
         val y = event.y
         
-        // 计算有效触摸区域（中心区域的80%）
-        val validWidth = view.width * 0.9f
-        val validHeight = view.height * 0.9f
+        // 计算有效触摸区域（中心区域的90%）- 修改为90%
+        val validWidth = view.width * 0.9f  // 改为90%
+        val validHeight = view.height * 0.9f  // 改为90%
         val left = (view.width - validWidth) / 2
         val top = (view.height - validHeight) / 2
         val right = left + validWidth
