@@ -1,3 +1,4 @@
+using Ryujinx.Common;
 using System;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
@@ -113,7 +114,7 @@ namespace Ryujinx.Memory
 
             if (flags.HasFlag(MmapFlags.MAP_ANONYMOUS))
             {
-                if (OperatingSystem.IsLinux() || Common.PlatformInfo.IsBionic)
+                if (OperatingSystem.IsLinux() || PlatformInfo.IsBionic)
                 {
                     result |= MAP_ANONYMOUS_LINUX_GENERIC;
                 }
@@ -129,7 +130,7 @@ namespace Ryujinx.Memory
 
             if (flags.HasFlag(MmapFlags.MAP_NORESERVE))
             {
-                if (OperatingSystem.IsLinux() || Common.PlatformInfo.IsBionic)
+                if (OperatingSystem.IsLinux() || PlatformInfo.IsBionic)
                 {
                     result |= MAP_NORESERVE_LINUX_GENERIC;
                 }
@@ -145,7 +146,7 @@ namespace Ryujinx.Memory
 
             if (flags.HasFlag(MmapFlags.MAP_UNLOCKED))
             {
-                if (OperatingSystem.IsLinux() || Common.PlatformInfo.IsBionic)
+                if (OperatingSystem.IsLinux() || PlatformInfo.IsBionic)
                 {
                     result |= MAP_UNLOCKED_LINUX_GENERIC;
                 }
