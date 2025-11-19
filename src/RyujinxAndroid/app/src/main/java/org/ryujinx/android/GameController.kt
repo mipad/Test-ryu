@@ -1261,8 +1261,8 @@ class GameController(var activity: Activity) {
         val y = event.y
         
         // 计算有效触摸区域（中心区域的80%）
-        val validWidth = view.width * 0.8f
-        val validHeight = view.height * 0.8f
+        val validWidth = view.width * 0.9f
+        val validHeight = view.height * 0.9f
         val left = (view.width - validWidth) / 2
         val top = (view.height - validHeight) / 2
         val right = left + validWidth
