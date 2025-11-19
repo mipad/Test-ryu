@@ -52,6 +52,7 @@ namespace Ryujinx.Graphics.Vulkan
         public readonly bool SupportsTimelineSemaphores; // 新增：时间线信号量支持
         public readonly bool SupportsSynchronization2; // 新增：同步2支持
         public readonly bool SupportsDynamicRendering; // 新增：动态渲染支持
+        public readonly bool SupportsTileOptimization; // 新增：Tile 优化支持
         public readonly uint SubgroupSize;
         public readonly SampleCountFlags SupportedSampleCounts;
         public readonly PortabilitySubsetFlags PortabilitySubset;
@@ -96,6 +97,7 @@ namespace Ryujinx.Graphics.Vulkan
             bool supportsTimelineSemaphores, // 新增参数
             bool supportsSynchronization2, // 新增参数
             bool supportsDynamicRendering, // 新增参数
+            bool supportsTileOptimization, // 新增参数：Tile 优化支持
             uint subgroupSize,
             SampleCountFlags supportedSampleCounts,
             PortabilitySubsetFlags portabilitySubset,
@@ -139,6 +141,7 @@ namespace Ryujinx.Graphics.Vulkan
             SupportsTimelineSemaphores = supportsTimelineSemaphores; // 新增赋值
             SupportsSynchronization2 = supportsSynchronization2; // 新增赋值
             SupportsDynamicRendering = supportsDynamicRendering; // 新增赋值
+            SupportsTileOptimization = supportsTileOptimization; // 新增赋值：Tile 优化支持
             SubgroupSize = subgroupSize;
             SupportedSampleCounts = supportedSampleCounts;
             PortabilitySubset = portabilitySubset;
