@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (支持所有采样率和原始格式)
+// OboeHardwareDeviceDriver.cs (支持所有采样率和原始格式，包含零拷贝优化)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -29,6 +29,9 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         [DllImport("libryujinxjni", EntryPoint = "writeOboeAudioRaw")]
         private static extern bool writeOboeAudioRaw(byte[] audioData, int num_frames, int sample_format);
+
+        [DllImport("libryujinxjni", EntryPoint = "writeOboeAudioZeroCopy")]
+        private static extern bool writeOboeAudioZeroCopy(IntPtr data, int data_size, int num_frames, int sample_format);
 
         [DllImport("libryujinxjni", EntryPoint = "setOboeVolume")]
         private static extern void setOboeVolume(float volume);
@@ -77,7 +80,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         public OboeHardwareDeviceDriver()
         {
             StartUpdateThread();
-            Logger.Info?.Print(LogClass.Audio, "OboeHardwareDeviceDriver initialized (支持所有采样率和原始格式)");
+            Logger.Info?.Print(LogClass.Audio, "OboeHardwareDeviceDriver initialized (支持所有采样率和原始格式，包含零拷贝优化)");
         }
 
         private void StartUpdateThread()
@@ -224,7 +227,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 _currentSampleFormat = sampleFormat;
                 _currentSampleRate = sampleRate;
 
-                Logger.Info?.Print(LogClass.Audio, "Oboe audio initialized successfully (支持所有采样率和原始格式)");
+                Logger.Info?.Print(LogClass.Audio, "Oboe audio initialized successfully (支持所有采样率和原始格式，包含零拷贝优化)");
             }
             catch (Exception ex)
             {
@@ -281,6 +284,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         {
             private readonly OboeHardwareDeviceDriver _driver;
             private readonly ConcurrentQueue<OboeAudioBuffer> _queuedBuffers = new();
+            private readonly ConcurrentDictionary<ulong, GCHandle> _pinnedBuffers = new();
             private ulong _totalWrittenSamples;
             private ulong _totalPlayedSamples;
             private bool _active;
@@ -332,10 +336,20 @@ namespace Ryujinx.Audio.Backends.Oboe
                         availableSampleCount -= playedAudioBufferSampleCount;
                         _totalPlayedSamples += playedAudioBufferSampleCount;
                         
-                        // 如果缓冲区播放完毕，移除它
+                        // 如果缓冲区播放完毕，移除它并释放固定的内存
                         if (driverBuffer.SamplePlayed == driverBuffer.SampleCount)
                         {
                             _queuedBuffers.TryDequeue(out _);
+                            
+                            // 释放零拷贝固定的内存
+                            if (_pinnedBuffers.TryRemove(driverBuffer.DriverIdentifier, out GCHandle handle))
+                            {
+                                if (handle.IsAllocated)
+                                {
+                                    handle.Free();
+                                }
+                            }
+                            
                             _driver.GetUpdateRequiredEvent().Set();
                         }
                     }
@@ -349,6 +363,17 @@ namespace Ryujinx.Audio.Backends.Oboe
             public override void Dispose()
             {
                 Stop();
+                
+                // 清理所有固定的内存
+                foreach (var handle in _pinnedBuffers.Values)
+                {
+                    if (handle.IsAllocated)
+                    {
+                        handle.Free();
+                    }
+                }
+                _pinnedBuffers.Clear();
+                
                 _driver.Unregister(this);
                 Logger.Debug?.Print(LogClass.Audio, "OboeAudioSession disposed");
             }
@@ -395,7 +420,13 @@ namespace Ryujinx.Audio.Backends.Oboe
                 int bytesPerSample = GetBytesPerSample(_sampleFormat);
                 int frameCount = buffer.Data.Length / (bytesPerSample * _channelCount);
 
-                // 直接传递原始数据，不进行格式转换
+                // 尝试使用零拷贝路径
+                if (TryQueueBufferZeroCopy(buffer, frameCount))
+                {
+                    return;
+                }
+
+                // 回退到传统路径
                 int formatValue = SampleFormatToInt(_sampleFormat);
                 bool writeSuccess = writeOboeAudioRaw(buffer.Data, frameCount, formatValue);
 
@@ -406,7 +437,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                     _totalWrittenSamples += sampleCount;
                     
                     Logger.Debug?.Print(LogClass.Audio, 
-                        $"Queued audio buffer (Raw): {frameCount} frames, {sampleCount} samples, Format={_sampleFormat}, Rate={_sampleRate}Hz");
+                        $"Queued audio buffer (Traditional): {frameCount} frames, {sampleCount} samples, Format={_sampleFormat}, Rate={_sampleRate}Hz");
                 }
                 else
                 {
@@ -417,6 +448,43 @@ namespace Ryujinx.Audio.Backends.Oboe
                     Logger.Warning?.Print(LogClass.Audio, "Audio write failure, resetting audio system");
                     resetOboeAudio();
                 }
+            }
+
+            private bool TryQueueBufferZeroCopy(AudioBuffer buffer, int frameCount)
+            {
+                try
+                {
+                    // 固定内存以避免GC移动
+                    GCHandle handle = GCHandle.Alloc(buffer.Data, GCHandleType.Pinned);
+                    IntPtr pinnedAddress = handle.AddrOfPinnedObject();
+                    
+                    // 通过JNI直接传递指针和大小
+                    bool success = writeOboeAudioZeroCopy(pinnedAddress, buffer.Data.Length, frameCount, SampleFormatToInt(_sampleFormat));
+                    
+                    if (success)
+                    {
+                        _pinnedBuffers[buffer.DataPointer] = handle;
+                        
+                        ulong sampleCount = (ulong)(frameCount * _channelCount);
+                        _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, sampleCount));
+                        _totalWrittenSamples += sampleCount;
+                        
+                        Logger.Debug?.Print(LogClass.Audio, 
+                            $"Queued audio buffer (Zero-Copy): {frameCount} frames, {sampleCount} samples, Ptr=0x{pinnedAddress:X}, Format={_sampleFormat}, Rate={_sampleRate}Hz");
+                        
+                        return true;
+                    }
+                    else
+                    {
+                        handle.Free();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning?.Print(LogClass.Audio, $"Zero-copy audio queue failed: {ex.Message}");
+                }
+                
+                return false;
             }
 
             private int SampleFormatToInt(SampleFormat format)
@@ -465,6 +533,16 @@ namespace Ryujinx.Audio.Backends.Oboe
 
             public override void UnregisterBuffer(AudioBuffer buffer)
             {
+                // 释放固定的内存
+                if (_pinnedBuffers.TryRemove(buffer.DataPointer, out GCHandle handle))
+                {
+                    if (handle.IsAllocated)
+                    {
+                        handle.Free();
+                    }
+                }
+                
+                // 传统缓冲区清理
                 if (_queuedBuffers.TryPeek(out var driverBuffer) && 
                     driverBuffer.DriverIdentifier == buffer.DataPointer)
                 {
