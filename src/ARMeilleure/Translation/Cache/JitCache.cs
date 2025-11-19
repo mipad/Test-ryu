@@ -4,6 +4,7 @@ using ARMeilleure.Memory;
 using ARMeilleure.Native;
 using Ryujinx.Common.Logging;
 using Ryujinx.Memory;
+using Ryujinx.Common;
 using Humanizer;
 using System;
 using System.Collections.Generic;
