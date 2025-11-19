@@ -2,6 +2,7 @@ using ARMeilleure.CodeGen;
 using ARMeilleure.CodeGen.Unwinding;
 using ARMeilleure.Memory;
 using ARMeilleure.Native;
+using Ryujinx.Common;
 using Ryujinx.Common.Logging;
 using Ryujinx.Memory;
 using System;
@@ -83,7 +84,7 @@ namespace ARMeilleure.Translation.Cache
                 }
 
                 _cacheSize = Optimizations.CacheEviction ? ReducedCacheSize : FullCacheSize;
-                var firstRegion = new ReservedRegion(allocator, _cacheSize);
+                var firstRegion = new ReservedRegion(allocator, (ulong)_cacheSize);
                 _jitRegions.Add(firstRegion);
                 _activeRegionIndex = 0;
 
@@ -98,7 +99,7 @@ namespace ARMeilleure.Translation.Cache
                 if (OperatingSystem.IsWindows())
                 {
                     JitUnwindWindows.InstallFunctionTableHandler(
-                        firstRegion.Pointer, _cacheSize, firstRegion.Pointer + Allocate(_pageSize)
+                        firstRegion.Pointer, (uint)_cacheSize, firstRegion.Pointer + Allocate(_pageSize)
                     );
                 }
 
@@ -166,7 +167,7 @@ namespace ARMeilleure.Translation.Cache
 
                     if (OperatingSystem.IsWindows() && RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
                     {
-                        FlushInstructionCache(Process.GetCurrentProcess().Handle, funcPtr, (UIntPtr)code.Length);
+                        FlushInstructionCache(Process.GetCurrentProcess().Handle, funcPtr, (UIntPtr)(uint)code.Length);
                     }
                     else
                     {
@@ -249,14 +250,14 @@ namespace ARMeilleure.Translation.Cache
             }
 
             int exhaustedRegion = _activeRegionIndex;
-            var newRegion = new ReservedRegion(_jitRegions[0].Allocator, _cacheSize);
+            var newRegion = new ReservedRegion(_jitRegions[0].Allocator, (ulong)_cacheSize);
             _jitRegions.Add(newRegion);
             _activeRegionIndex = _jitRegions.Count - 1;
 
 
             int newRegionNumber = _activeRegionIndex;
 
-            Logger.Warning?.Print(LogClass.Cpu, $"JIT Cache Region {exhaustedRegion} exhausted, creating new Cache Region {newRegionNumber} ({((newRegionNumber + 1) * _cacheSize).Bytes()} Total Allocation).");
+            Logger.Warning?.Print(LogClass.Cpu, $"JIT Cache Region {exhaustedRegion} exhausted, creating new Cache Region {newRegionNumber} ({FormatBytes((newRegionNumber + 1) * _cacheSize)} Total Allocation).");
         
             _cacheAllocator = new CacheMemoryAllocator(_cacheSize);
 
@@ -299,28 +300,28 @@ namespace ARMeilleure.Translation.Cache
             lock (_lock)
             {
                 foreach (var region in _jitRegions)
-            {
-                int index = _cacheEntries.BinarySearch(new CacheEntry(offset, 0, default));
-
-                if (index < 0)
                 {
-                    index = ~index - 1;
-                }
+                    int index = _cacheEntries.BinarySearch(new CacheEntry(offset, 0, default));
 
-                if (index >= 0)
-                {
-                    entry = _cacheEntries[index];
-                    
-                    if (Optimizations.CacheEviction && _entryUsageStats.TryGetValue(offset, out var stats))
+                    if (index < 0)
                     {
-                        stats.UpdateUsage();
+                        index = ~index - 1;
                     }
-                    
-                    entryIndex = index;
-                    return true;
+
+                    if (index >= 0)
+                    {
+                        entry = _cacheEntries[index];
+                        
+                        if (Optimizations.CacheEviction && _entryUsageStats.TryGetValue(offset, out var stats))
+                        {
+                            stats.UpdateUsage();
+                        }
+                        
+                        entryIndex = index;
+                        return true;
+                    }
                 }
             }
-         }
          
             entry = default;
             entryIndex = 0;
@@ -404,6 +405,22 @@ namespace ARMeilleure.Translation.Cache
                 $"JIT Cache status: entries={_cacheEntries.Count}, " +
                 $"est. used={estimatedUsedSize / (1024 * 1024.0):F2} MB ({usagePercentage:F1}%), " +
                 $"evictions={_totalEvictions}, allocations={_totalAllocations}");
+        }
+
+        // 添加 Bytes() 方法的替代方案
+        private static string FormatBytes(long bytes)
+        {
+            string[] suffixes = { "B", "KB", "MB", "GB", "TB" };
+            int suffixIndex = 0;
+            double size = bytes;
+            
+            while (size >= 1024 && suffixIndex < suffixes.Length - 1)
+            {
+                size /= 1024;
+                suffixIndex++;
+            }
+            
+            return $"{size:0.##} {suffixes[suffixIndex]}";
         }
     }
 }
