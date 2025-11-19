@@ -202,6 +202,19 @@ Java_org_ryujinx_android_NativeHelpers_writeOboeAudioRaw(JNIEnv *env, jobject th
     return JNI_FALSE;
 }
 
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_writeOboeAudioZeroCopy(JNIEnv *env, jobject thiz, jlong data_ptr, jint data_size, jint num_frames, jint sample_format) {
+    if (data_ptr == 0 || data_size <= 0 || num_frames <= 0) return JNI_FALSE;
+    
+    bool success = RyujinxOboe::OboeAudioRenderer::GetInstance().WriteAudioZeroCopy(
+        reinterpret_cast<const void*>(data_ptr), 
+        num_frames, 
+        sample_format, 
+        nullptr);
+    
+    return success ? JNI_TRUE : JNI_FALSE;
+}
+
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setOboeVolume(JNIEnv *env, jobject thiz, jfloat volume) {
     RyujinxOboe::OboeAudioRenderer::GetInstance().SetVolume(volume);
@@ -262,6 +275,11 @@ bool writeOboeAudio(const int16_t* data, int32_t num_frames) {
 
 bool writeOboeAudioRaw(const uint8_t* data, int32_t num_frames, int32_t sample_format) {
     return data && num_frames > 0 && RyujinxOboe::OboeAudioRenderer::GetInstance().WriteAudioRaw(data, num_frames, sample_format);
+}
+
+bool writeOboeAudioZeroCopy(const void* data, int32_t num_frames, int32_t sample_format) {
+    return data && num_frames > 0 && 
+           RyujinxOboe::OboeAudioRenderer::GetInstance().WriteAudioZeroCopy(data, num_frames, sample_format, nullptr);
 }
 
 void setOboeVolume(float volume) {
