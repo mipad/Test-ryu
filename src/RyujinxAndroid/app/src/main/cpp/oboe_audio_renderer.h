@@ -6,6 +6,7 @@
 #include <atomic>
 #include <memory>
 #include <cstdint>
+#include <cmath>
 #include "LockFreeQueue.h"
 
 namespace RyujinxOboe {
@@ -37,6 +38,41 @@ struct AudioBlock {
     }
 };
 
+class DspProcessor {
+public:
+    DspProcessor() = default;
+    
+    void SetVolume(float volume) {
+        m_volume.store(std::max(0.0f, std::min(volume, 1.0f)));
+    }
+    
+    float GetVolume() const {
+        return m_volume.load();
+    }
+    
+    // 处理音频数据，应用DSP效果
+    void ProcessAudio(void* data, size_t size, int32_t sample_format, int32_t channels);
+    
+    // 批量处理音频数据
+    void ProcessAudioBatch(void* data, size_t frame_count, int32_t sample_format, int32_t channels);
+    
+private:
+    std::atomic<float> m_volume{1.0f};
+    
+    // 不同格式的音量应用
+    void ApplyVolumeInt16(int16_t* samples, size_t sample_count, float volume);
+    void ApplyVolumeInt32(int32_t* samples, size_t sample_count, float volume);
+    void ApplyVolumeFloat(float* samples, size_t sample_count, float volume);
+    
+    // 处理24位PCM (存储为32位，高8位为0)
+    void ApplyVolumeInt24(int32_t* samples, size_t sample_count, float volume);
+    
+    // 安全的样本转换
+    int32_t ScaleSampleInt16(int16_t sample, float volume);
+    int32_t ScaleSampleInt32(int32_t sample, float volume);
+    float ScaleSampleFloat(float sample, float volume);
+};
+
 class OboeAudioRenderer {
 public:
     static OboeAudioRenderer& GetInstance();
@@ -53,7 +89,7 @@ public:
     int32_t GetBufferedFrames() const;
     
     void SetVolume(float volume);
-    float GetVolume() const { return m_volume.load(); }
+    float GetVolume() const { return m_dsp_processor.GetVolume(); }
 
     void Reset();
 
@@ -91,6 +127,9 @@ private:
     static size_t GetBytesPerSample(int32_t format);
     bool OptimizeBufferSize();
 
+    // DSP处理
+    void ApplyDspEffects(void* audio_data, size_t data_size, int32_t sample_format);
+
     std::shared_ptr<oboe::AudioStream> m_stream;
     std::unique_ptr<AAudioExclusiveCallback> m_audio_callback;
     std::unique_ptr<AAudioExclusiveErrorCallback> m_error_callback;
@@ -102,7 +141,6 @@ private:
     std::atomic<int32_t> m_sample_rate{48000};
     std::atomic<int32_t> m_channel_count{2};
     std::atomic<int32_t> m_sample_format{PCM_INT16};
-    std::atomic<float> m_volume{1.0f};
     
     int32_t m_device_channels = 2;
     oboe::AudioFormat m_oboe_format{oboe::AudioFormat::I16};
@@ -114,6 +152,9 @@ private:
     LockFreeObjectPool<AudioBlock, OBJECT_POOL_SIZE> m_object_pool;
     
     std::unique_ptr<AudioBlock> m_current_block;
+    
+    // DSP处理器
+    DspProcessor m_dsp_processor;
 };
 
 } // namespace RyujinxOboe

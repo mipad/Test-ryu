@@ -1,8 +1,139 @@
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
+#include <limits>
 
 namespace RyujinxOboe {
+
+// ========== DspProcessor 实现 ==========
+
+void DspProcessor::ProcessAudio(void* data, size_t size, int32_t sample_format, int32_t channels) {
+    if (!data || size == 0) return;
+    
+    float volume = m_volume.load();
+    
+    // 如果音量为1.0，跳过处理以优化性能
+    if (volume >= 0.999f && volume <= 1.001f) {
+        return;
+    }
+    
+    switch (sample_format) {
+        case PCM_INT16: {
+            size_t sample_count = size / sizeof(int16_t);
+            ApplyVolumeInt16(static_cast<int16_t*>(data), sample_count, volume);
+            break;
+        }
+        case PCM_INT24: {
+            // 24位PCM存储为32位整数，高8位为0
+            size_t sample_count = size / sizeof(int32_t);
+            ApplyVolumeInt24(static_cast<int32_t*>(data), sample_count, volume);
+            break;
+        }
+        case PCM_INT32: {
+            size_t sample_count = size / sizeof(int32_t);
+            ApplyVolumeInt32(static_cast<int32_t*>(data), sample_count, volume);
+            break;
+        }
+        case PCM_FLOAT: {
+            size_t sample_count = size / sizeof(float);
+            ApplyVolumeFloat(static_cast<float*>(data), sample_count, volume);
+            break;
+        }
+        default:
+            // 未知格式，不处理
+            break;
+    }
+}
+
+void DspProcessor::ProcessAudioBatch(void* data, size_t frame_count, int32_t sample_format, int32_t channels) {
+    if (!data || frame_count == 0) return;
+    
+    size_t bytes_per_sample = GetBytesPerSample(sample_format);
+    size_t total_size = frame_count * channels * bytes_per_sample;
+    ProcessAudio(data, total_size, sample_format, channels);
+}
+
+void DspProcessor::ApplyVolumeInt16(int16_t* samples, size_t sample_count, float volume) {
+    for (size_t i = 0; i < sample_count; ++i) {
+        samples[i] = static_cast<int16_t>(ScaleSampleInt16(samples[i], volume));
+    }
+}
+
+void DspProcessor::ApplyVolumeInt32(int32_t* samples, size_t sample_count, float volume) {
+    for (size_t i = 0; i < sample_count; ++i) {
+        samples[i] = ScaleSampleInt32(samples[i], volume);
+    }
+}
+
+void DspProcessor::ApplyVolumeFloat(float* samples, size_t sample_count, float volume) {
+    for (size_t i = 0; i < sample_count; ++i) {
+        samples[i] = ScaleSampleFloat(samples[i], volume);
+    }
+}
+
+void DspProcessor::ApplyVolumeInt24(int32_t* samples, size_t sample_count, float volume) {
+    // 24位PCM存储为32位，实际数据在低24位
+    const int32_t mask_24bit = 0xFFFFFF;
+    const int32_t sign_extend = 0xFF000000;
+    
+    for (size_t i = 0; i < sample_count; ++i) {
+        // 提取24位有符号整数
+        int32_t sample_24bit = samples[i] & mask_24bit;
+        // 符号扩展为32位
+        if (sample_24bit & 0x800000) {
+            sample_24bit |= sign_extend;
+        }
+        
+        // 应用音量
+        int32_t scaled_sample = ScaleSampleInt32(sample_24bit, volume);
+        
+        // 转换回24位（取低24位）
+        samples[i] = scaled_sample & mask_24bit;
+    }
+}
+
+int32_t DspProcessor::ScaleSampleInt16(int16_t sample, float volume) {
+    int32_t scaled = static_cast<int32_t>(sample * volume);
+    
+    // 饱和处理
+    if (scaled > std::numeric_limits<int16_t>::max()) {
+        return std::numeric_limits<int16_t>::max();
+    } else if (scaled < std::numeric_limits<int16_t>::min()) {
+        return std::numeric_limits<int16_t>::min();
+    }
+    
+    return static_cast<int16_t>(scaled);
+}
+
+int32_t DspProcessor::ScaleSampleInt32(int32_t sample, float volume) {
+    // 使用64位中间值防止溢出
+    int64_t scaled = static_cast<int64_t>(sample) * static_cast<int64_t>(volume * 65536.0f);
+    scaled /= 65536;
+    
+    // 饱和处理
+    if (scaled > std::numeric_limits<int32_t>::max()) {
+        return std::numeric_limits<int32_t>::max();
+    } else if (scaled < std::numeric_limits<int32_t>::min()) {
+        return std::numeric_limits<int32_t>::min();
+    }
+    
+    return static_cast<int32_t>(scaled);
+}
+
+float DspProcessor::ScaleSampleFloat(float sample, float volume) {
+    float result = sample * volume;
+    
+    // 浮点数饱和处理
+    if (result > 1.0f) {
+        return 1.0f;
+    } else if (result < -1.0f) {
+        return -1.0f;
+    }
+    
+    return result;
+}
+
+// ========== OboeAudioRenderer 实现 ==========
 
 OboeAudioRenderer::OboeAudioRenderer() {
     m_audio_callback = std::make_unique<AAudioExclusiveCallback>(this);
@@ -181,6 +312,9 @@ bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int3
         block->sample_format = sampleFormat;
         block->consumed = false;
         
+        // 在入队前应用DSP效果
+        ApplyDspEffects(block->data, copy_size, sampleFormat);
+        
         if (!m_audio_queue.push(std::move(block))) return false;
         
         bytes_processed += copy_size;
@@ -211,7 +345,7 @@ int32_t OboeAudioRenderer::GetBufferedFrames() const {
 }
 
 void OboeAudioRenderer::SetVolume(float volume) {
-    m_volume.store(std::max(0.0f, std::min(volume, 1.0f)));
+    m_dsp_processor.SetVolume(volume);
 }
 
 void OboeAudioRenderer::Reset() {
@@ -246,6 +380,12 @@ size_t OboeAudioRenderer::GetBytesPerSample(int32_t format) {
     }
 }
 
+void OboeAudioRenderer::ApplyDspEffects(void* audio_data, size_t data_size, int32_t sample_format) {
+    // 目前只应用音量控制
+    // 未来可以添加更多DSP效果：重采样、滤波器等
+    m_dsp_processor.ProcessAudio(audio_data, data_size, sample_format, m_channel_count.load());
+}
+
 oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) {
     if (!m_initialized.load()) {
         int32_t channels = m_device_channels;
@@ -266,6 +406,7 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioS
             }
             
             if (!m_audio_queue.pop(m_current_block)) {
+                // 没有数据时填充静音
                 std::memset(output + bytes_copied, 0, bytes_remaining);
                 break;
             }
@@ -283,6 +424,11 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioS
         if (m_current_block->available() == 0) {
             m_current_block->consumed = true;
         }
+    }
+    
+    // 在最终输出前再次应用DSP效果（确保实时音量控制）
+    if (bytes_copied > 0) {
+        m_dsp_processor.ProcessAudio(audioData, bytes_copied, m_sample_format.load(), m_device_channels);
     }
     
     return oboe::DataCallbackResult::Continue;
