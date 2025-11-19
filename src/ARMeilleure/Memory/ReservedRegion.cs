@@ -7,7 +7,8 @@ namespace ARMeilleure.Memory
         public const int DefaultGranularity = 65536; // Mapping granularity in Windows.
 
         public IJitMemoryBlock Block { get; }
-
+        public IJitMemoryAllocator Allocator { get; }
+        
         public IntPtr Pointer => Block.Pointer;
 
         private readonly ulong _maxSize;
@@ -20,7 +21,8 @@ namespace ARMeilleure.Memory
             {
                 granularity = DefaultGranularity;
             }
-
+            
+            Allocator = allocator;
             Block = allocator.Reserve(maxSize);
             _maxSize = maxSize;
             _sizeGranularity = granularity;
