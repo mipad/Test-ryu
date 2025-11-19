@@ -10,7 +10,6 @@ using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
-using System.Threading;
 
 namespace ARMeilleure.Translation.Cache
 {
@@ -20,25 +19,27 @@ namespace ARMeilleure.Translation.Cache
         private static readonly int _pageMask = _pageSize - 1;
 
         private const int CodeAlignment = 4;
-        private const int FullCacheSize = 2047 * 1024 * 1024;
+        private const int FullCacheSize = 256 * 1024 * 1024;
         private const int ReducedCacheSize = FullCacheSize / 8;
 
         private const float EvictionTargetPercentage = 0.20f;
         private const int MaxEntriesToEvictAtOnce = 100;
 
-        // Simple logging configuration
-        private const int LogInterval = 5000;  // Log every 5000 allocations
 
-        private static ReservedRegion _jitRegion;
+        
         private static JitCacheInvalidation _jitCacheInvalidator;
 
         private static CacheMemoryAllocator _cacheAllocator;
 
-        private static readonly List<CacheEntry> _cacheEntries = [];
+        private static readonly List<CacheEntry> _cacheEntries = new();
         private static readonly Dictionary<int, EntryUsageStats> _entryUsageStats = [];
-
+        
         private static readonly object _lock = new();
         private static bool _initialized;
+        
+        private static readonly List<ReservedRegion> _jitRegions = new();
+        private static int _activeRegionIndex = 0;
+
         private static int _cacheSize;
 
         // Basic statistics
@@ -55,14 +56,14 @@ namespace ARMeilleure.Translation.Cache
                 LastAccessTime = DateTime.UtcNow.Ticks;
                 UsageCount = 1;
             }
-
+            
             public void UpdateUsage()
             {
                 LastAccessTime = DateTime.UtcNow.Ticks;
                 UsageCount++;
             }
         }
-
+        
         [SupportedOSPlatform("windows")]
         [LibraryImport("kernel32.dll", SetLastError = true)]
         public static partial IntPtr FlushInstructionCache(IntPtr hProcess, IntPtr lpAddress, UIntPtr dwSize);
@@ -82,7 +83,10 @@ namespace ARMeilleure.Translation.Cache
                 }
 
                 _cacheSize = Optimizations.CacheEviction ? ReducedCacheSize : FullCacheSize;
-                _jitRegion = new ReservedRegion(allocator, (ulong)_cacheSize);
+                var firstRegion = new ReservedRegion(allocator, _cacheSize);
+                _jitRegions.Add(firstRegion);
+                _activeRegionIndex = 0;
+
 
                 if (!OperatingSystem.IsWindows() && !OperatingSystem.IsMacOS())
                 {
@@ -93,10 +97,13 @@ namespace ARMeilleure.Translation.Cache
 
                 if (OperatingSystem.IsWindows())
                 {
-                    JitUnwindWindows.InstallFunctionTableHandler(_jitRegion.Pointer, (uint)_cacheSize, _jitRegion.Pointer + Allocate(_pageSize));
+                    JitUnwindWindows.InstallFunctionTableHandler(
+                        firstRegion.Pointer, _cacheSize, firstRegion.Pointer + Allocate(_pageSize)
+                    );
                 }
 
                 Logger.Info?.Print(LogClass.Cpu, $"JIT Cache initialized: Size={_cacheSize / (1024 * 1024)} MB, Eviction={Optimizations.CacheEviction}");
+                
                 _initialized = true;
             }
         }
@@ -108,6 +115,7 @@ namespace ARMeilleure.Translation.Cache
             lock (_lock)
             {
                 Debug.Assert(_initialized);
+                
                 _totalAllocations++;
 
                 int funcOffset;
@@ -121,21 +129,23 @@ namespace ARMeilleure.Translation.Cache
                     {
                         EvictEntries(codeSize);
                         funcOffset = _cacheAllocator.Allocate(codeSize);
-
+                        
                         if (funcOffset < 0)
                         {
                             throw new OutOfMemoryException("JIT Cache exhausted even after eviction.");
                         }
                     }
-
-                    _jitRegion.ExpandIfNeeded((ulong)funcOffset + (ulong)codeSize);
+                    
+                    _jitRegions[_activeRegionIndex].ExpandIfNeeded((ulong)funcOffset + (ulong)codeSize);
                 }
                 else
                 {
                     funcOffset = Allocate(code.Length);
                 }
 
-                IntPtr funcPtr = _jitRegion.Pointer + funcOffset;
+
+                ReservedRegion targetRegion = _jitRegions[_activeRegionIndex];
+                IntPtr funcPtr = targetRegion.Pointer + funcOffset;
 
                 if (OperatingSystem.IsMacOS() && RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
                 {
@@ -149,9 +159,10 @@ namespace ARMeilleure.Translation.Cache
                 }
                 else
                 {
-                    ReprotectAsWritable(funcOffset, code.Length);
+                    ReprotectAsWritable(targetRegion, funcOffset, code.Length);
+                    
                     Marshal.Copy(code, 0, funcPtr, code.Length);
-                    ReprotectAsExecutable(funcOffset, code.Length);
+                    ReprotectAsExecutable(targetRegion, funcOffset, code.Length);
 
                     if (OperatingSystem.IsWindows() && RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
                     {
@@ -165,12 +176,6 @@ namespace ARMeilleure.Translation.Cache
 
                 Add(funcOffset, code.Length, func.UnwindInfo);
 
-                // Simple periodic logging
-                if (_totalAllocations % LogInterval == 0)
-                {
-                    LogCacheStatus();
-                }
-
                 return funcPtr;
             }
         }
@@ -181,55 +186,88 @@ namespace ARMeilleure.Translation.Cache
             {
                 Debug.Assert(_initialized);
 
-                int funcOffset = (int)(pointer.ToInt64() - _jitRegion.Pointer.ToInt64());
+                foreach (var region in _jitRegions)
+                {
+                    if (pointer.ToInt64() < region.Pointer.ToInt64() ||
+                        pointer.ToInt64() >= (region.Pointer + _cacheSize).ToInt64())
+                    {
+                        continue;
+                    }
+
+                    int funcOffset = (int)(pointer.ToInt64() - region.Pointer.ToInt64());
+
 
                 if (TryFind(funcOffset, out CacheEntry entry, out int entryIndex) && entry.Offset == funcOffset)
                 {
                     _cacheAllocator.Free(funcOffset, AlignCodeSize(entry.Size));
                     _cacheEntries.RemoveAt(entryIndex);
-
+                    
                     if (Optimizations.CacheEviction)
                     {
                         _entryUsageStats.Remove(funcOffset);
                     }
                 }
+              break; 
             }
         }
+     }
 
-        private static void ReprotectAsWritable(int offset, int size)
+        private static void ReprotectAsWritable(ReservedRegion region, int offset, int size)
         {
             int endOffs = offset + size;
 
             int regionStart = offset & ~_pageMask;
             int regionEnd = (endOffs + _pageMask) & ~_pageMask;
 
-            _jitRegion.Block.MapAsRwx((ulong)regionStart, (ulong)(regionEnd - regionStart));
+            region.Block.MapAsRwx((ulong)regionStart, (ulong)(regionEnd - regionStart));
         }
 
-        private static void ReprotectAsExecutable(int offset, int size)
+        private static void ReprotectAsExecutable(ReservedRegion region, int offset, int size)
         {
             int endOffs = offset + size;
 
             int regionStart = offset & ~_pageMask;
             int regionEnd = (endOffs + _pageMask) & ~_pageMask;
 
-            _jitRegion.Block.MapAsRx((ulong)regionStart, (ulong)(regionEnd - regionStart));
+            region.Block.MapAsRx((ulong)regionStart, (ulong)(regionEnd - regionStart));
         }
 
         private static int Allocate(int codeSize)
         {
             codeSize = AlignCodeSize(codeSize);
-
+            
+            for (int i = _activeRegionIndex; i < _jitRegions.Count; i++)
+            {
             int allocOffset = _cacheAllocator.Allocate(codeSize);
 
-            if (allocOffset < 0)
+            if (allocOffset >= 0)
             {
-                throw new OutOfMemoryException("JIT Cache exhausted.");
+                _jitRegions[i].ExpandIfNeeded((ulong)allocOffset + (ulong)codeSize);
+                    _activeRegionIndex = i;
+                    return allocOffset;
+                }
             }
 
-            _jitRegion.ExpandIfNeeded((ulong)allocOffset + (ulong)codeSize);
+            int exhaustedRegion = _activeRegionIndex;
+            var newRegion = new ReservedRegion(_jitRegions[0].Allocator, _cacheSize);
+            _jitRegions.Add(newRegion);
+            _activeRegionIndex = _jitRegions.Count - 1;
 
-            return allocOffset;
+
+            int newRegionNumber = _activeRegionIndex;
+
+            Logger.Warning?.Print(LogClass.Cpu, $"JIT Cache Region {exhaustedRegion} exhausted, creating new Cache Region {newRegionNumber} ({((newRegionNumber + 1) * _cacheSize).Bytes()} Total Allocation).");
+        
+            _cacheAllocator = new CacheMemoryAllocator(_cacheSize);
+
+            int allocOffsetNew = _cacheAllocator.Allocate(codeSize);
+            if (allocOffsetNew < 0)
+            {
+                throw new OutOfMemoryException("Failed to allocate in new Cache Region!");
+            }
+
+            newRegion.ExpandIfNeeded((ulong)allocOffsetNew + (ulong)codeSize);
+            return allocOffsetNew;
         }
 
         private static int AlignCodeSize(int codeSize)
@@ -248,8 +286,8 @@ namespace ARMeilleure.Translation.Cache
                 index = ~index;
             }
 
-            _cacheEntries.Insert(index, entry);
-
+            _cacheEntries.Insert(index, entry);    
+            
             if (Optimizations.CacheEviction)
             {
                 _entryUsageStats[offset] = new EntryUsageStats();
@@ -259,6 +297,8 @@ namespace ARMeilleure.Translation.Cache
         public static bool TryFind(int offset, out CacheEntry entry, out int entryIndex)
         {
             lock (_lock)
+            {
+                foreach (var region in _jitRegions)
             {
                 int index = _cacheEntries.BinarySearch(new CacheEntry(offset, 0, default));
 
@@ -270,22 +310,23 @@ namespace ARMeilleure.Translation.Cache
                 if (index >= 0)
                 {
                     entry = _cacheEntries[index];
-
+                    
                     if (Optimizations.CacheEviction && _entryUsageStats.TryGetValue(offset, out var stats))
                     {
                         stats.UpdateUsage();
                     }
-
+                    
                     entryIndex = index;
                     return true;
                 }
             }
-
+         }
+         
             entry = default;
             entryIndex = 0;
             return false;
         }
-
+        
         private static void EvictEntries(int requiredSize)
         {
             if (!Optimizations.CacheEviction)
@@ -300,7 +341,8 @@ namespace ARMeilleure.Translation.Cache
                 int evictedCount = 0;
 
                 var entriesWithStats = _cacheEntries
-                    .Where(e => _entryUsageStats.ContainsKey(e.Offset))
+                
+                .Where(e => _entryUsageStats.ContainsKey(e.Offset))
                     .Select(e => new {
                         Entry = e,
                         Stats = _entryUsageStats[e.Offset],
@@ -312,7 +354,7 @@ namespace ARMeilleure.Translation.Cache
 
                 foreach (var item in entriesWithStats)
                 {
-                    int entrySize = AlignCodeSize(item.Entry.Size);
+                   int entrySize = AlignCodeSize(item.Entry.Size);
 
                     int entryIndex = _cacheEntries.BinarySearch(item.Entry);
                     if (entryIndex >= 0)
@@ -325,7 +367,7 @@ namespace ARMeilleure.Translation.Cache
                         evictedCount++;
 
                         if (freedSpace >= targetSpace)
-                        {
+                                                {
                             break;
                         }
                     }
@@ -352,7 +394,7 @@ namespace ARMeilleure.Translation.Cache
 
             return usageScore + ageScore;
         }
-
+        
         private static void LogCacheStatus()
         {
             int estimatedUsedSize = _cacheEntries.Sum(e => AlignCodeSize(e.Size));
