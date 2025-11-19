@@ -1,5 +1,4 @@
 using ARMeilleure.Memory;
-using Ryujinx.Common;
 using Ryujinx.Common.Logging;
 using Ryujinx.Memory;
 using System;
@@ -50,7 +49,7 @@ namespace Ryujinx.Cpu.LightningJit.Cache
                     return;
                 }
 
-                var firstRegion = new ReservedRegion(allocator, CacheSize);
+                var firstRegion = new ReservedRegion(allocator, (ulong)CacheSize);
                 _jitRegions.Add(firstRegion);
                 _activeRegionIndex = 0;
 
@@ -168,14 +167,14 @@ namespace Ryujinx.Cpu.LightningJit.Cache
             }
 
             int exhaustedRegion = _activeRegionIndex;
-            var newRegion = new ReservedRegion(_jitRegions[0].Allocator, CacheSize);
+            var newRegion = new ReservedRegion(_jitRegions[0].Allocator, (ulong)CacheSize);
             _jitRegions.Add(newRegion);
             _activeRegionIndex = _jitRegions.Count - 1;
 
 
             int newRegionNumber = _activeRegionIndex;
 
-            Logger.Warning?.Print(LogClass.Cpu, $"JIT Cache Region {exhaustedRegion} exhausted, creating new Cache Region {newRegionNumber} ({((newRegionNumber + 1) * CacheSize).Bytes()} Total Allocation).");
+            Logger.Warning?.Print(LogClass.Cpu, $"JIT Cache Region {exhaustedRegion} exhausted, creating new Cache Region {newRegionNumber} ({FormatBytes((newRegionNumber + 1) * CacheSize)} Total Allocation).");
         
             _cacheAllocator = new CacheMemoryAllocator(CacheSize);
 
@@ -230,6 +229,22 @@ namespace Ryujinx.Cpu.LightningJit.Cache
             entry = default;
             entryIndex = 0;
             return false;
+        }
+
+        // 添加 Bytes() 方法的替代方案
+        private static string FormatBytes(long bytes)
+        {
+            string[] suffixes = { "B", "KB", "MB", "GB", "TB" };
+            int suffixIndex = 0;
+            double size = bytes;
+            
+            while (size >= 1024 && suffixIndex < suffixes.Length - 1)
+            {
+                size /= 1024;
+                suffixIndex++;
+            }
+            
+            return $"{size:0.##} {suffixes[suffixIndex]}";
         }
     }
 }
