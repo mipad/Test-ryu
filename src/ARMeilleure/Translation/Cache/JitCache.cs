@@ -4,6 +4,7 @@ using ARMeilleure.Memory;
 using ARMeilleure.Native;
 using Ryujinx.Common.Logging;
 using Ryujinx.Memory;
+using Ryujinx.Common;
 using Humanizer;
 using System;
 using System.Collections.Generic;
@@ -85,7 +86,7 @@ namespace ARMeilleure.Translation.Cache
                 }
 
                 _cacheSize = Optimizations.CacheEviction ? ReducedCacheSize : FullCacheSize;
-                firstRegion = new ReservedRegion(allocator, (ulong)_cacheSize);
+                var firstRegion = new ReservedRegion(allocator, _cacheSize);
                 _jitRegions.Add(firstRegion);
                 _activeRegionIndex = 0;
 
@@ -100,7 +101,7 @@ namespace ARMeilleure.Translation.Cache
                 if (OperatingSystem.IsWindows())
                 {
                     JitUnwindWindows.InstallFunctionTableHandler(
-                        firstRegion.Pointer, (uint)_cacheSize, firstRegion.Pointer + Allocate(_pageSize)
+                        firstRegion.Pointer, (ulong)_cacheSize, firstRegion.Pointer + Allocate(_pageSize)
                     );
                 }
 
@@ -168,7 +169,7 @@ namespace ARMeilleure.Translation.Cache
 
                     if (OperatingSystem.IsWindows() && RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
                     {
-                        FlushInstructionCache(Process.GetCurrentProcess().Handle, funcPtr, (UIntPtr)code.Length);
+                        FlushInstructionCache(Process.GetCurrentProcess().Handle, funcPtr, (UIntPtr)(uint)code.Length);
                     }
                     else
                     {
@@ -251,7 +252,7 @@ namespace ARMeilleure.Translation.Cache
             }
 
             int exhaustedRegion = _activeRegionIndex;
-            var newRegion = new ReservedRegion(_jitRegions[0].Allocator, (ulong)_cacheSize);
+            var newRegion = new ReservedRegion(_jitRegions[0].Allocator, _cacheSize);
             _jitRegions.Add(newRegion);
             _activeRegionIndex = _jitRegions.Count - 1;
 
