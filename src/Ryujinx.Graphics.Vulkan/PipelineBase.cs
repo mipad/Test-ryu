@@ -132,14 +132,15 @@ namespace Ryujinx.Graphics.Vulkan
 
             _newState.Initialize();
 
-            // 初始化 Tile 优化
-            _tileOptimizationEnabled = gd.IsTileBasedGPU;
+            // 初始化 Tile 优化 - 仅在支持时启用
+            _tileOptimizationEnabled = gd.IsTileBasedGPU && gd.Capabilities.SupportsTileOptimization;
             _tileOptimizedDrawCount = 0;
             _tileOptimizedAttachmentChangeCount = 0;
         }
 
         // Tile-based GPU 检测
         protected bool IsTileBasedGPU => Gd.IsTileBasedGPU;
+        protected bool TileOptimizationEnabled => _tileOptimizationEnabled;
         protected TileOptimizationConfig TileConfig => Gd.TileOptimizationConfig;
 
         public void Initialize()
@@ -221,74 +222,21 @@ namespace Ryujinx.Graphics.Vulkan
                 return;
             }
 
-            // Tile-based GPU 优化：在 Tile 架构上使用更高效的清除方法
-            if (IsTileBasedGPU && TileConfig.OptimizeAttachmentOperations)
+            // 简化的清除逻辑，移除可能导致问题的复杂优化
+            if (_renderPass == null)
             {
-                // 对于 Tile-based GPU，尽可能使用硬件清除
-                if (!Gd.IsQualcommProprietary)
-                {
-                    // 使用硬件清除操作
-                    if (_renderPass == null)
-                    {
-                        CreateRenderPass();
-                    }
-
-                    Gd.Barriers.Flush(Cbs, RenderPassActive, _rpHolder, EndRenderPassDelegate);
-
-                    BeginRenderPass();
-
-                    var clearValue = new ClearValue(new ClearColorValue(color.Red, color.Green, color.Blue, color.Alpha));
-                    var attachment = new ClearAttachment(ImageAspectFlags.ColorBit, (uint)index, clearValue);
-                    var clearRect = FramebufferParams.GetClearRect(ClearScissor, layer, layerCount);
-
-                    Gd.Api.CmdClearAttachments(CommandBuffer, 1, &attachment, 1, &clearRect);
-                    return;
-                }
+                CreateRenderPass();
             }
 
-            if (Gd.IsQualcommProprietary)
-            {
-                // On proprietary Adreno drivers, CmdClearAttachments appears to execute out of order, so it's better to not use it at all.
-                var dstTexture = FramebufferParams.GetColorView(index);
-                if (dstTexture == null)
-                {
-                    return;
-                }
+            Gd.Barriers.Flush(Cbs, RenderPassActive, _rpHolder, EndRenderPassDelegate);
 
-                Span<float> clearColor = stackalloc float[4];
-                clearColor[0] = color.Red;
-                clearColor[1] = color.Green;
-                clearColor[2] = color.Blue;
-                clearColor[3] = color.Alpha;
+            BeginRenderPass();
 
-                // TODO: Clear only the specified layer.
-                Gd.HelperShader.Clear(
-                    Gd,
-                    dstTexture,
-                    clearColor,
-                    0xf,
-                    (int)FramebufferParams.Width,
-                    (int)FramebufferParams.Height,
-                    FramebufferParams.GetAttachmentComponentType(index),
-                    ClearScissor);
-            }
-            else
-            {
-                if (_renderPass == null)
-                {
-                    CreateRenderPass();
-                }
+            var clearValue = new ClearValue(new ClearColorValue(color.Red, color.Green, color.Blue, color.Alpha));
+            var attachment = new ClearAttachment(ImageAspectFlags.ColorBit, (uint)index, clearValue);
+            var clearRect = FramebufferParams.GetClearRect(ClearScissor, layer, layerCount);
 
-                Gd.Barriers.Flush(Cbs, RenderPassActive, _rpHolder, EndRenderPassDelegate);
-
-                BeginRenderPass();
-
-                var clearValue = new ClearValue(new ClearColorValue(color.Red, color.Green, color.Blue, color.Alpha));
-                var attachment = new ClearAttachment(ImageAspectFlags.ColorBit, (uint)index, clearValue);
-                var clearRect = FramebufferParams.GetClearRect(ClearScissor, layer, layerCount);
-
-                Gd.Api.CmdClearAttachments(CommandBuffer, 1, &attachment, 1, &clearRect);
-            }
+            Gd.Api.CmdClearAttachments(CommandBuffer, 1, &attachment, 1, &clearRect);
         }
 
         public unsafe void ClearRenderTargetDepthStencil(int layer, int layerCount, float depthValue, bool depthMask, int stencilValue, bool stencilMask)
@@ -313,67 +261,20 @@ namespace Ryujinx.Graphics.Vulkan
                 return;
             }
 
-            // Tile-based GPU 优化：在 Tile 架构上使用更高效的清除方法
-            if (IsTileBasedGPU && TileConfig.OptimizeAttachmentOperations)
+            // 简化的清除逻辑
+            if (_renderPass == null)
             {
-                // 对于 Tile-based GPU，尽可能使用硬件清除
-                if (!Gd.IsQualcommProprietary)
-                {
-                    if (_renderPass == null)
-                    {
-                        CreateRenderPass();
-                    }
-
-                    Gd.Barriers.Flush(Cbs, RenderPassActive, _rpHolder, EndRenderPassDelegate);
-
-                    BeginRenderPass();
-
-                    var attachment = new ClearAttachment(flags, 0, clearValue);
-                    var clearRect = FramebufferParams.GetClearRect(ClearScissor, layer, layerCount);
-
-                    Gd.Api.CmdClearAttachments(CommandBuffer, 1, &attachment, 1, &clearRect);
-                    return;
-                }
+                CreateRenderPass();
             }
 
-            if (Gd.IsQualcommProprietary)
-            {
-                // On proprietary Adreno drivers, CmdClearAttachments appears to execute out of order, so it's better to not use it at all.
-                var dstTexture = FramebufferParams.GetDepthStencilView();
-                if (dstTexture == null)
-                {
-                    return;
-                }
+            Gd.Barriers.Flush(Cbs, RenderPassActive, _rpHolder, EndRenderPassDelegate);
 
-                // TODO: Clear only the specified layer.
-                Gd.HelperShader.Clear(
-                    Gd,
-                    dstTexture,
-                    depthValue,
-                    depthMask,
-                    stencilValue,
-                    stencilMask ? 0xff : 0,
-                    (int)FramebufferParams.Width,
-                    (int)FramebufferParams.Height,
-                    FramebufferParams.AttachmentFormats[FramebufferParams.AttachmentsCount - 1],
-                    ClearScissor);
-            }
-            else
-            {
-                if (_renderPass == null)
-                {
-                    CreateRenderPass();
-                }
+            BeginRenderPass();
 
-                Gd.Barriers.Flush(Cbs, RenderPassActive, _rpHolder, EndRenderPassDelegate);
+            var attachment = new ClearAttachment(flags, 0, clearValue);
+            var clearRect = FramebufferParams.GetClearRect(ClearScissor, layer, layerCount);
 
-                BeginRenderPass();
-
-                var attachment = new ClearAttachment(flags, 0, clearValue);
-                var clearRect = FramebufferParams.GetClearRect(ClearScissor, layer, layerCount);
-
-                Gd.Api.CmdClearAttachments(CommandBuffer, 1, &attachment, 1, &clearRect);
-            }
+            Gd.Api.CmdClearAttachments(CommandBuffer, 1, &attachment, 1, &clearRect);
         }
 
         public unsafe void CommandBufferBarrier()
@@ -1081,20 +982,10 @@ namespace Ryujinx.Graphics.Vulkan
 
         protected virtual void SignalAttachmentChange()
         {
-            // Tile-based GPU 优化：跟踪附件变化次数
-            if (IsTileBasedGPU)
+            // 简化的附件变化处理
+            if (AutoFlush.ShouldFlushAttachmentChange(DrawCount) && IsMainPipeline)
             {
-                _tileOptimizedAttachmentChangeCount++;
-                
-                // 如果附件变化过于频繁，提前刷新
-                if (_tileOptimizedAttachmentChangeCount >= TileConfig.MaxRenderPassAttachmentChanges)
-                {
-                    if (IsMainPipeline)
-                    {
-                        Gd.FlushAllCommands();
-                    }
-                    return;
-                }
+                Gd.FlushAllCommands();
             }
         }
 
@@ -1848,20 +1739,15 @@ namespace Ryujinx.Graphics.Vulkan
             return true;
         }
 
-        // Tile-based GPU 优化：记录绘制调用
+        // 简化的绘制记录
         protected virtual void RecordDraw()
         {
             DrawCount++;
 
-            if (IsTileBasedGPU)
+            // 简化的 Tile 优化：仅在必要时刷新
+            if (TileOptimizationEnabled && _tileOptimizedDrawCount++ >= TileConfig.MaxRenderPassDrawCalls && IsMainPipeline)
             {
-                _tileOptimizedDrawCount++;
-                
-                // 如果绘制调用过多，提前刷新命令缓冲区
-                if (_tileOptimizedDrawCount >= TileConfig.MaxRenderPassDrawCalls && IsMainPipeline)
-                {
-                    Gd.FlushAllCommands();
-                }
+                Gd.FlushAllCommands();
             }
         }
 
@@ -1887,16 +1773,20 @@ namespace Ryujinx.Graphics.Vulkan
                 Gd.Api.CmdBeginRenderPass(CommandBuffer, in renderPassBeginInfo, SubpassContents.Inline);
                 RenderPassActive = true;
 
-                // 配置 Tile 友好的状态
-                ConfigureTileFriendlyState();
+                // 简化的 Tile 友好状态配置
+                if (TileOptimizationEnabled)
+                {
+                    ConfigureTileFriendlyState();
+                }
             }
         }
 
-        // 配置 Tile 友好的状态
+        // 简化的 Tile 友好状态配置
         private void ConfigureTileFriendlyState()
         {
-            if (!IsTileBasedGPU) return;
+            if (!TileOptimizationEnabled) return;
 
+            // 仅应用已知安全的优化
             var config = TileConfig;
             
             // 在 Tile 架构上，启用早期片段测试可以提升性能
@@ -1904,50 +1794,6 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 // 这会告诉驱动可以在片段着色器之前进行深度测试
                 // 在图形管线创建时设置会更合适，这里通过设置状态来提示驱动
-                
-                // 设置深度测试状态以启用早期深度测试
-                if (config.OptimizeBarriers)
-                {
-                    // 在 Tile 架构上，启用保守的深度测试可以提升性能
-                    // 这会告诉驱动程序可以安全地在片段着色器之前执行深度测试
-                    // 注意：这里只是示例，实际深度状态应该在管道创建时设置
-                }
-            }
-
-            // 配置混合状态优化
-            if (config.OptimizeAttachmentOperations)
-            {
-                // 在 Tile 架构上，使用更简单的混合操作可以减少带宽使用
-                // 避免复杂的混合模式，优先使用标准混合
-                // 同样，这应该在管道创建时设置，这里记录优化策略
-            }
-
-            // 配置光栅化状态优化
-            if (config.OptimizeBarriers)
-            {
-                // 在 Tile 架构上，保守的光栅化设置可以提升性能
-                // 禁用深度箝位和深度偏置可以减少带宽使用
-            }
-
-            // 配置多重采样状态优化
-            if (config.OptimizeAttachmentOperations)
-            {
-                // 在 Tile 架构上，优化多重采样设置
-                // 尽可能使用较少的采样数，禁用采样着色和 Alpha 覆盖
-            }
-
-            // 配置输入装配状态优化
-            if (config.OptimizeDependencies)
-            {
-                // 在 Tile 架构上，使用更简单的拓扑结构
-                // 优先使用三角形列表，避免复杂的拓扑和图元重启
-            }
-
-            // 配置视口状态优化
-            if (config.OptimizeAttachmentOperations)
-            {
-                // 在 Tile 架构上，使用单个视口通常更高效
-                // 使用动态视口和裁剪框，避免在管道创建时固定
             }
 
             // 配置动态状态优化
@@ -1955,13 +1801,6 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 // 在 Tile 架构上，使用动态状态可以减少管道状态变化
                 // 启用尽可能多的动态状态，减少管道重新编译
-            }
-
-            // 配置顶点输入状态优化
-            if (config.OptimizeDependencies)
-            {
-                // 在 Tile 架构上，简化的顶点输入可以减少带宽使用
-                // 使用动态顶点输入，避免在管道创建时固定格式
             }
         }
 
