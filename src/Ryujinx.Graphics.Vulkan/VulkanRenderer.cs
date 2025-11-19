@@ -18,39 +18,6 @@ using SamplerCreateInfo = Ryujinx.Graphics.GAL.SamplerCreateInfo;
 
 namespace Ryujinx.Graphics.Vulkan
 {
-    // 添加 Tile 优化相关枚举和结构
-    public enum TileOptimizationLevel
-    {
-        Disabled,
-        Conservative,
-        Moderate,
-        Aggressive
-    }
-
-    public enum GpuArchitecture
-    {
-        Unknown,
-        MaliMidgard,
-        MaliBifrost,
-        MaliValhall,
-        Adreno,
-        PowerVR,
-        Apple,
-        Other
-    }
-
-    public struct TileOptimizationConfig
-    {
-        public bool OptimizeAttachmentOperations;
-        public bool OptimizeDependencies;
-        public bool OptimizeBarriers;
-        public bool UseAttachmentOptimalLayouts;
-        public bool PreferMemoryBarriers;
-        public bool AggressiveStoreOpDontCare;
-        public int MaxRenderPassDrawCalls;
-        public int MaxRenderPassAttachmentChanges;
-    }
-
     unsafe public sealed class VulkanRenderer : IRenderer
     {
         private VulkanInstance _instance;
@@ -166,9 +133,9 @@ namespace Ryujinx.Graphics.Vulkan
         { 
             get 
             {
-                if (_physicalDevice == null) return false;
+                if (_physicalDevice.PhysicalDevice.Handle == 0) return false;
                 
-                var deviceName = _physicalDevice.PhysicalDeviceProperties.DeviceName;
+                string deviceName = GetPhysicalDeviceName();
                 return deviceName.Contains("Mali") || 
                        deviceName.Contains("Adreno") || 
                        deviceName.Contains("PowerVR") ||
@@ -185,14 +152,25 @@ namespace Ryujinx.Graphics.Vulkan
         // 添加 Tile 优化支持检查
         public bool SupportsTileOptimization => IsTileBasedGPU;
 
+        // 获取物理设备名称的辅助方法
+        private string GetPhysicalDeviceName()
+        {
+            if (_physicalDevice.PhysicalDevice.Handle == 0) return string.Empty;
+            
+            fixed (byte* deviceNamePtr = _physicalDevice.PhysicalDeviceProperties.DeviceName)
+            {
+                return Marshal.PtrToStringAnsi((IntPtr)deviceNamePtr) ?? string.Empty;
+            }
+        }
+
         // 添加详细的 GPU 架构信息
         public GpuArchitecture GpuArchitecture
         {
             get
             {
-                if (_physicalDevice == null) return GpuArchitecture.Unknown;
+                if (_physicalDevice.PhysicalDevice.Handle == 0) return GpuArchitecture.Unknown;
                 
-                var deviceName = _physicalDevice.PhysicalDeviceProperties.DeviceName;
+                string deviceName = GetPhysicalDeviceName();
                 if (deviceName.Contains("Mali"))
                 {
                     if (deviceName.Contains("G") || deviceName.Contains("T"))
@@ -1514,5 +1492,38 @@ namespace Ryujinx.Graphics.Vulkan
             return Capabilities.SupportsHostImportedMemory &&
                 HostMemoryAllocator.TryImport(BufferManager.HostImportedBufferMemoryRequirements, BufferManager.DefaultBufferMemoryFlags, address, size);
         }        
+    }
+
+    // 添加 Tile 优化相关枚举和结构
+    public enum TileOptimizationLevel
+    {
+        Disabled,
+        Conservative,
+        Moderate,
+        Aggressive
+    }
+
+    public enum GpuArchitecture
+    {
+        Unknown,
+        MaliMidgard,
+        MaliBifrost,
+        MaliValhall,
+        Adreno,
+        PowerVR,
+        Apple,
+        Other
+    }
+
+    public struct TileOptimizationConfig
+    {
+        public bool OptimizeAttachmentOperations;
+        public bool OptimizeDependencies;
+        public bool OptimizeBarriers;
+        public bool UseAttachmentOptimalLayouts;
+        public bool PreferMemoryBarriers;
+        public bool AggressiveStoreOpDontCare;
+        public int MaxRenderPassDrawCalls;
+        public int MaxRenderPassAttachmentChanges;
     }
 }
