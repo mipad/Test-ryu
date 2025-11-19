@@ -1210,34 +1210,25 @@ namespace Ryujinx.Graphics.Vulkan
             return MemoryPropertyFlags.DeviceLocalBit | MemoryPropertyFlags.HostVisibleBit;
         }
 
-        // 添加针对 Tile 架构的命令缓冲区提交优化
-        internal unsafe void SubmitTileOptimizedCommandBuffer(CommandBufferScoped cbs, Fence fence = default)
-        {
-            if (IsTileBasedGPU)
-            {
-                // Tile-based GPU 上，更频繁地提交命令缓冲区可能更高效
-                var commandBuffer = cbs.CommandBuffer;
-                var submitInfo = new SubmitInfo
-                {
-                    SType = StructureType.SubmitInfo,
-                    CommandBufferCount = 1,
-                    PCommandBuffers = &commandBuffer
-                };
+        /// 添加针对 Tile 架构的命令缓冲区提交优化
+internal unsafe void SubmitTileOptimizedCommandBuffer(CommandBufferScoped cbs, Fence fence = default)
+{
+    var commandBuffer = cbs.CommandBuffer;
+    var submitInfo = new SubmitInfo
+    {
+        SType = StructureType.SubmitInfo,
+        CommandBufferCount = 1,
+        PCommandBuffers = &commandBuffer
+    };
 
-                lock (QueueLock)
-                {
-                    Api.QueueSubmit(Queue, 1, submitInfo, fence);
-                }
+    lock (QueueLock)
+    {
+        Api.QueueSubmit(Queue, 1, submitInfo, fence);
+    }
 
-                // 立即注册刷新以回收资源
-                RegisterFlush();
-            }
-            else
-            {
-                // 标准提交逻辑 - 使用 SyncManager 的 QueueSubmit 方法
-                SyncManager.QueueSubmit(cbs, fence);
-            }
-        }
+    // 注册刷新
+    RegisterFlush();
+}
 
         public void PreFrame()
         {
