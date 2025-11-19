@@ -156,10 +156,15 @@ bool OboeAudioRenderer::WriteAudio(const int16_t* data, int32_t num_frames) {
     
     int32_t system_channels = m_channel_count.load();
     size_t data_size = num_frames * system_channels * sizeof(int16_t);
-    return WriteAudioRaw(reinterpret_cast<const void*>(data), num_frames, PCM_INT16);
+    return WriteAudioBatched(reinterpret_cast<const void*>(data), num_frames, PCM_INT16);
 }
 
 bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int32_t sampleFormat) {
+    // 现在默认使用批量处理
+    return WriteAudioBatched(data, num_frames, sampleFormat);
+}
+
+bool OboeAudioRenderer::WriteAudioBatched(const void* data, int32_t num_frames, int32_t sampleFormat) {
     if (!m_initialized.load() || !data || num_frames <= 0) return false;
     
     int32_t system_channels = m_channel_count.load();
@@ -167,24 +172,93 @@ bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int3
     size_t total_bytes = num_frames * system_channels * bytes_per_sample;
     
     const uint8_t* byte_data = static_cast<const uint8_t*>(data);
+    
+    // 批量获取内存块
+    std::unique_ptr<AudioBlock> blocks[MAX_BLOCKS_PER_BATCH];
+    size_t blocks_acquired = 0;
+    
+    // 批量获取内存块
+    for (; blocks_acquired < MAX_BLOCKS_PER_BATCH; ++blocks_acquired) {
+        blocks[blocks_acquired] = m_object_pool.acquire();
+        if (!blocks[blocks_acquired]) break;
+    }
+    
+    // 如果批量获取失败，回退到逐个获取
+    if (blocks_acquired == 0) {
+        // 回退到原始的单块处理方式
+        const uint8_t* current_data = byte_data;
+        size_t bytes_remaining = total_bytes;
+        
+        while (bytes_remaining > 0) {
+            auto block = m_object_pool.acquire();
+            if (!block) return false;
+            
+            size_t copy_size = std::min(bytes_remaining, AudioBlock::BLOCK_SIZE);
+            std::memcpy(block->data, current_data, copy_size);
+            block->data_size = copy_size;
+            block->data_played = 0;
+            block->sample_format = sampleFormat;
+            block->consumed = false;
+            
+            if (!m_audio_queue.push(std::move(block))) return false;
+            
+            current_data += copy_size;
+            bytes_remaining -= copy_size;
+        }
+        return true;
+    }
+    
+    // 批量处理路径
     size_t bytes_remaining = total_bytes;
     size_t bytes_processed = 0;
+    size_t current_block = 0;
     
-    while (bytes_remaining > 0) {
-        auto block = m_object_pool.acquire();
-        if (!block) return false;
-        
+    while (bytes_remaining > 0 && current_block < blocks_acquired) {
+        auto& block = blocks[current_block];
         size_t copy_size = std::min(bytes_remaining, AudioBlock::BLOCK_SIZE);
+        
+        // 使用memcpy
         std::memcpy(block->data, byte_data + bytes_processed, copy_size);
         block->data_size = copy_size;
         block->data_played = 0;
         block->sample_format = sampleFormat;
         block->consumed = false;
         
-        if (!m_audio_queue.push(std::move(block))) return false;
+        if (!m_audio_queue.push(std::move(block))) {
+            // 如果推送失败，释放剩余块
+            for (size_t i = current_block; i < blocks_acquired; ++i) {
+                if (blocks[i]) {
+                    m_object_pool.release(std::move(blocks[i]));
+                }
+            }
+            return false;
+        }
         
         bytes_processed += copy_size;
         bytes_remaining -= copy_size;
+        current_block++;
+    }
+    
+    // 如果还有剩余数据，回退到逐个处理
+    if (bytes_remaining > 0) {
+        const uint8_t* remaining_data = byte_data + bytes_processed;
+        
+        while (bytes_remaining > 0) {
+            auto block = m_object_pool.acquire();
+            if (!block) return false;
+            
+            size_t copy_size = std::min(bytes_remaining, AudioBlock::BLOCK_SIZE);
+            std::memcpy(block->data, remaining_data, copy_size);
+            block->data_size = copy_size;
+            block->data_played = 0;
+            block->sample_format = sampleFormat;
+            block->consumed = false;
+            
+            if (!m_audio_queue.push(std::move(block))) return false;
+            
+            remaining_data += copy_size;
+            bytes_remaining -= copy_size;
+        }
     }
     
     return true;

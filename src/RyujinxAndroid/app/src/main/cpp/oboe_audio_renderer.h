@@ -48,6 +48,9 @@ public:
     bool WriteAudio(const int16_t* data, int32_t num_frames);
     bool WriteAudioRaw(const void* data, int32_t num_frames, int32_t sampleFormat);
     
+    // 新增批量写入方法
+    bool WriteAudioBatched(const void* data, int32_t num_frames, int32_t sampleFormat);
+    
     bool IsInitialized() const { return m_initialized.load(); }
     bool IsPlaying() const { return m_stream && m_stream->getState() == oboe::StreamState::Started; }
     int32_t GetBufferedFrames() const;
@@ -114,6 +117,9 @@ private:
     LockFreeObjectPool<AudioBlock, OBJECT_POOL_SIZE> m_object_pool;
     
     std::unique_ptr<AudioBlock> m_current_block;
+    
+    // 批量处理相关常量
+    static constexpr size_t MAX_BLOCKS_PER_BATCH = 8;
 };
 
 } // namespace RyujinxOboe
