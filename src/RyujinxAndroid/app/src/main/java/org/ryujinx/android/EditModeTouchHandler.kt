@@ -4,6 +4,7 @@
 package org.ryujinx.android
 
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewGroup
 import androidx.core.math.MathUtils
 
@@ -52,7 +53,7 @@ class EditModeTouchHandler(private val gameController: GameController) {
         
         // 检查所有控件，找出被触摸的控件
         gameController.virtualButtons.values.forEach { button ->
-            if (isPointInView(x, y, button) && button.isVisible) {
+            if (isPointInView(x, y, button) && button.visibility == View.VISIBLE) {
                 draggingView = button
                 dragPointerId = pointerId
                 // 开始拖拽按钮
@@ -61,7 +62,7 @@ class EditModeTouchHandler(private val gameController: GameController) {
         }
         
         gameController.virtualJoysticks.values.forEach { joystick ->
-            if (isPointInView(x, y, joystick) && joystick.isVisible) {
+            if (isPointInView(x, y, joystick) && joystick.visibility == View.VISIBLE) {
                 draggingView = joystick
                 dragPointerId = pointerId
                 // 开始拖拽摇杆
@@ -70,7 +71,7 @@ class EditModeTouchHandler(private val gameController: GameController) {
         }
         
         gameController.virtualCombinations.values.forEach { combination ->
-            if (isPointInView(x, y, combination) && combination.isVisible) {
+            if (isPointInView(x, y, combination) && combination.visibility == View.VISIBLE) {
                 draggingView = combination
                 dragPointerId = pointerId
                 // 开始拖拽组合按键
@@ -79,7 +80,7 @@ class EditModeTouchHandler(private val gameController: GameController) {
         }
         
         gameController.dpadView?.let { dpad ->
-            if (isPointInView(x, y, dpad) && dpad.isVisible) {
+            if (isPointInView(x, y, dpad) && dpad.visibility == View.VISIBLE) {
                 draggingView = dpad
                 dragPointerId = pointerId
                 // 开始拖拽方向键
@@ -186,7 +187,7 @@ class EditModeTouchHandler(private val gameController: GameController) {
     /**
      * 判断触摸点是否在视图内
      */
-    private fun isPointInView(x: Float, y: Float, view: android.view.View): Boolean {
+    private fun isPointInView(x: Float, y: Float, view: View): Boolean {
         val location = IntArray(2)
         view.getLocationOnScreen(location)
         val left = location[0]
