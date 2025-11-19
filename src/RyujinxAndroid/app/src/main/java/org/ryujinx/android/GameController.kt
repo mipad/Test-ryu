@@ -1095,6 +1095,22 @@ class GameController(var activity: Activity) {
     var controllerId: Int = -1
     private var isEditing = false
 
+    // 多触控支持 - 跟踪每个触摸点的状态
+    private val activeTouches = mutableMapOf<Int, TouchInfo>()
+
+    data class TouchInfo(
+        var view: View? = null,
+        var pointerId: Int = -1,
+        var isButton: Boolean = false,
+        var buttonId: Int = -1,
+        var keyCode: Int = -1,
+        var isJoystick: Boolean = false,
+        var joystickId: Int = -1,
+        var isDpad: Boolean = false,
+        var isCombination: Boolean = false,
+        var combinationId: Int = -1
+    )
+
     val isVisible: Boolean
         get() {
             controllerView?.apply {
@@ -1319,8 +1335,11 @@ class GameController(var activity: Activity) {
         
         val button = virtualButtons[buttonId] ?: return false
         
-        when (event.action) {
-            MotionEvent.ACTION_DOWN -> {
+        when (event.action and MotionEvent.ACTION_MASK) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
+                val pointerIndex = event.actionIndex
+                val pointerId = event.getPointerId(pointerIndex)
+                
                 // 检查是否有重叠的按钮
                 val overlappingButtons = virtualButtons.values.filter { 
                     it != button && it.isVisible && isTouchOverlap(button, it) 
@@ -1328,8 +1347,8 @@ class GameController(var activity: Activity) {
                 
                 // 如果有重叠，检查触摸点更接近哪个按钮
                 if (overlappingButtons.isNotEmpty()) {
-                    val rawX = event.rawX
-                    val rawY = event.rawY
+                    val rawX = event.getX(pointerIndex)
+                    val rawY = event.getY(pointerIndex)
                     val allButtons = listOf(button) + overlappingButtons
                     val nearestButton = findNearestView(rawX, rawY.toInt(), allButtons)
                     
@@ -1344,13 +1363,39 @@ class GameController(var activity: Activity) {
                     return false
                 }
                 
+                // 记录触摸点信息
+                activeTouches[pointerId] = TouchInfo(
+                    view = button,
+                    pointerId = pointerId,
+                    isButton = true,
+                    buttonId = buttonId,
+                    keyCode = keyCode
+                )
+                
                 button.setPressedState(true)
                 RyujinxNative.jnaInstance.inputSetButtonPressed(keyCode, controllerId)
                 return true
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                button.setPressedState(false)
-                RyujinxNative.jnaInstance.inputSetButtonReleased(keyCode, controllerId)
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                val pointerIndex = event.actionIndex
+                val pointerId = event.getPointerId(pointerIndex)
+                
+                // 检查这个触摸点是否对应这个按钮
+                val touchInfo = activeTouches[pointerId]
+                if (touchInfo?.buttonId == buttonId) {
+                    button.setPressedState(false)
+                    RyujinxNative.jnaInstance.inputSetButtonReleased(keyCode, controllerId)
+                    activeTouches.remove(pointerId)
+                    return true
+                }
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                // 取消所有触摸点
+                activeTouches.values.filter { it.buttonId == buttonId }.forEach { touchInfo ->
+                    button.setPressedState(false)
+                    RyujinxNative.jnaInstance.inputSetButtonReleased(keyCode, controllerId)
+                    activeTouches.remove(touchInfo.pointerId)
+                }
                 return true
             }
         }
@@ -1366,8 +1411,11 @@ class GameController(var activity: Activity) {
         
         val combination = virtualCombinations[combinationId] ?: return false
         
-        when (event.action) {
-            MotionEvent.ACTION_DOWN -> {
+        when (event.action and MotionEvent.ACTION_MASK) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
+                val pointerIndex = event.actionIndex
+                val pointerId = event.getPointerId(pointerIndex)
+                
                 // 检查是否有重叠的控件
                 val allViews = virtualButtons.values + virtualCombinations.values + listOfNotNull(dpadView)
                 val overlappingViews = allViews.filter { 
@@ -1376,8 +1424,8 @@ class GameController(var activity: Activity) {
                 
                 // 如果有重叠，检查触摸点更接近哪个控件
                 if (overlappingViews.isNotEmpty()) {
-                    val rawX = event.rawX
-                    val rawY = event.rawY
+                    val rawX = event.getX(pointerIndex)
+                    val rawY = event.getY(pointerIndex)
                     val allCandidates = listOf(combination) + overlappingViews
                     val nearestView = findNearestView(rawX, rawY.toInt(), allCandidates)
                     
@@ -1390,6 +1438,14 @@ class GameController(var activity: Activity) {
                 if (!isValidTouch(combination, event)) {
                     return false
                 }
+                
+                // 记录触摸点信息
+                activeTouches[pointerId] = TouchInfo(
+                    view = combination,
+                    pointerId = pointerId,
+                    isCombination = true,
+                    combinationId = combinationId
+                )
                 
                 combination.setPressedState(true)
                 // 按下所有组合按键
@@ -1417,30 +1473,69 @@ class GameController(var activity: Activity) {
                 }
                 return true
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                combination.setPressedState(false)
-                // 释放所有组合按键
-                keyCodes.forEach { keyCode ->
-                    val actualKeyCode = when (keyCode) {
-                        0 -> GamePadButtonInputId.A.ordinal
-                        1 -> GamePadButtonInputId.B.ordinal
-                        2 -> GamePadButtonInputId.X.ordinal
-                        3 -> GamePadButtonInputId.Y.ordinal
-                        4 -> GamePadButtonInputId.LeftShoulder.ordinal
-                        5 -> GamePadButtonInputId.RightShoulder.ordinal
-                        6 -> GamePadButtonInputId.LeftTrigger.ordinal
-                        7 -> GamePadButtonInputId.RightTrigger.ordinal
-                        8 -> GamePadButtonInputId.Plus.ordinal
-                        9 -> GamePadButtonInputId.Minus.ordinal
-                        10 -> GamePadButtonInputId.LeftStickButton.ordinal
-                        11 -> GamePadButtonInputId.RightStickButton.ordinal
-                        12 -> GamePadButtonInputId.DpadUp.ordinal
-                        13 -> GamePadButtonInputId.DpadDown.ordinal
-                        14 -> GamePadButtonInputId.DpadLeft.ordinal
-                        15 -> GamePadButtonInputId.DpadRight.ordinal
-                        else -> keyCode
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                val pointerIndex = event.actionIndex
+                val pointerId = event.getPointerId(pointerIndex)
+                
+                // 检查这个触摸点是否对应这个组合按键
+                val touchInfo = activeTouches[pointerId]
+                if (touchInfo?.combinationId == combinationId) {
+                    combination.setPressedState(false)
+                    // 释放所有组合按键
+                    keyCodes.forEach { keyCode ->
+                        val actualKeyCode = when (keyCode) {
+                            0 -> GamePadButtonInputId.A.ordinal
+                            1 -> GamePadButtonInputId.B.ordinal
+                            2 -> GamePadButtonInputId.X.ordinal
+                            3 -> GamePadButtonInputId.Y.ordinal
+                            4 -> GamePadButtonInputId.LeftShoulder.ordinal
+                            5 -> GamePadButtonInputId.RightShoulder.ordinal
+                            6 -> GamePadButtonInputId.LeftTrigger.ordinal
+                            7 -> GamePadButtonInputId.RightTrigger.ordinal
+                            8 -> GamePadButtonInputId.Plus.ordinal
+                            9 -> GamePadButtonInputId.Minus.ordinal
+                            10 -> GamePadButtonInputId.LeftStickButton.ordinal
+                            11 -> GamePadButtonInputId.RightStickButton.ordinal
+                            12 -> GamePadButtonInputId.DpadUp.ordinal
+                            13 -> GamePadButtonInputId.DpadDown.ordinal
+                            14 -> GamePadButtonInputId.DpadLeft.ordinal
+                            15 -> GamePadButtonInputId.DpadRight.ordinal
+                            else -> keyCode
+                        }
+                        RyujinxNative.jnaInstance.inputSetButtonReleased(actualKeyCode, controllerId)
                     }
-                    RyujinxNative.jnaInstance.inputSetButtonReleased(actualKeyCode, controllerId)
+                    activeTouches.remove(pointerId)
+                    return true
+                }
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                // 取消所有触摸点
+                activeTouches.values.filter { it.combinationId == combinationId }.forEach { touchInfo ->
+                    combination.setPressedState(false)
+                    // 释放所有组合按键
+                    keyCodes.forEach { keyCode ->
+                        val actualKeyCode = when (keyCode) {
+                            0 -> GamePadButtonInputId.A.ordinal
+                            1 -> GamePadButtonInputId.B.ordinal
+                            2 -> GamePadButtonInputId.X.ordinal
+                            3 -> GamePadButtonInputId.Y.ordinal
+                            4 -> GamePadButtonInputId.LeftShoulder.ordinal
+                            5 -> GamePadButtonInputId.RightShoulder.ordinal
+                            6 -> GamePadButtonInputId.LeftTrigger.ordinal
+                            7 -> GamePadButtonInputId.RightTrigger.ordinal
+                            8 -> GamePadButtonInputId.Plus.ordinal
+                            9 -> GamePadButtonInputId.Minus.ordinal
+                            10 -> GamePadButtonInputId.LeftStickButton.ordinal
+                            11 -> GamePadButtonInputId.RightStickButton.ordinal
+                            12 -> GamePadButtonInputId.DpadUp.ordinal
+                            13 -> GamePadButtonInputId.DpadDown.ordinal
+                            14 -> GamePadButtonInputId.DpadLeft.ordinal
+                            15 -> GamePadButtonInputId.DpadRight.ordinal
+                            else -> keyCode
+                        }
+                        RyujinxNative.jnaInstance.inputSetButtonReleased(actualKeyCode, controllerId)
+                    }
+                    activeTouches.remove(touchInfo.pointerId)
                 }
                 return true
             }
@@ -1457,15 +1552,25 @@ class GameController(var activity: Activity) {
         
         val dpad = dpadView ?: return false
         
-        when (event.action) {
-            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+        when (event.action and MotionEvent.ACTION_MASK) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
+                val pointerIndex = event.actionIndex
+                val pointerId = event.getPointerId(pointerIndex)
+                
                 // 检查触摸点是否在有效区域内
                 if (!isValidTouch(dpad, event)) {
                     // 如果不在有效区域，不更新方向
                     return false
                 }
                 
-                val direction = dpad.getDirectionFromTouch(event.x, event.y)
+                // 记录触摸点信息
+                activeTouches[pointerId] = TouchInfo(
+                    view = dpad,
+                    pointerId = pointerId,
+                    isDpad = true
+                )
+                
+                val direction = dpad.getDirectionFromTouch(event.getX(pointerIndex), event.getY(pointerIndex))
                 if (dpad.currentDirection != direction) {
                     handleDpadDirection(dpad.currentDirection, false)
                     dpad.currentDirection = direction
@@ -1474,10 +1579,46 @@ class GameController(var activity: Activity) {
                 }
                 return true
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                handleDpadDirection(dpad.currentDirection, false)
-                dpad.currentDirection = DpadOverlayView.DpadDirection.NONE
-                dpad.updateDirection(DpadOverlayView.DpadDirection.NONE)
+            MotionEvent.ACTION_MOVE -> {
+                // 处理所有活跃的触摸点
+                for (pointerIndex in 0 until event.pointerCount) {
+                    val pointerId = event.getPointerId(pointerIndex)
+                    val touchInfo = activeTouches[pointerId]
+                    
+                    if (touchInfo?.isDpad == true) {
+                        val direction = dpad.getDirectionFromTouch(event.getX(pointerIndex), event.getY(pointerIndex))
+                        if (dpad.currentDirection != direction) {
+                            handleDpadDirection(dpad.currentDirection, false)
+                            dpad.currentDirection = direction
+                            dpad.updateDirection(direction)
+                            handleDpadDirection(direction, true)
+                        }
+                    }
+                }
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                val pointerIndex = event.actionIndex
+                val pointerId = event.getPointerId(pointerIndex)
+                
+                // 检查这个触摸点是否对应方向键
+                val touchInfo = activeTouches[pointerId]
+                if (touchInfo?.isDpad == true) {
+                    handleDpadDirection(dpad.currentDirection, false)
+                    dpad.currentDirection = DpadOverlayView.DpadDirection.NONE
+                    dpad.updateDirection(DpadOverlayView.DpadDirection.NONE)
+                    activeTouches.remove(pointerId)
+                    return true
+                }
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                // 取消所有方向键触摸点
+                activeTouches.values.filter { it.isDpad }.forEach { touchInfo ->
+                    handleDpadDirection(dpad.currentDirection, false)
+                    dpad.currentDirection = DpadOverlayView.DpadDirection.NONE
+                    dpad.updateDirection(DpadOverlayView.DpadDirection.NONE)
+                    activeTouches.remove(touchInfo.pointerId)
+                }
                 return true
             }
         }
@@ -2242,6 +2383,9 @@ class GameController(var activity: Activity) {
         }
         dpadView?.currentDirection = DpadOverlayView.DpadDirection.NONE
         dpadView?.updateDirection(DpadOverlayView.DpadDirection.NONE)
+        
+        // 清除所有活跃触摸点
+        activeTouches.clear()
     }
     
     fun saveLayout() {
