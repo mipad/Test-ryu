@@ -1,4 +1,6 @@
 using ARMeilleure.Memory;
+using Ryujinx.Common;
+using Ryujinx.Common.Logging;
 using Ryujinx.Memory;
 using System;
 using System.Collections.Generic;
