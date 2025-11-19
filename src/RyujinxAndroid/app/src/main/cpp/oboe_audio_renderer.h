@@ -18,6 +18,9 @@ enum SampleFormat {
     PCM_FLOAT = 4
 };
 
+// 将 GetBytesPerSample 声明为命名空间级别的函数
+size_t GetBytesPerSample(int32_t format);
+
 struct AudioBlock {
     static constexpr size_t BLOCK_SIZE = 4096;
     
@@ -124,7 +127,6 @@ private:
     void OnStreamErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error);
 
     oboe::AudioFormat MapSampleFormat(int32_t format);
-    static size_t GetBytesPerSample(int32_t format);
     bool OptimizeBufferSize();
 
     // DSP处理

@@ -5,6 +5,17 @@
 
 namespace RyujinxOboe {
 
+// 命名空间级别的函数实现
+size_t GetBytesPerSample(int32_t format) {
+    switch (format) {
+        case PCM_INT16:  return 2;
+        case PCM_INT24:  return 3;
+        case PCM_INT32:  return 4;
+        case PCM_FLOAT:  return 4;
+        default:         return 2;
+    }
+}
+
 // ========== DspProcessor 实现 ==========
 
 void DspProcessor::ProcessAudio(void* data, size_t size, int32_t sample_format, int32_t channels) {
@@ -367,16 +378,6 @@ oboe::AudioFormat OboeAudioRenderer::MapSampleFormat(int32_t format) {
         case PCM_INT32:  return oboe::AudioFormat::I32;
         case PCM_FLOAT:  return oboe::AudioFormat::Float;
         default:         return oboe::AudioFormat::I16;
-    }
-}
-
-size_t OboeAudioRenderer::GetBytesPerSample(int32_t format) {
-    switch (format) {
-        case PCM_INT16:  return 2;
-        case PCM_INT24:  return 3;
-        case PCM_INT32:  return 4;
-        case PCM_FLOAT:  return 4;
-        default:         return 2;
     }
 }
 
