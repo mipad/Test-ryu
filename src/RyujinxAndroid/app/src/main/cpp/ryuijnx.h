@@ -37,7 +37,6 @@ extern "C" {
     void shutdownOboeAudio();
     bool writeOboeAudio(const int16_t* data, int32_t num_frames);
     bool writeOboeAudioRaw(const uint8_t* data, int32_t num_frames, int32_t sample_format);
-    bool writeOboeAudioZeroCopy(const void* data, int32_t num_frames, int32_t sample_format);
     void setOboeVolume(float volume);
     bool isOboeInitialized();
     bool isOboePlaying();

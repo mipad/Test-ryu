@@ -52,17 +52,8 @@ void OboeAudioRenderer::Shutdown() {
     std::lock_guard<std::mutex> lock(m_stream_mutex);
     
     CloseStream();
-    
-    // 清理传统队列
     m_audio_queue.clear();
     m_current_block.reset();
-    
-    // 清理零拷贝队列
-    m_zero_copy_queue.clear();
-    if (m_current_zero_copy_block) {
-        m_zero_copy_pool.release(std::move(m_current_zero_copy_block));
-    }
-    
     m_initialized.store(false);
     m_stream_started.store(false);
 }
@@ -199,66 +190,22 @@ bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int3
     return true;
 }
 
-bool OboeAudioRenderer::WriteAudioZeroCopy(const void* data, int32_t num_frames, int32_t sampleFormat, std::function<void()> release_callback) {
-    if (!m_initialized.load() || !data || num_frames <= 0) return false;
-    
-    int32_t system_channels = m_channel_count.load();
-    size_t bytes_per_sample = GetBytesPerSample(sampleFormat);
-    size_t total_bytes = num_frames * system_channels * bytes_per_sample;
-    
-    auto zero_copy_block = m_zero_copy_pool.acquire();
-    if (!zero_copy_block) return false;
-    
-    // 设置零拷贝块 - 直接引用外部数据，不进行内存拷贝
-    zero_copy_block->data = static_cast<const uint8_t*>(data);
-    zero_copy_block->data_size = total_bytes;
-    zero_copy_block->data_played = 0;
-    zero_copy_block->sample_format = sampleFormat;
-    zero_copy_block->release_callback = release_callback;
-    
-    if (!m_zero_copy_queue.push(std::move(zero_copy_block))) {
-        // 如果推送失败，立即清理资源
-        if (release_callback) {
-            release_callback();
-        }
-        return false;
-    }
-    
-    return true;
-}
-
 int32_t OboeAudioRenderer::GetBufferedFrames() const {
     if (!m_initialized.load()) return 0;
     
     int32_t total_frames = 0;
     int32_t device_channels = m_device_channels;
     
-    // 计算传统队列中的帧数
     if (m_current_block && !m_current_block->consumed) {
         size_t bytes_remaining = m_current_block->available();
         size_t bytes_per_sample = GetBytesPerSample(m_current_block->sample_format);
         total_frames += static_cast<int32_t>(bytes_remaining / (device_channels * bytes_per_sample));
     }
     
-    // 计算零拷贝队列中的帧数
-    if (m_current_zero_copy_block && m_current_zero_copy_block->is_valid()) {
-        size_t bytes_remaining = m_current_zero_copy_block->available();
-        size_t bytes_per_sample = GetBytesPerSample(m_current_zero_copy_block->sample_format);
-        total_frames += static_cast<int32_t>(bytes_remaining / (device_channels * bytes_per_sample));
-    }
-    
-    // 计算队列中等待的帧数
-    uint32_t traditional_queue_size = m_audio_queue.size();
-    uint32_t zero_copy_queue_size = m_zero_copy_queue.size();
-    
+    uint32_t queue_size = m_audio_queue.size();
     size_t bytes_per_sample = GetBytesPerSample(m_sample_format.load());
-    int32_t frames_per_traditional_block = static_cast<int32_t>(AudioBlock::BLOCK_SIZE / (device_channels * bytes_per_sample));
-    
-    total_frames += traditional_queue_size * frames_per_traditional_block;
-    
-    // 对于零拷贝队列，我们需要估算平均帧数
-    // 这里使用保守估计：假设每个零拷贝块平均包含240帧
-    total_frames += zero_copy_queue_size * 240;
+    int32_t frames_per_block = static_cast<int32_t>(AudioBlock::BLOCK_SIZE / (device_channels * bytes_per_sample));
+    total_frames += queue_size * frames_per_block;
     
     return total_frames;
 }
@@ -270,16 +217,9 @@ void OboeAudioRenderer::SetVolume(float volume) {
 void OboeAudioRenderer::Reset() {
     std::lock_guard<std::mutex> lock(m_stream_mutex);
     
-    // 清理传统队列
     m_audio_queue.clear();
     if (m_current_block) {
         m_object_pool.release(std::move(m_current_block));
-    }
-    
-    // 清理零拷贝队列
-    m_zero_copy_queue.clear();
-    if (m_current_zero_copy_block) {
-        m_zero_copy_pool.release(std::move(m_current_zero_copy_block));
     }
     
     CloseStream();
@@ -319,51 +259,29 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioS
     size_t bytes_remaining = num_frames * m_device_channels * GetBytesPerSample(m_sample_format.load());
     size_t bytes_copied = 0;
     
-    // 优先处理零拷贝块
     while (bytes_remaining > 0) {
-        // 首先尝试使用当前零拷贝块
-        if (m_current_zero_copy_block && m_current_zero_copy_block->is_valid() && m_current_zero_copy_block->available() > 0) {
-            size_t bytes_to_copy = std::min(m_current_zero_copy_block->available(), bytes_remaining);
-            std::memcpy(output + bytes_copied, 
-                       m_current_zero_copy_block->data + m_current_zero_copy_block->data_played,
-                       bytes_to_copy);
-            
-            bytes_copied += bytes_to_copy;
-            bytes_remaining -= bytes_to_copy;
-            m_current_zero_copy_block->data_played += bytes_to_copy;
-            
-            // 如果零拷贝块用完，释放它
-            if (m_current_zero_copy_block->available() == 0) {
-                m_zero_copy_pool.release(std::move(m_current_zero_copy_block));
-            }
-        } 
-        // 然后尝试传统块
-        else if (m_current_block && !m_current_block->consumed && m_current_block->available() > 0) {
-            size_t bytes_to_copy = std::min(m_current_block->available(), bytes_remaining);
-            std::memcpy(output + bytes_copied, 
-                       m_current_block->data + m_current_block->data_played,
-                       bytes_to_copy);
-            
-            bytes_copied += bytes_to_copy;
-            bytes_remaining -= bytes_to_copy;
-            m_current_block->data_played += bytes_to_copy;
-            
-            if (m_current_block->available() == 0) {
-                m_current_block->consumed = true;
+        if (!m_current_block || m_current_block->consumed || m_current_block->available() == 0) {
+            if (m_current_block) {
                 m_object_pool.release(std::move(m_current_block));
             }
-        }
-        // 获取新的数据块
-        else {
-            // 优先获取零拷贝块
-            if (!m_zero_copy_queue.pop(m_current_zero_copy_block)) {
-                // 如果没有零拷贝块，获取传统块
-                if (!m_audio_queue.pop(m_current_block)) {
-                    // 没有数据可用，填充静音
-                    std::memset(output + bytes_copied, 0, bytes_remaining);
-                    break;
-                }
+            
+            if (!m_audio_queue.pop(m_current_block)) {
+                std::memset(output + bytes_copied, 0, bytes_remaining);
+                break;
             }
+        }
+        
+        size_t bytes_to_copy = std::min(m_current_block->available(), bytes_remaining);
+        std::memcpy(output + bytes_copied, 
+                   m_current_block->data + m_current_block->data_played,
+                   bytes_to_copy);
+        
+        bytes_copied += bytes_to_copy;
+        bytes_remaining -= bytes_to_copy;
+        m_current_block->data_played += bytes_to_copy;
+        
+        if (m_current_block->available() == 0) {
+            m_current_block->consumed = true;
         }
     }
     
