@@ -1082,18 +1082,21 @@ class GameController(var activity: Activity) {
     }
 
     private var controllerView: View? = null
-    private var buttonContainer: FrameLayout? = null
+    var buttonContainer: FrameLayout? = null
     private var editModeContainer: FrameLayout? = null
     private var saveButton: Button? = null
     private var cancelButton: Button? = null
     private var buttonLayout: LinearLayout? = null
     var buttonLayoutManager: ButtonLayoutManager? = null
-    private val virtualButtons = mutableMapOf<Int, ButtonOverlayView>()
-    private val virtualJoysticks = mutableMapOf<Int, JoystickOverlayView>()
-    private val virtualCombinations = mutableMapOf<Int, CombinationOverlayView>()
-    private var dpadView: DpadOverlayView? = null
+    val virtualButtons = mutableMapOf<Int, ButtonOverlayView>()
+    val virtualJoysticks = mutableMapOf<Int, JoystickOverlayView>()
+    val virtualCombinations = mutableMapOf<Int, CombinationOverlayView>()
+    var dpadView: DpadOverlayView? = null
     var controllerId: Int = -1
     private var isEditing = false
+    
+    // 新增：编辑模式触摸处理器
+    private lateinit var editModeTouchHandler: EditModeTouchHandler
     
     // 新增：统一触摸事件处理
     private var activeTouches = mutableMapOf<Int, MutableList<View>>() // 记录每个触摸点激活的控件
@@ -1111,6 +1114,9 @@ class GameController(var activity: Activity) {
         val manager = buttonLayoutManager ?: return
         createControlsImmediately(buttonContainer, manager)
         
+        // 初始化编辑模式触摸处理器
+        editModeTouchHandler = EditModeTouchHandler(this)
+        
         // 添加统一触摸处理器
         setupUnifiedTouchHandler()
     }
@@ -1118,7 +1124,13 @@ class GameController(var activity: Activity) {
     // 新增：设置统一触摸处理器
     private fun setupUnifiedTouchHandler() {
         buttonContainer?.setOnTouchListener { _, event ->
-            handleUnifiedTouchEvent(event)
+            if (isEditing) {
+                // 编辑模式下使用专门的触摸处理器
+                editModeTouchHandler.handleEditModeTouch(event)
+            } else {
+                // 正常模式下使用统一触摸处理
+                handleUnifiedTouchEvent(event)
+            }
             true
         }
     }
@@ -1317,7 +1329,7 @@ class GameController(var activity: Activity) {
     }
     
     // 新增：判断触摸点是否在视图内
-    private fun isPointInView(x: Float, y: Float, view: View): Boolean {
+    private fun isPointInView(x: Float, y: Float, view: android.view.View): Boolean {
         val location = IntArray(2)
         view.getLocationOnScreen(location)
         val left = location[0]
@@ -1485,8 +1497,6 @@ class GameController(var activity: Activity) {
                 isVisible = isEnabled
                 
                 // 不在这里设置位置，统一在 refreshControlPositions 中设置
-                
-                // 移除原有的触摸监听器，使用统一触摸处理
             }
             
             buttonContainer.addView(joystick)
@@ -1505,8 +1515,6 @@ class GameController(var activity: Activity) {
             isVisible = isDpadEnabled
             
             // 不在这里设置位置，统一在 refreshControlPositions 中设置
-            
-            // 移除原有的触摸监听器，使用统一触摸处理
         }
         buttonContainer.addView(dpadView)
         
@@ -1540,8 +1548,6 @@ class GameController(var activity: Activity) {
                 }
                 
                 // 不在这里设置位置，统一在 refreshControlPositions 中设置
-                
-                // 移除原有的触摸监听器，使用统一触摸处理
             }
             
             buttonContainer.addView(button)
@@ -1564,8 +1570,6 @@ class GameController(var activity: Activity) {
                 isVisible = isEnabled
                 
                 // 不在这里设置位置，统一在 refreshControlPositions 中设置
-                
-                // 移除原有的触摸监听器，使用统一触摸处理
             }
             
             buttonContainer.addView(combination)
@@ -2012,88 +2016,6 @@ class GameController(var activity: Activity) {
         ).toInt()
     }
     
-    // 保留原有的拖拽事件处理方法，用于编辑模式
-    private fun handleJoystickDragEvent(event: MotionEvent, joystickId: Int): Boolean {
-        when (event.action) {
-            MotionEvent.ACTION_DOWN -> {}
-            MotionEvent.ACTION_MOVE -> {
-                virtualJoysticks[joystickId]?.let { joystick ->
-                    val parent = joystick.parent as? ViewGroup ?: return@let
-                    val x = event.rawX.toInt() - parent.left
-                    val y = event.rawY.toInt() - parent.top
-                    
-                    val clampedX = MathUtils.clamp(x, 0, parent.width)
-                    val clampedY = MathUtils.clamp(y, 0, parent.height)
-                    
-                    joystick.setPosition(clampedX, clampedY)
-                }
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {}
-        }
-        return true
-    }
-    
-    private fun handleDpadDragEvent(event: MotionEvent): Boolean {
-        when (event.action) {
-            MotionEvent.ACTION_DOWN -> {}
-            MotionEvent.ACTION_MOVE -> {
-                dpadView?.let { dpad ->
-                    val parent = dpad.parent as? ViewGroup ?: return@let
-                    val x = event.rawX.toInt() - parent.left
-                    val y = event.rawY.toInt() - parent.top
-                    
-                    val clampedX = MathUtils.clamp(x, 0, parent.width)
-                    val clampedY = MathUtils.clamp(y, 0, parent.height)
-                    
-                    dpad.setPosition(clampedX, clampedY)
-                }
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {}
-        }
-        return true
-    }
-    
-    private fun handleButtonDragEvent(event: MotionEvent, buttonId: Int): Boolean {
-        when (event.action) {
-            MotionEvent.ACTION_DOWN -> {}
-            MotionEvent.ACTION_MOVE -> {
-                virtualButtons[buttonId]?.let { button ->
-                    val parent = button.parent as? ViewGroup ?: return@let
-                    val x = event.rawX.toInt() - parent.left
-                    val y = event.rawY.toInt() - parent.top
-                    
-                    val clampedX = MathUtils.clamp(x, 0, parent.width)
-                    val clampedY = MathUtils.clamp(y, 0, parent.height)
-                    
-                    button.setPosition(clampedX, clampedY)
-                }
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {}
-        }
-        return true
-    }
-    
-    // 新增方法：处理组合按键拖拽事件
-    private fun handleCombinationDragEvent(event: MotionEvent, combinationId: Int): Boolean {
-        when (event.action) {
-            MotionEvent.ACTION_DOWN -> {}
-            MotionEvent.ACTION_MOVE -> {
-                virtualCombinations[combinationId]?.let { combination ->
-                    val parent = combination.parent as? ViewGroup ?: return@let
-                    val x = event.rawX.toInt() - parent.left
-                    val y = event.rawY.toInt() - parent.top
-                    
-                    val clampedX = MathUtils.clamp(x, 0, parent.width)
-                    val clampedY = MathUtils.clamp(y, 0, parent.height)
-                    
-                    combination.setPosition(clampedX, clampedY)
-                }
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {}
-        }
-        return true
-    }
-    
     // 方向键方向处理
     private fun handleDpadDirection(direction: DpadOverlayView.DpadDirection, pressed: Boolean) {
         when (direction) {
@@ -2173,6 +2095,9 @@ class GameController(var activity: Activity) {
     fun setEditingMode(editing: Boolean) {
         isEditing = editing
         editModeContainer?.isVisible = editing
+        
+        // 重置编辑模式触摸处理器状态
+        editModeTouchHandler.reset()
         
         virtualButtons.values.forEach { button ->
             button.setPressedState(false)
