@@ -8,9 +8,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Ryujinx.Common\Ryujinx.Common.csproj" />
     <ProjectReference Include="..\Ryujinx.Memory\Ryujinx.Memory.csproj" />
-    <!-- 移除对 LibRyujinx 的直接引用 -->
-    <!-- <ProjectReference Include="..\LibRyujinx\LibRyujinx.csproj" /> -->
-    <!-- 改为引用新的基础项目 -->
     <ProjectReference Include="..\Ryujinx.Core\Ryujinx.Core.csproj" />
   </ItemGroup>
 
