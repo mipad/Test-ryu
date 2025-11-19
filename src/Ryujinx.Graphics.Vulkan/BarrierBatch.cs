@@ -44,6 +44,10 @@ namespace Ryujinx.Graphics.Vulkan
             _gd = gd;
         }
 
+        // 添加 Tile-based GPU 检测
+        private bool IsTileBasedGPU => _gd.IsTileBasedGPU;
+        private TileOptimizationConfig TileConfig => _gd.TileOptimizationConfig;
+
         public static (AccessFlags Access, PipelineStageFlags Stages) GetSubpassAccessSuperset(VulkanRenderer gd)
         {
             AccessFlags access = BufferAccess;
@@ -55,7 +59,62 @@ namespace Ryujinx.Graphics.Vulkan
                 stages |= PipelineStageFlags.TransformFeedbackBitExt;
             }
 
+            // Tile-based GPU 优化：减少不必要的访问标志
+            if (gd.IsTileBasedGPU && gd.TileOptimizationConfig.OptimizeBarriers)
+            {
+                // 在 Tile 架构上，使用更精确的访问模式
+                access = AccessFlags.ColorAttachmentWriteBit | 
+                         AccessFlags.DepthStencilAttachmentWriteBit;
+                         
+                stages = PipelineStageFlags.ColorAttachmentOutputBit | 
+                         PipelineStageFlags.EarlyFragmentTestsBit | 
+                         PipelineStageFlags.LateFragmentTestsBit;
+            }
+
             return (access, stages);
+        }
+
+        // 添加 Tile 优化的阶段标志获取
+        private PipelineStageFlags GetTileOptimizedStages(PipelineStageFlags stages, bool inRenderPass)
+        {
+            if (!IsTileBasedGPU || !TileConfig.OptimizeBarriers) return stages;
+            
+            var optimizedStages = stages;
+            
+            // 移除在 Tile 架构上不必要的阶段
+            optimizedStages &= ~PipelineStageFlags.HostBit;
+            optimizedStages &= ~PipelineStageFlags.AllCommandsBit;
+            
+            if (inRenderPass)
+            {
+                // 在渲染通道内，限制为图形相关阶段
+                optimizedStages &= PipelineStageFlags.AllGraphicsBit;
+            }
+            
+            return optimizedStages;
+        }
+
+        // 添加 Tile 优化的访问标志获取
+        private AccessFlags GetTileOptimizedAccess(AccessFlags access, bool inRenderPass)
+        {
+            if (!IsTileBasedGPU || !TileConfig.OptimizeBarriers) return access;
+            
+            var optimizedAccess = access;
+            
+            // 移除在 Tile 架构上不必要的访问标志
+            optimizedAccess &= ~AccessFlags.MemoryReadBit;
+            optimizedAccess &= ~AccessFlags.MemoryWriteBit;
+            
+            if (inRenderPass)
+            {
+                // 在渲染通道内，限制为附件相关访问
+                optimizedAccess &= (AccessFlags.ColorAttachmentReadBit | 
+                                   AccessFlags.ColorAttachmentWriteBit |
+                                   AccessFlags.DepthStencilAttachmentReadBit | 
+                                   AccessFlags.DepthStencilAttachmentWriteBit);
+            }
+            
+            return optimizedAccess;
         }
 
         private readonly record struct StageFlags : IEquatable<StageFlags>
@@ -93,6 +152,30 @@ namespace Ryujinx.Graphics.Vulkan
 
         private void QueueBarrier<T, T2>(List<BarrierWithStageFlags<T, T2>> list, T barrier, T2 resource, PipelineStageFlags srcStageFlags, PipelineStageFlags dstStageFlags) where T : unmanaged
         {
+            // Tile-based GPU 优化：优化阶段和访问标志
+            if (IsTileBasedGPU && TileConfig.OptimizeBarriers)
+            {
+                srcStageFlags = GetTileOptimizedStages(srcStageFlags, false);
+                dstStageFlags = GetTileOptimizedStages(dstStageFlags, false);
+                
+                // 优化屏障的访问标志
+                if (barrier is ImageMemoryBarrier imageBarrier)
+                {
+                    imageBarrier.SrcAccessMask = GetTileOptimizedAccess(imageBarrier.SrcAccessMask, false);
+                    imageBarrier.DstAccessMask = GetTileOptimizedAccess(imageBarrier.DstAccessMask, false);
+                }
+                else if (barrier is BufferMemoryBarrier bufferBarrier)
+                {
+                    bufferBarrier.SrcAccessMask = GetTileOptimizedAccess(bufferBarrier.SrcAccessMask, false);
+                    bufferBarrier.DstAccessMask = GetTileOptimizedAccess(bufferBarrier.DstAccessMask, false);
+                }
+                else if (barrier is MemoryBarrier memoryBarrier)
+                {
+                    memoryBarrier.SrcAccessMask = GetTileOptimizedAccess(memoryBarrier.SrcAccessMask, false);
+                    memoryBarrier.DstAccessMask = GetTileOptimizedAccess(memoryBarrier.DstAccessMask, false);
+                }
+            }
+
             list.Add(new BarrierWithStageFlags<T, T2>(srcStageFlags, dstStageFlags, barrier, resource));
             _queuedBarrierCount++;
         }
@@ -127,6 +210,13 @@ namespace Ryujinx.Graphics.Vulkan
                     AccessFlags access = BaseAccess;
 
                     PipelineStageFlags stages = inRenderPass ? PipelineStageFlags.AllGraphicsBit : PipelineStageFlags.AllCommandsBit;
+
+                    // Tile-based GPU 优化：优化访问标志和阶段
+                    if (IsTileBasedGPU && TileConfig.OptimizeBarriers)
+                    {
+                        stages = GetTileOptimizedStages(stages, inRenderPass);
+                        access = GetTileOptimizedAccess(access, inRenderPass);
+                    }
 
                     if (hasBufferBarrier && hasBufferWrite)
                     {
@@ -181,6 +271,13 @@ namespace Ryujinx.Graphics.Vulkan
                         SrcAccessMask = AccessFlags.ShaderWriteBit,
                         DstAccessMask = AccessFlags.ShaderReadBit
                     };
+
+                    // Tile-based GPU 优化：优化反馈循环屏障
+                    if (IsTileBasedGPU && TileConfig.OptimizeBarriers)
+                    {
+                        barrier.SrcAccessMask = GetTileOptimizedAccess(barrier.SrcAccessMask, true);
+                        barrier.DstAccessMask = GetTileOptimizedAccess(barrier.DstAccessMask, true);
+                    }
 
                     QueueBarrier(barrier, PipelineStageFlags.FragmentShaderBit, PipelineStageFlags.AllGraphicsBit);
 
@@ -304,65 +401,83 @@ namespace Ryujinx.Graphics.Vulkan
                     // Image barriers queued in the batch are meant to be globally scoped,
                     // but inside a render pass they're scoped to just the range of the render pass.
 
-                    // On MoltenVK, we just break the rules and always use image barrier.
-                    // On desktop GPUs, all barriers are globally scoped, so we just replace it with a generic memory barrier.
-                    // Generally, we want to avoid this from happening in the future, so flag the texture to immediately
-                    // emit a barrier whenever the current render pass is bound again.
-
-                    bool anyIsNonAttachment = false;
-
-                    foreach (BarrierWithStageFlags<ImageMemoryBarrier, TextureStorage> barrier in _imageBarriers)
+                    // Tile-based GPU 优化：特殊的图像屏障处理
+                    if (IsTileBasedGPU && TileConfig.OptimizeBarriers)
                     {
-                        // If the binding is an attachment, don't add it as a forced fence.
-                        bool isAttachment = rpHolder.ContainsAttachment(barrier.Resource);
-
-                        if (!isAttachment)
+                        if (TryConvertImageBarriersForTile(_imageBarriers, rpHolder))
                         {
-                            rpHolder.AddForcedFence(barrier.Resource, barrier.Flags.Dest);
-                            anyIsNonAttachment = true;
+                            // 成功转换为 Tile 优化的屏障，不需要结束渲染通道
                         }
-                    }
-
-                    if (_gd.IsTBDR)
-                    {
-                        if (!_gd.IsMoltenVk)
+                        else if (!_gd.IsMoltenVk)
                         {
-                            if (!anyIsNonAttachment)
-                            {
-                                // This case is a feedback loop. To prevent this from causing an absolute performance disaster,
-                                // remove the barriers entirely.
-                                // If this is not here, there will be a lot of single draw render passes.
-                                // TODO: explicit handling for feedback loops, likely outside this class.
-
-                                _queuedBarrierCount -= _imageBarriers.Count;
-                                _imageBarriers.Clear();
-                            }
-                            else
-                            {
-                                // TBDR GPUs are sensitive to barriers, so we need to end the pass to ensure the data is available.
-                                // Metal already has hazard tracking so MVK doesn't need this.
-                                endRenderPass();
-                                inRenderPass = false;
-                            }
+                            // 必须结束渲染通道的情况
+                            endRenderPass();
+                            inRenderPass = false;
                         }
                     }
                     else
                     {
-                        // Generic pipeline memory barriers will work for desktop GPUs.
-                        // They do require a few more access flags on the subpass dependency, though.
-                        foreach (var barrier in _imageBarriers)
+                        // 原有的非 Tile 优化处理逻辑
+                        // On MoltenVK, we just break the rules and always use image barrier.
+                        // On desktop GPUs, all barriers are globally scoped, so we just replace it with a generic memory barrier.
+                        // Generally, we want to avoid this from happening in the future, so flag the texture to immediately
+                        // emit a barrier whenever the current render pass is bound again.
+
+                        bool anyIsNonAttachment = false;
+
+                        foreach (BarrierWithStageFlags<ImageMemoryBarrier, TextureStorage> barrier in _imageBarriers)
                         {
-                            _memoryBarriers.Add(new BarrierWithStageFlags<MemoryBarrier, int>(
-                                barrier.Flags,
-                                new MemoryBarrier()
-                                {
-                                    SType = StructureType.MemoryBarrier,
-                                    SrcAccessMask = barrier.Barrier.SrcAccessMask,
-                                    DstAccessMask = barrier.Barrier.DstAccessMask
-                                }));
+                            // If the binding is an attachment, don't add it as a forced fence.
+                            bool isAttachment = rpHolder.ContainsAttachment(barrier.Resource);
+
+                            if (!isAttachment)
+                            {
+                                rpHolder.AddForcedFence(barrier.Resource, barrier.Flags.Dest);
+                                anyIsNonAttachment = true;
+                            }
                         }
 
-                        _imageBarriers.Clear();
+                        if (_gd.IsTBDR)
+                        {
+                            if (!_gd.IsMoltenVk)
+                            {
+                                if (!anyIsNonAttachment)
+                                {
+                                    // This case is a feedback loop. To prevent this from causing an absolute performance disaster,
+                                    // remove the barriers entirely.
+                                    // If this is not here, there will be a lot of single draw render passes.
+                                    // TODO: explicit handling for feedback loops, likely outside this class.
+
+                                    _queuedBarrierCount -= _imageBarriers.Count;
+                                    _imageBarriers.Clear();
+                                }
+                                else
+                                {
+                                    // TBDR GPUs are sensitive to barriers, so we need to end the pass to ensure the data is available.
+                                    // Metal already has hazard tracking so MVK doesn't need this.
+                                    endRenderPass();
+                                    inRenderPass = false;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Generic pipeline memory barriers will work for desktop GPUs.
+                            // They do require a few more access flags on the subpass dependency, though.
+                            foreach (var barrier in _imageBarriers)
+                            {
+                                _memoryBarriers.Add(new BarrierWithStageFlags<MemoryBarrier, int>(
+                                    barrier.Flags,
+                                    new MemoryBarrier()
+                                    {
+                                        SType = StructureType.MemoryBarrier,
+                                        SrcAccessMask = barrier.Barrier.SrcAccessMask,
+                                        DstAccessMask = barrier.Barrier.DstAccessMask
+                                    }));
+                            }
+
+                            _imageBarriers.Clear();
+                        }
                     }
                 }
 
@@ -375,7 +490,16 @@ namespace Ryujinx.Graphics.Vulkan
                         allFlags |= barrier.Flags.Dest;
                     }
 
-                    if (allFlags.HasFlag(PipelineStageFlags.DrawIndirectBit) || !_gd.SupportsRenderPassBarrier(allFlags))
+                    // Tile-based GPU 优化：检查是否支持渲染通道内屏障
+                    if (IsTileBasedGPU)
+                    {
+                        if (!_gd.SupportsRenderPassBarrier(allFlags))
+                        {
+                            endRenderPass();
+                            inRenderPass = false;
+                        }
+                    }
+                    else if (allFlags.HasFlag(PipelineStageFlags.DrawIndirectBit) || !_gd.SupportsRenderPassBarrier(allFlags))
                     {
                         endRenderPass();
                         inRenderPass = false;
@@ -389,17 +513,25 @@ namespace Ryujinx.Graphics.Vulkan
                 if (hasBarrier)
                 {
                     PipelineStageFlags srcStageFlags = flags.Source;
+                    PipelineStageFlags dstStageFlags = flags.Dest;
+
+                    // Tile-based GPU 优化：调整阶段标志
+                    if (IsTileBasedGPU && TileConfig.OptimizeBarriers)
+                    {
+                        srcStageFlags = GetTileOptimizedStages(srcStageFlags, inRenderPass);
+                        dstStageFlags = GetTileOptimizedStages(dstStageFlags, inRenderPass);
+                    }
 
                     if (inRenderPass)
                     {
-                        // Inside a render pass, barrier stages can only be from rasterization.
+                        // 在渲染通道内，屏障阶段只能来自光栅化
                         srcStageFlags &= ~PipelineStageFlags.ComputeShaderBit;
                     }
 
                     _gd.Api.CmdPipelineBarrier(
                         cbs.CommandBuffer,
                         srcStageFlags,
-                        flags.Dest,
+                        dstStageFlags,
                         0,
                         (uint)memoryCount,
                         _memoryBarrierBatch.Pointer,
@@ -409,6 +541,72 @@ namespace Ryujinx.Graphics.Vulkan
                         _imageBarrierBatch.Pointer);
                 }
             }
+        }
+
+        // Tile-based GPU 优化：尝试转换图像屏障
+        private bool TryConvertImageBarriersForTile(List<BarrierWithStageFlags<ImageMemoryBarrier, TextureStorage>> imageBarriers, RenderPassHolder rpHolder)
+        {
+            if (!IsTileBasedGPU || !TileConfig.PreferMemoryBarriers) return false;
+
+            bool allConvertible = true;
+
+            foreach (var barrier in imageBarriers)
+            {
+                // 检查是否可以将图像屏障转换为内存屏障
+                if (!CanConvertImageToMemoryBarrier(barrier, rpHolder))
+                {
+                    allConvertible = false;
+                    break;
+                }
+            }
+
+            if (allConvertible)
+            {
+                ConvertImageBarriersToMemoryBarriers(imageBarriers);
+                return true;
+            }
+
+            return false;
+        }
+
+        // 检查图像屏障是否可以转换为内存屏障
+        private bool CanConvertImageToMemoryBarrier(BarrierWithStageFlags<ImageMemoryBarrier, TextureStorage> barrier, RenderPassHolder rpHolder)
+        {
+            // 如果图像是当前渲染通道的附件，可能需要特殊处理
+            if (rpHolder != null && rpHolder.ContainsAttachment(barrier.Resource))
+            {
+                // 检查访问模式是否适合转换
+                var srcAccess = barrier.Barrier.SrcAccessMask;
+                var dstAccess = barrier.Barrier.DstAccessMask;
+                
+                // 如果是附件写入，可能不适合转换
+                if ((srcAccess & (AccessFlags.ColorAttachmentWriteBit | AccessFlags.DepthStencilAttachmentWriteBit)) != 0)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // 将图像屏障转换为内存屏障
+        private void ConvertImageBarriersToMemoryBarriers(List<BarrierWithStageFlags<ImageMemoryBarrier, TextureStorage>> imageBarriers)
+        {
+            foreach (var barrier in imageBarriers)
+            {
+                var memoryBarrier = new MemoryBarrier()
+                {
+                    SType = StructureType.MemoryBarrier,
+                    SrcAccessMask = GetTileOptimizedAccess(barrier.Barrier.SrcAccessMask, true),
+                    DstAccessMask = GetTileOptimizedAccess(barrier.Barrier.DstAccessMask, true)
+                };
+                
+                _memoryBarriers.Add(new BarrierWithStageFlags<MemoryBarrier, int>(
+                    barrier.Flags, memoryBarrier));
+            }
+
+            _queuedBarrierCount -= imageBarriers.Count;
+            imageBarriers.Clear();
         }
 
         private void QueueIncoherentBarrier(IncoherentBarrierType type)

@@ -18,6 +18,39 @@ using SamplerCreateInfo = Ryujinx.Graphics.GAL.SamplerCreateInfo;
 
 namespace Ryujinx.Graphics.Vulkan
 {
+    // 添加 Tile 优化相关枚举和结构
+    public enum TileOptimizationLevel
+    {
+        Disabled,
+        Conservative,
+        Moderate,
+        Aggressive
+    }
+
+    public enum GpuArchitecture
+    {
+        Unknown,
+        MaliMidgard,
+        MaliBifrost,
+        MaliValhall,
+        Adreno,
+        PowerVR,
+        Apple,
+        Other
+    }
+
+    public struct TileOptimizationConfig
+    {
+        public bool OptimizeAttachmentOperations;
+        public bool OptimizeDependencies;
+        public bool OptimizeBarriers;
+        public bool UseAttachmentOptimalLayouts;
+        public bool PreferMemoryBarriers;
+        public bool AggressiveStoreOpDontCare;
+        public int MaxRenderPassDrawCalls;
+        public int MaxRenderPassAttachmentChanges;
+    }
+
     unsafe public sealed class VulkanRenderer : IRenderer
     {
         private VulkanInstance _instance;
@@ -116,7 +149,7 @@ namespace Ryujinx.Graphics.Vulkan
         internal bool IsIntelArc { get; private set; }
         internal bool IsQualcommProprietary { get; private set; }
         internal bool IsMoltenVk { get; private set; }
-        internal bool IsTBDR { get; private set; }
+        internal bool IsTBDR => IsTileBasedGPU;
         internal bool IsSharedMemory { get; private set; }
 
         public string GpuVendor { get; private set; }
@@ -127,6 +160,71 @@ namespace Ryujinx.Graphics.Vulkan
         public bool PreferThreading => true;
 
         public event EventHandler<ScreenCaptureImageInfo> ScreenCaptured;
+
+        // 添加 Tile-based GPU 检测和优化属性
+        public bool IsTileBasedGPU 
+        { 
+            get 
+            {
+                if (_physicalDevice == null) return false;
+                
+                var deviceName = _physicalDevice.PhysicalDeviceProperties.DeviceName;
+                return deviceName.Contains("Mali") || 
+                       deviceName.Contains("Adreno") || 
+                       deviceName.Contains("PowerVR") ||
+                       deviceName.Contains("Apple") ||
+                       deviceName.Contains("ARM") ||
+                       deviceName.Contains("Broadcom") ||
+                       deviceName.Contains("ImgTec");
+            }
+        }
+
+        // 添加 Tile 优化级别配置
+        public TileOptimizationLevel TileOptimizationLevel { get; set; } = TileOptimizationLevel.Moderate;
+
+        // 添加 Tile 优化支持检查
+        public bool SupportsTileOptimization => IsTileBasedGPU;
+
+        // 添加详细的 GPU 架构信息
+        public GpuArchitecture GpuArchitecture
+        {
+            get
+            {
+                if (_physicalDevice == null) return GpuArchitecture.Unknown;
+                
+                var deviceName = _physicalDevice.PhysicalDeviceProperties.DeviceName;
+                if (deviceName.Contains("Mali"))
+                {
+                    if (deviceName.Contains("G") || deviceName.Contains("T"))
+                        return GpuArchitecture.MaliMidgard;
+                    else if (deviceName.Contains("Bifrost"))
+                        return GpuArchitecture.MaliBifrost;
+                    else if (deviceName.Contains("Valhall"))
+                        return GpuArchitecture.MaliValhall;
+                    else
+                        return GpuArchitecture.MaliGeneric;
+                }
+                else if (deviceName.Contains("Adreno"))
+                {
+                    return GpuArchitecture.Adreno;
+                }
+                else if (deviceName.Contains("PowerVR"))
+                {
+                    return GpuArchitecture.PowerVR;
+                }
+                else if (deviceName.Contains("Apple"))
+                {
+                    return GpuArchitecture.Apple;
+                }
+                else
+                {
+                    return GpuArchitecture.Other;
+                }
+            }
+        }
+
+        // 添加 Tile 优化配置
+        public TileOptimizationConfig TileOptimizationConfig { get; private set; }
 
         public VulkanRenderer(Vk api, Func<Instance, Vk, SurfaceKHR> surfaceFunc, Func<string[]> requiredExtensionsFunc, string preferredGpuId)
         {
@@ -143,6 +241,26 @@ namespace Ryujinx.Graphics.Vulkan
                 MVKInitialization.Initialize();
                 IsMoltenVk = true;
             }
+        }
+
+        // 在初始化方法中设置 Tile 优化配置
+        private void InitializeTileOptimization()
+        {
+            TileOptimizationConfig = new TileOptimizationConfig
+            {
+                OptimizeAttachmentOperations = true,
+                OptimizeDependencies = true,
+                OptimizeBarriers = true,
+                UseAttachmentOptimalLayouts = true,
+                PreferMemoryBarriers = true,
+                AggressiveStoreOpDontCare = GpuArchitecture == GpuArchitecture.MaliValhall || 
+                                           GpuArchitecture == GpuArchitecture.Adreno,
+                MaxRenderPassDrawCalls = 1000,
+                MaxRenderPassAttachmentChanges = 50
+            };
+
+            Logger.Info?.Print(LogClass.Gpu, $"Tile-based GPU detected: {GpuArchitecture}");
+            Logger.Info?.Print(LogClass.Gpu, $"Tile optimization level: {TileOptimizationLevel}");
         }
 
         private unsafe void LoadFeatures(uint maxQueueCount, uint queueFamilyIndex)
@@ -464,12 +582,6 @@ namespace Ryujinx.Graphics.Vulkan
 
             IsAmdWindows = Vendor == Vendor.Amd && OperatingSystem.IsWindows();
             IsIntelWindows = Vendor == Vendor.Intel && OperatingSystem.IsWindows();
-            IsTBDR =
-                Vendor == Vendor.Apple ||
-                Vendor == Vendor.Qualcomm ||
-                Vendor == Vendor.ARM ||
-                Vendor == Vendor.Broadcom ||
-                Vendor == Vendor.ImgTec;
 
             GpuVendor = VendorUtils.GetNameFromId(properties.VendorID);
             GpuDriver = hasDriverProperties && !OperatingSystem.IsMacOS() ?
@@ -565,6 +677,9 @@ namespace Ryujinx.Graphics.Vulkan
                 minResourceAlignment);
 
             IsSharedMemory = MemoryAllocator.IsDeviceMemoryShared(_physicalDevice);
+
+            // 在功能加载后初始化 Tile 优化
+            InitializeTileOptimization();
 
             MemoryAllocator = new MemoryAllocator(Api, _physicalDevice, _device);
 
@@ -1059,6 +1174,13 @@ namespace Ryujinx.Graphics.Vulkan
                 Logger.Notice.Print(LogClass.Gpu, "Supports: Dynamic Rendering");
             if (SupportsMultiview)
                 Logger.Notice.Print(LogClass.Gpu, "Supports: Multiview");
+            
+            // 打印 Tile-based GPU 信息
+            if (IsTileBasedGPU)
+            {
+                Logger.Notice.Print(LogClass.Gpu, $"GPU Architecture: {GpuArchitecture}");
+                Logger.Notice.Print(LogClass.Gpu, "Tile Optimization: Enabled");
+            }
         }
 
         public void Initialize(GraphicsDebugLevel logLevel)
@@ -1082,6 +1204,60 @@ namespace Ryujinx.Graphics.Vulkan
 
             alignment = 1;
             return false;
+        }
+
+        // 添加针对 Tile 架构的顶点缓冲区对齐需求
+        public bool NeedsVertexBufferAlignmentForTile(int attrScalarAlignment, out int alignment)
+        {
+            if (IsTileBasedGPU)
+            {
+                // Tile-based GPU 通常对顶点数据有更严格的对齐要求
+                alignment = Math.Max(attrScalarAlignment, 4); // 至少4字节对齐
+                return true;
+            }
+            
+            alignment = 1;
+            return false;
+        }
+
+        // 添加 Tile 优化的内存分配提示
+        public MemoryAllocateFlags GetTileOptimizedMemoryFlags()
+        {
+            if (IsTileBasedGPU)
+            {
+                // 对于 Tile-based GPU，优先使用设备本地内存
+                return MemoryAllocateFlags.DeviceLocal;
+            }
+            
+            return MemoryAllocateFlags.None;
+        }
+
+        // 添加针对 Tile 架构的命令缓冲区提交优化
+        public void SubmitTileOptimizedCommandBuffer(CommandBufferScoped cbs, Fence fence = default)
+        {
+            if (IsTileBasedGPU)
+            {
+                // Tile-based GPU 上，更频繁地提交命令缓冲区可能更高效
+                var submitInfo = new SubmitInfo
+                {
+                    SType = StructureType.SubmitInfo,
+                    CommandBufferCount = 1,
+                    PCommandBuffers = &cbs.CommandBuffer
+                };
+
+                lock (QueueLock)
+                {
+                    Api.QueueSubmit(Queue, 1, submitInfo, fence);
+                }
+
+                // 立即注册刷新以回收资源
+                RegisterFlush();
+            }
+            else
+            {
+                // 标准提交逻辑
+                SyncManager.Submit(cbs, fence);
+            }
         }
 
         public void PreFrame()
@@ -1159,8 +1335,20 @@ namespace Ryujinx.Graphics.Vulkan
             ScreenCaptured?.Invoke(this, bitmap);
         }
 
+        // 添加 Tile 优化的渲染通道支持检查
         public bool SupportsRenderPassBarrier(PipelineStageFlags flags)
         {
+            if (IsTileBasedGPU)
+            {
+                // Tile-based GPU 对渲染通道内屏障支持有限
+                // 只允许颜色附件和深度模板附件的相关阶段
+                var allowedStages = PipelineStageFlags.ColorAttachmentOutputBit | 
+                                   PipelineStageFlags.EarlyFragmentTestsBit | 
+                                   PipelineStageFlags.LateFragmentTestsBit;
+                
+                return (flags & ~allowedStages) == 0;
+            }
+            
             return !(IsMoltenVk || IsQualcommProprietary);
         }
 

@@ -9,6 +9,44 @@ namespace Ryujinx.Graphics.Vulkan
 {
     static class PipelineConverter
     {
+        // 添加 Tile-based GPU 检测方法
+        private static bool IsTileBasedGPU(VulkanRenderer gd)
+        {
+            return gd.IsTileBasedGPU;
+        }
+
+        // 添加 Tile 优化配置获取
+        private static TileOptimizationConfig GetTileOptimizationConfig(VulkanRenderer gd)
+        {
+            return gd.TileOptimizationConfig;
+        }
+
+        // 判断是否应该优化颜色附件存储
+        private static bool ShouldOptimizeColorStore(ProgramPipelineState state, int attachmentIndex, VulkanRenderer gd)
+        {
+            if (!IsTileBasedGPU(gd)) return false;
+
+            var config = GetTileOptimizationConfig(gd);
+            
+            if (!config.OptimizeAttachmentOperations) return false;
+
+            // 激进模式下优化所有颜色附件
+            if (config.AggressiveStoreOpDontCare) return true;
+
+            // 保守模式下只优化中间渲染目标
+            // 这里简化处理，实际可能需要更复杂的逻辑
+            return attachmentIndex < state.AttachmentEnable.Length - 1; // 不是最后一个附件
+        }
+
+        // 判断是否应该优化深度附件存储
+        private static bool ShouldOptimizeDepthStore(ProgramPipelineState state, VulkanRenderer gd)
+        {
+            if (!IsTileBasedGPU(gd)) return false;
+
+            var config = GetTileOptimizationConfig(gd);
+            return config.OptimizeAttachmentOperations;
+        }
+
         public static unsafe DisposableRenderPass ToRenderPass(this ProgramPipelineState state, VulkanRenderer gd, Device device)
         {
             const int MaxAttachments = Constants.MaxRenderTargets + 1;
@@ -45,24 +83,71 @@ namespace Ryujinx.Graphics.Vulkan
                 attachmentFormats[attachmentCount++] = gd.FormatCapabilities.ConvertToVkFormat(state.DepthStencilFormat, true);
             }
 
+            // 检测是否为 Tile-based GPU
+            bool isTileBasedGPU = IsTileBasedGPU(gd);
+            var tileConfig = GetTileOptimizationConfig(gd);
+
             if (attachmentCount != 0)
             {
                 attachmentDescs = new AttachmentDescription[attachmentCount];
 
                 for (int i = 0; i < attachmentCount; i++)
                 {
-                    int bindIndex = attachmentIndices[i];
+                    var loadOp = AttachmentLoadOp.Load;
+                    var storeOp = AttachmentStoreOp.Store;
+                    var stencilLoadOp = AttachmentLoadOp.Load;
+                    var stencilStoreOp = AttachmentStoreOp.Store;
+                    var initialLayout = ImageLayout.General;
+                    var finalLayout = ImageLayout.General;
+
+                    // Tile-based GPU 优化
+                    if (isTileBasedGPU && tileConfig.OptimizeAttachmentOperations)
+                    {
+                        // 优化布局
+                        if (tileConfig.UseAttachmentOptimalLayouts)
+                        {
+                            initialLayout = ImageLayout.AttachmentOptimal;
+                            finalLayout = ImageLayout.AttachmentOptimal;
+                        }
+
+                        // 颜色附件优化
+                        if (i < colorCount)
+                        {
+                            // 使用 Clear 而不是 Load 来避免内存读取
+                            loadOp = AttachmentLoadOp.Clear;
+                            
+                            // 优化存储操作
+                            if (ShouldOptimizeColorStore(state, i, gd))
+                            {
+                                storeOp = AttachmentStoreOp.DontCare;
+                            }
+                        }
+                        // 深度模板附件优化
+                        else if (state.DepthStencilEnable && i == attachmentCount - 1)
+                        {
+                            // 深度附件通常不需要存储到内存
+                            if (ShouldOptimizeDepthStore(state, gd))
+                            {
+                                storeOp = AttachmentStoreOp.DontCare;
+                                stencilStoreOp = AttachmentStoreOp.DontCare;
+                            }
+                            
+                            // 使用 Clear 优化深度加载
+                            loadOp = AttachmentLoadOp.Clear;
+                            stencilLoadOp = AttachmentLoadOp.Clear;
+                        }
+                    }
 
                     attachmentDescs[i] = new AttachmentDescription(
                         0,
                         attachmentFormats[i],
                         TextureStorage.ConvertToSampleCountFlags(gd.Capabilities.SupportedSampleCounts, (uint)state.SamplesCount),
-                        AttachmentLoadOp.Load,
-                        AttachmentStoreOp.Store,
-                        AttachmentLoadOp.Load,
-                        AttachmentStoreOp.Store,
-                        ImageLayout.General,
-                        ImageLayout.General);
+                        loadOp,           // 优化后的 LoadOp
+                        storeOp,          // 优化后的 StoreOp
+                        stencilLoadOp,
+                        stencilStoreOp,
+                        initialLayout,    // 优化后的初始布局
+                        finalLayout);     // 优化后的最终布局
                 }
 
                 int colorAttachmentsCount = colorCount;
@@ -87,7 +172,13 @@ namespace Ryujinx.Graphics.Vulkan
                     {
                         int bindIndex = attachmentIndices[i];
 
-                        subpass.PColorAttachments[bindIndex] = new AttachmentReference((uint)i, ImageLayout.General);
+                        var imageLayout = ImageLayout.General;
+                        if (isTileBasedGPU && tileConfig.UseAttachmentOptimalLayouts)
+                        {
+                            imageLayout = ImageLayout.ColorAttachmentOptimal;
+                        }
+
+                        subpass.PColorAttachments[bindIndex] = new AttachmentReference((uint)i, imageLayout);
                     }
                 }
 
@@ -95,12 +186,19 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     uint dsIndex = (uint)attachmentCount - 1;
 
+                    var imageLayout = ImageLayout.General;
+                    if (isTileBasedGPU && tileConfig.UseAttachmentOptimalLayouts)
+                    {
+                        imageLayout = ImageLayout.DepthStencilAttachmentOptimal;
+                    }
+
                     subpass.PDepthStencilAttachment = &attachmentReferences[MaxAttachments - 1];
-                    *subpass.PDepthStencilAttachment = new AttachmentReference(dsIndex, ImageLayout.General);
+                    *subpass.PDepthStencilAttachment = new AttachmentReference(dsIndex, imageLayout);
                 }
             }
 
-            var subpassDependency = CreateSubpassDependency(gd);
+            // 使用优化后的子通道依赖
+            var subpassDependency = CreateTileOptimizedSubpassDependency(gd);
 
             fixed (AttachmentDescription* pAttachmentDescs = attachmentDescs)
             {
@@ -123,8 +221,29 @@ namespace Ryujinx.Graphics.Vulkan
 
         public static SubpassDependency CreateSubpassDependency(VulkanRenderer gd)
         {
-            var (access, stages) = BarrierBatch.GetSubpassAccessSuperset(gd);
+            return CreateTileOptimizedSubpassDependency(gd);
+        }
 
+        // 创建 Tile 优化的子通道依赖
+        private static SubpassDependency CreateTileOptimizedSubpassDependency(VulkanRenderer gd)
+        {
+            var (access, stages) = BarrierBatch.GetSubpassAccessSuperset(gd);
+            
+            var dependencyFlags = DependencyFlags.None;
+            
+            // Tile-based GPU 优化：使用区域依赖
+            if (IsTileBasedGPU(gd) && GetTileOptimizationConfig(gd).OptimizeDependencies)
+            {
+                dependencyFlags = DependencyFlags.ByRegionBit;
+                
+                // 在 Tile 架构上，优化阶段和访问标志
+                stages &= PipelineStageFlags.AllGraphicsBit; // 只保留图形相关阶段
+                access &= (AccessFlags.ColorAttachmentReadBit | 
+                          AccessFlags.ColorAttachmentWriteBit |
+                          AccessFlags.DepthStencilAttachmentReadBit | 
+                          AccessFlags.DepthStencilAttachmentWriteBit);
+            }
+    
             return new SubpassDependency(
                 0,
                 0,
@@ -132,13 +251,28 @@ namespace Ryujinx.Graphics.Vulkan
                 stages,
                 access,
                 access,
-                0);
+                dependencyFlags); // 添加依赖标志
         }
 
         public unsafe static SubpassDependency2 CreateSubpassDependency2(VulkanRenderer gd)
         {
             var (access, stages) = BarrierBatch.GetSubpassAccessSuperset(gd);
-
+            
+            var dependencyFlags = DependencyFlags.None;
+            
+            // Tile-based GPU 优化：使用区域依赖
+            if (IsTileBasedGPU(gd) && GetTileOptimizationConfig(gd).OptimizeDependencies)
+            {
+                dependencyFlags = DependencyFlags.ByRegionBit;
+                
+                // 在 Tile 架构上，优化阶段和访问标志
+                stages &= PipelineStageFlags.AllGraphicsBit;
+                access &= (AccessFlags.ColorAttachmentReadBit | 
+                          AccessFlags.ColorAttachmentWriteBit |
+                          AccessFlags.DepthStencilAttachmentReadBit | 
+                          AccessFlags.DepthStencilAttachmentWriteBit);
+            }
+    
             return new SubpassDependency2(
                 StructureType.SubpassDependency2,
                 null,
@@ -148,7 +282,7 @@ namespace Ryujinx.Graphics.Vulkan
                 stages,
                 access,
                 access,
-                0);
+                dependencyFlags); // 添加依赖标志
         }
 
         public static PipelineState ToVulkanPipelineState(this ProgramPipelineState state, VulkanRenderer gd)
@@ -182,13 +316,15 @@ namespace Ryujinx.Graphics.Vulkan
             pipeline.RasterizerDiscardEnable = state.RasterizerDiscard;
             pipeline.SamplesCount = (uint)state.SamplesCount;
 
-            if (gd.Capabilities.SupportsMultiView)
+            // Tile-based GPU 优化：视口和裁剪框配置
+            if (gd.Capabilities.SupportsMultiView && !IsTileBasedGPU(gd))
             {
                 pipeline.ScissorsCount = Constants.MaxViewports;
                 pipeline.ViewportsCount = Constants.MaxViewports;
             }
             else
             {
+                // Tile-based GPU 上通常使用单个视口更高效
                 pipeline.ScissorsCount = 1;
                 pipeline.ViewportsCount = 1;
             }
@@ -246,7 +382,12 @@ namespace Ryujinx.Graphics.Vulkan
 
                     int alignedStride = vertexBuffer.Stride;
 
-                    if (gd.NeedsVertexBufferAlignment(vbScalarSizes[i], out int alignment))
+                    // Tile-based GPU 优化：使用针对 Tile 架构的对齐
+                    if (gd.NeedsVertexBufferAlignmentForTile(vbScalarSizes[i], out int alignment))
+                    {
+                        alignedStride = BitUtils.AlignUp(vertexBuffer.Stride, alignment);
+                    }
+                    else if (gd.NeedsVertexBufferAlignment(vbScalarSizes[i], out alignment))
                     {
                         alignedStride = BitUtils.AlignUp(vertexBuffer.Stride, alignment);
                     }
