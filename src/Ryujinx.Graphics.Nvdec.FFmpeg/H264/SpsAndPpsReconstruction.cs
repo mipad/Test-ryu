@@ -92,20 +92,24 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
 
             if (pictureInfo.ScalingMatrixPresent)
             {
+                Span<Array16<byte>> scalingLists4x4Span = pictureInfo.ScalingLists4x4.AsSpan();
+                
                 for (int index = 0; index < 6; index++)
                 {
                     writer.WriteBit(true);
 
-                    WriteScalingList(ref writer, pictureInfo.ScalingLists4x4[index]);
+                    WriteScalingList(ref writer, scalingLists4x4Span[index]);
                 }
 
                 if (pictureInfo.Transform8x8ModeFlag)
                 {
+                    Span<Array64<byte>> scalingLists8x8Span = pictureInfo.ScalingLists8x8.AsSpan();
+                    
                     for (int index = 0; index < 2; index++)
                     {
                         writer.WriteBit(true);
 
-                        WriteScalingList(ref writer, pictureInfo.ScalingLists8x8[index]);
+                        WriteScalingList(ref writer, scalingLists8x8Span[index]);
                     }
                 }
             }
@@ -118,8 +122,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
         }
 
         // ZigZag LUTs from libavcodec.
-        private static ReadOnlySpan<byte> ZigZagDirect => new byte[]
-        {
+        private static ReadOnlySpan<byte> ZigZagDirect =>
+        [
             0,   1,  8, 16,  9,  2,  3, 10,
             17, 24, 32, 25, 18, 11,  4,  5,
             12, 19, 26, 33, 40, 48, 41, 34,
@@ -127,16 +131,16 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
             35, 42, 49, 56, 57, 50, 43, 36,
             29, 22, 15, 23, 30, 37, 44, 51,
             58, 59, 52, 45, 38, 31, 39, 46,
-            53, 60, 61, 54, 47, 55, 62, 63,
-        };
+            53, 60, 61, 54, 47, 55, 62, 63
+        ];
 
-        private static ReadOnlySpan<byte> ZigZagScan => new byte[]
-        {
+        private static ReadOnlySpan<byte> ZigZagScan =>
+        [
             0 + 0 * 4, 1 + 0 * 4, 0 + 1 * 4, 0 + 2 * 4,
             1 + 1 * 4, 2 + 0 * 4, 3 + 0 * 4, 2 + 1 * 4,
             1 + 2 * 4, 0 + 3 * 4, 1 + 3 * 4, 2 + 2 * 4,
-            3 + 1 * 4, 3 + 2 * 4, 2 + 3 * 4, 3 + 3 * 4,
-        };
+            3 + 1 * 4, 3 + 2 * 4, 2 + 3 * 4, 3 + 3 * 4
+        ];
 
         private static void WriteScalingList(ref H264BitStreamWriter writer, IArray<byte> list)
         {
@@ -144,9 +148,11 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
 
             int lastScale = 8;
 
-            for (int index = 0; index < list.Length; index++)
+            Span<byte> listSpan = list.AsSpan();
+
+            for (int index = 0; index < listSpan.Length; index++)
             {
-                byte value = list[scan[index]];
+                byte value = listSpan[scan[index]];
 
                 int deltaScale = value - lastScale;
 
