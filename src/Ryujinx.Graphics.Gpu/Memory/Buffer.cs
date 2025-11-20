@@ -15,7 +15,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
     /// <summary>
     /// Buffer, used to store vertex and index data, uniform and storage buffers, and others.
     /// </summary>
-    class Buffer : IRange, ISyncActionHandler, IDisposable
+    class Buffer : INonOverlappingRange, ISyncActionHandler, IDisposable
     {
         private const ulong GranularBufferThreshold = 4096;
 
@@ -35,7 +35,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <summary>
         /// Size of the buffer in bytes.
         /// </summary>
-        public ulong Size { get; }
+        public ulong Size { get; private set; }
 
         /// <summary>
         /// End address of the buffer in guest memory.
@@ -60,13 +60,13 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <remarks>
         /// This is null until at least one modification occurs.
         /// </remarks>
-        private BufferModifiedRangeList _modifiedRanges = null;
+        private BufferModifiedRangeList _modifiedRanges;
 
         /// <summary>
         /// A structure that is used to flush buffer data back to a host mapped buffer for cached readback.
         /// Only used if the buffer data is explicitly owned by device local memory.
         /// </summary>
-        private BufferPreFlush _preFlush = null;
+        private BufferPreFlush _preFlush;
 
         /// <summary>
         /// Usage tracking state that determines what type of backing the buffer should use.
@@ -110,7 +110,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             ulong size,
             BufferStage stage,
             bool sparseCompatible,
-            IEnumerable<Buffer> baseBuffers = null)
+            List<Buffer> baseBuffers)
         {
             _context = context;
             _physicalMemory = physicalMemory;
@@ -126,21 +126,22 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
             _useGranular = size > GranularBufferThreshold;
 
-            IEnumerable<IRegionHandle> baseHandles = null;
+            List<IRegionHandle> baseHandles = null;
 
-            if (baseBuffers != null)
+            if (baseBuffers.Count != 0)
             {
-                baseHandles = baseBuffers.SelectMany(buffer =>
+                baseHandles = new List<IRegionHandle>();
+                foreach (Buffer buffer in baseBuffers)
                 {
                     if (buffer._useGranular)
                     {
-                        return buffer._memoryTrackingGranular.GetHandles();
+                        baseHandles.AddRange((buffer._memoryTrackingGranular.GetHandles()));
                     }
                     else
                     {
-                        return Enumerable.Repeat(buffer._memoryTracking, 1);
+                        baseHandles.Add(buffer._memoryTracking);
                     }
-                });
+                }
             }
 
             if (_useGranular)
@@ -171,9 +172,9 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 _memoryTracking.RegisterPreciseAction(PreciseAction);
             }
 
-            _externalFlushDelegate = new RegionSignal(ExternalFlush);
-            _loadDelegate = new Action<ulong, ulong>(LoadRegion);
-            _modifiedDelegate = new Action<ulong, ulong>(RegionModified);
+            _externalFlushDelegate = ExternalFlush;
+            _loadDelegate = LoadRegion;
+            _modifiedDelegate = RegionModified;
 
             _virtualDependenciesLock = new ReaderWriterLockSlim();
         }
@@ -245,6 +246,11 @@ namespace Ryujinx.Graphics.Gpu.Memory
         public bool OverlapsWith(ulong address, ulong size)
         {
             return Address < address + size && address < EndAddress;
+        }
+
+        public INonOverlappingRange Split(ulong splitAddress)
+        {
+            throw new NotImplementedException();
         }
 
         /// <summary>
@@ -435,7 +441,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="from">The buffer to inherit from</param>
         public void InheritModifiedRanges(Buffer from)
         {
-            if (from._modifiedRanges != null && from._modifiedRanges.HasRanges)
+            if (from._modifiedRanges is { HasRanges: true })
             {
                 if (from._syncActionRegistered && !_syncActionRegistered)
                 {
@@ -443,7 +449,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
                     _syncActionRegistered = true;
                 }
 
-                void registerRangeAction(ulong address, ulong size)
+                void RegisterRangeAction(ulong address, ulong size)
                 {
                     if (_useGranular)
                     {
@@ -457,7 +463,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                 EnsureRangeList();
 
-                _modifiedRanges.InheritRanges(from._modifiedRanges, registerRangeAction);
+                _modifiedRanges.InheritRanges(from._modifiedRanges, RegisterRangeAction);
             }
 
             if (from._dirtyStart != ulong.MaxValue)
@@ -499,14 +505,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
                     {
                         // Cut off the start.
 
-                        if (end < _dirtyEnd)
-                        {
-                            _dirtyStart = end;
-                        }
-                        else
-                        {
-                            _dirtyStart = ulong.MaxValue;
-                        }
+                        _dirtyStart = end < _dirtyEnd ? end : ulong.MaxValue;
                     }
                     else if (end >= _dirtyEnd)
                     {
@@ -705,7 +704,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         {
             BufferHandle handle = Handle;
 
-            return (ulong address, ulong size, ulong _) =>
+            return (address, size, _) =>
             {
                 FlushImpl(handle, address, size);
             };
@@ -735,7 +734,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         {
             _context.Renderer.BackgroundContextAction(() =>
             {
-                var ranges = _modifiedRanges;
+                BufferModifiedRangeList ranges = _modifiedRanges;
 
                 if (ranges != null)
                 {
@@ -799,7 +798,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
             try
             {
-                (_virtualDependencies ??= new()).Add(virtualBuffer);
+                (_virtualDependencies ??= []).Add(virtualBuffer);
             }
             finally
             {
@@ -850,7 +849,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         {
             if (_virtualDependencies != null)
             {
-                foreach (var virtualBuffer in _virtualDependencies)
+                foreach (MultiRangeBuffer virtualBuffer in _virtualDependencies)
                 {
                     CopyToDependantVirtualBuffer(virtualBuffer, address, size);
                 }
@@ -875,7 +874,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void CopyFromDependantVirtualBuffersImpl()
         {
-            foreach (var virtualBuffer in _virtualDependencies.OrderBy(x => x.ModificationSequenceNumber))
+            foreach (MultiRangeBuffer virtualBuffer in _virtualDependencies.OrderBy(x => x.ModificationSequenceNumber))
             {
                 virtualBuffer.ConsumeModifiedRegion(this, (mAddress, mSize) =>
                 {
@@ -914,7 +913,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 {
                     byte[] storage = dataSpan.ToArray();
 
-                    foreach (var virtualBuffer in _virtualDependencies.OrderBy(x => x.ModificationSequenceNumber))
+                    foreach (MultiRangeBuffer virtualBuffer in _virtualDependencies.OrderBy(x => x.ModificationSequenceNumber))
                     {
                         virtualBuffer.ConsumeModifiedRegion(address, size, (mAddress, mSize) =>
                         {
