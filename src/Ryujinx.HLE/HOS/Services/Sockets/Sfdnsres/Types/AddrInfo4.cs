@@ -30,21 +30,21 @@ namespace Ryujinx.HLE.HOS.Services.Sockets.Sfdnsres.Types
         {
             Port = IPAddress.HostToNetworkOrder(Port);
 
-            RawIpv4AddressNetworkEndianSwap(ref Address);
+            RawIpv4AddressNetworkEndianSwap(Address.AsSpan());
         }
 
         public void ToHostOrder()
         {
             Port = IPAddress.NetworkToHostOrder(Port);
 
-            RawIpv4AddressNetworkEndianSwap(ref Address);
+            RawIpv4AddressNetworkEndianSwap(Address.AsSpan());
         }
 
-        public static void RawIpv4AddressNetworkEndianSwap(ref Array4<byte> address)
+        public static void RawIpv4AddressNetworkEndianSwap(Span<byte> address)
         {
             if (BitConverter.IsLittleEndian)
             {
-                address.AsSpan().Reverse();
+                address.Reverse();
             }
         }
     }
