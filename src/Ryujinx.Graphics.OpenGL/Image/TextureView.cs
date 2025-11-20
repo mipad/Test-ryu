@@ -67,13 +67,13 @@ namespace Ryujinx.Graphics.OpenGL.Image
 
             GL.BindTexture(target, Handle);
 
-            int[] swizzleRgba = new int[]
-            {
+            int[] swizzleRgba =
+            [
                 (int)Info.SwizzleR.Convert(),
                 (int)Info.SwizzleG.Convert(),
                 (int)Info.SwizzleB.Convert(),
-                (int)Info.SwizzleA.Convert(),
-            };
+                (int)Info.SwizzleA.Convert()
+            ];
 
             if (Info.Format == Format.A1B5G5R5Unorm)
             {
@@ -553,7 +553,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                             level,
                             x,
                             width,
-                            format.PixelFormat,
+                            (InternalFormat)format.PixelFormat,
                             mipSize,
                             data);
                     }
@@ -580,7 +580,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                             layer,
                             width,
                             1,
-                            format.PixelFormat,
+                            (InternalFormat)format.PixelFormat,
                             mipSize,
                             data);
                     }
@@ -609,7 +609,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                             y,
                             width,
                             height,
-                            format.PixelFormat,
+                            (InternalFormat)format.PixelFormat,
                             mipSize,
                             data);
                     }
@@ -642,7 +642,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                             width,
                             height,
                             1,
-                            format.PixelFormat,
+                            (InternalFormat)format.PixelFormat,
                             mipSize,
                             data);
                     }
@@ -673,7 +673,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                             y,
                             width,
                             height,
-                            format.PixelFormat,
+                            (InternalFormat)format.PixelFormat,
                             mipSize,
                             data);
                     }
@@ -741,7 +741,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                                 level,
                                 0,
                                 width,
-                                format.PixelFormat,
+                                (InternalFormat)format.PixelFormat,
                                 mipSize,
                                 data);
                         }
@@ -769,7 +769,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                                 0,
                                 width,
                                 height,
-                                format.PixelFormat,
+                                (InternalFormat)format.PixelFormat,
                                 mipSize,
                                 data);
                         }
@@ -802,7 +802,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                                 width,
                                 height,
                                 depth,
-                                format.PixelFormat,
+                                (InternalFormat)format.PixelFormat,
                                 mipSize,
                                 data);
                         }
@@ -828,7 +828,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
 
                         for (int face = 0; face < 6; face++, faceOffset += mipSize / 6)
                         {
-                         if (format.IsCompressed)
+                            if (format.IsCompressed)
                             {
                                 GL.CompressedTexSubImage2D(
                                     TextureTarget.TextureCubeMapPositiveX + face,
@@ -837,7 +837,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                                     0,
                                     width,
                                     height,
-                                    format.PixelFormat,
+                                    (InternalFormat)format.PixelFormat,
                                     mipSize / 6,
                                     data + faceOffset);
                             }
