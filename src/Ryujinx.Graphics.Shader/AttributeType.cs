@@ -1,5 +1,5 @@
 using Ryujinx.Graphics.Shader.Translation;
-using System;
+using System; 
 
 namespace Ryujinx.Graphics.Shader
 {
