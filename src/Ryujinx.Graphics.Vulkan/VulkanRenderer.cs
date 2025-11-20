@@ -614,7 +614,7 @@ namespace Ryujinx.Graphics.Vulkan
 Capabilities = new HardwareCapabilities(
     _physicalDevice.IsDeviceExtensionPresent("VK_EXT_index_type_uint8"),
     supportsCustomBorderColor,
-    supportsBlendOperationAdvanced
+    supportsBlendOperationAdvanced,
     propertiesBlendOperationAdvanced.AdvancedBlendCorrelatedOverlap,
     propertiesBlendOperationAdvanced.AdvancedBlendNonPremultipliedSrcColor,
     propertiesBlendOperationAdvanced.AdvancedBlendNonPremultipliedDstColor,
