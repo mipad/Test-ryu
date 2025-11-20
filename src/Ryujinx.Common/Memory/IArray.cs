@@ -1,3 +1,5 @@
+using System;
+
 namespace Ryujinx.Common.Memory
 {
     /// <summary>
@@ -17,5 +19,10 @@ namespace Ryujinx.Common.Memory
         /// Number of elements on the array.
         /// </summary>
         int Length { get; }
+
+        /// <summary>
+        /// Number of elements on the array.
+        /// </summary>
+        public Span<T> AsSpan();
     }
 }
