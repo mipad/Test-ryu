@@ -17,12 +17,12 @@ namespace Ryujinx.Graphics.Vic.Image
             ResourceManager rm,
             ref SlotConfig config,
             ref SlotSurfaceConfig surfaceConfig,
-            ref Array8<PlaneOffsets> offsets)
+            Span<PlaneOffsets> offsets)
         {
             switch (surfaceConfig.SlotPixelFormat)
             {
                 case PixelFormat.Y8___V8U8_N420:
-                    return ReadNv12(rm, ref config, ref surfaceConfig, ref offsets);
+                    return ReadNv12(rm, ref config, ref surfaceConfig, offsets);
             }
 
             Logger.Error?.Print(LogClass.Vic, $"Unsupported pixel format \"{surfaceConfig.SlotPixelFormat}\".");
@@ -37,9 +37,9 @@ namespace Ryujinx.Graphics.Vic.Image
             ResourceManager rm,
             ref SlotConfig config,
             ref SlotSurfaceConfig surfaceConfig,
-            ref Array8<PlaneOffsets> offsets)
+            Span<PlaneOffsets> offsets)
         {
-            InputSurface input = ReadSurface(rm, ref config, ref surfaceConfig, ref offsets, 1, 2);
+            InputSurface input = ReadSurface(rm, ref config, ref surfaceConfig, offsets, 1, 2);
 
             int width = input.Width;
             int height = input.Height;
@@ -273,7 +273,7 @@ namespace Ryujinx.Graphics.Vic.Image
             ResourceManager rm,
             ref SlotConfig config,
             ref SlotSurfaceConfig surfaceConfig,
-            ref Array8<PlaneOffsets> offsets,
+            Span<PlaneOffsets> offsets,
             int bytesPerPixel,
             int planes)
         {
@@ -301,17 +301,17 @@ namespace Ryujinx.Graphics.Vic.Image
 
             if (planes > 0)
             {
-                surface.SetBuffer0(ReadBuffer(rm, ref config, ref offsets, linear, 0, lw, lh, bytesPerPixel, gobBlocksInY));
+                surface.SetBuffer0(ReadBuffer(rm, ref config, offsets, linear, 0, lw, lh, bytesPerPixel, gobBlocksInY));
             }
 
             if (planes > 1)
             {
-                surface.SetBuffer1(ReadBuffer(rm, ref config, ref offsets, linear, 1, cw, ch, planes == 2 ? 2 : 1, gobBlocksInY));
+                surface.SetBuffer1(ReadBuffer(rm, ref config, offsets, linear, 1, cw, ch, planes == 2 ? 2 : 1, gobBlocksInY));
             }
 
             if (planes > 2)
             {
-                surface.SetBuffer2(ReadBuffer(rm, ref config, ref offsets, linear, 2, cw, ch, 1, gobBlocksInY));
+                surface.SetBuffer2(ReadBuffer(rm, ref config, offsets, linear, 2, cw, ch, 1, gobBlocksInY));
             }
 
             return surface;
@@ -320,7 +320,7 @@ namespace Ryujinx.Graphics.Vic.Image
         private static RentedBuffer ReadBuffer(
             ResourceManager rm,
             scoped ref SlotConfig config,
-            scoped ref Array8<PlaneOffsets> offsets,
+            Span<PlaneOffsets> offsets,
             bool linear,
             int plane,
             int width,
