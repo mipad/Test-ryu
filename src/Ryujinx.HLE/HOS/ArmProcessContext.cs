@@ -3,6 +3,7 @@ using Ryujinx.Cpu;
 using Ryujinx.Graphics.Gpu;
 using Ryujinx.HLE.HOS.Kernel.Process;
 using Ryujinx.Memory;
+using System;
 
 namespace Ryujinx.HLE.HOS
 {
