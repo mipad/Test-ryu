@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using System.Threading;
 
 namespace Ryujinx.Memory.Range
 {
@@ -7,8 +10,284 @@ namespace Ryujinx.Memory.Range
     /// A range list that assumes ranges are non-overlapping, with list items that can be split in two to avoid overlaps.
     /// </summary>
     /// <typeparam name="T">Type of the range.</typeparam>
-    class NonOverlappingRangeList<T> : RangeList<T> where T : INonOverlappingRange
+    public class NonOverlappingRangeList<T> : RangeListBase<T> where T : INonOverlappingRange
     {
+        private readonly Dictionary<ulong, RangeItem<T>> _quickAccess = new(AddressEqualityComparer.Comparer);
+        private readonly Dictionary<ulong, RangeItem<T>> _fastQuickAccess = new(AddressEqualityComparer.Comparer);
+        
+        public readonly ReaderWriterLockSlim Lock = new();
+        
+        /// <summary>
+        /// Creates a new non-overlapping range list.
+        /// </summary>
+        public NonOverlappingRangeList() { }
+        
+        /// <summary>
+        /// Creates a new non-overlapping range list.
+        /// </summary>
+        /// <param name="backingInitialSize">The initial size of the backing array</param>
+        public NonOverlappingRangeList(int backingInitialSize) : base(backingInitialSize) { }
+        
+        /// <summary>
+        /// Adds a new item to the list.
+        /// </summary>
+        /// <param name="item">The item to be added</param>
+        public override void Add(T item)
+        {
+            int index = BinarySearch(item.Address);
+            
+            if (index < 0)
+            {
+                index = ~index;
+            }
+
+            RangeItem<T> rangeItem = new(item);
+            
+            Insert(index, rangeItem);
+            
+            _quickAccess.Add(item.Address, rangeItem);
+        }
+
+        /// <summary>
+        /// Updates an item's end address on the list. Address must be the same.
+        /// </summary>
+        /// <param name="item">The item to be updated</param>
+        /// <returns>True if the item was located and updated, false otherwise</returns>
+        protected override bool Update(T item)
+        {
+            int index = BinarySearch(item.Address);
+
+            if (index >= 0 && Items[index].Value.Equals(item))
+            {
+                RangeItem<T> rangeItem = new(item) { Previous = Items[index].Previous, Next = Items[index].Next };
+                
+                if (index > 0)
+                {
+                    Items[index - 1].Next = rangeItem;
+                }
+
+                if (index < Count - 1)
+                {
+                    Items[index + 1].Previous = rangeItem;
+                }
+                
+                foreach (ulong addr in Items[index].QuickAccessAddresses)
+                {
+                    _quickAccess.Remove(addr);
+                    _fastQuickAccess.Remove(addr);
+                }
+                
+                Items[index] = rangeItem;
+                
+                _quickAccess[item.Address] = rangeItem;
+
+                return true;
+            }
+
+            return false;
+        }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void Insert(int index, RangeItem<T> item)
+        {
+            Debug.Assert(item.Address != item.EndAddress);
+            
+            if (Count + 1 > Items.Length)
+            {
+                Array.Resize(ref Items, Items.Length + BackingGrowthSize);
+            }
+
+            if (index >= Count)
+            {
+                if (index == Count)
+                {
+                    if (index != 0)
+                    {
+                        item.Previous = Items[index - 1];
+                        Items[index - 1].Next = item;
+                    }
+                    Items[index] = item;
+                    Count++;
+                }
+            }
+            else
+            {
+                Array.Copy(Items, index, Items, index + 1, Count - index);
+
+                Items[index] = item;
+                if (index != 0)
+                {
+                    item.Previous = Items[index - 1];
+                    Items[index - 1].Next = item;
+                }
+                
+                item.Next = Items[index + 1];
+                Items[index + 1].Previous = item;
+                
+                Count++;
+            }
+        }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void RemoveAt(int index)
+        {
+            if (index < Count - 1)
+            {
+                Items[index + 1].Previous = index > 0 ? Items[index - 1] : null;
+            }
+
+            if (index > 0)
+            {
+                Items[index - 1].Next = index < Count - 1 ? Items[index + 1] : null;
+            }
+            
+            if (index < --Count)
+            {
+                Array.Copy(Items, index + 1, Items, index, Count - index);
+            }
+        }
+
+        /// <summary>
+        /// Removes an item from the list.
+        /// </summary>
+        /// <param name="item">The item to be removed</param>
+        /// <returns>True if the item was removed, or false if it was not found</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override bool Remove(T item)
+        {
+            int index = BinarySearch(item.Address);
+
+            if (index >= 0 && Items[index].Value.Equals(item))
+            {
+                _quickAccess.Remove(item.Address);
+                
+                foreach (ulong addr in Items[index].QuickAccessAddresses)
+                {
+                    _quickAccess.Remove(addr);
+                    _fastQuickAccess.Remove(addr);
+                }
+                
+                RemoveAt(index);
+                
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Removes a range of items from the item list
+        /// </summary>
+        /// <param name="startItem">The first item in the range of items to be removed</param>
+        /// <param name="endItem">The last item in the range of items to be removed</param>
+        public override void RemoveRange(RangeItem<T> startItem, RangeItem<T> endItem)
+        {
+            if (startItem is null)
+            {
+                return;
+            }
+
+            if (startItem == endItem)
+            {
+                Remove(startItem.Value);
+                return;
+            }
+            
+            int startIndex = BinarySearch(startItem.Address);
+            int endIndex = BinarySearch(endItem.Address);
+            
+            if (endIndex < Count - 1)
+            {
+                Items[endIndex + 1].Previous = startIndex > 0 ? Items[startIndex - 1] : null;
+            }
+
+            if (startIndex > 0)
+            {
+                Items[startIndex - 1].Next = endIndex < Count - 1 ? Items[endIndex + 1] : null;
+            }
+            
+            
+            if (endIndex < Count - 1)
+            {
+                Array.Copy(Items, endIndex + 1, Items, startIndex, Count - endIndex - 1);
+            }
+            
+            Count -= endIndex - startIndex + 1;
+
+            while (startItem != endItem.Next)
+            {
+                _quickAccess.Remove(startItem.Address);
+                foreach (ulong addr in startItem.QuickAccessAddresses)
+                {
+                    _quickAccess.Remove(addr);
+                    _fastQuickAccess.Remove(addr);
+                }
+                startItem = startItem.Next;
+            }
+        }
+        
+        /// <summary>
+        /// Removes a range of items from the item list
+        /// </summary>
+        /// <param name="address">Start address of the range</param>
+        /// <param name="size">Size of the range</param>
+        public void RemoveRange(ulong address, ulong size)
+        {
+            int startIndex = BinarySearchLeftEdge(address, address + size);
+            
+            if (startIndex < 0)
+            {
+                return;
+            }
+            
+            RangeItem<T> startItem = Items[startIndex];
+            
+            int endIndex = startIndex;
+            
+            while (startItem is not null && startItem.Address < address + size)
+            {
+                _quickAccess.Remove(startItem.Address);
+                foreach (ulong addr in startItem.QuickAccessAddresses)
+                {
+                    _quickAccess.Remove(addr);
+                    _fastQuickAccess.Remove(addr);
+                }
+                startItem = startItem.Next;
+                endIndex++;
+            }
+            
+            if (endIndex < Count - 1)
+            {
+                Items[endIndex + 1].Previous = startIndex > 0 ? Items[startIndex - 1] : null;
+            }
+
+            if (startIndex > 0)
+            {
+                Items[startIndex - 1].Next = endIndex < Count - 1 ? Items[endIndex + 1] : null;
+            }
+            
+            
+            if (endIndex < Count - 1)
+            {
+                Array.Copy(Items, endIndex + 1, Items, startIndex, Count - endIndex - 1);
+            }
+            
+            Count -= endIndex - startIndex + 1;
+        }
+
+        /// <summary>
+        /// Clear all ranges.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Clear()
+        {
+            Lock.EnterWriteLock();
+            Count = 0;
+            _quickAccess.Clear();
+            _fastQuickAccess.Clear();
+            Lock.ExitWriteLock();
+        }
+        
         /// <summary>
         /// Finds a list of regions that cover the desired (address, size) range.
         /// If this range starts or ends in the middle of an existing region, it is split and only the relevant part is added.
@@ -19,17 +298,18 @@ namespace Ryujinx.Memory.Range
         /// <param name="address">Start address of the search region</param>
         /// <param name="size">Size of the search region</param>
         /// <param name="factory">Factory for creating new ranges</param>
-        public void GetOrAddRegions(List<T> list, ulong address, ulong size, Func<ulong, ulong, T> factory)
+        public void GetOrAddRegions(out List<T> list, ulong address, ulong size, Func<ulong, ulong, T> factory)
         {
             // (regarding the specific case this generalized function is used for)
             // A new region may be split into multiple parts if multiple virtual regions have mapped to it.
             // For instance, while a virtual mapping could cover 0-2 in physical space, the space 0-1 may have already been reserved...
             // So we need to return both the split 0-1 and 1-2 ranges.
-
-            var results = new T[1];
-            int count = FindOverlapsNonOverlapping(address, size, ref results);
-
-            if (count == 0)
+            
+            Lock.EnterWriteLock();
+            (RangeItem<T> first, RangeItem<T> last) = FindOverlaps(address, size);
+            list = new List<T>();
+            
+            if (first is null)
             {
                 // The region is fully unmapped. Create and add it to the range list.
                 T region = factory(address, size);
@@ -41,13 +321,15 @@ namespace Ryujinx.Memory.Range
                 ulong lastAddress = address;
                 ulong endAddress = address + size;
 
-                for (int i = 0; i < count; i++)
+                RangeItem<T> current = first;
+                while (last is not null && current is not null && current.Address < endAddress)
                 {
-                    T region = results[i];
-                    if (count == 1 && region.Address == address && region.Size == size)
+                    T region = current.Value;
+                    if (first == last && region.Address == address && region.Size == size)
                     {
                         // Exact match, no splitting required.
                         list.Add(region);
+                        Lock.ExitWriteLock();
                         return;
                     }
 
@@ -75,6 +357,7 @@ namespace Ryujinx.Memory.Range
 
                     list.Add(region);
                     lastAddress = region.EndAddress;
+                    current = current.Next;
                 }
 
                 if (lastAddress < endAddress)
@@ -85,6 +368,8 @@ namespace Ryujinx.Memory.Range
                     Add(fillRegion);
                 }
             }
+            
+            Lock.ExitWriteLock();
         }
 
         /// <summary>
@@ -95,12 +380,121 @@ namespace Ryujinx.Memory.Range
         /// <param name="region">The region to split</param>
         /// <param name="splitAddress">The address to split with</param>
         /// <returns>The new region (high part)</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private T Split(T region, ulong splitAddress)
         {
             T newRegion = (T)region.Split(splitAddress);
             Update(region);
             Add(newRegion);
             return newRegion;
+        }
+        
+        /// <summary>
+        /// Gets an item on the list overlapping the specified memory range.
+        /// </summary>
+        /// <param name="address">Start address of the range</param>
+        /// <param name="size">Size in bytes of the range</param>
+        /// <returns>The leftmost overlapping item, or null if none is found</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override RangeItem<T> FindOverlap(ulong address, ulong size)
+        {
+            if (_quickAccess.TryGetValue(address, out RangeItem<T> overlap))
+            {
+                return overlap;
+            }
+            
+            int index = BinarySearchLeftEdge(address, address + size);
+
+            if (index < 0)
+            {
+                return null;
+            }
+
+            if (Items[index].Address < address)
+            {
+                _quickAccess.TryAdd(address, Items[index]);
+                Items[index].QuickAccessAddresses.Add(address);
+            }
+
+            return Items[index];
+        }
+        
+        /// <summary>
+        /// Gets an item on the list overlapping the specified memory range.
+        /// </summary>
+        /// <param name="address">Start address of the range</param>
+        /// <param name="size">Size in bytes of the range</param>
+        /// <returns>The overlapping item, or null if none is found</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override RangeItem<T> FindOverlapFast(ulong address, ulong size)
+        {
+            if (_quickAccess.TryGetValue(address, out RangeItem<T> overlap) || _fastQuickAccess.TryGetValue(address, out overlap))
+            {
+                return overlap;
+            }
+
+            int index = BinarySearch(address, address + size);
+
+            if (index < 0)
+            {
+                return null;
+            }
+            
+            if (Items[index].Address < address)
+            {
+                _quickAccess.TryAdd(address, Items[index]);
+            }
+            else
+            {
+                _fastQuickAccess.TryAdd(address, Items[index]);
+            }
+
+            Items[index].QuickAccessAddresses.Add(address);
+
+            return Items[index];
+        }
+        
+        /// <summary>
+        /// Gets all items on the list overlapping the specified memory range.
+        /// </summary>
+        /// <param name="address">Start address of the range</param>
+        /// <param name="size">Size in bytes of the range</param>
+        /// <returns>The first and last overlapping items, or null if none are found</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public (RangeItem<T>, RangeItem<T>) FindOverlaps(ulong address, ulong size)
+        {
+            if (_quickAccess.TryGetValue(address, out RangeItem<T> overlap))
+            {
+                if (overlap.Next is null || overlap.Next.Address >= address + size)
+                {
+                    return (overlap, overlap);
+                }
+                
+                return (overlap, Items[BinarySearchRightEdge(address, address + size)]);
+            }
+            
+            (int index, int endIndex) = BinarySearchEdges(address, address + size);
+
+            if (index < 0)
+            {
+                return (null, null);
+            }
+            
+            if (Items[index].Address < address)
+            {
+                _quickAccess.TryAdd(address, Items[index]);
+                Items[index].QuickAccessAddresses.Add(address);
+            }
+            
+            return (Items[index], Items[endIndex - 1]);
+        }
+
+        public override IEnumerator<T> GetEnumerator()
+        {
+            for (int i = 0; i < Count; i++)
+            {
+                yield return Items[i].Value;
+            }
         }
     }
 }
