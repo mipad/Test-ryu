@@ -22,33 +22,13 @@ namespace ARMeilleure.Translation
 {
     public class Translator
     {
-        private static readonly AddressTable<ulong>.Level[] _levels64Bit =
-            new AddressTable<ulong>.Level[]
-            {
-                new(31, 17),
-                new(23,  8),
-                new(15,  8),
-                new( 7,  8),
-                new( 2,  5),
-            };
-
-        private static readonly AddressTable<ulong>.Level[] _levels32Bit =
-            new AddressTable<ulong>.Level[]
-            {
-                new(31, 17),
-                new(23,  8),
-                new(15,  8),
-                new( 7,  8),
-                new( 1,  6),
-            };
-
         private readonly IJitMemoryAllocator _allocator;
         private readonly ConcurrentQueue<KeyValuePair<ulong, TranslatedFunction>> _oldFuncs;
 
         private readonly Ptc _ptc;
 
         internal TranslatorCache<TranslatedFunction> Functions { get; }
-        internal AddressTable<ulong> FunctionTable { get; }
+        internal IAddressTable<ulong> FunctionTable { get; }
         internal EntryTable<uint> CountTable { get; }
         internal TranslatorStubs Stubs { get; }
         internal TranslatorQueue Queue { get; }
@@ -57,7 +37,7 @@ namespace ARMeilleure.Translation
         private Thread[] _backgroundTranslationThreads;
         private volatile int _threadCount;
 
-        public Translator(IJitMemoryAllocator allocator, IMemoryManager memory, bool for64Bits)
+        public Translator(IJitMemoryAllocator allocator, IMemoryManager memory, IAddressTable<ulong> functionTable)
         {
             _allocator = allocator;
             Memory = memory;
@@ -72,15 +52,15 @@ namespace ARMeilleure.Translation
 
             CountTable = new EntryTable<uint>();
             Functions = new TranslatorCache<TranslatedFunction>();
-            FunctionTable = new AddressTable<ulong>(for64Bits ? _levels64Bit : _levels32Bit);
+            FunctionTable = functionTable;
             Stubs = new TranslatorStubs(FunctionTable);
 
             FunctionTable.Fill = (ulong)Stubs.SlowDispatchStub;
         }
 
-        public IPtcLoadState LoadDiskCache(string titleIdText, string displayVersion, bool enabled)
+        public IPtcLoadState LoadDiskCache(string titleIdText, string displayVersion, bool enabled, string cacheSelector)
         {
-            _ptc.Initialize(titleIdText, displayVersion, enabled, Memory.Type);
+            _ptc.Initialize(titleIdText, displayVersion, enabled, Memory.Type, cacheSelector);
             return _ptc;
         }
 
@@ -189,8 +169,6 @@ namespace ARMeilleure.Translation
 
             Statistics.StartTimer();
 
-            context.ResetCallDepth();
-            
             ulong nextAddr = func.Execute(Stubs.ContextWrapper, context);
 
             Statistics.StopTimer(address);
@@ -242,7 +220,7 @@ namespace ARMeilleure.Translation
             }
         }
 
-        internal TranslatedFunction Translate(ulong address, ExecutionMode mode, bool highCq, bool singleStep = false, bool pptcTranslation = false)
+        internal TranslatedFunction Translate(ulong address, ExecutionMode mode, bool highCq, bool singleStep = false)
         {
             var context = new ArmEmitterContext(
                 Memory,
@@ -262,8 +240,6 @@ namespace ARMeilleure.Translation
 
             Logger.StartPass(PassName.Translation);
 
-            InstEmitFlowHelper.EmitCallDepthCheckAndIncrement(context, Const(address));
-            
             EmitSynchronization(context);
 
             if (blocks[0].Address != address)
@@ -271,12 +247,7 @@ namespace ARMeilleure.Translation
                 context.Branch(context.GetLabel(address));
             }
 
-            ControlFlowGraph cfg = EmitAndGetCFG(context, blocks, out Range funcRange, out Counter<uint> counter, pptcTranslation);
-            
-            if (cfg == null)
-            {
-                return null;
-            }
+            ControlFlowGraph cfg = EmitAndGetCFG(context, blocks, out Range funcRange, out Counter<uint> counter);
 
             ulong funcSize = funcRange.End - funcRange.Start;
 
@@ -307,7 +278,7 @@ namespace ARMeilleure.Translation
                 _ptc.WriteCompiledFunction(address, funcSize, hash, highCq, compiledFunc);
             }
 
-            GuestFunction func = compiledFunc.MapWithPointer<GuestFunction>(out IntPtr funcPointer);
+            GuestFunction func = compiledFunc.MapWithPointer<GuestFunction>(out nint funcPointer);
 
             Allocators.ResetAll();
 
@@ -351,9 +322,7 @@ namespace ARMeilleure.Translation
             ArmEmitterContext context,
             Block[] blocks,
             out Range range,
-            out Counter<uint> counter,
-            bool pptcTranslation)
-
+            out Counter<uint> counter)
         {
             counter = null;
 
@@ -438,14 +407,6 @@ namespace ARMeilleure.Translation
                         if (opCode.Instruction.Emitter != null)
                         {
                             opCode.Instruction.Emitter(context);
-                            // if we're pre-compiling PPTC functions, 和 we hit an Undefined instruction as the first
-                            // instruction in the block, mark the function as blacklisted
-                            // this way, we don't pre-compile Exlaunch hooks, which allows ExeFS mods to run with PPTC 
-                            if (pptcTranslation && opCode.Instruction.Name == InstName.Und && blkIndex == 0)
-                            {
-                                range = new Range(rangeStart, rangeEnd);
-                                return null;
-                            }
                         }
                         else
                         {
