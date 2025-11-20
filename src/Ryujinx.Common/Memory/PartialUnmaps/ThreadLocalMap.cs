@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.InteropServices;
 using System.Threading;
 using static Ryujinx.Common.Memory.PartialUnmaps.PartialUnmapHelpers;
@@ -42,10 +43,13 @@ namespace Ryujinx.Common.Memory.PartialUnmaps
         public int GetOrReserve(int threadId, T initial)
         {
             // Try get a match first.
+            
+            Span<int> threadIdsSpan = ThreadIds.AsSpan();
+            Span<T> structsSpan = Structs.AsSpan();
 
             for (int i = 0; i < MapSize; i++)
             {
-                int compare = Interlocked.CompareExchange(ref ThreadIds[i], threadId, threadId);
+                int compare = Interlocked.CompareExchange(ref threadIdsSpan[i], threadId, threadId);
 
                 if (compare == threadId)
                 {
@@ -57,11 +61,11 @@ namespace Ryujinx.Common.Memory.PartialUnmaps
 
             for (int i = 0; i < MapSize; i++)
             {
-                int compare = Interlocked.CompareExchange(ref ThreadIds[i], threadId, 0);
+                int compare = Interlocked.CompareExchange(ref threadIdsSpan[i], threadId, 0);
 
                 if (compare == 0)
                 {
-                    Structs[i] = initial;
+                    structsSpan[i] = initial;
                     return i;
                 }
             }
