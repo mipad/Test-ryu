@@ -1,6 +1,8 @@
+using Ryujinx.Common;
 using Ryujinx.Common.Logging;
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using static Ryujinx.Memory.MemoryManagerUnixHelper;
@@ -9,23 +11,23 @@ namespace Ryujinx.Memory
 {
     [SupportedOSPlatform("linux")]
     [SupportedOSPlatform("macos")]
-    [SupportedOSPlatform("ios")]
     [SupportedOSPlatform("android")]
+    [SuppressMessage("Interoperability", "CA1416:Validate platform compatibility")]
     static class MemoryManagementUnix
     {
         private static readonly ConcurrentDictionary<IntPtr, ulong> _allocations = new();
 
         public static IntPtr Allocate(ulong size, bool forJit)
         {
-            return AllocateInternal(size, MmapProts.PROT_READ | MmapProts.PROT_WRITE, forJit, false);
+            return AllocateInternal(size, MmapProts.PROT_READ | MmapProts.PROT_WRITE, forJit);
         }
 
         public static IntPtr Reserve(ulong size, bool forJit)
         {
-            return AllocateInternal(size, MmapProts.PROT_NONE, forJit, false);
+            return AllocateInternal(size, MmapProts.PROT_NONE, forJit);
         }
 
-        private static IntPtr AllocateInternal(ulong size, MmapProts prot, bool forJit, bool shared)
+        private static IntPtr AllocateInternal(ulong size, MmapProts prot, bool forJit, bool shared = false)
         {
             MmapFlags flags = MmapFlags.MAP_ANONYMOUS;
 
@@ -140,7 +142,6 @@ namespace Ryujinx.Memory
         public unsafe static IntPtr CreateSharedMemory(ulong size, bool reserve)
         {
             int fd;
-            Logger.Debug?.Print(LogClass.Cpu, $"Operating System: {RuntimeInformation.OSDescription}");
 
             if (OperatingSystem.IsMacOS())
             {
@@ -160,7 +161,7 @@ namespace Ryujinx.Memory
                     }
                 }
             }
-            else if (Ryujinx.Common.PlatformInfo.IsBionic)
+            else if (PlatformInfo.IsBionic)
             {
                 byte[] memName = "Ryujinx-XXXXXX"u8.ToArray();
 
