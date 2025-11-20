@@ -1,6 +1,7 @@
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Gpu.Memory;
 using Ryujinx.Graphics.Shader;
+using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -76,9 +77,11 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed.ComputeDraw
         /// <param name="componentCount">Number of components that the format has</param>
         public void SetVertexStride(int index, int stride, int componentCount)
         {
-            if (_data.VertexStrides[index].X != stride)
+            Span<Vector4<int>> vertexStridesSpan = _data.VertexStrides.AsSpan();
+            
+            if (vertexStridesSpan[index].X != stride)
             {
-                _data.VertexStrides[index].X = stride;
+                vertexStridesSpan[index].X = stride;
                 MarkDirty(VertexInfoBuffer.VertexStridesOffset + index * Unsafe.SizeOf<Vector4<int>>(), sizeof(int));
             }
 
@@ -86,7 +89,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed.ComputeDraw
             {
                 int value = c < componentCount ? 1 : 0;
 
-                ref int currentValue = ref GetElementRef(ref _data.VertexStrides[index], c);
+                ref int currentValue = ref GetElementRef(ref vertexStridesSpan[index], c);
 
                 if (currentValue != value)
                 {
@@ -104,15 +107,17 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed.ComputeDraw
         /// <param name="divisor">If the draw is instanced, should have the vertex divisor value, otherwise should be zero</param>
         public void SetVertexOffset(int index, int offset, int divisor)
         {
-            if (_data.VertexOffsets[index].X != offset)
+            Span<Vector4<int>> vertexOffsetsSpan = _data.VertexOffsets.AsSpan();
+            
+            if (vertexOffsetsSpan[index].X != offset)
             {
-                _data.VertexOffsets[index].X = offset;
+                vertexOffsetsSpan[index].X = offset;
                 MarkDirty(VertexInfoBuffer.VertexOffsetsOffset + index * Unsafe.SizeOf<Vector4<int>>(), sizeof(int));
             }
 
-            if (_data.VertexOffsets[index].Y != divisor)
+            if (vertexOffsetsSpan[index].Y != divisor)
             {
-                _data.VertexOffsets[index].Y = divisor;
+                vertexOffsetsSpan[index].Y = divisor;
                 MarkDirty(VertexInfoBuffer.VertexOffsetsOffset + index * Unsafe.SizeOf<Vector4<int>>() + sizeof(int), sizeof(int));
             }
         }
