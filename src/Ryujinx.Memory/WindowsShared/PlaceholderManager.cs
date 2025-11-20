@@ -5,9 +5,28 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using System.Threading;
+using System.Collections.Generic;
 
 namespace Ryujinx.Memory.WindowsShared
-{
+{  
+    public class ObjectPool<T>
+    {
+        private readonly Stack<T> _objects;
+        private readonly Func<T> _objectGenerator;
+
+        public ObjectPool(Func<T> objectGenerator)
+        {
+            _objectGenerator = objectGenerator ?? throw new ArgumentNullException(nameof(objectGenerator));
+            _objects = new Stack<T>();
+        }
+
+        public T Get() => _objects.Count > 0 ? _objects.Pop() : _objectGenerator();
+
+        public void Return(T item) => _objects.Push(item);
+        
+        public void Clear() => _objects.Clear();
+    } 
+
     /// <summary>
     /// Windows memory placeholder manager.
     /// </summary>
@@ -18,6 +37,7 @@ namespace Ryujinx.Memory.WindowsShared
 
         private readonly MappingTree<ulong> _mappings;
         private readonly MappingTree<MemoryPermission> _protections;
+        private readonly ObjectPool<RangeNode<MemoryPermission>> _protectionObjectPool;
         private readonly IntPtr _partialUnmapStatePtr;
         private readonly Thread _partialUnmapTrimThread;
 
@@ -28,7 +48,9 @@ namespace Ryujinx.Memory.WindowsShared
         {
             _mappings = new MappingTree<ulong>();
             _protections = new MappingTree<MemoryPermission>();
-
+            
+            _protectionObjectPool = new ObjectPool<RangeNode<MemoryPermission>>(() => new RangeNode<MemoryPermission>());
+            
             _partialUnmapStatePtr = PartialUnmapState.GlobalState;
 
             _partialUnmapTrimThread = new Thread(TrimThreadLocalMapLoop)
@@ -70,12 +92,12 @@ namespace Ryujinx.Memory.WindowsShared
         {
             lock (_mappings)
             {
-                _mappings.Add(new RangeNode<ulong>(address, address + size, ulong.MaxValue));
+                _mappings.Add(new RangeNode<ulong>().Init(address, address + size, ulong.MaxValue));
             }
 
             lock (_protections)
             {
-                _protections.Add(new RangeNode<MemoryPermission>(address, address + size, MemoryPermission.None));
+                _protections.Add(_protectionObjectPool.Get().Init(address, address + size, MemoryPermission.None));
             }
         }
 
@@ -214,8 +236,8 @@ namespace Ryujinx.Memory.WindowsShared
                         (IntPtr)size,
                         AllocationType.Release | AllocationType.PreservePlaceholder));
 
-                    _mappings.Add(new RangeNode<ulong>(overlapStart, address, overlapValue));
-                    _mappings.Add(new RangeNode<ulong>(endAddress, overlapEnd, AddBackingOffset(overlapValue, endAddress - overlapStart)));
+                    _mappings.Add(new RangeNode<ulong>().Init(overlapStart, address, overlapValue));
+                    _mappings.Add(new RangeNode<ulong>().Init(endAddress, overlapEnd, AddBackingOffset(overlapValue, endAddress - overlapStart)));
                 }
                 else if (overlapStartsBefore)
                 {
@@ -226,7 +248,7 @@ namespace Ryujinx.Memory.WindowsShared
                         (IntPtr)overlappedSize,
                         AllocationType.Release | AllocationType.PreservePlaceholder));
 
-                    _mappings.Add(new RangeNode<ulong>(overlapStart, address, overlapValue));
+                    _mappings.Add(new RangeNode<ulong>().Init(overlapStart, address, overlapValue));
                 }
                 else if (overlapEndsAfter)
                 {
@@ -237,10 +259,10 @@ namespace Ryujinx.Memory.WindowsShared
                         (IntPtr)overlappedSize,
                         AllocationType.Release | AllocationType.PreservePlaceholder));
 
-                    _mappings.Add(new RangeNode<ulong>(endAddress, overlapEnd, AddBackingOffset(overlapValue, overlappedSize)));
+                    _mappings.Add(new RangeNode<ulong>().Init(endAddress, overlapEnd, AddBackingOffset(overlapValue, overlappedSize)));
                 }
 
-                _mappings.Add(new RangeNode<ulong>(address, endAddress, backingOffset));
+                _mappings.Add(new RangeNode<ulong>().Init(address, endAddress, backingOffset));
             }
         }
 
@@ -306,7 +328,7 @@ namespace Ryujinx.Memory.WindowsShared
                     lock (_mappings)
                     {
                         _mappings.Remove(overlap);
-                        _mappings.Add(new RangeNode<ulong>(overlap.Start, overlap.End, ulong.MaxValue));
+                        _mappings.Add(new RangeNode<ulong>().Init(overlap.Start, overlap.End, ulong.MaxValue));
                     }
 
                     bool overlapStartsBefore = overlap.Start < startAddress;
@@ -433,7 +455,7 @@ namespace Ryujinx.Memory.WindowsShared
                     unmappedCount++;
                 }
 
-                _mappings.Add(new RangeNode<ulong>(address, endAddress, ulong.MaxValue));
+                _mappings.Add(new RangeNode<ulong>().Init(address, endAddress, ulong.MaxValue));
             }
 
             if (unmappedCount > 1)
@@ -628,22 +650,24 @@ namespace Ryujinx.Memory.WindowsShared
                     {
                         if (startAddress > protAddress)
                         {
-                            _protections.Add(new RangeNode<MemoryPermission>(protAddress, startAddress, protPermission));
+                            _protections.Add(_protectionObjectPool.Get().Init(protAddress, startAddress, protPermission));
                         }
 
                         if (endAddress < protEndAddress)
                         {
-                            _protections.Add(new RangeNode<MemoryPermission>(endAddress, protEndAddress, protPermission));
+                            _protections.Add(_protectionObjectPool.Get().Init(endAddress, protEndAddress, protPermission));
                         }
                     }
 
+                    _protectionObjectPool.Return(protection);
+                    
                     if (node.End >= endAddress)
                     {
                         break;
                     }
                 }
 
-                _protections.Add(new RangeNode<MemoryPermission>(startAddress, endAddress, permission));
+                _protections.Add(_protectionObjectPool.Get().Init(startAddress, endAddress, permission));
             }
         }
 
@@ -674,13 +698,15 @@ namespace Ryujinx.Memory.WindowsShared
 
                     if (address > protAddress)
                     {
-                        _protections.Add(new RangeNode<MemoryPermission>(protAddress, address, protPermission));
+                        _protections.Add(_protectionObjectPool.Get().Init(protAddress, address, protPermission));
                     }
 
                     if (endAddress < protEndAddress)
                     {
-                        _protections.Add(new RangeNode<MemoryPermission>(endAddress, protEndAddress, protPermission));
+                        _protections.Add(_protectionObjectPool.Get().Init(endAddress, protEndAddress, protPermission));
                     }
+
+_protectionObjectPool.Return(protection);
 
                     if (node.End >= endAddress)
                     {
