@@ -59,7 +59,7 @@ namespace ARMeilleure.Translation.PTC
 
         private readonly ManualResetEvent _waitEvent;
 
-        private readonly object _lock = new();
+        private readonly Lock _lock = new();
 
         private bool _disposed;
 
@@ -251,8 +251,7 @@ namespace ARMeilleure.Translation.PTC
                     outerHeader.FeatureInfo != GetFeatureInfo() ||
                     outerHeader.MemoryManagerMode != GetMemoryManagerMode() ||
                     outerHeader.OSPlatform != GetOSPlatform() ||
-                    outerHeader.Architecture != (uint)RuntimeInformation.ProcessArchitecture ||
-                    outerHeader.DebuggerMode != Optimizations.EnableDebugging)
+                    outerHeader.Architecture != (uint)RuntimeInformation.ProcessArchitecture)
                 {
                     InvalidateCompressedStream(compressedStream);
 
@@ -428,7 +427,6 @@ namespace ARMeilleure.Translation.PTC
                 MemoryManagerMode = GetMemoryManagerMode(),
                 OSPlatform = GetOSPlatform(),
                 Architecture = (uint)RuntimeInformation.ProcessArchitecture,
-                DebuggerMode = Optimizations.EnableDebugging,
 
                 UncompressedStreamSize =
                 (long)Unsafe.SizeOf<InnerHeader>() +
@@ -1025,7 +1023,7 @@ namespace ARMeilleure.Translation.PTC
             return osPlatform;
         }
 
-        [StructLayout(LayoutKind.Sequential, Pack = 1/*, Size = 87*/)]
+        [StructLayout(LayoutKind.Sequential, Pack = 1/*, Size = 86*/)]
         private struct OuterHeader
         {
             public ulong Magic;
@@ -1037,7 +1035,6 @@ namespace ARMeilleure.Translation.PTC
             public byte MemoryManagerMode;
             public uint OSPlatform;
             public uint Architecture;
-            public bool DebuggerMode;
 
             public long UncompressedStreamSize;
 
