@@ -94,6 +94,8 @@ namespace Ryujinx.HLE.HOS.Services.Hid
             primaryIndex = PlayerIndex.Unknown;
             configuredCount = 0;
 
+            Span<NpadState> nPadsSpan = _device.Hid.SharedMemory.Npads.AsSpan();
+
             for (int i = 0; i < MaxControllers; ++i)
             {
                 ControllerType npad = _configuredTypes[i];
@@ -103,7 +105,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid
                     continue;
                 }
 
-                ControllerType currentType = (ControllerType)_device.Hid.SharedMemory.Npads[i].InternalState.StyleSet;
+                ControllerType currentType = (ControllerType)nPadsSpan[i].InternalState.StyleSet;
 
                 if (currentType != ControllerType.None && (npad & acceptedTypes) != 0 && _supportedPlayers[i])
                 {
@@ -123,7 +125,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid
             return true;
         }
 
-        public void Configure(params ControllerConfig[] configs)
+        public void Configure(params ReadOnlySpan<ControllerConfig> configs)
         {
             _configuredTypes = new ControllerType[MaxControllers];
 
