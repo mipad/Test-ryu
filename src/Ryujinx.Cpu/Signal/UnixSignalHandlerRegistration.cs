@@ -1,9 +1,12 @@
+using Ryujinx.Common;
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 
 namespace Ryujinx.Cpu.Signal
 {
+    [SuppressMessage("Interoperability", "CA1416:Validate platform compatibility")]
     static partial class UnixSignalHandlerRegistration
     {
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -68,7 +71,7 @@ namespace Ryujinx.Cpu.Signal
             int result;
             SigAction old;
 
-            if (Ryujinx.Common.PlatformInfo.IsBionic)
+            if (PlatformInfo.IsBionic)
             {
                 result = sigaction(SIGSEGV, IntPtr.Zero, out SigActionBionic tmp);
 
@@ -98,7 +101,7 @@ namespace Ryujinx.Cpu.Signal
             int result;
             SigAction old;
 
-            if (Ryujinx.Common.PlatformInfo.IsBionic)
+            if (PlatformInfo.IsBionic)
             {
                 SigActionBionic sig = new()
                 {
@@ -123,7 +126,7 @@ namespace Ryujinx.Cpu.Signal
                 SigAction sig = new SigAction
                 {
                     sa_handler = action,
-                    sa_flags = SA_SIGINFO | SA_ONSTACK,
+                    sa_flags = SA_SIGINFO,
                 };
 
                 sigemptyset(ref sig.sa_mask);
@@ -185,7 +188,7 @@ namespace Ryujinx.Cpu.Signal
         {
             int result;
 
-            if (Ryujinx.Common.PlatformInfo.IsBionic)
+            if (PlatformInfo.IsBionic)
             {
                 SigActionBionic sig = new()
                 {
@@ -233,7 +236,7 @@ namespace Ryujinx.Cpu.Signal
 
         public static bool RestoreExceptionHandler(SigAction oldAction)
         {
-            if (Ryujinx.Common.PlatformInfo.IsBionic)
+            if (PlatformInfo.IsBionic)
             {
                 SigActionBionic tmp = new SigActionBionic
                 {
