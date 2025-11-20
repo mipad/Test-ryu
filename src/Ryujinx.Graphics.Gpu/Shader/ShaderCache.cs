@@ -864,4 +864,3 @@ namespace Ryujinx.Graphics.Gpu.Shader
         }
     }
 }
-
