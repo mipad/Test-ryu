@@ -75,10 +75,12 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed.Blender
             {
                 bool constantsMatch = true;
 
+                Span<RgbHalf> blendUcodeConstantsSpan = _state.State.BlendUcodeConstants.AsSpan();
+
                 for (int i = 0; i < entry.Constants.Length; i++)
                 {
                     RgbFloat constant = entry.Constants[i];
-                    RgbHalf constant2 = _state.State.BlendUcodeConstants[i];
+                    RgbHalf constant2 = blendUcodeConstantsSpan[i];
 
                     if ((Half)constant.R != constant2.UnpackR() ||
                         (Half)constant.G != constant2.UnpackG() ||
