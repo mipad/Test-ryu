@@ -1,4 +1,4 @@
-using Ryujinx.Common;
+using Ryujinx.Common; 
 using Ryujinx.Graphics.GAL;
 using System;
 using System.Runtime.InteropServices;
