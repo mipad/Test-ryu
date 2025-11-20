@@ -1,3 +1,4 @@
+using ARMeilleure.Memory;
 using Ryujinx.Cpu.Signal;
 using Ryujinx.Common;
 using Ryujinx.Memory;
@@ -64,7 +65,7 @@ namespace Ryujinx.Cpu.Nce
         private static GetTpidrEl0 _getTpidrEl0;
 
         private readonly ITickSource _tickSource;
-        private readonly ICpuMemoryManager _memoryManager;
+        private readonly IMemoryManager _memoryManager;
 
         static NceCpuContext()
         {
@@ -94,7 +95,7 @@ namespace Ryujinx.Cpu.Nce
             _codeBlock = codeBlock;
         }
 
-        public NceCpuContext(ITickSource tickSource, ICpuMemoryManager memory, bool for64Bit)
+        public NceCpuContext(ITickSource tickSource, IMemoryManager memory, bool for64Bit)
         {
             _tickSource = tickSource;
             _memoryManager = memory;
@@ -126,9 +127,9 @@ namespace Ryujinx.Cpu.Nce
         }
 
         /// <inheritdoc/>
-        public IDiskCacheLoadState LoadDiskCache(string titleIdText, string displayVersion, bool enabled)
+        public IDiskCacheLoadState LoadDiskCache(string titleIdText, string displayVersion, bool enabled, string cacheSelector)
         {
-            return new DiskCacheLoadState();
+            return new DummyDiskCacheLoadState();
         }
 
         /// <inheritdoc/>
@@ -141,3 +142,4 @@ namespace Ryujinx.Cpu.Nce
         }
     }
 }
+
