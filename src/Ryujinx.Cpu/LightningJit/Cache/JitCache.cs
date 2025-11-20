@@ -35,7 +35,7 @@ namespace Ryujinx.Cpu.LightningJit.Cache
         private static readonly List<CacheEntry> _cacheEntries = [];
         private static readonly Dictionary<int, EntryUsageStats> _entryUsageStats = [];
 
-        private static readonly Lock _lock = new();
+        private static readonly object _lock = new();
         private static bool _initialized;
         private static int _cacheSize;
 
