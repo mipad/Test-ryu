@@ -105,7 +105,7 @@ namespace Ryujinx.Cpu.LightningJit.Cache
         private readonly MemoryCache _sharedCache;
         private readonly MemoryCache _localCache;
         private readonly PageAlignedRangeList _pendingMap;
-        private readonly Lock _lock = new();
+        private readonly object _lock = new();
 
         class ThreadLocalCacheEntry
         {
