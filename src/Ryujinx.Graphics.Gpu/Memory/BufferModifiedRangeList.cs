@@ -72,7 +72,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
     /// </summary>
     class BufferModifiedRangeList : NonOverlappingRangeList<BufferModifiedRange>
     {
-        private new const int BackingInitialSize = 8;
+        private const int BackingInitialSize = 8;
 
         private readonly GpuContext _context;
         private readonly Buffer _parent;
@@ -80,6 +80,8 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
         private BufferMigration _source;
         private BufferModifiedRangeList _migrationTarget;
+        
+        private List<RangeItem<BufferModifiedRange>> _overlaps;
 
         /// <summary>
         /// Whether the modified range list has any entries or not.
@@ -106,6 +108,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             _context = context;
             _parent = parent;
             _flushAction = flushAction;
+            _overlaps = [];
         }
 
         /// <summary>
@@ -295,23 +298,24 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="rangeAction">The action to call for each modified range</param>
         public void GetRanges(ulong address, ulong size, Action<ulong, ulong> rangeAction)
         {
-            List<RangeItem<BufferModifiedRange>> overlaps = [];
-            
             // We use the non-span method here because keeping the lock will cause a deadlock.
             Lock.EnterReadLock();
+            
+            _overlaps.Clear();
+            
             (RangeItem<BufferModifiedRange> first, RangeItem<BufferModifiedRange> last) = FindOverlaps(address, size);
             
             RangeItem<BufferModifiedRange> current = first;
             while (last != null && current != last.Next)
             {
-                overlaps.Add(current);
+                _overlaps.Add(current);
                 current = current.Next;
             }
             Lock.ExitReadLock();
 
-            for (int i = 0; i < overlaps.Count; i++)
+            for (int i = 0; i < _overlaps.Count; i++)
             {
-                BufferModifiedRange overlap = overlaps[i].Value;
+                BufferModifiedRange overlap = _overlaps[i].Value;
                 rangeAction(overlap.Address, overlap.Size);
             }
         }
