@@ -242,22 +242,22 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="rhs">Second struct</param>
         /// <returns>True if equal, false otherwise</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool UnsafeEquals32Byte<T>(ref T lhs, ref T rhs) where T : unmanaged
+        private static bool UnsafeEquals32Byte<T>(Span<T> lhs, Span<T> rhs) where T : unmanaged
         {
             if (Vector256.IsHardwareAccelerated)
             {
                 return Vector256.EqualsAll(
-                    Unsafe.As<T, Vector256<uint>>(ref lhs),
-                    Unsafe.As<T, Vector256<uint>>(ref rhs)
+                    Unsafe.As<Span<T>, ReadOnlySpan<Vector256<uint>>>(ref lhs)[0],
+                    Unsafe.As<Span<T>, ReadOnlySpan<Vector256<uint>>>(ref rhs)[0]
                 );
             }
             else
             {
-                ref var lhsVec = ref Unsafe.As<T, Vector128<uint>>(ref lhs);
-                ref var rhsVec = ref Unsafe.As<T, Vector128<uint>>(ref rhs);
+                var lhsVec = Unsafe.As<Span<T>, ReadOnlySpan<Vector128<uint>>>(ref lhs);
+                var rhsVec = Unsafe.As<Span<T>, ReadOnlySpan<Vector128<uint>>>(ref rhs);
 
-                return Vector128.EqualsAll(lhsVec, rhsVec) &&
-                    Vector128.EqualsAll(Unsafe.Add(ref lhsVec, 1), Unsafe.Add(ref rhsVec, 1));
+                return Vector128.EqualsAll(lhsVec[0], rhsVec[0]) &&
+                    Vector128.EqualsAll(lhsVec[1], rhsVec[1]);
             }
         }
 
@@ -265,26 +265,26 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// Updates blend enable. Respects current shadow mode.
         /// </summary>
         /// <param name="masks">Blend enable</param>
-        public void UpdateBlendEnable(ref Array8<Boolean32> enable)
+        public void UpdateBlendEnable(Span<Boolean32> enable)
         {
             var shadow = ShadowMode;
-            ref var state = ref _state.State.BlendEnable;
+            var state = _state.State.BlendEnable.AsSpan();
 
             if (shadow.IsReplay())
             {
-                enable = _state.ShadowState.BlendEnable;
+                state.CopyTo(enable);
             }
 
-            if (!UnsafeEquals32Byte(ref enable, ref state))
+            if (!UnsafeEquals32Byte(enable, state))
             {
-                state = enable;
+                enable.CopyTo(state);
 
                 _stateUpdater.ForceDirty(StateUpdater.BlendStateIndex);
             }
 
             if (shadow.IsTrack())
             {
-                _state.ShadowState.BlendEnable = enable;
+                enable.CopyTo(state);
             }
         }
 
@@ -292,26 +292,26 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// Updates color masks. Respects current shadow mode.
         /// </summary>
         /// <param name="masks">Color masks</param>
-        public void UpdateColorMasks(ref Array8<RtColorMask> masks)
+        public void UpdateColorMasks(Span<RtColorMask> masks)
         {
             var shadow = ShadowMode;
-            ref var state = ref _state.State.RtColorMask;
+            var state = _state.State.RtColorMask.AsSpan();
 
             if (shadow.IsReplay())
             {
-                masks = _state.ShadowState.RtColorMask;
+                state.CopyTo(masks);
             }
 
-            if (!UnsafeEquals32Byte(ref masks, ref state))
+            if (!UnsafeEquals32Byte(masks, state))
             {
-                state = masks;
+                masks.CopyTo(state);
 
                 _stateUpdater.ForceDirty(StateUpdater.RtColorMaskIndex);
             }
 
             if (shadow.IsTrack())
             {
-                _state.ShadowState.RtColorMask = masks;
+                masks.CopyTo(state);
             }
         }
 
