@@ -247,14 +247,14 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
             if (Vector256.IsHardwareAccelerated)
             {
                 return Vector256.EqualsAll(
-                    Unsafe.As<Span<T>, ReadOnlySpan<Vector256<uint>>>(ref lhs)[0],
-                    Unsafe.As<Span<T>, ReadOnlySpan<Vector256<uint>>>(ref rhs)[0]
+                    Unsafe.As<T, Vector256<uint>>(ref lhs),
+                    Unsafe.As<T, Vector256<uint>>(ref rhs)
                 );
             }
             else
             {
-                var lhsVec = Unsafe.As<Span<T>, ReadOnlySpan<Vector128<uint>>>(ref lhs);
-                var rhsVec = Unsafe.As<Span<T>, ReadOnlySpan<Vector128<uint>>>(ref rhs);
+                ref var lhsVec = ref Unsafe.As<T, Vector128<uint>>(ref lhs);
+                ref var rhsVec = ref Unsafe.As<T, Vector128<uint>>(ref rhs);
 
                 return Vector128.EqualsAll(lhsVec[0], rhsVec[0]) &&
                     Vector128.EqualsAll(lhsVec[1], rhsVec[1]);
@@ -848,4 +848,5 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         }
     }
 }
+
 
