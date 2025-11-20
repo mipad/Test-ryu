@@ -1,9 +1,11 @@
 using Ryujinx.Common.SystemInterop;
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 
 namespace Ryujinx.Common.PreciseSleep
 {
+    [SuppressMessage("Interoperability", "CA1416:Validate platform compatibility")]
     public static class PreciseSleepHelper
     {
         /// <summary>
@@ -12,7 +14,8 @@ namespace Ryujinx.Common.PreciseSleep
         /// <returns>A precise sleep event</returns>
         public static IPreciseSleepEvent CreateEvent()
         {
-            if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsIOS() || OperatingSystem.IsAndroid())
+            if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsIOS() ||
+                OperatingSystem.IsAndroid() || PlatformInfo.IsBionic)
             {
                 return new NanosleepEvent();
             }
@@ -52,7 +55,8 @@ namespace Ryujinx.Common.PreciseSleep
                     evt.WaitOne((int)ms);
                 }
 
-                if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsIOS() || OperatingSystem.IsAndroid())
+                if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsIOS() ||
+                    OperatingSystem.IsAndroid() || PlatformInfo.IsBionic)
                 {
                     // Do a nanosleep.
                     now = PerformanceCounter.ElapsedTicks;
