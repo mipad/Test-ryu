@@ -73,7 +73,7 @@ namespace Ryujinx.HLE.HOS.Services.Sockets.Sfdnsres.Types
             {
                 // Nintendo hardcode 4 bytes in that case here.
                 Array4<byte> address = MemoryMarshal.Read<Array4<byte>>(buffer);
-                AddrInfo4.RawIpv4AddressNetworkEndianSwap(ref address);
+                AddrInfo4.RawIpv4AddressNetworkEndianSwap(address.AsSpan());
 
                 rawIPv4Address = address;
 
@@ -115,7 +115,7 @@ namespace Ryujinx.HLE.HOS.Services.Sockets.Sfdnsres.Types
             else
             {
                 Array4<byte> rawIPv4Address = RawIPv4Address.Value;
-                AddrInfo4.RawIpv4AddressNetworkEndianSwap(ref rawIPv4Address);
+                AddrInfo4.RawIpv4AddressNetworkEndianSwap(rawIPv4Address.AsSpan());
 
                 MemoryMarshal.Write(buffer, in rawIPv4Address);
 
