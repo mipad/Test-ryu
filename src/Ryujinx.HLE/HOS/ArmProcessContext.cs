@@ -3,7 +3,6 @@ using Ryujinx.Cpu;
 using Ryujinx.Graphics.Gpu;
 using Ryujinx.HLE.HOS.Kernel.Process;
 using Ryujinx.Memory;
-using System;
 
 namespace Ryujinx.HLE.HOS
 {
@@ -18,7 +17,7 @@ namespace Ryujinx.HLE.HOS
             string cacheSelector);
     }
 
-    class ArmProcessContext<T> : IArmProcessContext where T : class, IVirtualMemoryManagerTracked, IMemoryManager
+    class ArmProcessContext<T> : IArmProcessContext where T : class, IVirtualMemoryManagerTracked, ICpuMemoryManager
     {
         private readonly ulong _pid;
         private readonly GpuContext _gpuContext;
@@ -27,7 +26,7 @@ namespace Ryujinx.HLE.HOS
 
         public ulong ReservedSize { get; }
 
-        public IVirtualMemoryManager AddressSpace => ICpuMemoryManager;
+        public IVirtualMemoryManager AddressSpace => _memoryManager;
 
         public ulong AddressSpaceSize { get; }
 
@@ -98,4 +97,3 @@ namespace Ryujinx.HLE.HOS
         }
     }
 }
-
