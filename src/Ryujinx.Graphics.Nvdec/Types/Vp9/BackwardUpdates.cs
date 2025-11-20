@@ -1,5 +1,6 @@
 using Ryujinx.Common.Memory;
 using Ryujinx.Graphics.Video;
+using System;
 
 namespace Ryujinx.Graphics.Nvdec.Types.Vp9
 {
@@ -33,15 +34,24 @@ namespace Ryujinx.Graphics.Nvdec.Types.Vp9
         public BackwardUpdates(ref Vp9BackwardUpdates counts)
         {
             InterModeCounts = new Array7<Array3<Array2<uint>>>();
+            
+            Span<Array3<Array2<uint>>> interModeCountsSpan1 = InterModeCounts.AsSpan();
+            Span<Array4<uint>> interModeSpan1 = counts.InterMode.AsSpan();
 
             for (int i = 0; i < 7; i++)
             {
-                InterModeCounts[i][0][0] = counts.InterMode[i][2];
-                InterModeCounts[i][0][1] = counts.InterMode[i][0] + counts.InterMode[i][1] + counts.InterMode[i][3];
-                InterModeCounts[i][1][0] = counts.InterMode[i][0];
-                InterModeCounts[i][1][1] = counts.InterMode[i][1] + counts.InterMode[i][3];
-                InterModeCounts[i][2][0] = counts.InterMode[i][1];
-                InterModeCounts[i][2][1] = counts.InterMode[i][3];
+                Span<Array2<uint>> interModeCountsSpan2 = interModeCountsSpan1[i].AsSpan();
+                Span<uint> interModeCountsSpan20 = interModeCountsSpan2[0].AsSpan();
+                Span<uint> interModeCountsSpan21 = interModeCountsSpan2[1].AsSpan();
+                Span<uint> interModeCountsSpan22 = interModeCountsSpan2[2].AsSpan();
+                Span<uint> interModeSpan2 = interModeSpan1[i].AsSpan();
+                
+                interModeCountsSpan20[0] = interModeSpan2[2];
+                interModeCountsSpan20[1] = interModeSpan2[0] + interModeSpan2[1] + interModeSpan2[3];
+                interModeCountsSpan21[0] = interModeSpan2[0];
+                interModeCountsSpan21[1] = interModeSpan2[1] + interModeSpan2[3];
+                interModeCountsSpan22[0] = interModeSpan2[1];
+                interModeCountsSpan22[1] = interModeSpan2[3];
             }
 
             YModeCounts = counts.YMode;
