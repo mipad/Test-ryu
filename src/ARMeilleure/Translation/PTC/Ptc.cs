@@ -30,7 +30,7 @@ namespace ARMeilleure.Translation.PTC
         private const string OuterHeaderMagicString = "PTCohd\0\0";
         private const string InnerHeaderMagicString = "PTCihd\0\0";
 
-        private const uint InternalVersion = 7008; //! To be incremented manually for each change to the ARMeilleure project.
+        private const uint InternalVersion = 7010; //! To be incremented manually for each change to the ARMeilleure project.
 
         private const string ActualDir = "0";
         private const string BackupDir = "1";
@@ -59,7 +59,7 @@ namespace ARMeilleure.Translation.PTC
 
         private readonly ManualResetEvent _waitEvent;
 
-        private readonly object _lock = new();
+        private readonly Lock _lock = new();
 
         private bool _disposed;
 
@@ -244,56 +244,15 @@ namespace ARMeilleure.Translation.PTC
             {
                 OuterHeader outerHeader = DeserializeStructure<OuterHeader>(compressedStream);
 
-                if (!outerHeader.IsHeaderValid())
-                {
-                    InvalidateCompressedStream(compressedStream);
-
-                    return false;
-                }
-
-                if (outerHeader.Magic != _outerHeaderMagic)
-                {
-                    InvalidateCompressedStream(compressedStream);
-
-                    return false;
-                }
-
-                if (outerHeader.CacheFileVersion != InternalVersion)
-                {
-                    InvalidateCompressedStream(compressedStream);
-
-                    return false;
-                }
-
-                if (outerHeader.Endianness != GetEndianness())
-                {
-                    InvalidateCompressedStream(compressedStream);
-
-                    return false;
-                }
-
-                if (outerHeader.FeatureInfo != GetFeatureInfo())
-                {
-                    InvalidateCompressedStream(compressedStream);
-
-                    return false;
-                }
-
-                if (outerHeader.MemoryManagerMode != GetMemoryManagerMode())
-                {
-                    InvalidateCompressedStream(compressedStream);
-
-                    return false;
-                }
-
-                if (outerHeader.OSPlatform != GetOSPlatform())
-                {
-                    InvalidateCompressedStream(compressedStream);
-
-                    return false;
-                }
-
-                if (outerHeader.Architecture != (uint)RuntimeInformation.ProcessArchitecture)
+                if (!outerHeader.IsHeaderValid() ||
+                    outerHeader.Magic != _outerHeaderMagic ||
+                    outerHeader.CacheFileVersion != InternalVersion ||
+                    outerHeader.Endianness != GetEndianness() ||
+                    outerHeader.FeatureInfo != GetFeatureInfo() ||
+                    outerHeader.MemoryManagerMode != GetMemoryManagerMode() ||
+                    outerHeader.OSPlatform != GetOSPlatform() ||
+                    outerHeader.Architecture != (uint)RuntimeInformation.ProcessArchitecture ||
+                    outerHeader.DebuggerMode != Optimizations.EnableDebugging)
                 {
                     InvalidateCompressedStream(compressedStream);
 
@@ -324,14 +283,7 @@ namespace ARMeilleure.Translation.PTC
 
                     InnerHeader innerHeader = DeserializeStructure<InnerHeader>(stream);
 
-                    if (!innerHeader.IsHeaderValid())
-                    {
-                        InvalidateCompressedStream(compressedStream);
-
-                        return false;
-                    }
-
-                    if (innerHeader.Magic != _innerHeaderMagic)
+                    if (!innerHeader.IsHeaderValid() || innerHeader.Magic != _innerHeaderMagic)
                     {
                         InvalidateCompressedStream(compressedStream);
 
@@ -476,6 +428,7 @@ namespace ARMeilleure.Translation.PTC
                 MemoryManagerMode = GetMemoryManagerMode(),
                 OSPlatform = GetOSPlatform(),
                 Architecture = (uint)RuntimeInformation.ProcessArchitecture,
+                DebuggerMode = Optimizations.EnableDebugging,
 
                 UncompressedStreamSize =
                 (long)Unsafe.SizeOf<InnerHeader>() +
@@ -1072,7 +1025,7 @@ namespace ARMeilleure.Translation.PTC
             return osPlatform;
         }
 
-        [StructLayout(LayoutKind.Sequential, Pack = 1/*, Size = 86*/)]
+        [StructLayout(LayoutKind.Sequential, Pack = 1/*, Size = 87*/)]
         private struct OuterHeader
         {
             public ulong Magic;
@@ -1084,6 +1037,7 @@ namespace ARMeilleure.Translation.PTC
             public byte MemoryManagerMode;
             public uint OSPlatform;
             public uint Architecture;
+            public bool DebuggerMode;
 
             public long UncompressedStreamSize;
 
@@ -1166,8 +1120,7 @@ namespace ARMeilleure.Translation.PTC
 
         public void Close()
         {
-            if (State == PtcState.Enabled ||
-                State == PtcState.Continuing)
+            if (State is PtcState.Enabled or PtcState.Continuing)
             {
                 State = PtcState.Closing;
             }
