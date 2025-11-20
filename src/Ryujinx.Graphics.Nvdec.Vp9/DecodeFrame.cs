@@ -12,14 +12,127 @@ using System.Threading.Tasks;
 
 namespace Ryujinx.Graphics.Nvdec.Vp9
 {
-    static class DecodeFrame
+    internal static class DecodeFrame
     {
         private static bool ReadIsValid(ArrayPtr<byte> start, int len)
         {
             return len != 0 && len <= start.Length;
         }
 
-        private static void InverseTransformBlockInter(ref MacroBlockD xd, int plane, TxSize txSize, Span<byte> dst, int stride, int eob)
+        private static void ReadTxModeProbs(ref Vp9EntropyProbs txProbs, ref Reader r)
+        {
+            Span<Array1<byte>> tx8x8ProbSpan1 = txProbs.Tx8x8Prob.AsSpan();
+            Span<Array2<byte>> tx16x16ProbSpan1 = txProbs.Tx16x16Prob.AsSpan();
+            Span<Array3<byte>> tx32x32ProbSpan1 = txProbs.Tx32x32Prob.AsSpan();
+            
+            for (int i = 0; i < EntropyMode.TxSizeContexts; ++i)
+            {
+                Span<byte> tx8x8ProbSpan2 = tx8x8ProbSpan1[i].AsSpan();
+                
+                for (int j = 0; j < (int)TxSize.TxSizes - 3; ++j)
+                {
+                    r.DiffUpdateProb(ref tx8x8ProbSpan2[j]);
+                }
+            }
+
+            for (int i = 0; i < EntropyMode.TxSizeContexts; ++i)
+            {
+                Span<byte> tx16x16ProbSpan2 = tx16x16ProbSpan1[i].AsSpan();
+                
+                for (int j = 0; j < (int)TxSize.TxSizes - 2; ++j)
+                {
+                    r.DiffUpdateProb(ref tx16x16ProbSpan2[j]);
+                }
+            }
+
+            for (int i = 0; i < EntropyMode.TxSizeContexts; ++i)
+            {
+                Span<byte> tx32x32ProbSpan2 = tx32x32ProbSpan1[i].AsSpan();
+                
+                for (int j = 0; j < (int)TxSize.TxSizes - 1; ++j)
+                {
+                    r.DiffUpdateProb(ref tx32x32ProbSpan2[j]);
+                }
+            }
+        }
+
+        private static void ReadSwitchableInterpProbs(ref Vp9EntropyProbs fc, ref Reader r)
+        {
+            Span<Array2<byte>> switchableInterpProbSpan1 = fc.SwitchableInterpProb.AsSpan();
+            
+            for (int i = 0; i < Constants.SwitchableFilterContexts; ++i)
+            {
+                Span<byte> switchableInterpProbSpan2 = switchableInterpProbSpan1[i].AsSpan();
+                
+                for (int j = 0; j < Constants.SwitchableFilters - 1; ++j)
+                {
+                    r.DiffUpdateProb(ref switchableInterpProbSpan2[j]);
+                }
+            }
+        }
+
+        private static void ReadInterModeProbs(ref Vp9EntropyProbs fc, ref Reader r)
+        {
+            Span<Array3<byte>> interModeProbSpan1 = fc.InterModeProb.AsSpan();
+            
+            for (int i = 0; i < Constants.InterModeContexts; ++i)
+            {
+                Span<byte> interModeProbSpan2 = interModeProbSpan1[i].AsSpan();
+                
+                for (int j = 0; j < Constants.InterModes - 1; ++j)
+                {
+                    r.DiffUpdateProb(ref interModeProbSpan2[j]);
+                }
+            }
+        }
+
+        private static void ReadMvProbs(ref Vp9EntropyProbs ctx, bool allowHp, ref Reader r)
+        {
+            r.UpdateMvProbs(ctx.Joints.AsSpan(), EntropyMv.Joints - 1);
+
+            Span<byte> signSpan = ctx.Sign.AsSpan();
+            Span<Array10<byte>> classesSpan = ctx.Classes.AsSpan();
+            Span<Array1<byte>> class0Span = ctx.Class0.AsSpan();
+            Span<Array10<byte>> bitsSpan = ctx.Bits.AsSpan();
+
+            for (int i = 0; i < 2; ++i)
+            {
+                r.UpdateMvProbs(MemoryMarshal.CreateSpan(ref signSpan[i], 1), 1);
+                r.UpdateMvProbs(classesSpan[i].AsSpan(), EntropyMv.Classes - 1);
+                r.UpdateMvProbs(class0Span[i].AsSpan(), EntropyMv.Class0Size - 1);
+                r.UpdateMvProbs(bitsSpan[i].AsSpan(), EntropyMv.OffsetBits);
+            }
+            
+            Span<Array2<Array3<byte>>> class0FpSpan1 = ctx.Class0Fp.AsSpan();
+            Span<Array3<byte>> fpSpan = ctx.Fp.AsSpan();
+
+            for (int i = 0; i < 2; ++i)
+            {
+                Span<Array3<byte>> class0FpSpan2 = class0FpSpan1[i].AsSpan();
+                
+                for (int j = 0; j < EntropyMv.Class0Size; ++j)
+                {
+                    r.UpdateMvProbs(class0FpSpan2[j].AsSpan(), EntropyMv.FpSize - 1);
+                }
+
+                r.UpdateMvProbs(fpSpan[i].AsSpan(), 3);
+            }
+
+            if (allowHp)
+            {
+                Span<byte> class0HpSpan = ctx.Class0Hp.AsSpan();
+                Span<byte> hpSpan = ctx.Hp.AsSpan();
+                
+                for (int i = 0; i < 2; ++i)
+                {
+                    r.UpdateMvProbs(MemoryMarshal.CreateSpan(ref class0HpSpan[i], 1), 1);
+                    r.UpdateMvProbs(MemoryMarshal.CreateSpan(ref hpSpan[i], 1), 1);
+                }
+            }
+        }
+
+        private static void InverseTransformBlockInter(ref MacroBlockD xd, int plane, TxSize txSize, Span<byte> dst,
+            int stride, int eob)
         {
             ref MacroBlockDPlane pd = ref xd.Plane[plane];
             ArrayPtr<int> dqcoeff = pd.DqCoeff;
@@ -90,15 +203,15 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             {
                 if (txSize <= TxSize.Tx16x16 && eob <= 10)
                 {
-                    dqcoeff.AsSpan()[..(4 * (4 << (int)txSize))].Clear();
+                    dqcoeff.AsSpan().Slice(0, 4 * (4 << (int)txSize)).Clear();
                 }
                 else if (txSize == TxSize.Tx32x32 && eob <= 34)
                 {
-                    dqcoeff.AsSpan()[..256].Clear();
+                    dqcoeff.AsSpan().Slice(0, 256).Clear();
                 }
                 else
                 {
-                    dqcoeff.AsSpan()[..(16 << ((int)txSize << 1))].Clear();
+                    dqcoeff.AsSpan().Slice(0, 16 << ((int)txSize << 1)).Clear();
                 }
             }
         }
@@ -181,15 +294,15 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             {
                 if (txType == TxType.DctDct && txSize <= TxSize.Tx16x16 && eob <= 10)
                 {
-                    dqcoeff.AsSpan()[..(4 * (4 << (int)txSize))].Clear();
+                    dqcoeff.AsSpan().Slice(0, 4 * (4 << (int)txSize)).Clear();
                 }
                 else if (txSize == TxSize.Tx32x32 && eob <= 34)
                 {
-                    dqcoeff.AsSpan()[..256].Clear();
+                    dqcoeff.AsSpan().Slice(0, 256).Clear();
                 }
                 else
                 {
-                    dqcoeff.AsSpan()[..(16 << ((int)txSize << 1))].Clear();
+                    dqcoeff.AsSpan().Slice(0, 16 << ((int)txSize << 1)).Clear();
                 }
             }
         }
@@ -204,10 +317,10 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
         {
             ref MacroBlockD xd = ref twd.Xd;
             ref MacroBlockDPlane pd = ref xd.Plane[plane];
-            PredictionMode mode = (plane == 0) ? mi.Mode : mi.UvMode;
-            int dstOffset = 4 * row * pd.Dst.Stride + 4 * col;
+            PredictionMode mode = plane == 0 ? mi.Mode : mi.UvMode;
+            int dstOffset = (4 * row * pd.Dst.Stride) + (4 * col);
             byte* dst = &pd.Dst.Buf.ToPointer()[dstOffset];
-            Span<byte> dstSpan = pd.Dst.Buf.AsSpan()[dstOffset..];
+            Span<byte> dstSpan = pd.Dst.Buf.AsSpan().Slice(dstOffset);
 
             if (mi.SbType < BlockSize.Block8x8)
             {
@@ -217,15 +330,16 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
                 }
             }
 
-            ReconIntra.PredictIntraBlock(ref xd, pd.N4Wl, txSize, mode, dst, pd.Dst.Stride, dst, pd.Dst.Stride, col, row, plane);
+            ReconIntra.PredictIntraBlock(ref xd, pd.N4Wl, txSize, mode, dst, pd.Dst.Stride, dst, pd.Dst.Stride, col,
+                row, plane);
 
             if (mi.Skip == 0)
             {
                 TxType txType =
-                    (plane != 0 || xd.Lossless) ? TxType.DctDct : ReconIntra.IntraModeToTxTypeLookup[(int)mode];
-                var sc = (plane != 0 || xd.Lossless)
-                    ? Luts.Vp9DefaultScanOrders[(int)txSize]
-                    : Luts.Vp9ScanOrders[(int)txSize][(int)txType];
+                    plane != 0 || xd.Lossless ? TxType.DctDct : ReconIntra.IntraModeToTxTypeLookup[(int)mode];
+                Luts.ScanOrder sc = plane != 0 || xd.Lossless
+                    ? Luts.DefaultScanOrders[(int)txSize]
+                    : Luts.ScanOrders[(int)txSize][(int)txType];
                 int eob = Detokenize.DecodeBlockTokens(ref twd, plane, sc, col, row, txSize, mi.SegmentId);
                 if (eob > 0)
                 {
@@ -244,14 +358,15 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
         {
             ref MacroBlockD xd = ref twd.Xd;
             ref MacroBlockDPlane pd = ref xd.Plane[plane];
-            var sc = Luts.Vp9DefaultScanOrders[(int)txSize];
+            Luts.ScanOrder sc = Luts.DefaultScanOrders[(int)txSize];
             int eob = Detokenize.DecodeBlockTokens(ref twd, plane, sc, col, row, txSize, mi.SegmentId);
-            Span<byte> dst = pd.Dst.Buf.AsSpan()[(4 * row * pd.Dst.Stride + 4 * col)..];
+            Span<byte> dst = pd.Dst.Buf.AsSpan().Slice((4 * row * pd.Dst.Stride) + (4 * col));
 
             if (eob > 0)
             {
                 InverseTransformBlockInter(ref xd, plane, txSize, dst, pd.Dst.Stride, eob);
             }
+
             return eob;
         }
 
@@ -268,7 +383,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             int h)
         {
             // Get a pointer to the start of the real data for this row.
-            byte* refRow = src - x - y * srcStride;
+            byte* refRow = src - x - (y * srcStride);
 
             if (y >= h)
             {
@@ -340,7 +455,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
         {
             // Get a pointer to the start of the real data for this row.
             ushort* src = (ushort*)src8;
-            ushort* refRow = src - x - y * srcStride;
+            ushort* refRow = src - x - (y * srcStride);
 
             if (y >= h)
             {
@@ -483,9 +598,9 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             int refr)
         {
             ref MacroBlockDPlane pd = ref xd.Plane[plane];
-            byte* dst = dstBuf.Buf.ToPointer() + dstBuf.Stride * y + x;
+            byte* dst = dstBuf.Buf.ToPointer() + (dstBuf.Stride * y) + x;
             Mv32 scaledMv;
-            int xs, ys, x0, y0, x0_16, y0_16, frameWidth, frameHeight, bufStride, subpelX, subpelY;
+            int xs, ys, x0, y0, x016, y016, frameWidth, frameHeight, bufStride, subpelX, subpelY;
             byte* refFrame;
             byte* bufPtr;
 
@@ -507,16 +622,16 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             {
                 Mv mvQ4 = ReconInter.ClampMvToUmvBorderSb(ref xd, ref mv, bw, bh, pd.SubsamplingX, pd.SubsamplingY);
                 // Co-ordinate of containing block to pixel precision.
-                int xStart = (-xd.MbToLeftEdge >> (3 + pd.SubsamplingX));
-                int yStart = (-xd.MbToTopEdge >> (3 + pd.SubsamplingY));
+                int xStart = -xd.MbToLeftEdge >> (3 + pd.SubsamplingX);
+                int yStart = -xd.MbToTopEdge >> (3 + pd.SubsamplingY);
                 // Co-ordinate of the block to 1/16th pixel precision.
-                x0_16 = (xStart + x) << Filter.SubpelBits;
-                y0_16 = (yStart + y) << Filter.SubpelBits;
+                x016 = (xStart + x) << Filter.SubpelBits;
+                y016 = (yStart + y) << Filter.SubpelBits;
 
                 // Co-ordinate of current block in reference frame
                 // to 1/16th pixel precision.
-                x0_16 = sf.ScaleValueX(x0_16);
-                y0_16 = sf.ScaleValueY(y0_16);
+                x016 = sf.ScaleValueX(x016);
+                y016 = sf.ScaleValueY(y016);
 
                 // Map the top left corner of the block into the reference frame.
                 x0 = sf.ScaleValueX(xStart + x);
@@ -535,13 +650,14 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
                 y0 = (-xd.MbToTopEdge >> (3 + pd.SubsamplingY)) + y;
 
                 // Co-ordinate of the block to 1/16th pixel precision.
-                x0_16 = x0 << Filter.SubpelBits;
-                y0_16 = y0 << Filter.SubpelBits;
+                x016 = x0 << Filter.SubpelBits;
+                y016 = y0 << Filter.SubpelBits;
 
                 scaledMv.Row = mv.Row * (1 << (1 - pd.SubsamplingY));
                 scaledMv.Col = mv.Col * (1 << (1 - pd.SubsamplingX));
                 xs = ys = 16;
             }
+
             subpelX = scaledMv.Col & Filter.SubpelMask;
             subpelY = scaledMv.Row & Filter.SubpelMask;
 
@@ -549,34 +665,35 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             // reference frame.
             x0 += scaledMv.Col >> Filter.SubpelBits;
             y0 += scaledMv.Row >> Filter.SubpelBits;
-            x0_16 += scaledMv.Col;
-            y0_16 += scaledMv.Row;
+            x016 += scaledMv.Col;
+            y016 += scaledMv.Row;
 
             // Get reference block pointer.
-            bufPtr = refFrame + y0 * preBuf.Stride + x0;
+            bufPtr = refFrame + (y0 * preBuf.Stride) + x0;
             bufStride = preBuf.Stride;
 
             // Do border extension if there is motion or the
             // width/height is not a multiple of 8 pixels.
-            if (isScaled || scaledMv.Col != 0 || scaledMv.Row != 0 || (frameWidth & 0x7) != 0 || (frameHeight & 0x7) != 0)
+            if (isScaled || scaledMv.Col != 0 || scaledMv.Row != 0 || (frameWidth & 0x7) != 0 ||
+                (frameHeight & 0x7) != 0)
             {
-                int y1 = ((y0_16 + (h - 1) * ys) >> Filter.SubpelBits) + 1;
+                int y1 = ((y016 + ((h - 1) * ys)) >> Filter.SubpelBits) + 1;
 
                 // Get reference block bottom right horizontal coordinate.
-                int x1 = ((x0_16 + (w - 1) * xs) >> Filter.SubpelBits) + 1;
+                int x1 = ((x016 + ((w - 1) * xs)) >> Filter.SubpelBits) + 1;
                 int xPad = 0, yPad = 0;
 
-                if (subpelX != 0 || (sf.XStepQ4 != Filter.SubpelShifts))
+                if (subpelX != 0 || sf.XStepQ4 != Filter.SubpelShifts)
                 {
-                    x0 -= Constants.Vp9InterpExtend - 1;
-                    x1 += Constants.Vp9InterpExtend;
+                    x0 -= Constants.InterpExtend - 1;
+                    x1 += Constants.InterpExtend;
                     xPad = 1;
                 }
 
-                if (subpelY != 0 || (sf.YStepQ4 != Filter.SubpelShifts))
+                if (subpelY != 0 || sf.YStepQ4 != Filter.SubpelShifts)
                 {
-                    y0 -= Constants.Vp9InterpExtend - 1;
-                    y1 += Constants.Vp9InterpExtend;
+                    y0 -= Constants.InterpExtend - 1;
+                    y1 += Constants.InterpExtend;
                     yPad = 1;
                 }
 
@@ -585,10 +702,10 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
                     y0 < 0 || y0 > frameHeight - 1 || y1 < 0 || y1 > frameHeight - 1)
                 {
                     // Extend the border.
-                    byte* bufPtr1 = refFrame + y0 * bufStride + x0;
+                    byte* bufPtr1 = refFrame + (y0 * bufStride) + x0;
                     int bW = x1 - x0 + 1;
                     int bH = y1 - y0 + 1;
-                    int borderOffset = yPad * 3 * bW + xPad * 3;
+                    int borderOffset = (yPad * 3 * bW) + (xPad * 3);
 
                     ExtendAndPredict(
                         bufPtr1,
@@ -612,7 +729,6 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
                         refr,
                         xs,
                         ys);
-
                     return;
                 }
             }
@@ -660,43 +776,51 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             int miX = miCol * Constants.MiSize;
             int miY = miRow * Constants.MiSize;
             ref ModeInfo mi = ref xd.Mi[0].Value;
-            Array8<short>[] kernel = Luts.Vp9FilterKernels[mi.InterpFilter];
+            Array8<short>[] kernel = Luts.FilterKernels[mi.InterpFilter];
             BlockSize sbType = mi.SbType;
             int isCompound = mi.HasSecondRef() ? 1 : 0;
             int refr;
             bool isScaled;
 
+            Span<sbyte> refFrameSpan = mi.RefFrame.AsSpan();
+            Span<Mv> mvSpan = mi.Mv.AsSpan();
+            Span<RefBuffer> frameRefsSpan = cm.FrameRefs.AsSpan();
+            Span<Ptr<RefBuffer>> blockRefsSpan = xd.BlockRefs.AsSpan();
+            Span<MacroBlockDPlane> planeSpan = xd.Plane.AsSpan();
+
             for (refr = 0; refr < 1 + isCompound; ++refr)
             {
-                int frame = mi.RefFrame[refr];
-                ref RefBuffer refBuf = ref cm.FrameRefs[frame - Constants.LastFrame];
+                int frame = refFrameSpan[refr];
+                ref RefBuffer refBuf = ref frameRefsSpan[frame - Constants.LastFrame];
                 ref ScaleFactors sf = ref refBuf.Sf;
                 ref Surface refFrameBuf = ref refBuf.Buf;
 
                 if (!sf.IsValidScale())
                 {
-                    xd.ErrorInfo.Value.InternalError(CodecErr.CodecUnsupBitstream, "Reference frame has invalid dimensions");
+                    xd.ErrorInfo.Value.InternalError(CodecErr.UnsupBitstream,
+                        "Reference frame has invalid dimensions");
                 }
 
                 isScaled = sf.IsScaled();
-                ReconInter.SetupPrePlanes(ref xd, refr, ref refFrameBuf, miRow, miCol, isScaled ? new Ptr<ScaleFactors>(ref sf) : Ptr<ScaleFactors>.Null);
-                xd.BlockRefs[refr] = new Ptr<RefBuffer>(ref refBuf);
+                ReconInter.SetupPrePlanes(ref xd, refr, ref refFrameBuf, miRow, miCol,
+                    isScaled ? new Ptr<ScaleFactors>(ref sf) : Ptr<ScaleFactors>.Null);
+                blockRefsSpan[refr] = new Ptr<RefBuffer>(ref refBuf);
 
                 if (sbType < BlockSize.Block8x8)
                 {
                     for (plane = 0; plane < Constants.MaxMbPlane; ++plane)
                     {
-                        ref MacroBlockDPlane pd = ref xd.Plane[plane];
+                        ref MacroBlockDPlane pd = ref planeSpan[plane];
                         ref Buf2D dstBuf = ref pd.Dst;
                         int num4x4W = pd.N4W;
                         int num4x4H = pd.N4H;
                         int n4Wx4 = 4 * num4x4W;
                         int n4Hx4 = 4 * num4x4H;
                         ref Buf2D preBuf = ref pd.Pre[refr];
-                        int i = 0, x, y;
-                        for (y = 0; y < num4x4H; ++y)
+                        int i = 0;
+                        for (int y = 0; y < num4x4H; ++y)
                         {
-                            for (x = 0; x < num4x4W; ++x)
+                            for (int x = 0; x < num4x4W; ++x)
                             {
                                 Mv mv = ReconInter.AverageSplitMvs(ref pd, ref mi, refr, i++);
                                 DecBuildInterPredictors(
@@ -724,10 +848,10 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
                 }
                 else
                 {
-                    Mv mv = mi.Mv[refr];
+                    Mv mv = mvSpan[refr];
                     for (plane = 0; plane < Constants.MaxMbPlane; ++plane)
                     {
-                        ref MacroBlockDPlane pd = ref xd.Plane[plane];
+                        ref MacroBlockDPlane pd = ref planeSpan[plane];
                         ref Buf2D dstBuf = ref pd.Dst;
                         int num4x4W = pd.N4W;
                         int num4x4H = pd.N4H;
@@ -758,26 +882,16 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             }
         }
 
-        private static unsafe void DecResetSkipContext(ref MacroBlockD xd)
-        {
-            int i;
-            for (i = 0; i < Constants.MaxMbPlane; i++)
-            {
-                ref MacroBlockDPlane pd = ref xd.Plane[i];
-                MemoryUtil.Fill(pd.AboveContext.ToPointer(), (sbyte)0, pd.N4W);
-                MemoryUtil.Fill(pd.LeftContext.ToPointer(), (sbyte)0, pd.N4H);
-            }
-        }
-
         private static void SetPlaneN4(ref MacroBlockD xd, int bw, int bh, int bwl, int bhl)
         {
-            int i;
-            for (i = 0; i < Constants.MaxMbPlane; i++)
+            Span<MacroBlockDPlane> planeSpan = xd.Plane.AsSpan();
+            
+            for (int i = 0; i < Constants.MaxMbPlane; i++)
             {
-                xd.Plane[i].N4W = (ushort)((bw << 1) >> xd.Plane[i].SubsamplingX);
-                xd.Plane[i].N4H = (ushort)((bh << 1) >> xd.Plane[i].SubsamplingY);
-                xd.Plane[i].N4Wl = (byte)(bwl - xd.Plane[i].SubsamplingX);
-                xd.Plane[i].N4Hl = (byte)(bhl - xd.Plane[i].SubsamplingY);
+                planeSpan[i].N4W = (ushort)((bw << 1) >> planeSpan[i].SubsamplingX);
+                planeSpan[i].N4H = (ushort)((bh << 1) >> planeSpan[i].SubsamplingY);
+                planeSpan[i].N4Wl = (byte)(bwl - planeSpan[i].SubsamplingX);
+                planeSpan[i].N4Hl = (byte)(bhl - planeSpan[i].SubsamplingY);
             }
         }
 
@@ -794,18 +908,18 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             int bwl,
             int bhl)
         {
-            int offset = miRow * cm.MiStride + miCol;
-            int x, y;
+            int offset = (miRow * cm.MiStride) + miCol;
+
             ref TileInfo tile = ref xd.Tile;
 
             xd.Mi = cm.MiGridVisible.Slice(offset);
             xd.Mi[0] = new Ptr<ModeInfo>(ref cm.Mi[offset]);
             xd.Mi[0].Value.SbType = bsize;
-            for (y = 0; y < yMis; ++y)
+            for (int y = 0; y < yMis; ++y)
             {
-                for (x = y == 0 ? 1 : 0; x < xMis; ++x)
+                for (int x = y == 0 ? 1 : 0; x < xMis; ++x)
                 {
-                    xd.Mi[y * cm.MiStride + x] = xd.Mi[0];
+                    xd.Mi[(y * cm.MiStride) + x] = xd.Mi[0];
                 }
             }
 
@@ -817,8 +931,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             // as they are always compared to values that are in 1/8th pel units
             xd.SetMiRowCol(ref tile, miRow, bh, miCol, bw, cm.MiRows, cm.MiCols);
 
-            ReconInter.SetupDstPlanes(ref xd.Plane, ref xd.CurBuf, miRow, miCol);
-
+            ReconInter.SetupDstPlanes(xd.Plane.AsSpan(), ref xd.CurBuf, miRow, miCol);
             return ref xd.Mi[0].Value;
         }
 
@@ -846,7 +959,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
                 BlockSize uvSubsize = Luts.SsSizeLookup[(int)bsize][cm.SubsamplingX][cm.SubsamplingY];
                 if (uvSubsize == BlockSize.BlockInvalid)
                 {
-                    xd.ErrorInfo.Value.InternalError(CodecErr.CodecCorruptFrame, "Invalid block size.");
+                    xd.ErrorInfo.Value.InternalError(CodecErr.CorruptFrame, "Invalid block size.");
                 }
             }
 
@@ -854,22 +967,25 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
 
             if (mi.Skip != 0)
             {
-                DecResetSkipContext(ref xd);
+                xd.DecResetSkipContext();
             }
 
             if (!mi.IsInterBlock())
             {
-                int plane;
-                for (plane = 0; plane < Constants.MaxMbPlane; ++plane)
+                Span<MacroBlockDPlane> planeSpan = xd.Plane.AsSpan();
+                
+                for (int plane = 0; plane < Constants.MaxMbPlane; ++plane)
                 {
-                    ref MacroBlockDPlane pd = ref xd.Plane[plane];
+                    ref MacroBlockDPlane pd = ref planeSpan[plane];
                     TxSize txSize = plane != 0 ? mi.GetUvTxSize(ref pd) : mi.TxSize;
                     int num4x4W = pd.N4W;
                     int num4x4H = pd.N4H;
                     int step = 1 << (int)txSize;
                     int row, col;
-                    int maxBlocksWide = num4x4W + (xd.MbToRightEdge >= 0 ? 0 : xd.MbToRightEdge >> (5 + pd.SubsamplingX));
-                    int maxBlocksHigh = num4x4H + (xd.MbToBottomEdge >= 0 ? 0 : xd.MbToBottomEdge >> (5 + pd.SubsamplingY));
+                    int maxBlocksWide =
+                        num4x4W + (xd.MbToRightEdge >= 0 ? 0 : xd.MbToRightEdge >> (5 + pd.SubsamplingX));
+                    int maxBlocksHigh =
+                        num4x4H + (xd.MbToBottomEdge >= 0 ? 0 : xd.MbToBottomEdge >> (5 + pd.SubsamplingY));
 
                     xd.MaxBlocksWide = (uint)(xd.MbToRightEdge >= 0 ? 0 : maxBlocksWide);
                     xd.MaxBlocksHigh = (uint)(xd.MbToBottomEdge >= 0 ? 0 : maxBlocksHigh);
@@ -891,19 +1007,22 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
                 // Reconstruction
                 if (mi.Skip == 0)
                 {
+                    Span<MacroBlockDPlane> planeSpan = xd.Plane.AsSpan();
+                    
                     int eobtotal = 0;
-                    int plane;
 
-                    for (plane = 0; plane < Constants.MaxMbPlane; ++plane)
+                    for (int plane = 0; plane < Constants.MaxMbPlane; ++plane)
                     {
-                        ref MacroBlockDPlane pd = ref xd.Plane[plane];
+                        ref MacroBlockDPlane pd = ref planeSpan[plane];
                         TxSize txSize = plane != 0 ? mi.GetUvTxSize(ref pd) : mi.TxSize;
                         int num4x4W = pd.N4W;
                         int num4x4H = pd.N4H;
                         int step = 1 << (int)txSize;
                         int row, col;
-                        int maxBlocksWide = num4x4W + (xd.MbToRightEdge >= 0 ? 0 : xd.MbToRightEdge >> (5 + pd.SubsamplingX));
-                        int maxBlocksHigh = num4x4H + (xd.MbToBottomEdge >= 0 ? 0 : xd.MbToBottomEdge >> (5 + pd.SubsamplingY));
+                        int maxBlocksWide =
+                            num4x4W + (xd.MbToRightEdge >= 0 ? 0 : xd.MbToRightEdge >> (5 + pd.SubsamplingX));
+                        int maxBlocksHigh = num4x4H +
+                                            (xd.MbToBottomEdge >= 0 ? 0 : xd.MbToBottomEdge >> (5 + pd.SubsamplingY));
 
                         xd.MaxBlocksWide = (uint)(xd.MbToRightEdge >= 0 ? 0 : maxBlocksWide);
                         xd.MaxBlocksHigh = (uint)(xd.MbToBottomEdge >= 0 ? 0 : maxBlocksHigh);
@@ -932,15 +1051,6 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             }
         }
 
-        private static int DecPartitionPlaneContext(ref TileWorkerData twd, int miRow, int miCol, int bsl)
-        {
-            ref sbyte aboveCtx = ref twd.Xd.AboveSegContext[miCol];
-            ref sbyte leftCtx = ref twd.Xd.LeftSegContext[miRow & Constants.MiMask];
-            int above = (aboveCtx >> bsl) & 1, left = (leftCtx >> bsl) & 1;
-
-            return (left * 2 + above) + bsl * Constants.PartitionPloffset;
-        }
-
         private static void DecUpdatePartitionContext(
             ref TileWorkerData twd,
             int miRow,
@@ -949,13 +1059,14 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             int bw)
         {
             Span<sbyte> aboveCtx = twd.Xd.AboveSegContext.Slice(miCol).AsSpan();
-            Span<sbyte> leftCtx = MemoryMarshal.CreateSpan(ref twd.Xd.LeftSegContext[miRow & Constants.MiMask], 8 - (miRow & Constants.MiMask));
+            Span<sbyte> leftCtx = MemoryMarshal.CreateSpan(ref twd.Xd.LeftSegContext[miRow & Constants.MiMask],
+                8 - (miRow & Constants.MiMask));
 
             // Update the partition context at the end notes. Set partition bits
             // of block sizes larger than the current one to be one, and partition
             // bits of smaller block sizes to be zero.
-            aboveCtx[..bw].Fill(Luts.PartitionContextLookup[(int)subsize].Above);
-            leftCtx[..bw].Fill(Luts.PartitionContextLookup[(int)subsize].Left);
+            aboveCtx.Slice(0, bw).Fill(Luts.PartitionContextLookup[(int)subsize].Above);
+            leftCtx.Slice(0, bw).Fill(Luts.PartitionContextLookup[(int)subsize].Left);
         }
 
         private static PartitionType ReadPartition(
@@ -966,14 +1077,14 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             int hasCols,
             int bsl)
         {
-            int ctx = DecPartitionPlaneContext(ref twd, miRow, miCol, bsl);
+            int ctx = twd.DecPartitionPlaneContext(miRow, miCol, bsl);
             ReadOnlySpan<byte> probs = MemoryMarshal.CreateReadOnlySpan(ref twd.Xd.PartitionProbs[ctx][0], 3);
             PartitionType p;
             ref Reader r = ref twd.BitReader;
 
             if (hasRows != 0 && hasCols != 0)
             {
-                p = (PartitionType)r.ReadTree(Luts.Vp9PartitionTree, probs);
+                p = (PartitionType)r.ReadTree(Luts.PartitionTree, probs);
             }
             else if (hasRows == 0 && hasCols != 0)
             {
@@ -1009,8 +1120,8 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             int hbs = num8x8Wh >> 1;
             PartitionType partition;
             BlockSize subsize;
-            bool hasRows = (miRow + hbs) < cm.MiRows;
-            bool hasCols = (miCol + hbs) < cm.MiCols;
+            bool hasRows = miRow + hbs < cm.MiRows;
+            bool hasCols = miCol + hbs < cm.MiCols;
             ref MacroBlockD xd = ref twd.Xd;
 
             if (miRow >= cm.MiRows || miCol >= cm.MiCols)
@@ -1063,7 +1174,8 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             }
 
             // Update partition context
-            if (bsize >= BlockSize.Block8x8 && (bsize == BlockSize.Block8x8 || partition != PartitionType.PartitionSplit))
+            if (bsize >= BlockSize.Block8x8 &&
+                (bsize == BlockSize.Block8x8 || partition != PartitionType.PartitionSplit))
             {
                 DecUpdatePartitionContext(ref twd, miRow, miCol, subsize, num8x8Wh);
             }
@@ -1079,13 +1191,275 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             // partition can't be fully read then throw an error.
             if (!ReadIsValid(data, readSize))
             {
-                errorInfo.InternalError(CodecErr.CodecCorruptFrame, "Truncated packet or corrupt tile length");
+                errorInfo.InternalError(CodecErr.CorruptFrame, "Truncated packet or corrupt tile length");
             }
 
             if (r.Init(data, readSize))
             {
-                errorInfo.InternalError(CodecErr.CodecMemError, "Failed to allocate bool decoder 1");
+                errorInfo.InternalError(CodecErr.MemError, "Failed to allocate bool decoder 1");
             }
+        }
+
+        private static void ReadCoefProbsCommon(ReadOnlySpan<Array2<Array6<Array6<Array3<byte>>>>> coefProbs1,
+            ref Reader r, int txSize)
+        {
+            if (r.ReadBit() != 0)
+            {
+                for (int i = 0; i < Constants.PlaneTypes; ++i)
+                {
+                    Span<Array6<Array6<Array3<byte>>>> coefProbs2 = coefProbs1[i].AsSpan(); 
+                    
+                    for (int j = 0; j < Entropy.RefTypes; ++j)
+                    {
+                        Span<Array6<Array3<byte>>> coefProbs3 = coefProbs2[j].AsSpan(); 
+                        
+                        for (int k = 0; k < Entropy.CoefBands; ++k)
+                        {
+                            Span<Array3<byte>> coefProbs4 = coefProbs3[k].AsSpan();
+                            
+                            for (int l = 0; l < Entropy.BAND_COEFF_CONTEXTS(k); ++l)
+                            {
+                                Span<byte> coefProbs5 = coefProbs4[l].AsSpan();
+                                
+                                for (int m = 0; m < Entropy.UnconstrainedNodes; ++m)
+                                {
+                                    r.DiffUpdateProb(ref coefProbs5[m]);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private static void ReadCoefProbs(ref Vp9EntropyProbs fc, TxMode txMode, ref Reader r)
+        {
+            Span<Array2<Array2<Array6<Array6<Array3<byte>>>>>> coefProbsSpan = fc.CoefProbs.AsSpan();
+            
+            int maxTxSize = (int)Luts.TxModeToBiggestTxSize[(int)txMode];
+            
+            for (int txSize = (int)TxSize.Tx4x4; txSize <= maxTxSize; ++txSize)
+            {
+                ReadCoefProbsCommon(coefProbsSpan[txSize].AsSpan(), ref r, txSize);
+            }
+        }
+
+        private static void SetupLoopfilter(ref Types.LoopFilter lf, ref ReadBitBuffer rb)
+        {
+            lf.FilterLevel = rb.ReadLiteral(6);
+            lf.SharpnessLevel = rb.ReadLiteral(3);
+
+            // Read in loop filter deltas applied at the MB level based on mode or ref
+            // frame.
+            lf.ModeRefDeltaUpdate = false;
+
+            lf.ModeRefDeltaEnabled = rb.ReadBit() != 0;
+            if (lf.ModeRefDeltaEnabled)
+            {
+                lf.ModeRefDeltaUpdate = rb.ReadBit() != 0;
+                if (lf.ModeRefDeltaUpdate)
+                {
+                    Span<sbyte> refDeltasSpan = lf.RefDeltas.AsSpan();
+                    Span<sbyte> modeDeltasSpan = lf.ModeDeltas.AsSpan();
+                    
+                    for (int i = 0; i < LoopFilter.MaxRefLfDeltas; i++)
+                    {
+                        if (rb.ReadBit() != 0)
+                        {
+                            refDeltasSpan[i] = (sbyte)rb.ReadSignedLiteral(6);
+                        }
+                    }
+
+                    for (int i = 0; i < LoopFilter.MaxModeLfDeltas; i++)
+                    {
+                        if (rb.ReadBit() != 0)
+                        {
+                            modeDeltasSpan[i] = (sbyte)rb.ReadSignedLiteral(6);
+                        }
+                    }
+                }
+            }
+        }
+
+        private static void SetupQuantization(ref Vp9Common cm, ref MacroBlockD xd, ref ReadBitBuffer rb)
+        {
+            cm.BaseQindex = rb.ReadLiteral(QuantCommon.QindexBits);
+            cm.YDcDeltaQ = rb.ReadDeltaQ();
+            cm.UvDcDeltaQ = rb.ReadDeltaQ();
+            cm.UvAcDeltaQ = rb.ReadDeltaQ();
+            cm.DequantBitDepth = cm.BitDepth;
+            xd.Lossless = cm.BaseQindex == 0 && cm.YDcDeltaQ == 0 && cm.UvDcDeltaQ == 0 && cm.UvAcDeltaQ == 0;
+
+            xd.Bd = (int)cm.BitDepth;
+        }
+
+        private static readonly byte[] LiteralToFilter =
+        [
+            Constants.EightTapSmooth, Constants.EightTap, Constants.EightTapSharp, Constants.Bilinear
+        ];
+
+        private static byte ReadInterpFilter(ref ReadBitBuffer rb)
+        {
+            return rb.ReadBit() != 0
+                ? (byte)Constants.Switchable
+                : LiteralToFilter[rb.ReadLiteral(2)];
+        }
+
+        private static void SetupRenderSize(ref Vp9Common cm, ref ReadBitBuffer rb)
+        {
+            cm.RenderWidth = cm.Width;
+            cm.RenderHeight = cm.Height;
+            if (rb.ReadBit() != 0)
+            {
+                rb.ReadFrameSize(out cm.RenderWidth, out cm.RenderHeight);
+            }
+        }
+
+        private static void SetupFrameSize(MemoryAllocator allocator, ref Vp9Common cm, ref ReadBitBuffer rb)
+        {
+            int width = 0, height = 0;
+            ref BufferPool pool = ref cm.BufferPool.Value;
+            rb.ReadFrameSize(out width, out height);
+            cm.ResizeContextBuffers(allocator, width, height);
+            SetupRenderSize(ref cm, ref rb);
+
+            Span<RefCntBuffer> frameBuffsSpan = pool.FrameBufs.AsSpan();
+
+            if (cm.GetFrameNewBuffer().ReallocFrameBuffer(
+                    allocator,
+                    cm.Width,
+                    cm.Height,
+                    cm.SubsamplingX,
+                    cm.SubsamplingY,
+                    cm.UseHighBitDepth,
+                    Surface.DecBorderInPixels,
+                    cm.ByteAlignment,
+                    new Ptr<VpxCodecFrameBuffer>(ref frameBuffsSpan[cm.NewFbIdx].RawFrameBuffer),
+                    FrameBuffers.GetFrameBuffer,
+                    pool.CbPriv) != 0)
+            {
+                cm.Error.InternalError(CodecErr.MemError, "Failed to allocate frame buffer");
+            }
+
+            frameBuffsSpan[cm.NewFbIdx].Released = 0;
+            frameBuffsSpan[cm.NewFbIdx].Buf.SubsamplingX = cm.SubsamplingX;
+            frameBuffsSpan[cm.NewFbIdx].Buf.SubsamplingY = cm.SubsamplingY;
+            frameBuffsSpan[cm.NewFbIdx].Buf.BitDepth = (uint)cm.BitDepth;
+            frameBuffsSpan[cm.NewFbIdx].Buf.ColorSpace = cm.ColorSpace;
+            frameBuffsSpan[cm.NewFbIdx].Buf.ColorRange = cm.ColorRange;
+            frameBuffsSpan[cm.NewFbIdx].Buf.RenderWidth = cm.RenderWidth;
+            frameBuffsSpan[cm.NewFbIdx].Buf.RenderHeight = cm.RenderHeight;
+        }
+
+        private static bool ValidRefFrameImgFmt(
+            BitDepth refBitDepth,
+            int refXss, int refYss,
+            BitDepth thisBitDepth,
+            int thisXss,
+            int thisYss)
+        {
+            return refBitDepth == thisBitDepth && refXss == thisXss && refYss == thisYss;
+        }
+
+        private static void SetupFrameSizeWithRefs(MemoryAllocator allocator, ref Vp9Common cm,
+            ref ReadBitBuffer rb)
+        {
+            int width = 0, height = 0;
+            bool found = false;
+
+            bool hasValidRefFrame = false;
+            ref BufferPool pool = ref cm.BufferPool.Value;
+            Span<RefBuffer> frameRefsSpan = cm.FrameRefs.AsSpan();
+            
+            for (int i = 0; i < Constants.RefsPerFrame; ++i)
+            {
+                if (rb.ReadBit() != 0)
+                {
+                    if (frameRefsSpan[i].Idx != RefBuffer.InvalidIdx)
+                    {
+                        ref Surface buf = ref frameRefsSpan[i].Buf;
+                        width = buf.YCropWidth;
+                        height = buf.YCropHeight;
+                        found = true;
+                        break;
+                    }
+
+                    cm.Error.InternalError(CodecErr.CorruptFrame, "Failed to decode frame size");
+                }
+            }
+
+            if (!found)
+            {
+                rb.ReadFrameSize(out width, out height);
+            }
+
+            if (width <= 0 || height <= 0)
+            {
+                cm.Error.InternalError(CodecErr.CorruptFrame, "Invalid frame size");
+            }
+
+            // Check to make sure at least one of frames that this frame references
+            // has valid dimensions.
+            for (int i = 0; i < Constants.RefsPerFrame; ++i)
+            {
+                ref RefBuffer refFrame = ref frameRefsSpan[i];
+                hasValidRefFrame |=
+                    refFrame.Idx != RefBuffer.InvalidIdx &&
+                    ScaleFactors.ValidRefFrameSize(refFrame.Buf.YCropWidth, refFrame.Buf.YCropHeight, width,
+                        height);
+            }
+
+            if (!hasValidRefFrame)
+            {
+                cm.Error.InternalError(CodecErr.CorruptFrame, "Referenced frame has invalid size");
+            }
+
+            for (int i = 0; i < Constants.RefsPerFrame; ++i)
+            {
+                ref RefBuffer refFrame = ref frameRefsSpan[i];
+                if (refFrame.Idx == RefBuffer.InvalidIdx ||
+                    !ValidRefFrameImgFmt(
+                        (BitDepth)refFrame.Buf.BitDepth,
+                        refFrame.Buf.SubsamplingX,
+                        refFrame.Buf.SubsamplingY,
+                        cm.BitDepth,
+                        cm.SubsamplingX,
+                        cm.SubsamplingY))
+                {
+                    cm.Error.InternalError(CodecErr.CorruptFrame,
+                        "Referenced frame has incompatible color format");
+                }
+            }
+
+            cm.ResizeContextBuffers(allocator, width, height);
+            SetupRenderSize(ref cm, ref rb);
+            
+            Span<RefCntBuffer> frameBuffsSpan = pool.FrameBufs.AsSpan();
+
+            if (cm.GetFrameNewBuffer().ReallocFrameBuffer(
+                    allocator,
+                    cm.Width,
+                    cm.Height,
+                    cm.SubsamplingX,
+                    cm.SubsamplingY,
+                    cm.UseHighBitDepth,
+                    Surface.DecBorderInPixels,
+                    cm.ByteAlignment,
+                    new Ptr<VpxCodecFrameBuffer>(ref frameBuffsSpan[cm.NewFbIdx].RawFrameBuffer),
+                    FrameBuffers.GetFrameBuffer,
+                    pool.CbPriv) != 0)
+            {
+                cm.Error.InternalError(CodecErr.MemError, "Failed to allocate frame buffer");
+            }
+
+            frameBuffsSpan[cm.NewFbIdx].Released = 0;
+            frameBuffsSpan[cm.NewFbIdx].Buf.SubsamplingX = cm.SubsamplingX;
+            frameBuffsSpan[cm.NewFbIdx].Buf.SubsamplingY = cm.SubsamplingY;
+            frameBuffsSpan[cm.NewFbIdx].Buf.BitDepth = (uint)cm.BitDepth;
+            frameBuffsSpan[cm.NewFbIdx].Buf.ColorSpace = cm.ColorSpace;
+            frameBuffsSpan[cm.NewFbIdx].Buf.ColorRange = cm.ColorRange;
+            frameBuffsSpan[cm.NewFbIdx].Buf.RenderWidth = cm.RenderWidth;
+            frameBuffsSpan[cm.NewFbIdx].Buf.RenderHeight = cm.RenderHeight;
         }
 
         // Reads the next tile returning its size and adjusting '*data' accordingly
@@ -1102,7 +1476,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             {
                 if (!ReadIsValid(data, 4))
                 {
-                    errorInfo.InternalError(CodecErr.CodecCorruptFrame, "Truncated packet or corrupt tile length");
+                    errorInfo.InternalError(CodecErr.CorruptFrame, "Truncated packet or corrupt tile length");
                 }
 
                 size = BinaryPrimitives.ReadInt32BigEndian(data.AsSpan());
@@ -1110,7 +1484,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
 
                 if (size > data.Length)
                 {
-                    errorInfo.InternalError(CodecErr.CodecCorruptFrame, "Truncated packet or corrupt tile size");
+                    errorInfo.InternalError(CodecErr.CorruptFrame, "Truncated packet or corrupt tile size");
                 }
             }
             else
@@ -1124,11 +1498,10 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             data = data.Slice(size);
         }
 
-        private static void GetTileBuffers(ref Vp9Common cm, ArrayPtr<byte> data, int tileCols, ref Array64<TileBuffer> tileBuffers)
+        private static void GetTileBuffers(ref Vp9Common cm, ArrayPtr<byte> data, int tileCols,
+            Span<TileBuffer> tileBuffers)
         {
-            int c;
-
-            for (c = 0; c < tileCols; ++c)
+            for (int c = 0; c < tileCols; ++c)
             {
                 bool isLast = c == tileCols - 1;
                 ref TileBuffer buf = ref tileBuffers[c];
@@ -1142,16 +1515,16 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             ArrayPtr<byte> data,
             int tileCols,
             int tileRows,
-            ref Array4<Array64<TileBuffer>> tileBuffers)
+            Span<Array64<TileBuffer>> tileBuffers1)
         {
-            int r, c;
-
-            for (r = 0; r < tileRows; ++r)
+            for (int r = 0; r < tileRows; ++r)
             {
-                for (c = 0; c < tileCols; ++c)
+                Span<TileBuffer> tileBuffers2 = tileBuffers1[r].AsSpan();
+                
+                for (int c = 0; c < tileCols; ++c)
                 {
-                    bool isLast = (r == tileRows - 1) && (c == tileCols - 1);
-                    ref TileBuffer buf = ref tileBuffers[r][c];
+                    bool isLast = r == tileRows - 1 && c == tileCols - 1;
+                    ref TileBuffer buf = ref tileBuffers2[c];
                     GetTileBuffer(isLast, ref cm.Error, ref data, ref buf);
                 }
             }
@@ -1167,7 +1540,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             int miRow, miCol;
 
             Debug.Assert(tileRows <= 4);
-            Debug.Assert(tileCols <= (1 << 6));
+            Debug.Assert(tileCols <= 1 << 6);
 
             // Note: this memset assumes above_context[0], [1] and [2]
             // are allocated as part of the same buffer.
@@ -1175,15 +1548,20 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             MemoryUtil.Fill(cm.AboveSegContext.ToPointer(), (sbyte)0, alignedCols);
 
             LoopFilter.ResetLfm(ref cm);
+            
+            Span<Array64<TileBuffer>> tileBuffers1 = tileBuffers.AsSpan();
+            Span<TileWorkerData> tileWorkerDataSpan = cm.TileWorkerData.AsSpan();
 
-            GetTileBuffers(ref cm, data, tileCols, tileRows, ref tileBuffers);
+            GetTileBuffers(ref cm, data, tileCols, tileRows, tileBuffers1);
             // Load all tile information into tile_data.
             for (tileRow = 0; tileRow < tileRows; ++tileRow)
             {
+                Span<TileBuffer> tileBuffers2 = tileBuffers1[tileRow].AsSpan();
+                
                 for (tileCol = 0; tileCol < tileCols; ++tileCol)
                 {
-                    ref TileBuffer buf = ref tileBuffers[tileRow][tileCol];
-                    ref TileWorkerData tileData = ref cm.TileWorkerData[tileCols * tileRow + tileCol];
+                    ref TileBuffer buf = ref tileBuffers2[tileCol];
+                    ref TileWorkerData tileData = ref tileWorkerDataSpan[(tileCols * tileRow) + tileCol];
                     tileData.Xd = cm.Mb;
                     tileData.Xd.Corrupted = false;
                     tileData.Xd.Counts = cm.Counts;
@@ -1203,7 +1581,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
                     for (tileCol = 0; tileCol < tileCols; ++tileCol)
                     {
                         int col = tileCol;
-                        ref TileWorkerData tileData = ref cm.TileWorkerData[tileCols * tileRow + col];
+                        ref TileWorkerData tileData = ref tileWorkerDataSpan[(tileCols * tileRow) + col];
                         tile.SetCol(ref cm, col);
                         tileData.Xd.LeftContext = new Array3<Array16<sbyte>>();
                         tileData.Xd.LeftSegContext = new Array8<sbyte>();
@@ -1211,20 +1589,22 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
                         {
                             DecodePartition(ref tileData, ref cm, miRow, miCol, BlockSize.Block64x64, 4);
                         }
+
                         cm.Mb.Corrupted |= tileData.Xd.Corrupted;
                         if (cm.Mb.Corrupted)
                         {
-                            cm.Error.InternalError(CodecErr.CodecCorruptFrame, "Failed to decode tile data");
+                            cm.Error.InternalError(CodecErr.CorruptFrame, "Failed to decode tile data");
                         }
                     }
                 }
             }
 
             // Get last tile data.
-            return cm.TileWorkerData[tileCols * tileRows - 1].BitReader.FindEnd();
+            return tileWorkerDataSpan[(tileCols * tileRows) - 1].BitReader.FindEnd();
         }
 
-        private static bool DecodeTileCol(ref TileWorkerData tileData, ref Vp9Common cm, ref Array64<TileBuffer> tileBuffers)
+        private static bool DecodeTileCol(ref TileWorkerData tileData, ref Vp9Common cm,
+            Span<TileBuffer> tileBuffers)
         {
             ref TileInfo tile = ref tileData.Xd.Tile;
             int finalCol = (1 << cm.Log2TileCols) - 1;
@@ -1262,7 +1642,6 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             } while (!tileData.Xd.Corrupted && ++n <= tileData.BufEnd);
 
             tileData.DataEnd = bitReaderEnd;
-
             return !tileData.Xd.Corrupted;
         }
 
@@ -1276,15 +1655,19 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             int numWorkers = Math.Min(maxThreads, tileCols);
             int n;
 
-            Debug.Assert(tileCols <= (1 << 6));
+            Debug.Assert(tileCols <= 1 << 6);
             Debug.Assert(tileRows == 1);
+
+            LoopFilter.ResetLfm(ref cm);
 
             cm.AboveContext.AsSpan().Clear();
             cm.AboveSegContext.AsSpan().Clear();
+            
+            Span<TileWorkerData> tileWorkerDataSpan = cm.TileWorkerData.AsSpan();
 
             for (n = 0; n < numWorkers; ++n)
             {
-                ref TileWorkerData tileData = ref cm.TileWorkerData[n + totalTiles];
+                ref TileWorkerData tileData = ref tileWorkerDataSpan[n + totalTiles];
 
                 tileData.Xd = cm.Mb;
                 tileData.Xd.Counts = new Ptr<Vp9BackwardUpdates>(ref tileData.Counts);
@@ -1292,17 +1675,17 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             }
 
             Array64<TileBuffer> tileBuffers = new();
+            Span<TileBuffer> tileBuffersSpan = tileBuffers.AsSpan();
 
-            GetTileBuffers(ref cm, data, tileCols, ref tileBuffers);
+            GetTileBuffers(ref cm, data, tileCols, tileBuffersSpan);
 
-            tileBuffers.AsSpan()[..tileCols].Sort(CompareTileBuffers);
+            tileBuffersSpan[..tileCols].Sort(CompareTileBuffers);
 
             if (numWorkers == tileCols)
             {
-                TileBuffer largest = tileBuffers[0];
-                Span<TileBuffer> buffers = tileBuffers.AsSpan();
-                buffers[1..].CopyTo(buffers[..(tileBuffers.Length - 1)]);
-                tileBuffers[tileCols - 1] = largest;
+                TileBuffer largest = tileBuffersSpan[0];
+                tileBuffersSpan[1..].CopyTo(tileBuffersSpan[..^1]);
+                tileBuffersSpan[tileCols - 1] = largest;
             }
             else
             {
@@ -1313,9 +1696,9 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
                 // larger tile implies it is more difficult to decode.
                 while (start < end)
                 {
-                    tmp = tileBuffers[start];
-                    tileBuffers[start] = tileBuffers[end];
-                    tileBuffers[end] = tmp;
+                    tmp = tileBuffersSpan[start];
+                    tileBuffersSpan[start] = tileBuffersSpan[end];
+                    tileBuffersSpan[end] = tmp;
                     start += 2;
                     end -= 2;
                 }
@@ -1327,8 +1710,8 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
 
             for (n = 0; n < numWorkers; ++n)
             {
-                int count = baseVal + (remain + n) / numWorkers;
-                ref TileWorkerData tileData = ref cm.TileWorkerData[n + totalTiles];
+                int count = baseVal + ((remain + n) / numWorkers);
+                ref TileWorkerData tileData = ref tileWorkerDataSpan[n + totalTiles];
 
                 tileData.BufStart = bufStart;
                 tileData.BufEnd = bufStart + count - 1;
@@ -1342,7 +1725,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             {
                 ref TileWorkerData tileData = ref cmPtr.Value.TileWorkerData[n + totalTiles];
 
-                if (!DecodeTileCol(ref tileData, ref cmPtr.Value, ref tileBuffers))
+                if (!DecodeTileCol(ref tileData, ref cmPtr.Value, tileBuffers.AsSpan()))
                 {
                     cmPtr.Value.Mb.Corrupted = true;
                 }
@@ -1352,19 +1735,18 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             {
                 if (bitReaderEnd.IsNull)
                 {
-                    ref TileWorkerData tileData = ref cm.TileWorkerData[n - 1 + totalTiles];
+                    ref TileWorkerData tileData = ref tileWorkerDataSpan[n - 1 + totalTiles];
                     bitReaderEnd = tileData.DataEnd;
                 }
             }
 
             for (n = 0; n < numWorkers; ++n)
             {
-                ref TileWorkerData tileData = ref cm.TileWorkerData[n + totalTiles];
+                ref TileWorkerData tileData = ref tileWorkerDataSpan[n + totalTiles];
                 AccumulateFrameCounts(ref cm.Counts.Value, ref tileData.Counts);
             }
 
             Debug.Assert(!bitReaderEnd.IsNull || cm.Mb.Corrupted);
-
             return bitReaderEnd;
         }
 
@@ -1381,6 +1763,501 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             for (int i = 0; i < a.Length; i++)
             {
                 a[i] += c[i];
+            }
+        }
+
+        private static void ErrorHandler(Ptr<Vp9Common> data)
+        {
+            ref Vp9Common cm = ref data.Value;
+            cm.Error.InternalError(CodecErr.CorruptFrame, "Truncated packet");
+        }
+
+        private static void FlushAllFbOnKey(ref Vp9Common cm)
+        {
+            if (cm.FrameType == FrameType.KeyFrame && cm.CurrentVideoFrame > 0)
+            {
+                Span<RefCntBuffer> frameBuffs = cm.BufferPool.Value.FrameBufs.AsSpan();
+                ref BufferPool pool = ref cm.BufferPool.Value;
+
+                for (int i = 0; i < Constants.FrameBuffers; ++i)
+                {
+                    if (i == cm.NewFbIdx)
+                    {
+                        continue;
+                    }
+
+                    frameBuffs[i].RefCount = 0;
+                    if (frameBuffs[i].Released == 0)
+                    {
+                        FrameBuffers.ReleaseFrameBuffer(pool.CbPriv, ref frameBuffs[i].RawFrameBuffer);
+                        frameBuffs[i].Released = 1;
+                    }
+                }
+            }
+        }
+
+        private const int SyncCode0 = 0x49;
+        private const int SyncCode1 = 0x83;
+        private const int SyncCode2 = 0x42;
+
+        private const int FrameMarker = 0x2;
+
+        private static bool ReadSyncCode(ref ReadBitBuffer rb)
+        {
+            return rb.ReadLiteral(8) == SyncCode0 &&
+                   rb.ReadLiteral(8) == SyncCode1 &&
+                   rb.ReadLiteral(8) == SyncCode2;
+        }
+
+        private static void RefCntFb(Span<RefCntBuffer> bufs, ref int idx, int newIdx)
+        {
+            int refIndex = idx;
+
+            if (refIndex >= 0 && bufs[refIndex].RefCount > 0)
+            {
+                bufs[refIndex].RefCount--;
+            }
+
+            idx = newIdx;
+
+            bufs[newIdx].RefCount++;
+        }
+
+        private static ulong ReadUncompressedHeader(MemoryAllocator allocator, ref Vp9Decoder pbi,
+            ref ReadBitBuffer rb)
+        {
+            ref Vp9Common cm = ref pbi.Common;
+            ref BufferPool pool = ref cm.BufferPool.Value;
+            Span<RefCntBuffer> frameBuffs = pool.FrameBufs.AsSpan();
+            int mask, refIndex = 0;
+            ulong sz;
+
+            cm.LastFrameType = cm.FrameType;
+            cm.LastIntraOnly = cm.IntraOnly;
+
+            Span<int> refFrameSpan = cm.RefFrameMap.AsSpan();
+
+            if (rb.ReadLiteral(2) != FrameMarker)
+            {
+                cm.Error.InternalError(CodecErr.UnsupBitstream, "Invalid frame marker");
+            }
+
+            cm.Profile = rb.ReadProfile();
+            if (cm.Profile >= BitstreamProfile.MaxProfiles)
+            {
+                cm.Error.InternalError(CodecErr.UnsupBitstream, "Unsupported bitstream profile");
+            }
+
+            cm.ShowExistingFrame = rb.ReadBit();
+            if (cm.ShowExistingFrame != 0)
+            {
+                // Show an existing frame directly.
+                int frameToShow = refFrameSpan[rb.ReadLiteral(3)];
+                if (frameToShow < 0 || frameBuffs[frameToShow].RefCount < 1)
+                {
+                    cm.Error.InternalError(CodecErr.UnsupBitstream,
+                        $"Buffer {frameToShow} does not contain a decoded frame");
+                }
+
+                RefCntFb(frameBuffs, ref cm.NewFbIdx, frameToShow);
+                pbi.RefreshFrameFlags = 0;
+                cm.Lf.FilterLevel = 0;
+                cm.ShowFrame = 1;
+
+                return 0;
+            }
+
+            cm.FrameType = (FrameType)rb.ReadBit();
+            cm.ShowFrame = rb.ReadBit();
+            cm.ErrorResilientMode = rb.ReadBit();
+
+            if (cm.FrameType == FrameType.KeyFrame)
+            {
+                if (!ReadSyncCode(ref rb))
+                {
+                    cm.Error.InternalError(CodecErr.UnsupBitstream, "Invalid frame sync code");
+                }
+
+                cm.ReadBitdepthColorspaceSampling(ref rb);
+                pbi.RefreshFrameFlags = (1 << Constants.RefFrames) - 1;
+
+                Span<RefBuffer> frameRefsSpan = cm.FrameRefs.AsSpan();
+
+                for (int i = 0; i < Constants.RefsPerFrame; ++i)
+                {
+                    frameRefsSpan[i].Idx = RefBuffer.InvalidIdx;
+                    frameRefsSpan[i].Buf = default;
+                }
+
+                SetupFrameSize(allocator, ref cm, ref rb);
+                if (pbi.NeedResync != 0)
+                {
+                    refFrameSpan.Fill(-1);
+                    FlushAllFbOnKey(ref cm);
+                    pbi.NeedResync = 0;
+                }
+            }
+            else
+            {
+                cm.IntraOnly = (cm.ShowFrame != 0 ? 0 : rb.ReadBit()) != 0;
+
+                cm.ResetFrameContext = cm.ErrorResilientMode != 0 ? 0 : rb.ReadLiteral(2);
+
+                if (cm.IntraOnly)
+                {
+                    if (!ReadSyncCode(ref rb))
+                    {
+                        cm.Error.InternalError(CodecErr.UnsupBitstream, "Invalid frame sync code");
+                    }
+
+                    if (cm.Profile > BitstreamProfile.Profile0)
+                    {
+                        cm.ReadBitdepthColorspaceSampling(ref rb);
+                    }
+                    else
+                    {
+                        // NOTE: The intra-only frame header does not include the specification
+                        // of either the color format or color sub-sampling in profile 0. VP9
+                        // specifies that the default color format should be YUV 4:2:0 in this
+                        // case (normative).
+                        cm.ColorSpace = VpxColorSpace.Bt601;
+                        cm.ColorRange = VpxColorRange.Studio;
+                        cm.SubsamplingY = cm.SubsamplingX = 1;
+                        cm.BitDepth = BitDepth.Bits8;
+                        cm.UseHighBitDepth = false;
+                    }
+
+                    pbi.RefreshFrameFlags = rb.ReadLiteral(Constants.RefFrames);
+                    SetupFrameSize(allocator, ref cm, ref rb);
+                    if (pbi.NeedResync != 0)
+                    {
+                        refFrameSpan.Fill(-1);
+                        pbi.NeedResync = 0;
+                    }
+                }
+                else if (pbi.NeedResync != 1)
+                {
+                    Span<RefBuffer> frameRefsSpan = cm.FrameRefs.AsSpan();
+                    Span<sbyte> refFrameSignBiasSpan = cm.RefFrameSignBias.AsSpan();
+                    
+                    /* Skip if need resync */
+                    pbi.RefreshFrameFlags = rb.ReadLiteral(Constants.RefFrames);
+                    for (int i = 0; i < Constants.RefsPerFrame; ++i)
+                    {
+                        int refr = rb.ReadLiteral(Constants.RefFramesLog2);
+                        int idx = refFrameSpan[refr];
+                        ref RefBuffer refFrame = ref frameRefsSpan[i];
+                        refFrame.Idx = idx;
+                        refFrame.Buf = frameBuffs[idx].Buf;
+                        refFrameSignBiasSpan[Constants.LastFrame + i] = (sbyte)rb.ReadBit();
+                    }
+
+                    SetupFrameSizeWithRefs(allocator, ref cm, ref rb);
+
+                    cm.AllowHighPrecisionMv = rb.ReadBit() != 0;
+                    cm.InterpFilter = ReadInterpFilter(ref rb);
+
+                    for (int i = 0; i < Constants.RefsPerFrame; ++i)
+                    {
+                        ref RefBuffer refBuf = ref frameRefsSpan[i];
+                        refBuf.Sf.SetupScaleFactorsForFrame(
+                            refBuf.Buf.YCropWidth,
+                            refBuf.Buf.YCropHeight,
+                            cm.Width,
+                            cm.Height);
+                    }
+                }
+            }
+
+            cm.GetFrameNewBuffer().BitDepth = (uint)cm.BitDepth;
+            cm.GetFrameNewBuffer().ColorSpace = cm.ColorSpace;
+            cm.GetFrameNewBuffer().ColorRange = cm.ColorRange;
+            cm.GetFrameNewBuffer().RenderWidth = cm.RenderWidth;
+            cm.GetFrameNewBuffer().RenderHeight = cm.RenderHeight;
+
+            if (pbi.NeedResync != 0)
+            {
+                cm.Error.InternalError(CodecErr.CorruptFrame,
+                    "Keyframe / intra-only frame required to reset decoder state");
+            }
+
+            if (cm.ErrorResilientMode == 0)
+            {
+                cm.RefreshFrameContext = rb.ReadBit();
+                cm.FrameParallelDecodingMode = rb.ReadBit();
+                if (cm.FrameParallelDecodingMode == 0)
+                {
+                    cm.Counts.Value = new Vp9BackwardUpdates();
+                }
+            }
+            else
+            {
+                cm.RefreshFrameContext = 0;
+                cm.FrameParallelDecodingMode = 1;
+            }
+
+            // This flag will be overridden by the call to SetupPastIndependence
+            // below, forcing the use of context 0 for those frame types.
+            cm.FrameContextIdx = (uint)rb.ReadLiteral(Constants.FrameContextsLog2);
+
+            Span<int> nextRefFrameMapSpan = cm.NextRefFrameMap.AsSpan();
+
+            // Generate next_ref_frame_map.
+            for (mask = pbi.RefreshFrameFlags; mask != 0; mask >>= 1)
+            {
+                if ((mask & 1) != 0)
+                {
+                    nextRefFrameMapSpan[refIndex] = cm.NewFbIdx;
+                    ++frameBuffs[cm.NewFbIdx].RefCount;
+                }
+                else
+                {
+                    nextRefFrameMapSpan[refIndex] = cm.RefFrameMap[refIndex];
+                }
+
+                // Current thread holds the reference frame.
+                if (cm.RefFrameMap[refIndex] >= 0)
+                {
+                    ++frameBuffs[cm.RefFrameMap[refIndex]].RefCount;
+                }
+
+                ++refIndex;
+            }
+
+            for (; refIndex < Constants.RefFrames; ++refIndex)
+            {
+                nextRefFrameMapSpan[refIndex] = refFrameSpan[refIndex];
+                // Current thread holds the reference frame.
+                if (refFrameSpan[refIndex] >= 0)
+                {
+                    ++frameBuffs[refFrameSpan[refIndex]].RefCount;
+                }
+            }
+
+            pbi.HoldRefBuf = 1;
+
+            if (cm.FrameIsIntraOnly() || cm.ErrorResilientMode != 0)
+            {
+                EntropyMode.SetupPastIndependence(ref cm);
+            }
+
+            SetupLoopfilter(ref cm.Lf, ref rb);
+            SetupQuantization(ref cm, ref cm.Mb, ref rb);
+            cm.Seg.SetupSegmentation(ref cm.Fc.Value, ref rb);
+            cm.SetupSegmentationDequant();
+
+            cm.SetupTileInfo(ref rb);
+            sz = (ulong)rb.ReadLiteral(16);
+
+            if (sz == 0)
+            {
+                cm.Error.InternalError(CodecErr.CorruptFrame, "Invalid header size");
+            }
+
+            return sz;
+        }
+
+        private static bool ReadCompressedHeader(ref Vp9Decoder pbi, ArrayPtr<byte> data, ulong partitionSize)
+        {
+            ref Vp9Common cm = ref pbi.Common;
+            ref MacroBlockD xd = ref cm.Mb;
+            ref Vp9EntropyProbs fc = ref cm.Fc.Value;
+            Reader r = new();
+
+            if (r.Init(data, (int)partitionSize))
+            {
+                cm.Error.InternalError(CodecErr.MemError, "Failed to allocate bool decoder 0");
+            }
+
+            cm.TxMode = xd.Lossless ? TxMode.Only4x4 : r.ReadTxMode();
+            if (cm.TxMode == TxMode.TxModeSelect)
+            {
+                ReadTxModeProbs(ref fc, ref r);
+            }
+
+            ReadCoefProbs(ref fc, cm.TxMode, ref r);
+
+            Span<byte> skipProbSpan = fc.SkipProb.AsSpan();
+
+            for (int k = 0; k < Constants.SkipContexts; ++k)
+            {
+                r.DiffUpdateProb(ref skipProbSpan[k]);
+            }
+
+            if (!cm.FrameIsIntraOnly())
+            {
+                ReadInterModeProbs(ref fc, ref r);
+
+                if (cm.InterpFilter == Constants.Switchable)
+                {
+                    ReadSwitchableInterpProbs(ref fc, ref r);
+                }
+                
+                Span<byte> intraInterProbSpan = fc.IntraInterProb.AsSpan();
+
+                for (int i = 0; i < Constants.IntraInterContexts; i++)
+                {
+                    r.DiffUpdateProb(ref intraInterProbSpan[i]);
+                }
+
+                cm.ReferenceMode = cm.ReadFrameReferenceMode(ref r);
+                if (cm.ReferenceMode != ReferenceMode.Single)
+                {
+                    cm.SetupCompoundReferenceMode();
+                }
+
+                cm.ReadFrameReferenceModeProbs(ref r);
+                
+                Span<Array9<byte>> yModeProbSpan1 = fc.YModeProb.AsSpan();
+
+                for (int j = 0; j < EntropyMode.BlockSizeGroups; j++)
+                {
+                    Span<byte> yModeProbSpan2 = yModeProbSpan1[j].AsSpan();
+                    
+                    for (int i = 0; i < Constants.IntraModes - 1; ++i)
+                    {
+                        r.DiffUpdateProb(ref yModeProbSpan2[i]);
+                    }
+                }
+                
+                Span<Array3<byte>> partitionProbSpan1 = fc.PartitionProb.AsSpan();
+
+                for (int j = 0; j < Constants.PartitionContexts; ++j)
+                {
+                    Span<byte> partitionProbSpan2 = partitionProbSpan1[j].AsSpan();
+                    
+                    for (int i = 0; i < Constants.PartitionTypes - 1; ++i)
+                    {
+                        r.DiffUpdateProb(ref partitionProbSpan2[i]);
+                    }
+                }
+
+                ReadMvProbs(ref fc, cm.AllowHighPrecisionMv, ref r);
+            }
+
+            return r.HasError();
+        }
+
+        private static ref ReadBitBuffer InitReadBitBuffer(ref ReadBitBuffer rb, ReadOnlySpan<byte> data)
+        {
+            rb.BitOffset = 0;
+            rb.BitBuffer = data;
+            return ref rb;
+        }
+
+        public static unsafe void Decode(MemoryAllocator allocator,
+            ref Vp9Decoder pbi,
+            ArrayPtr<byte> data,
+            out ArrayPtr<byte> pDataEnd,
+            bool multithreaded = true)
+        {
+            ref Vp9Common cm = ref pbi.Common;
+            ref MacroBlockD xd = ref cm.Mb;
+            ReadBitBuffer rb = new();
+            int contextUpdated = 0;
+            Span<byte> clearData = stackalloc byte[80];
+            ulong firstPartitionSize =
+                ReadUncompressedHeader(allocator, ref pbi, ref InitReadBitBuffer(ref rb, data.AsSpan()));
+            int tileRows = 1 << cm.Log2TileRows;
+            int tileCols = 1 << cm.Log2TileCols;
+            ref Surface newFb = ref cm.GetFrameNewBuffer();
+            xd.CurBuf = newFb;
+
+            if (firstPartitionSize == 0)
+            {
+                // showing a frame directly
+                pDataEnd = data.Slice(cm.Profile <= BitstreamProfile.Profile2 ? 1 : 2);
+                return;
+            }
+
+            data = data.Slice((int)rb.BytesRead());
+            if (!ReadIsValid(data, (int)firstPartitionSize))
+            {
+                cm.Error.InternalError(CodecErr.CorruptFrame, "Truncated packet or corrupt header length");
+            }
+
+            cm.UsePrevFrameMvs =
+                cm.ErrorResilientMode == 0 &&
+                cm.Width == cm.LastWidth &&
+                cm.Height == cm.LastHeight &&
+                !cm.LastIntraOnly &&
+                cm.LastShowFrame != 0 &&
+                cm.LastFrameType != FrameType.KeyFrame;
+
+            xd.SetupBlockPlanes(cm.SubsamplingX, cm.SubsamplingY);
+
+            Span<Vp9EntropyProbs> frameContextsSpan = cm.FrameContexts.AsSpan();
+
+            cm.Fc = new Ptr<Vp9EntropyProbs>(ref frameContextsSpan[(int)cm.FrameContextIdx]);
+
+            xd.Corrupted = false;
+            newFb.Corrupted = ReadCompressedHeader(ref pbi, data, firstPartitionSize) ? 1 : 0;
+            if (newFb.Corrupted != 0)
+            {
+                cm.Error.InternalError(CodecErr.CorruptFrame, "Decode failed. Frame data header is corrupted.");
+            }
+
+            if (cm.Lf.FilterLevel != 0 && cm.SkipLoopFilter == 0)
+            {
+                LoopFilter.LoopFilterFrameInit(ref cm, cm.Lf.FilterLevel);
+            }
+
+            int threadCount = multithreaded ? Math.Max(1, Environment.ProcessorCount / 2) : 0;
+
+            if (cm.TileWorkerData.IsNull || tileCols * tileRows != cm.TotalTiles)
+            {
+                int numTileWorkers = (tileCols * tileRows) + threadCount;
+                if (!cm.TileWorkerData.IsNull)
+                {
+                    allocator.Free(cm.TileWorkerData);
+                }
+
+                cm.CheckMemError( ref cm.TileWorkerData, allocator.Allocate<TileWorkerData>(numTileWorkers));
+                cm.TotalTiles = tileRows * tileCols;
+            }
+
+            if (multithreaded)
+            {
+                pDataEnd = DecodeTilesMt(ref pbi.Common, data.Slice((int)firstPartitionSize), threadCount);
+
+                LoopFilter.LoopFilterFrameMt(
+                    ref cm.Mb.CurBuf,
+                    ref cm,
+                    ref cm.Mb,
+                    cm.Lf.FilterLevel,
+                    false,
+                    false,
+                    threadCount);
+            }
+            else
+            {
+                pDataEnd = DecodeTiles(ref pbi.Common, data.Slice((int)firstPartitionSize));
+
+                LoopFilter.LoopFilterFrame(ref cm.Mb.CurBuf, ref cm, ref cm.Mb, cm.Lf.FilterLevel, false, false);
+            }
+
+            if (!xd.Corrupted)
+            {
+                if (cm.ErrorResilientMode == 0 && cm.FrameParallelDecodingMode == 0)
+                {
+                    cm.AdaptCoefProbs();
+
+                    if (!cm.FrameIsIntraOnly())
+                    {
+                        cm.AdaptModeProbs();
+                        cm.AdaptMvProbs(cm.AllowHighPrecisionMv);
+                    }
+                }
+            }
+            else
+            {
+                cm.Error.InternalError(CodecErr.CorruptFrame, "Decode failed. Frame data is corrupted.");
+            }
+
+            // Non frame parallel update frame context here.
+            if (cm.RefreshFrameContext != 0 && contextUpdated == 0)
+            {
+                frameContextsSpan[(int)cm.FrameContextIdx] = cm.Fc.Value;
             }
         }
     }

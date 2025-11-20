@@ -10,11 +10,11 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
 {
     internal static class DecodeMv
     {
-        private const int MvrefNeighbours = 8;
+        private const int RefNeighbours = 8;
 
         private static PredictionMode ReadIntraMode(ref Reader r, ReadOnlySpan<byte> p)
         {
-            return (PredictionMode)r.ReadTree(Luts.Vp9IntraModeTree, p);
+            return (PredictionMode)r.ReadTree(Luts.IntraModeTree, p);
         }
 
         private static PredictionMode ReadIntraModeY(ref Vp9Common cm, ref MacroBlockD xd, ref Reader r, int sizeGroup)
@@ -41,7 +41,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
 
         private static PredictionMode ReadInterMode(ref Vp9Common cm, ref MacroBlockD xd, ref Reader r, int ctx)
         {
-            int mode = r.ReadTree(Luts.Vp9InterModeTree, cm.Fc.Value.InterModeProb[ctx].AsSpan());
+            int mode = r.ReadTree(Luts.InterModeTree, cm.Fc.Value.InterModeProb[ctx].AsSpan());
             if (!xd.Counts.IsNull)
             {
                 ++xd.Counts.Value.InterMode[ctx][mode];
@@ -50,24 +50,20 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             return PredictionMode.NearestMv + mode;
         }
 
-        private static int ReadSegmentId(ref Reader r, ref Array7<byte> segTreeProbs)
+        private static int ReadSegmentId(ref Reader r, ReadOnlySpan<byte> segTreeProbs)
         {
-            return r.ReadTree(Luts.Vp9SegmentTree, segTreeProbs.AsSpan());
+            return r.ReadTree(Luts.SegmentTree, segTreeProbs);
         }
 
         private static ReadOnlySpan<byte> GetTxProbs(ref Vp9EntropyProbs fc, TxSize maxTxSize, int ctx)
         {
             switch (maxTxSize)
             {
-                case TxSize.Tx8x8:
-                    return fc.Tx8x8Prob[ctx].AsSpan();
-                case TxSize.Tx16x16:
-                    return fc.Tx16x16Prob[ctx].AsSpan();
-                case TxSize.Tx32x32:
-                    return fc.Tx32x32Prob[ctx].AsSpan();
+                case TxSize.Tx8x8: return fc.Tx8x8Prob[ctx].AsSpan();
+                case TxSize.Tx16x16: return fc.Tx16x16Prob[ctx].AsSpan();
+                case TxSize.Tx32x32: return fc.Tx32x32Prob[ctx].AsSpan();
                 default:
                     Debug.Assert(false, "Invalid maxTxSize.");
-
                     return ReadOnlySpan<byte>.Empty;
             }
         }
@@ -76,15 +72,11 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
         {
             switch (maxTxSize)
             {
-                case TxSize.Tx8x8:
-                    return counts.Tx8x8[ctx].AsSpan();
-                case TxSize.Tx16x16:
-                    return counts.Tx16x16[ctx].AsSpan();
-                case TxSize.Tx32x32:
-                    return counts.Tx32x32[ctx].AsSpan();
+                case TxSize.Tx8x8: return counts.Tx8x8[ctx].AsSpan();
+                case TxSize.Tx16x16: return counts.Tx16x16[ctx].AsSpan();
+                case TxSize.Tx32x32: return counts.Tx32x32[ctx].AsSpan();
                 default:
                     Debug.Assert(false, "Invalid maxTxSize.");
-
                     return Span<uint>.Empty;
             }
         }
@@ -124,34 +116,32 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             return (TxSize)Math.Min((int)maxTxSize, (int)Luts.TxModeToBiggestTxSize[(int)txMode]);
         }
 
-        private static int DecGetSegmentId(ref Vp9Common cm, ArrayPtr<byte> segmentIds, int miOffset, int xMis, int yMis)
+        private static int DecGetSegmentId(ref Vp9Common cm, ArrayPtr<byte> segmentIds, int miOffset, int xMis,
+            int yMis)
         {
-            int x, y, segmentId = int.MaxValue;
+            int segmentId = int.MaxValue;
 
-            for (y = 0; y < yMis; y++)
+            for (int y = 0; y < yMis; y++)
             {
-                for (x = 0; x < xMis; x++)
+                for (int x = 0; x < xMis; x++)
                 {
-                    segmentId = Math.Min(segmentId, segmentIds[miOffset + y * cm.MiCols + x]);
+                    segmentId = Math.Min(segmentId, segmentIds[miOffset + (y * cm.MiCols) + x]);
                 }
             }
 
             Debug.Assert(segmentId >= 0 && segmentId < Constants.MaxSegments);
-
             return segmentId;
         }
 
         private static void SetSegmentId(ref Vp9Common cm, int miOffset, int xMis, int yMis, int segmentId)
         {
-            int x, y;
-
             Debug.Assert(segmentId >= 0 && segmentId < Constants.MaxSegments);
 
-            for (y = 0; y < yMis; y++)
+            for (int y = 0; y < yMis; y++)
             {
-                for (x = 0; x < xMis; x++)
+                for (int x = 0; x < xMis; x++)
                 {
-                    cm.CurrentFrameSegMap[miOffset + y * cm.MiCols + x] = (byte)segmentId;
+                    cm.CurrentFrameSegMap[miOffset + (y * cm.MiCols) + x] = (byte)segmentId;
                 }
             }
         }
@@ -164,13 +154,13 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             int xMis,
             int yMis)
         {
-            int x, y;
-
-            for (y = 0; y < yMis; y++)
+            for (int y = 0; y < yMis; y++)
             {
-                for (x = 0; x < xMis; x++)
+                for (int x = 0; x < xMis; x++)
                 {
-                    currentSegmentIds[miOffset + y * cm.MiCols + x] = (byte)(!lastSegmentIds.IsNull ? lastSegmentIds[miOffset + y * cm.MiCols + x] : 0);
+                    currentSegmentIds[miOffset + (y * cm.MiCols) + x] = (byte)(!lastSegmentIds.IsNull
+                        ? lastSegmentIds[miOffset + (y * cm.MiCols) + x]
+                        : 0);
                 }
             }
         }
@@ -188,13 +178,11 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             if (!seg.UpdateMap)
             {
                 CopySegmentId(ref cm, cm.LastFrameSegMap, cm.CurrentFrameSegMap, miOffset, xMis, yMis);
-
                 return 0;
             }
 
-            segmentId = ReadSegmentId(ref r, ref cm.Fc.Value.SegTreeProb);
+            segmentId = ReadSegmentId(ref r, cm.Fc.Value.SegTreeProb.AsSpan());
             SetSegmentId(ref cm, miOffset, xMis, yMis, segmentId);
-
             return segmentId;
         }
 
@@ -210,7 +198,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             ref Segmentation seg = ref cm.Seg;
             ref ModeInfo mi = ref xd.Mi[0].Value;
             int predictedSegmentId, segmentId;
-            int miOffset = miRow * cm.MiCols + miCol;
+            int miOffset = (miRow * cm.MiCols) + miCol;
 
             if (!seg.Enabled)
             {
@@ -224,28 +212,29 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             if (!seg.UpdateMap)
             {
                 CopySegmentId(ref cm, cm.LastFrameSegMap, cm.CurrentFrameSegMap, miOffset, xMis, yMis);
-
                 return predictedSegmentId;
             }
 
             if (seg.TemporalUpdate)
             {
-                byte predProb = Segmentation.GetPredProbSegId(ref cm.Fc.Value.SegPredProb, ref xd);
+                byte predProb = Segmentation.GetPredProbSegId(cm.Fc.Value.SegPredProb.AsSpan(), ref xd);
                 mi.SegIdPredicted = (sbyte)r.Read(predProb);
-                segmentId = mi.SegIdPredicted != 0 ? predictedSegmentId : ReadSegmentId(ref r, ref cm.Fc.Value.SegTreeProb);
+                segmentId = mi.SegIdPredicted != 0
+                    ? predictedSegmentId
+                    : ReadSegmentId(ref r, cm.Fc.Value.SegTreeProb.AsSpan());
             }
             else
             {
-                segmentId = ReadSegmentId(ref r, ref cm.Fc.Value.SegTreeProb);
+                segmentId = ReadSegmentId(ref r, cm.Fc.Value.SegTreeProb.AsSpan());
             }
-            SetSegmentId(ref cm, miOffset, xMis, yMis, segmentId);
 
+            SetSegmentId(ref cm, miOffset, xMis, yMis, segmentId);
             return segmentId;
         }
 
         private static int ReadSkip(ref Vp9Common cm, ref MacroBlockD xd, int segmentId, ref Reader r)
         {
-            if (cm.Seg.IsSegFeatureActive(segmentId, SegLvlFeatures.SegLvlSkip) != 0)
+            if (cm.Seg.IsSegFeatureActive(segmentId, SegLvlFeatures.Skip) != 0)
             {
                 return 1;
             }
@@ -260,12 +249,12 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             return skip;
         }
 
-        private static int ReadMvComponent(ref Reader r, ref Vp9EntropyProbs fc, int mvcomp, bool usehp)
+        private static int ReadComponent(ref Reader r, ref Vp9EntropyProbs fc, int mvcomp, bool usehp)
         {
             int mag, d, fr, hp;
             bool sign = r.Read(fc.Sign[mvcomp]) != 0;
-            MvClassType mvClass = (MvClassType)r.ReadTree(Luts.Vp9MvClassTree, fc.Classes[mvcomp].AsSpan());
-            bool class0 = mvClass == MvClassType.MvClass0;
+            MvClassType mvClass = (MvClassType)r.ReadTree(Luts.MvClassTree, fc.Classes[mvcomp].AsSpan());
+            bool class0 = mvClass == MvClassType.Class0;
 
             // Integer part
             if (class0)
@@ -275,53 +264,53 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             }
             else
             {
-                int i;
                 int n = (int)mvClass + Constants.Class0Bits - 1; // Number of bits
 
+                Span<byte> bitsSpan = fc.Bits[mvcomp].AsSpan();
+                
                 d = 0;
-                for (i = 0; i < n; ++i)
+                for (int i = 0; i < n; ++i)
                 {
-                    d |= r.Read(fc.Bits[mvcomp][i]) << i;
+                    d |= r.Read(bitsSpan[i]) << i;
                 }
 
                 mag = Constants.Class0Size << ((int)mvClass + 2);
             }
 
             // Fractional part
-            fr = r.ReadTree(Luts.Vp9MvFPTree, class0 ? fc.Class0Fp[mvcomp][d].AsSpan() : fc.Fp[mvcomp].AsSpan());
+            fr = r.ReadTree(Luts.MvFPTree, class0 ? fc.Class0Fp[mvcomp][d].AsSpan() : fc.Fp[mvcomp].AsSpan());
 
             // High precision part (if hp is not used, the default value of the hp is 1)
             hp = usehp ? r.Read(class0 ? fc.Class0Hp[mvcomp] : fc.Hp[mvcomp]) : 1;
 
             // Result
             mag += ((d << 3) | (fr << 1) | hp) + 1;
-
             return sign ? -mag : mag;
         }
 
-        private static void ReadMv(
+        private static void Read(
             ref Reader r,
             ref Mv mv,
             ref Mv refr,
             ref Vp9EntropyProbs fc,
             Ptr<Vp9BackwardUpdates> counts,
-            bool allowHP)
+            bool allowHp)
         {
-            MvJointType jointType = (MvJointType)r.ReadTree(Luts.Vp9MvJointTree, fc.Joints.AsSpan());
-            bool useHP = allowHP && refr.UseMvHp();
+            MvJointType jointType = (MvJointType)r.ReadTree(Luts.MvJointTree, fc.Joints.AsSpan());
+            bool useHp = allowHp && refr.UseHp();
             Mv diff = new();
 
-            if (Mv.MvJointVertical(jointType))
+            if (Mv.JointVertical(jointType))
             {
-                diff.Row = (short)ReadMvComponent(ref r, ref fc, 0, useHP);
+                diff.Row = (short)ReadComponent(ref r, ref fc, 0, useHp);
             }
 
-            if (Mv.MvJointHorizontal(jointType))
+            if (Mv.JointHorizontal(jointType))
             {
-                diff.Col = (short)ReadMvComponent(ref r, ref fc, 1, useHP);
+                diff.Col = (short)ReadComponent(ref r, ref fc, 1, useHp);
             }
 
-            diff.IncMv(counts);
+            diff.Inc(counts);
 
             mv.Row = (short)(refr.Row + diff.Row);
             mv.Col = (short)(refr.Col + diff.Col);
@@ -329,7 +318,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
 
         private static ReferenceMode ReadBlockReferenceMode(ref Vp9Common cm, ref MacroBlockD xd, ref Reader r)
         {
-            if (cm.ReferenceMode == ReferenceMode.ReferenceModeSelect)
+            if (cm.ReferenceMode == ReferenceMode.Select)
             {
                 int ctx = PredCommon.GetReferenceModeContext(ref cm, ref xd);
                 ReferenceMode mode = (ReferenceMode)r.Read(cm.Fc.Value.CompInterProb[ctx]);
@@ -350,19 +339,19 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             ref MacroBlockD xd,
             ref Reader r,
             int segmentId,
-            ref Array2<sbyte> refFrame)
+            Span<sbyte> refFrame)
         {
             ref Vp9EntropyProbs fc = ref cm.Fc.Value;
 
-            if (cm.Seg.IsSegFeatureActive(segmentId, SegLvlFeatures.SegLvlRefFrame) != 0)
+            if (cm.Seg.IsSegFeatureActive(segmentId, SegLvlFeatures.RefFrame) != 0)
             {
-                refFrame[0] = (sbyte)cm.Seg.GetSegData(segmentId, SegLvlFeatures.SegLvlRefFrame);
+                refFrame[0] = (sbyte)cm.Seg.GetSegData(segmentId, SegLvlFeatures.RefFrame);
                 refFrame[1] = Constants.None;
             }
             else
             {
                 ReferenceMode mode = ReadBlockReferenceMode(ref cm, ref xd, ref r);
-                if (mode == ReferenceMode.CompoundReference)
+                if (mode == ReferenceMode.Compound)
                 {
                     int idx = cm.RefFrameSignBias[cm.CompFixedRef];
                     int ctx = PredCommon.GetPredContextCompRefP(ref cm, ref xd);
@@ -375,7 +364,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
                     refFrame[idx] = cm.CompFixedRef;
                     refFrame[idx == 0 ? 1 : 0] = cm.CompVarRef[bit];
                 }
-                else if (mode == ReferenceMode.SingleReference)
+                else if (mode == ReferenceMode.Single)
                 {
                     int ctx0 = PredCommon.GetPredContextSingleRefP1(ref xd);
                     int bit0 = r.Read(fc.SingleRefProb[ctx0][0]);
@@ -412,7 +401,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
         private static byte ReadSwitchableInterpFilter(ref Vp9Common cm, ref MacroBlockD xd, ref Reader r)
         {
             int ctx = xd.GetPredContextSwitchableInterp();
-            byte type = (byte)r.ReadTree(Luts.Vp9SwitchableInterpTree, cm.Fc.Value.SwitchableInterpProb[ctx].AsSpan());
+            byte type = (byte)r.ReadTree(Luts.SwitchableInterpTree, cm.Fc.Value.SwitchableInterpProb[ctx].AsSpan());
             if (!xd.Counts.IsNull)
             {
                 ++xd.Counts.Value.SwitchableInterp[ctx][type];
@@ -424,25 +413,26 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
         private static void ReadIntraBlockModeInfo(ref Vp9Common cm, ref MacroBlockD xd, ref ModeInfo mi, ref Reader r)
         {
             BlockSize bsize = mi.SbType;
-            int i;
+
+            Span<BModeInfo> bmiSpan = mi.Bmi.AsSpan();
 
             switch (bsize)
             {
                 case BlockSize.Block4x4:
-                    for (i = 0; i < 4; ++i)
+                    for (int i = 0; i < 4; ++i)
                     {
-                        mi.Bmi[i].Mode = ReadIntraModeY(ref cm, ref xd, ref r, 0);
+                        bmiSpan[i].Mode = ReadIntraModeY(ref cm, ref xd, ref r, 0);
                     }
 
-                    mi.Mode = mi.Bmi[3].Mode;
+                    mi.Mode = bmiSpan[3].Mode;
                     break;
                 case BlockSize.Block4x8:
-                    mi.Bmi[0].Mode = mi.Bmi[2].Mode = ReadIntraModeY(ref cm, ref xd, ref r, 0);
-                    mi.Bmi[1].Mode = mi.Bmi[3].Mode = mi.Mode = ReadIntraModeY(ref cm, ref xd, ref r, 0);
+                    bmiSpan[0].Mode = bmiSpan[2].Mode = ReadIntraModeY(ref cm, ref xd, ref r, 0);
+                    bmiSpan[1].Mode = bmiSpan[3].Mode = mi.Mode = ReadIntraModeY(ref cm, ref xd, ref r, 0);
                     break;
                 case BlockSize.Block8x4:
-                    mi.Bmi[0].Mode = mi.Bmi[1].Mode = ReadIntraModeY(ref cm, ref xd, ref r, 0);
-                    mi.Bmi[2].Mode = mi.Bmi[3].Mode = mi.Mode = ReadIntraModeY(ref cm, ref xd, ref r, 0);
+                    bmiSpan[0].Mode = bmiSpan[1].Mode = ReadIntraModeY(ref cm, ref xd, ref r, 0);
+                    bmiSpan[2].Mode = bmiSpan[3].Mode = mi.Mode = ReadIntraModeY(ref cm, ref xd, ref r, 0);
                     break;
                 default:
                     mi.Mode = ReadIntraModeY(ref cm, ref xd, ref r, Luts.SizeGroupLookup[(int)bsize]);
@@ -455,77 +445,59 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             // modes in GetPredContextSwitchableInterp()
             mi.InterpFilter = Constants.SwitchableFilters;
 
-            mi.RefFrame[0] = Constants.IntraFrame;
-            mi.RefFrame[1] = Constants.None;
+            Span<sbyte> refFrameSpan = mi.RefFrame.AsSpan();
+            
+            refFrameSpan[0] = Constants.IntraFrame;
+            refFrameSpan[1] = Constants.None;
         }
 
-        private static bool IsMvValid(ref Mv mv)
-        {
-            return mv.Row > Constants.MvLow &&
-                   mv.Row < Constants.MvUpp &&
-                   mv.Col > Constants.MvLow &&
-                   mv.Col < Constants.MvUpp;
-        }
-
-        private static void CopyMvPair(ref Array2<Mv> dst, ref Array2<Mv> src)
-        {
-            dst[0] = src[0];
-            dst[1] = src[1];
-        }
-
-        private static void ZeroMvPair(ref Array2<Mv> dst)
-        {
-            dst[0] = new Mv();
-            dst[1] = new Mv();
-        }
-
-        private static bool AssignMv(
+        private static bool Assign(
             ref Vp9Common cm,
             ref MacroBlockD xd,
             PredictionMode mode,
-            ref Array2<Mv> mv,
-            ref Array2<Mv> refMv,
-            ref Array2<Mv> nearNearestMv,
+            Span<Mv> mv,
+            Span<Mv> refMv,
+            Span<Mv> nearNearestMv,
             int isCompound,
-            bool allowHP,
+            bool allowHp,
             ref Reader r)
         {
-            int i;
             bool ret = true;
 
             switch (mode)
             {
                 case PredictionMode.NewMv:
                     {
-                        for (i = 0; i < 1 + isCompound; ++i)
+                        for (int i = 0; i < 1 + isCompound; ++i)
                         {
-                            ReadMv(ref r, ref mv[i], ref refMv[i], ref cm.Fc.Value, xd.Counts, allowHP);
-                            ret = ret && IsMvValid(ref mv[i]);
+                            Read(ref r, ref mv[i], ref refMv[i], ref cm.Fc.Value, xd.Counts, allowHp);
+                            ret = ret && mv[i].IsValid();
                         }
+
                         break;
                     }
                 case PredictionMode.NearMv:
                 case PredictionMode.NearestMv:
                     {
-                        CopyMvPair(ref mv, ref nearNearestMv);
+                        nearNearestMv.CopyTo(mv);
                         break;
                     }
                 case PredictionMode.ZeroMv:
                     {
-                        ZeroMvPair(ref mv);
+                        mv.Clear();
                         break;
                     }
-                default:
-                    return false;
+                default: return false;
             }
+
             return ret;
         }
 
         private static bool ReadIsInterBlock(ref Vp9Common cm, ref MacroBlockD xd, int segmentId, ref Reader r)
         {
-            if (cm.Seg.IsSegFeatureActive(segmentId, SegLvlFeatures.SegLvlRefFrame) != 0)
+            if (cm.Seg.IsSegFeatureActive(segmentId, SegLvlFeatures.RefFrame) != 0)
             {
-                return cm.Seg.GetSegData(segmentId, SegLvlFeatures.SegLvlRefFrame) != Constants.IntraFrame;
+                return cm.Seg.GetSegData(segmentId, SegLvlFeatures.RefFrame) != Constants.IntraFrame;
             }
 
             int ctx = xd.GetIntraInterContext();
@@ -538,33 +510,30 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             return isInter;
         }
 
-        private static void DecFindBestRefMvs(bool allowHP, Span<Mv> mvlist, ref Mv bestMv, int refmvCount)
+        private static void DecFindBestRefs(bool allowHp, Span<Mv> mvlist, ref Mv bestMv, int refmvCount)
         {
-            int i;
-
             // Make sure all the candidates are properly clamped etc
-            for (i = 0; i < refmvCount; ++i)
+            for (int i = 0; i < refmvCount; ++i)
             {
-                mvlist[i].LowerMvPrecision(allowHP);
+                mvlist[i].LowerPrecision(allowHp);
                 bestMv = mvlist[i];
             }
         }
 
-        private static bool AddMvRefListEb(Mv mv, ref int refMvCount, Span<Mv> mvRefList, bool earlyBreak)
+        private static bool AddRefListEb(Mv mv, ref int refCount, Span<Mv> mvRefList, bool earlyBreak)
         {
-            if (refMvCount != 0)
+            if (refCount != 0)
             {
                 if (Unsafe.As<Mv, int>(ref mv) != Unsafe.As<Mv, int>(ref mvRefList[0]))
                 {
-                    mvRefList[refMvCount] = mv;
-                    refMvCount++;
-
+                    mvRefList[refCount] = mv;
+                    refCount++;
                     return true;
                 }
             }
             else
             {
-                mvRefList[refMvCount++] = mv;
+                mvRefList[refCount++] = mv;
                 if (earlyBreak)
                 {
                     return true;
@@ -574,50 +543,45 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             return false;
         }
 
-        // Performs mv sign inversion if indicated by the reference frame combination.
-        private static Mv ScaleMv(ref ModeInfo mi, int refr, sbyte thisRefFrame, ref Array4<sbyte> refSignBias)
-        {
-            Mv mv = mi.Mv[refr];
-            if (refSignBias[mi.RefFrame[refr]] != refSignBias[thisRefFrame])
-            {
-                mv.Row *= -1;
-                mv.Col *= -1;
-            }
-            return mv;
-        }
-
-        private static bool IsDiffRefFrameAddMvEb(
+        private static bool IsDiffRefFrameAddEb(
             ref ModeInfo mbmi,
             sbyte refFrame,
-            ref Array4<sbyte> refSignBias,
+            Span<sbyte> refSignBias,
             ref int refmvCount,
             Span<Mv> mvRefList,
             bool earlyBreak)
         {
             if (mbmi.IsInterBlock())
             {
-                if (mbmi.RefFrame[0] != refFrame)
+                Span<sbyte> refFrameSpan = mbmi.RefFrame.AsSpan();
+                Span<Mv> mvSpan = mbmi.Mv.AsSpan();
+                
+                if (refFrameSpan[0] != refFrame)
                 {
-                    if (AddMvRefListEb(ScaleMv(ref mbmi, 0, refFrame, ref refSignBias), ref refmvCount, mvRefList, earlyBreak))
-                    {
-                        return true;
-                    }
-                }
-                if (mbmi.HasSecondRef() && mbmi.RefFrame[1] != refFrame && Unsafe.As<Mv, int>(ref mbmi.Mv[1]) != Unsafe.As<Mv, int>(ref mbmi.Mv[0]))
-                {
-                    if (AddMvRefListEb(ScaleMv(ref mbmi, 1, refFrame, ref refSignBias), ref refmvCount, mvRefList, earlyBreak))
+                    if (AddRefListEb(mbmi.ScaleMv(0, refFrame, refSignBias), ref refmvCount, mvRefList,
+                            earlyBreak))
                     {
                         return true;
                     }
                 }
 
+                if (mbmi.HasSecondRef() && refFrameSpan[1] != refFrame &&
+                    Unsafe.As<Mv, int>(ref mvSpan[1]) != Unsafe.As<Mv, int>(ref mvSpan[0]))
+                {
+                    if (AddRefListEb(mbmi.ScaleMv(1, refFrame, refSignBias), ref refmvCount, mvRefList,
+                            earlyBreak))
+                    {
+                        return true;
+                    }
+                }
             }
+
             return false;
         }
 
         // This function searches the neighborhood of a given MB/SB
         // to try and find candidate reference vectors.
-        private static int DecFindMvRefs(
+        private static int DecFindRefs(
             ref Vp9Common cm,
             ref MacroBlockD xd,
             PredictionMode mode,
@@ -627,22 +591,24 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             int miRow,
             int miCol,
             int block,
-            int isSub8X8)
+            int isSub8x8)
         {
-            ref Array4<sbyte> refSignBias = ref cm.RefFrameSignBias;
+            Span<sbyte> refSignBias = cm.RefFrameSignBias.AsSpan();
             int i, refmvCount = 0;
             bool differentRefFound = false;
-            Ptr<MvRef> prevFrameMvs = cm.UsePrevFrameMvs ? new Ptr<MvRef>(ref cm.PrevFrameMvs[miRow * cm.MiCols + miCol]) : Ptr<MvRef>.Null;
+            Ptr<MvRef> prevFrameMvs = cm.UsePrevFrameMvs
+                ? new Ptr<MvRef>(ref cm.PrevFrameMvs[(miRow * cm.MiCols) + miCol])
+                : Ptr<MvRef>.Null;
             ref TileInfo tile = ref xd.Tile;
             // If mode is nearestmv or newmv (uses nearestmv as a reference) then stop
             // searching after the first mv is found.
             bool earlyBreak = mode != PredictionMode.NearMv;
 
             // Blank the reference vector list
-            mvRefList[..Constants.MaxMvRefCandidates].Clear();
+            mvRefList.Slice(0, Constants.MaxMvRefCandidates).Fill(new Mv());
 
             i = 0;
-            if (isSub8X8 != 0)
+            if (isSub8x8 != 0)
             {
                 // If the size < 8x8 we get the mv from the bmi substructure for the
                 // nearest two blocks.
@@ -651,19 +617,23 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
                     ref Position mvRef = ref mvRefSearch[i];
                     if (tile.IsInside(miCol, miRow, cm.MiRows, ref mvRef))
                     {
-                        ref ModeInfo candidateMi = ref xd.Mi[mvRef.Col + mvRef.Row * xd.MiStride].Value;
+                        ref ModeInfo candidateMi = ref xd.Mi[mvRef.Col + (mvRef.Row * xd.MiStride)].Value;
                         differentRefFound = true;
 
-                        if (candidateMi.RefFrame[0] == refFrame)
+                        Span<sbyte> refFrameSpan = candidateMi.RefFrame.AsSpan();
+                        
+                        if (refFrameSpan[0] == refFrame)
                         {
-                            if (AddMvRefListEb(candidateMi.GetSubBlockMv(0, mvRef.Col, block), ref refmvCount, mvRefList, earlyBreak))
+                            if (AddRefListEb(candidateMi.GetSubBlockMv(0, mvRef.Col, block), ref refmvCount,
+                                    mvRefList, earlyBreak))
                             {
                                 goto Done;
                             }
                         }
-                        else if (candidateMi.RefFrame[1] == refFrame)
+                        else if (refFrameSpan[1] == refFrame)
                         {
-                            if (AddMvRefListEb(candidateMi.GetSubBlockMv(1, mvRef.Col, block), ref refmvCount, mvRefList, earlyBreak))
+                            if (AddRefListEb(candidateMi.GetSubBlockMv(1, mvRef.Col, block), ref refmvCount,
+                                    mvRefList, earlyBreak))
                             {
                                 goto Done;
                             }
@@ -675,24 +645,27 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             // Check the rest of the neighbors in much the same way
             // as before except we don't need to keep track of sub blocks or
             // mode counts.
-            for (; i < MvrefNeighbours; ++i)
+            for (; i < RefNeighbours; ++i)
             {
                 ref Position mvRef = ref mvRefSearch[i];
                 if (tile.IsInside(miCol, miRow, cm.MiRows, ref mvRef))
                 {
-                    ref ModeInfo candidate = ref xd.Mi[mvRef.Col + mvRef.Row * xd.MiStride].Value;
+                    ref ModeInfo candidate = ref xd.Mi[mvRef.Col + (mvRef.Row * xd.MiStride)].Value;
                     differentRefFound = true;
+                    
+                    Span<sbyte> refFrameSpan = candidate.RefFrame.AsSpan();
+                    Span<Mv> mvSpan = candidate.Mv.AsSpan();
 
-                    if (candidate.RefFrame[0] == refFrame)
+                    if (refFrameSpan[0] == refFrame)
                     {
-                        if (AddMvRefListEb(candidate.Mv[0], ref refmvCount, mvRefList, earlyBreak))
+                        if (AddRefListEb(mvSpan[0], ref refmvCount, mvRefList, earlyBreak))
                         {
                             goto Done;
                         }
                     }
-                    else if (candidate.RefFrame[1] == refFrame)
+                    else if (refFrameSpan[1] == refFrame)
                     {
-                        if (AddMvRefListEb(candidate.Mv[1], ref refmvCount, mvRefList, earlyBreak))
+                        if (AddRefListEb(mvSpan[1], ref refmvCount, mvRefList, earlyBreak))
                         {
                             goto Done;
                         }
@@ -703,16 +676,19 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             // Check the last frame's mode and mv info.
             if (!prevFrameMvs.IsNull)
             {
-                if (prevFrameMvs.Value.RefFrame[0] == refFrame)
+                Span<sbyte> refFrameSpan = prevFrameMvs.Value.RefFrame.AsSpan();
+                Span<Mv> mvSpan = prevFrameMvs.Value.Mv.AsSpan();
+                
+                if (refFrameSpan[0] == refFrame)
                 {
-                    if (AddMvRefListEb(prevFrameMvs.Value.Mv[0], ref refmvCount, mvRefList, earlyBreak))
+                    if (AddRefListEb(mvSpan[0], ref refmvCount, mvRefList, earlyBreak))
                     {
                         goto Done;
                     }
                 }
-                else if (prevFrameMvs.Value.RefFrame[1] == refFrame)
+                else if (refFrameSpan[1] == refFrame)
                 {
-                    if (AddMvRefListEb(prevFrameMvs.Value.Mv[1], ref refmvCount, mvRefList, earlyBreak))
+                    if (AddRefListEb(mvSpan[1], ref refmvCount, mvRefList, earlyBreak))
                     {
                         goto Done;
                     }
@@ -724,15 +700,16 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             // different reference frames.
             if (differentRefFound)
             {
-                for (i = 0; i < MvrefNeighbours; ++i)
+                for (i = 0; i < RefNeighbours; ++i)
                 {
                     ref Position mvRef = ref mvRefSearch[i];
                     if (tile.IsInside(miCol, miRow, cm.MiRows, ref mvRef))
                     {
-                        ref ModeInfo candidate = ref xd.Mi[mvRef.Col + mvRef.Row * xd.MiStride].Value;
+                        ref ModeInfo candidate = ref xd.Mi[mvRef.Col + (mvRef.Row * xd.MiStride)].Value;
 
                         // If the candidate is Intra we don't want to consider its mv.
-                        if (IsDiffRefFrameAddMvEb(ref candidate, refFrame, ref refSignBias, ref refmvCount, mvRefList, earlyBreak))
+                        if (IsDiffRefFrameAddEb(ref candidate, refFrame, refSignBias, ref refmvCount, mvRefList,
+                                earlyBreak))
                         {
                             goto Done;
                         }
@@ -743,31 +720,37 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             // Since we still don't have a candidate we'll try the last frame.
             if (!prevFrameMvs.IsNull)
             {
-                if (prevFrameMvs.Value.RefFrame[0] != refFrame && prevFrameMvs.Value.RefFrame[0] > Constants.IntraFrame)
+                Span<sbyte> refFrameSpan = prevFrameMvs.Value.RefFrame.AsSpan();
+                Span<Mv> mvSpan = prevFrameMvs.Value.Mv.AsSpan();
+                
+                if (refFrameSpan[0] != refFrame && refFrameSpan[0] > Constants.IntraFrame)
                 {
-                    Mv mv = prevFrameMvs.Value.Mv[0];
-                    if (refSignBias[prevFrameMvs.Value.RefFrame[0]] != refSignBias[refFrame])
+                    Mv mv = mvSpan[0];
+                    if (refSignBias[refFrameSpan[0]] != refSignBias[refFrame])
                     {
                         mv.Row *= -1;
                         mv.Col *= -1;
                     }
-                    if (AddMvRefListEb(mv, ref refmvCount, mvRefList, earlyBreak))
+
+                    if (AddRefListEb(mv, ref refmvCount, mvRefList, earlyBreak))
                     {
                         goto Done;
                     }
                 }
 
-                if (prevFrameMvs.Value.RefFrame[1] > Constants.IntraFrame &&
-                    prevFrameMvs.Value.RefFrame[1] != refFrame &&
-                    Unsafe.As<Mv, int>(ref prevFrameMvs.Value.Mv[1]) != Unsafe.As<Mv, int>(ref prevFrameMvs.Value.Mv[0]))
+                if (refFrameSpan[1] > Constants.IntraFrame &&
+                    refFrameSpan[1] != refFrame &&
+                    Unsafe.As<Mv, int>(ref mvSpan[1]) !=
+                    Unsafe.As<Mv, int>(ref mvSpan[0]))
                 {
-                    Mv mv = prevFrameMvs.Value.Mv[1];
-                    if (refSignBias[prevFrameMvs.Value.RefFrame[1]] != refSignBias[refFrame])
+                    Mv mv = mvSpan[1];
+                    if (refSignBias[refFrameSpan[1]] != refSignBias[refFrame])
                     {
                         mv.Row *= -1;
                         mv.Col *= -1;
                     }
-                    if (AddMvRefListEb(mv, ref refmvCount, mvRefList, earlyBreak))
+
+                    if (AddRefListEb(mv, ref refmvCount, mvRefList, earlyBreak))
                     {
                         goto Done;
                     }
@@ -784,17 +767,17 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
                 refmvCount = 1;
             }
 
-        Done:
+            Done:
             // Clamp vectors
             for (i = 0; i < refmvCount; ++i)
             {
-                mvRefList[i].ClampMvRef(ref xd);
+                mvRefList[i].ClampRef(ref xd);
             }
 
             return refmvCount;
         }
 
-        private static void AppendSub8x8MvsForIdx(
+        private static void AppendSub8x8ForIdx(
             ref Vp9Common cm,
             ref MacroBlockD xd,
             Span<Position> mvRefSearch,
@@ -807,13 +790,13 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
         {
             Span<Mv> mvList = stackalloc Mv[Constants.MaxMvRefCandidates];
             ref ModeInfo mi = ref xd.Mi[0].Value;
-            ref Array4<BModeInfo> bmi = ref mi.Bmi;
-            int n;
+            Span<BModeInfo> bmi = mi.Bmi.AsSpan();
             int refmvCount;
 
             Debug.Assert(Constants.MaxMvRefCandidates == 2);
 
-            refmvCount = DecFindMvRefs(ref cm, ref xd, bMode, mi.RefFrame[refr], mvRefSearch, mvList, miRow, miCol, block, 1);
+            refmvCount = DecFindRefs(ref cm, ref xd, bMode, mi.RefFrame[refr], mvRefSearch, mvList, miRow, miCol,
+                block, 1);
 
             switch (block)
             {
@@ -829,7 +812,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
                     else
                     {
                         bestSub8x8 = new Mv();
-                        for (n = 0; n < refmvCount; ++n)
+                        for (int n = 0; n < refmvCount; ++n)
                         {
                             if (Unsafe.As<Mv, int>(ref bmi[0].Mv[refr]) != Unsafe.As<Mv, int>(ref mvList[n]))
                             {
@@ -837,7 +820,8 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
                                 break;
                             }
                         }
-                        }
+                    }
+
                     break;
                 case 3:
                     if (bMode == PredictionMode.NearestMv)
@@ -852,7 +836,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
                         candidates[2] = mvList[0];
                         candidates[3] = mvList[1];
                         bestSub8x8 = new Mv();
-                        for (n = 0; n < 2 + Constants.MaxMvRefCandidates; ++n)
+                        for (int n = 0; n < 2 + Constants.MaxMvRefCandidates; ++n)
                         {
                             if (Unsafe.As<Mv, int>(ref bmi[2].Mv[refr]) != Unsafe.As<Mv, int>(ref candidates[n]))
                             {
@@ -861,6 +845,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
                             }
                         }
                     }
+
                     break;
                 default:
                     Debug.Assert(false, "Invalid block index.");
@@ -868,19 +853,19 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             }
         }
 
-        private static byte GetModeContext(ref Vp9Common cm, ref MacroBlockD xd, Span<Position> mvRefSearch, int miRow, int miCol)
+        private static byte GetModeContext(ref Vp9Common cm, ref MacroBlockD xd, Span<Position> mvRefSearch, int miRow,
+            int miCol)
         {
-            int i;
             int contextCounter = 0;
             ref TileInfo tile = ref xd.Tile;
 
             // Get mode count from nearest 2 blocks
-            for (i = 0; i < 2; ++i)
+            for (int i = 0; i < 2; ++i)
             {
                 ref Position mvRef = ref mvRefSearch[i];
                 if (tile.IsInside(miCol, miRow, cm.MiRows, ref mvRef))
                 {
-                    ref ModeInfo candidate = ref xd.Mi[mvRef.Col + mvRef.Row * xd.MiStride].Value;
+                    ref ModeInfo candidate = ref xd.Mi[mvRef.Col + (mvRef.Row * xd.MiStride)].Value;
                     // Keep counts for entropy encoding.
                     contextCounter += Luts.Mode2Counter[(int)candidate.Mode];
                 }
@@ -898,23 +883,24 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             ref Reader r)
         {
             BlockSize bsize = mi.SbType;
-            bool allowHP = cm.AllowHighPrecisionMv;
+            bool allowHp = cm.AllowHighPrecisionMv;
             Array2<Mv> bestRefMvs = new();
+            Span<Mv> bestRefMvsSpan = bestRefMvs.AsSpan();
             int refr, isCompound;
             byte interModeCtx;
             Span<Position> mvRefSearch = Luts.MvRefBlocks[(int)bsize];
 
-            ReadRefFrames(ref cm, ref xd, ref r, mi.SegmentId, ref mi.RefFrame);
+            ReadRefFrames(ref cm, ref xd, ref r, mi.SegmentId, mi.RefFrame.AsSpan());
             isCompound = mi.HasSecondRef() ? 1 : 0;
             interModeCtx = GetModeContext(ref cm, ref xd, mvRefSearch, miRow, miCol);
 
-            if (cm.Seg.IsSegFeatureActive(mi.SegmentId, SegLvlFeatures.SegLvlSkip) != 0)
+            if (cm.Seg.IsSegFeatureActive(mi.SegmentId, SegLvlFeatures.Skip) != 0)
             {
                 mi.Mode = PredictionMode.ZeroMv;
                 if (bsize < BlockSize.Block8x8)
                 {
-                    xd.ErrorInfo.Value.InternalError(CodecErr.CodecUnsupBitstream, "Invalid usage of segement feature on small blocks");
-
+                    xd.ErrorInfo.Value.InternalError(CodecErr.UnsupBitstream,
+                        "Invalid usage of segement feature on small blocks");
                     return;
                 }
             }
@@ -936,72 +922,80 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
                 if (mi.Mode != PredictionMode.ZeroMv)
                 {
                     Span<Mv> tmpMvs = stackalloc Mv[Constants.MaxMvRefCandidates];
+                    Span<sbyte> refFrameSpan = mi.RefFrame.AsSpan();
 
                     for (refr = 0; refr < 1 + isCompound; ++refr)
                     {
-                        sbyte frame = mi.RefFrame[refr];
+                        sbyte frame = refFrameSpan[refr];
                         int refmvCount;
 
-                        refmvCount = DecFindMvRefs(ref cm, ref xd, mi.Mode, frame, mvRefSearch, tmpMvs, miRow, miCol, -1, 0);
+                        refmvCount = DecFindRefs(ref cm, ref xd, mi.Mode, frame, mvRefSearch, tmpMvs, miRow, miCol,
+                            -1, 0);
 
-                        DecFindBestRefMvs(allowHP, tmpMvs, ref bestRefMvs[refr], refmvCount);
+                        DecFindBestRefs(allowHp, tmpMvs, ref bestRefMvsSpan[refr], refmvCount);
                     }
                 }
             }
 
-            mi.InterpFilter = (cm.InterpFilter == Constants.Switchable) ? ReadSwitchableInterpFilter(ref cm, ref xd, ref r) : cm.InterpFilter;
+            mi.InterpFilter = cm.InterpFilter == Constants.Switchable
+                ? ReadSwitchableInterpFilter(ref cm, ref xd, ref r)
+                : cm.InterpFilter;
 
             if (bsize < BlockSize.Block8x8)
             {
-                int num4X4W = 1 << xd.BmodeBlocksWl;
-                int num4X4H = 1 << xd.BmodeBlocksHl;
+                int num4x4W = 1 << xd.BmodeBlocksWl;
+                int num4x4H = 1 << xd.BmodeBlocksHl;
                 int idx, idy;
                 PredictionMode bMode = 0;
                 Array2<Mv> bestSub8x8 = new();
-                const uint InvalidMv = 0x80008000;
+                Span<Mv> bestSub8x8Span = bestSub8x8.AsSpan();
+                Span<BModeInfo> bmiSpan = mi.Bmi.AsSpan();
+                const uint invalidMv = 0x80008000;
                 // Initialize the 2nd element as even though it won't be used meaningfully
                 // if isCompound is false.
-                Unsafe.As<Mv, uint>(ref bestSub8x8[1]) = InvalidMv;
-                for (idy = 0; idy < 2; idy += num4X4H)
+                Unsafe.As<Mv, uint>(ref bestSub8x8Span[1]) = invalidMv;
+                for (idy = 0; idy < 2; idy += num4x4H)
                 {
-                    for (idx = 0; idx < 2; idx += num4X4W)
+                    for (idx = 0; idx < 2; idx += num4x4W)
                     {
-                        int j = idy * 2 + idx;
+                        int j = (idy * 2) + idx;
                         bMode = ReadInterMode(ref cm, ref xd, ref r, interModeCtx);
 
                         if (bMode == PredictionMode.NearestMv || bMode == PredictionMode.NearMv)
                         {
                             for (refr = 0; refr < 1 + isCompound; ++refr)
                             {
-                                AppendSub8x8MvsForIdx(ref cm, ref xd, mvRefSearch, bMode, j, refr, miRow, miCol, ref bestSub8x8[refr]);
+                                AppendSub8x8ForIdx(ref cm, ref xd, mvRefSearch, bMode, j, refr, miRow, miCol,
+                                    ref bestSub8x8Span[refr]);
                             }
                         }
 
-                        if (!AssignMv(ref cm, ref xd, bMode, ref mi.Bmi[j].Mv, ref bestRefMvs, ref bestSub8x8, isCompound, allowHP, ref r))
+                        if (!Assign(ref cm, ref xd, bMode, bmiSpan[j].Mv.AsSpan(), bestRefMvs.AsSpan(), bestSub8x8.AsSpan(),
+                                isCompound, allowHp, ref r))
                         {
                             xd.Corrupted |= true;
                             break;
                         }
 
-                        if (num4X4H == 2)
+                        if (num4x4H == 2)
                         {
-                            mi.Bmi[j + 2] = mi.Bmi[j];
+                            bmiSpan[j + 2] = bmiSpan[j];
                         }
 
-                        if (num4X4W == 2)
+                        if (num4x4W == 2)
                         {
-                            mi.Bmi[j + 1] = mi.Bmi[j];
+                            bmiSpan[j + 1] = bmiSpan[j];
                         }
                     }
                 }
 
                 mi.Mode = bMode;
-
-                CopyMvPair(ref mi.Mv, ref mi.Bmi[3].Mv);
+                bmiSpan[3].Mv.AsSpan().CopyTo(mi.Mv.AsSpan());
             }
             else
             {
-                xd.Corrupted |= !AssignMv(ref cm, ref xd, mi.Mode, ref mi.Mv, ref bestRefMvs, ref bestRefMvs, isCompound, allowHP, ref r);
+                xd.Corrupted |= !Assign(ref cm, ref xd, mi.Mode, mi.Mv.AsSpan(), bestRefMvs.AsSpan(), bestRefMvs.AsSpan(),
+                    isCompound, allowHp, ref r);
             }
         }
 
@@ -1045,7 +1039,6 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             }
 
             Debug.Assert(b == 1 || b == 3);
-
             return curMi.Value.Bmi[b - 1].Mode;
         }
 
@@ -1062,7 +1055,6 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             }
 
             Debug.Assert(b == 2 || b == 3);
-
             return curMi.Value.Bmi[b - 2].Mode;
         }
 
@@ -1075,7 +1067,6 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
         {
             PredictionMode above = AboveBlockMode(mi, aboveMi, block);
             PredictionMode left = LeftBlockMode(mi, leftMi, block);
-
             return fc.KfYModeProb[(int)above][(int)left].AsSpan();
         }
 
@@ -1092,36 +1083,45 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             Ptr<ModeInfo> aboveMi = xd.AboveMi;
             Ptr<ModeInfo> leftMi = xd.LeftMi;
             BlockSize bsize = mi.Value.SbType;
-            int i;
-            int miOffset = miRow * cm.MiCols + miCol;
+
+            int miOffset = (miRow * cm.MiCols) + miCol;
+
+            Span<sbyte> refFrameSpan = mi.Value.RefFrame.AsSpan();
 
             mi.Value.SegmentId = (sbyte)ReadIntraSegmentId(ref cm, miOffset, xMis, yMis, ref r);
             mi.Value.Skip = (sbyte)ReadSkip(ref cm, ref xd, mi.Value.SegmentId, ref r);
             mi.Value.TxSize = ReadTxSize(ref cm, ref xd, true, ref r);
-            mi.Value.RefFrame[0] = Constants.IntraFrame;
-            mi.Value.RefFrame[1] = Constants.None;
+            refFrameSpan[0] = Constants.IntraFrame;
+            refFrameSpan[1] = Constants.None;
 
+            Span<BModeInfo> bmiSpan;
             switch (bsize)
             {
                 case BlockSize.Block4x4:
-                    for (i = 0; i < 4; ++i)
+                    bmiSpan = mi.Value.Bmi.AsSpan();
+                    
+                    for (int i = 0; i < 4; ++i)
                     {
-                        mi.Value.Bmi[i].Mode =
+                        bmiSpan[i].Mode =
                             ReadIntraMode(ref r, GetYModeProbs(ref cm.Fc.Value, mi, aboveMi, leftMi, i));
                     }
 
-                    mi.Value.Mode = mi.Value.Bmi[3].Mode;
+                    mi.Value.Mode = bmiSpan[3].Mode;
                     break;
                 case BlockSize.Block4x8:
-                    mi.Value.Bmi[0].Mode = mi.Value.Bmi[2].Mode =
+                    bmiSpan = mi.Value.Bmi.AsSpan();
+                    
+                    bmiSpan[0].Mode = bmiSpan[2].Mode =
                         ReadIntraMode(ref r, GetYModeProbs(ref cm.Fc.Value, mi, aboveMi, leftMi, 0));
-                    mi.Value.Bmi[1].Mode = mi.Value.Bmi[3].Mode = mi.Value.Mode =
+                    bmiSpan[1].Mode = bmiSpan[3].Mode = mi.Value.Mode =
                         ReadIntraMode(ref r, GetYModeProbs(ref cm.Fc.Value, mi, aboveMi, leftMi, 1));
                     break;
                 case BlockSize.Block8x4:
-                    mi.Value.Bmi[0].Mode = mi.Value.Bmi[1].Mode =
+                    bmiSpan = mi.Value.Bmi.AsSpan();
+                    
+                    bmiSpan[0].Mode = bmiSpan[1].Mode =
                         ReadIntraMode(ref r, GetYModeProbs(ref cm.Fc.Value, mi, aboveMi, leftMi, 0));
-                    mi.Value.Bmi[2].Mode = mi.Value.Bmi[3].Mode = mi.Value.Mode =
+                    bmiSpan[2].Mode = bmiSpan[3].Mode = mi.Value.Mode =
                         ReadIntraMode(ref r, GetYModeProbs(ref cm.Fc.Value, mi, aboveMi, leftMi, 2));
                     break;
                 default:
@@ -1130,12 +1130,6 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             }
 
             mi.Value.UvMode = ReadIntraMode(ref r, cm.Fc.Value.KfUvModeProb[(int)mi.Value.Mode].AsSpan());
-        }
-
-        private static void CopyRefFramePair(ref Array2<sbyte> dst, ref Array2<sbyte> src)
-        {
-            dst[0] = src[0];
-            dst[1] = src[1];
         }
 
         public static void ReadModeInfo(
@@ -1149,8 +1143,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             ref Reader r = ref twd.BitReader;
             ref MacroBlockD xd = ref twd.Xd;
             ref ModeInfo mi = ref xd.Mi[0].Value;
-            ArrayPtr<MvRef> frameMvs = cm.CurFrameMvs.Slice(miRow * cm.MiCols + miCol);
-            int w, h;
+            ArrayPtr<MvRef> frameMvs = cm.CurFrameMvs.Slice((miRow * cm.MiCols) + miCol);
 
             if (cm.FrameIsIntraOnly())
             {
@@ -1160,14 +1153,15 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             {
                 ReadInterFrameModeInfo(ref cm, ref xd, miRow, miCol, ref r, xMis, yMis);
 
-                for (h = 0; h < yMis; ++h)
+                for (int h = 0; h < yMis; ++h)
                 {
-                    for (w = 0; w < xMis; ++w)
+                    for (int w = 0; w < xMis; ++w)
                     {
                         ref MvRef mv = ref frameMvs[w];
-                        CopyRefFramePair(ref mv.RefFrame, ref mi.RefFrame);
-                        CopyMvPair(ref mv.Mv, ref mi.Mv);
+                        mi.RefFrame.AsSpan().CopyTo(mv.RefFrame.AsSpan());
+                        mi.Mv.AsSpan().CopyTo(mv.Mv.AsSpan());
                     }
+
                     frameMvs = frameMvs.Slice(cm.MiCols);
                 }
             }
