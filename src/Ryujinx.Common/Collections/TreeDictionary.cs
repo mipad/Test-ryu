@@ -78,6 +78,7 @@ namespace Ryujinx.Common.Collections
             {
                 return node.Key;
             }
+
             return default;
         }
 
@@ -94,6 +95,7 @@ namespace Ryujinx.Common.Collections
             {
                 return node.Key;
             }
+
             return default;
         }
 
@@ -107,10 +109,11 @@ namespace Ryujinx.Common.Collections
             Node<TKey, TValue> node = GetNode(key);
             if (node != null)
             {
-                Node<TKey, TValue> successor = SuccessorOf(node);
+                Node<TKey, TValue> successor = node.Successor;
 
                 return successor != null ? successor.Key : default;
             }
+
             return default;
         }
 
@@ -124,22 +127,22 @@ namespace Ryujinx.Common.Collections
             Node<TKey, TValue> node = GetNode(key);
             if (node != null)
             {
-                Node<TKey, TValue> predecessor = PredecessorOf(node);
+                Node<TKey, TValue> predecessor = node.Predecessor;
 
                 return predecessor != null ? predecessor.Key : default;
             }
+
             return default;
         }
 
         /// <summary>
-        /// Adds all the nodes in the dictionary as key/value pairs into <paramref name="list"/>.
+        /// Adds all the nodes in the dictionary as key/value pairs into a list.
         /// <br></br>
         /// The key/value pairs will be added in Level Order.
         /// </summary>
-        /// <param name="list">List to add the tree pairs into</param>
         public List<KeyValuePair<TKey, TValue>> AsLevelOrderList()
         {
-            List<KeyValuePair<TKey, TValue>> list = new();
+            List<KeyValuePair<TKey, TValue>> list = [];
 
             Queue<Node<TKey, TValue>> nodes = new();
 
@@ -147,6 +150,7 @@ namespace Ryujinx.Common.Collections
             {
                 nodes.Enqueue(this.Root);
             }
+
             while (nodes.TryDequeue(out Node<TKey, TValue> node))
             {
                 list.Add(new KeyValuePair<TKey, TValue>(node.Key, node.Value));
@@ -154,21 +158,23 @@ namespace Ryujinx.Common.Collections
                 {
                     nodes.Enqueue(node.Left);
                 }
+
                 if (node.Right != null)
                 {
                     nodes.Enqueue(node.Right);
                 }
             }
+
             return list;
         }
 
         /// <summary>
-        /// Adds all the nodes in the dictionary into <paramref name="list"/>.
+        /// Adds all the nodes in the dictionary into a list.
         /// </summary>
         /// <returns>A list of all KeyValuePairs sorted by Key Order</returns>
         public List<KeyValuePair<TKey, TValue>> AsList()
         {
-            List<KeyValuePair<TKey, TValue>> list = new();
+            List<KeyValuePair<TKey, TValue>> list = [];
 
             AddToList(Root, list);
 
@@ -184,7 +190,7 @@ namespace Ryujinx.Common.Collections
         /// </summary>
         /// <param name="node">The node to search for nodes within</param>
         /// <param name="list">The list to add node to</param>
-        private void AddToList(Node<TKey, TValue> node, List<KeyValuePair<TKey, TValue>> list)
+        private static void AddToList(Node<TKey, TValue> node, List<KeyValuePair<TKey, TValue>> list)
         {
             if (node == null)
             {
@@ -225,6 +231,7 @@ namespace Ryujinx.Common.Collections
                     return node;
                 }
             }
+
             return null;
         }
 
@@ -274,8 +281,9 @@ namespace Ryujinx.Common.Collections
                     return node;
                 }
             }
+
             Node<TKey, TValue> newNode = new(key, value, parent);
-            if (newNode.Parent == null)
+            if (parent == null)
             {
                 Root = newNode;
             }
@@ -287,6 +295,7 @@ namespace Ryujinx.Common.Collections
             {
                 parent.Right = newNode;
             }
+
             Count++;
             return newNode;
         }
@@ -392,6 +401,7 @@ namespace Ryujinx.Common.Collections
                             ptr = parent;
                             parent = parent.Parent;
                         }
+
                         return parent;
                     }
                 }
@@ -400,6 +410,7 @@ namespace Ryujinx.Common.Collections
                     return tmp;
                 }
             }
+
             return null;
         }
 
@@ -444,6 +455,7 @@ namespace Ryujinx.Common.Collections
                             ptr = parent;
                             parent = parent.Parent;
                         }
+
                         return parent;
                     }
                 }
@@ -452,6 +464,7 @@ namespace Ryujinx.Common.Collections
                     return tmp;
                 }
             }
+
             return null;
         }
 
@@ -502,6 +515,7 @@ namespace Ryujinx.Common.Collections
             {
                 return node.Key.Equals(item.Key) && node.Value.Equals(item.Value);
             }
+
             return false;
         }
 
@@ -588,6 +602,7 @@ namespace Ryujinx.Common.Collections
                 {
                     queue.Enqueue(node.Left);
                 }
+
                 if (null != node.Right)
                 {
                     queue.Enqueue(node.Right);

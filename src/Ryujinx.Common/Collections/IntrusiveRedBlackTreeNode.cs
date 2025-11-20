@@ -9,8 +9,7 @@ namespace Ryujinx.Common.Collections
         public T Left;
         public T Right;
         public T Parent;
-
-        public T Predecessor => IntrusiveRedBlackTreeImpl<T>.PredecessorOf((T)this);
-        public T Successor => IntrusiveRedBlackTreeImpl<T>.SuccessorOf((T)this);
+        public T Predecessor;
+        public T Successor;
     }
 }
