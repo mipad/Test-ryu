@@ -95,25 +95,28 @@ namespace Ryujinx.Input
         {
             // NOTE: Update Array size if JoystickInputId is changed.
             Array3<Array2<float>> joysticksState = default;
+            Span<Array2<float>> joysticksStateSpan = joysticksState.AsSpan();
 
             for (StickInputId inputId = StickInputId.Left; inputId < StickInputId.Count; inputId++)
             {
                 (float state0, float state1) = gamepad.GetStick(inputId);
 
                 Array2<float> state = default;
+                Span<float> stateSpan = state.AsSpan();
 
-                state[0] = state0;
-                state[1] = state1;
+                stateSpan[0] = state0;
+                stateSpan[1] = state1;
 
-                joysticksState[(int)inputId] = state;
+                joysticksStateSpan[(int)inputId] = state;
             }
 
             // NOTE: Update Array size if GamepadInputId is changed.
             Array28<bool> buttonsState = default;
+            Span<bool> buttonsStateSpan = buttonsState.AsSpan();
 
             for (GamepadButtonInputId inputId = GamepadButtonInputId.A; inputId < GamepadButtonInputId.Count; inputId++)
             {
-                buttonsState[(int)inputId] = gamepad.IsPressed(inputId);
+                buttonsStateSpan[(int)inputId] = gamepad.IsPressed(inputId);
             }
 
             return new GamepadStateSnapshot(joysticksState, buttonsState);
