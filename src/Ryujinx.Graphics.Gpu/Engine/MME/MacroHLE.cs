@@ -219,13 +219,14 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
             state.Write(LogicOpOffset, 0);
 
             Array8<Boolean32> enable = new();
+            Span<Boolean32> enableSpan = enable.AsSpan();
 
             for (int i = 0; i < 8; i++)
             {
-                enable[i] = new Boolean32((uint)(arg0 >> (i + 8)) & 1);
+                enableSpan[i] = new Boolean32((uint)(arg0 >> (i + 8)) & 1);
             }
 
-            _processor.ThreedClass.UpdateBlendEnable(ref enable);
+            _processor.ThreedClass.UpdateBlendEnable(enableSpan);
         }
 
         /// <summary>
@@ -236,13 +237,14 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
         private void UpdateColorMasks(IDeviceState state, int arg0)
         {
             Array8<RtColorMask> masks = new();
+            Span<RtColorMask> masksSpan = masks.AsSpan();
 
             int index = 0;
 
             for (int i = 0; i < 4; i++)
             {
-                masks[index++] = new RtColorMask((uint)arg0 & 0x1fff);
-                masks[index++] = new RtColorMask(((uint)arg0 >> 16) & 0x1fff);
+                masksSpan[index++] = new RtColorMask((uint)arg0 & 0x1fff);
+                masksSpan[index++] = new RtColorMask(((uint)arg0 >> 16) & 0x1fff);
 
                 if (i != 3)
                 {
@@ -250,7 +252,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
                 }
             }
 
-            _processor.ThreedClass.UpdateColorMasks(ref masks);
+            _processor.ThreedClass.UpdateColorMasks(masksSpan);
         }
 
         /// <summary>
@@ -506,7 +508,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
                 maxDrawCount,
                 stride,
                 indexCount,
-                Threed.IndirectDrawType.DrawIndexedIndirectCount);
+                IndirectDrawType.DrawIndexedIndirectCount);
         }
 
         /// <summary>
