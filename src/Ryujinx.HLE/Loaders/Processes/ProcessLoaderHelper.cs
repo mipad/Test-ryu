@@ -187,6 +187,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                 string.Empty,
                 string.Empty,
                 false,
+                string.Empty, 
                 codeAddress,
                 codeSize);
 
@@ -388,6 +389,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                 $"{programId:x16}",
                 displayVersion,
                 diskCacheEnabled,
+                string.Empty, 
                 codeStart,
                 codeSize);
 
