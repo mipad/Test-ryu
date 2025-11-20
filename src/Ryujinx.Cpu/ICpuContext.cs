@@ -61,3 +61,5 @@ namespace Ryujinx.Cpu
         void PrepareCodeRange(ulong address, ulong size);
     }
 }
+
+
