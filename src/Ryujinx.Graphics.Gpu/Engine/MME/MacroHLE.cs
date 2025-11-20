@@ -226,7 +226,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
                 enableSpan[i] = new Boolean32((uint)(arg0 >> (i + 8)) & 1);
             }
 
-            _processor.ThreedClass.UpdateBlendEnable(enableSpan);
+            _processor.ThreedClass.UpdateBlendEnable(ref enable);
         }
 
         /// <summary>
@@ -252,7 +252,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
                 }
             }
 
-            _processor.ThreedClass.UpdateColorMasks(masksSpan);
+            _processor.ThreedClass.UpdateColorMasks(ref masks);
         }
 
         /// <summary>
