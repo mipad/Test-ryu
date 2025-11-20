@@ -1,13 +1,11 @@
-using ARMeilleure.Common;
 using Ryujinx.Cpu.LightningJit.CodeGen;
 using Ryujinx.Cpu.LightningJit.CodeGen.Arm64;
 using System;
 using System.Diagnostics;
 using System.Numerics;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace Ryujinx.Cpu.LightningJit.Arm64.Target.Arm64
+namespace Ryujinx.Cpu.LightningJit.Arm32.Target.Arm64
 {
     static class InstEmitSystem
     {
@@ -15,168 +13,430 @@ namespace Ryujinx.Cpu.LightningJit.Arm64.Target.Arm64
         private delegate ulong Get64();
         private delegate bool GetBool();
 
-        public static void RewriteInstruction(
-            CodeWriter writer,
-            RegisterAllocator regAlloc,
-            TailMerger tailMerger,
-            InstName name,
-            ulong pc,
-            uint encoding,
-            int spillBaseOffset)
+        private const int SpIndex = 31;
+
+        public static void Bkpt(CodeGenContext context, uint imm)
         {
-            if (name == InstName.Brk)
-            {
-                Assembler asm = new(writer);
+            context.AddPendingBkpt(imm);
 
-                WriteCall(ref asm, regAlloc, GetBrkHandlerPtr(), spillBaseOffset, null, pc, encoding);
-                WriteSyncPoint(writer, ref asm, regAlloc, tailMerger, spillBaseOffset);
+            context.Arm64Assembler.B(0);
+        }
+
+        public static void Cps(CodeGenContext context, uint imod, uint m, uint a, uint i, uint f, uint mode)
+        {
+            // NOP in user mode.
+        }
+
+        public static void Dbg(CodeGenContext context, uint option)
+        {
+            // NOP in ARMv8.
+        }
+
+        public static void Hlt(CodeGenContext context, uint imm)
+        {
+        }
+
+        public static void Mcr(CodeGenContext context, uint encoding, uint coproc, uint opc1, uint rt, uint crn, uint crm, uint opc2)
+        {
+            if (coproc != 15 || opc1 != 0)
+            {
+                Udf(context, encoding, 0);
+
+                return;
             }
-            else if (name == InstName.Svc)
+
+            Operand ctx = Register(context.RegisterAllocator.FixedContextRegister);
+            Operand rtOperand = InstEmitCommon.GetInputGpr(context, rt);
+
+            switch (crn)
             {
-                uint svcId = (ushort)(encoding >> 5);
-
-                Assembler asm = new(writer);
-
-                WriteCall(ref asm, regAlloc, GetSvcHandlerPtr(), spillBaseOffset, null, pc, svcId);
-                WriteSyncPoint(writer, ref asm, regAlloc, tailMerger, spillBaseOffset);
-            }
-            else if (name == InstName.UdfPermUndef)
-            {
-                Assembler asm = new(writer);
-
-                WriteCall(ref asm, regAlloc, GetUdfHandlerPtr(), spillBaseOffset, null, pc, encoding);
-                WriteSyncPoint(writer, ref asm, regAlloc, tailMerger, spillBaseOffset);
-            }
-            else if ((encoding & ~0x1f) == 0xd53bd060) // mrs x0, tpidrro_el0
-            {
-                uint rd = encoding & 0x1f;
-
-                if (rd != RegisterUtils.ZrIndex)
-                {
-                    Assembler asm = new(writer);
-
-                    asm.LdrRiUn(Register((int)rd), Register(regAlloc.FixedContextRegister), NativeContextOffsets.TpidrroEl0Offset);
-                }
-            }
-            else if ((encoding & ~0x1f) == 0xd53bd040) // mrs x0, tpidr_el0
-            {
-                uint rd = encoding & 0x1f;
-
-                if (rd != RegisterUtils.ZrIndex)
-                {
-                    Assembler asm = new(writer);
-
-                    asm.LdrRiUn(Register((int)rd), Register(regAlloc.FixedContextRegister), NativeContextOffsets.TpidrEl0Offset);
-                }
-            }
-            else if ((encoding & ~0x1f) == 0xd53b0020 && IsCtrEl0AccessForbidden()) // mrs x0, ctr_el0
-            {
-                uint rd = encoding & 0x1f;
-
-                if (rd != RegisterUtils.ZrIndex)
-                {
-                    Assembler asm = new(writer);
-
-                    // TODO: Use host value? But that register can't be accessed on macOS...
-                    asm.Mov(Register((int)rd, OperandType.I32), 0x8444c004);
-                }
-            }
-            else if ((encoding & ~0x1f) == 0xd53be020) // mrs x0, cntpct_el0
-            {
-                uint rd = encoding & 0x1f;
-
-                if (rd != RegisterUtils.ZrIndex)
-                {
-                    Assembler asm = new(writer);
-
-                    WriteCall(ref asm, regAlloc, GetCntpctEl0Ptr(), spillBaseOffset, (int)rd);
-                }
-            }
-            else if ((encoding & ~0x1f) == 0xd51bd040) // msr tpidr_el0, x0
-            {
-                uint rd = encoding & 0x1f;
-
-                if (rd != RegisterUtils.ZrIndex)
-                {
-                    Assembler asm = new(writer);
-
-                    asm.StrRiUn(Register((int)rd), Register(regAlloc.FixedContextRegister), NativeContextOffsets.TpidrEl0Offset);
-                }
-            }
-            else
-            {
-                writer.WriteInstruction(encoding);
+                case 13: // Process and Thread Info.
+                    if (crm == 0)
+                    {
+                        switch (opc2)
+                        {
+                            case 2:
+                                context.Arm64Assembler.StrRiUn(rtOperand, ctx, NativeContextOffsets.TpidrEl0Offset);
+                                return;
+                        }
+                    }
+                    break;
             }
         }
 
-        public static bool NeedsCall(uint encoding)
+        public static void Mcrr(CodeGenContext context, uint encoding, uint coproc, uint opc1, uint rt, uint crm)
         {
-            if ((encoding & ~(0xffffu << 5)) == 0xd4000001u) // svc #0
+            if (coproc != 15 || opc1 != 0)
             {
-                return true;
+                Udf(context, encoding, 0);
+
+                return;
             }
-            else if ((encoding & ~0x1f) == 0xd53b0020 && IsCtrEl0AccessForbidden()) // mrs x0, ctr_el0
+
+            // We don't have any system register that needs to be modified using a 64-bit value.
+        }
+
+        public static void Mrc(CodeGenContext context, uint encoding, uint coproc, uint opc1, uint rt, uint crn, uint crm, uint opc2)
+        {
+            if (coproc != 15 || opc1 != 0)
             {
-                return true;
+                Udf(context, encoding, 0);
+
+                return;
             }
-            else if ((encoding & ~0x1f) == 0xd53be020) // mrs x0, cntpct_el0
+
+            Operand ctx = Register(context.RegisterAllocator.FixedContextRegister);
+            Operand rtOperand = InstEmitCommon.GetInputGpr(context, rt);
+            bool hasValue = false;
+
+            using ScopedRegister tempRegister = context.RegisterAllocator.AllocateTempGprRegisterScoped();
+            Operand dest = rt == RegisterUtils.PcRegister ? tempRegister.Operand : rtOperand;
+
+            switch (crn)
             {
-                return true;
+                case 13: // Process and Thread Info.
+                    if (crm == 0)
+                    {
+                        switch (opc2)
+                        {
+                            case 2:
+                                context.Arm64Assembler.LdrRiUn(dest, ctx, NativeContextOffsets.TpidrEl0Offset);
+                                hasValue = true;
+                                break;
+                            case 3:
+                                context.Arm64Assembler.LdrRiUn(dest, ctx, NativeContextOffsets.TpidrroEl0Offset);
+                                hasValue = true;
+                                break;
+                        }
+                    }
+                    break;
+            }
+
+            if (rt == RegisterUtils.PcRegister)
+            {
+                context.Arm64Assembler.MsrNzcv(dest);
+                context.SetNzcvModified();
+            }
+            else if (!hasValue)
+            {
+                context.Arm64Assembler.Mov(dest, 0u);
+            }
+        }
+
+        public static void Mrrc(CodeGenContext context, uint encoding, uint coproc, uint opc1, uint rt, uint rt2, uint crm)
+        {
+            if (coproc != 15)
+            {
+                Udf(context, encoding, 0);
+
+                return;
+            }
+
+            switch (crm)
+            {
+                case 14:
+                    switch (opc1)
+                    {
+                        case 0:
+                            context.AddPendingReadCntpct(rt, rt2);
+                            context.Arm64Assembler.B(0);
+                            return;
+                    }
+                    break;
+            }
+
+            // Unsupported system register.
+            context.Arm64Assembler.Mov(InstEmitCommon.GetOutputGpr(context, rt), 0u);
+            context.Arm64Assembler.Mov(InstEmitCommon.GetOutputGpr(context, rt2), 0u);
+        }
+
+        public static void Mrs(CodeGenContext context, uint rd, bool r)
+        {
+            Operand rdOperand = InstEmitCommon.GetOutputGpr(context, rd);
+
+            if (r)
+            {
+                // Reads SPSR, unpredictable in user mode.
+
+                context.Arm64Assembler.Mov(rdOperand, 0u);
+            }
+            else
+            {
+                Operand ctx = Register(context.RegisterAllocator.FixedContextRegister);
+
+                using ScopedRegister tempRegister = context.RegisterAllocator.AllocateTempGprRegisterScoped();
+
+                context.Arm64Assembler.LdrRiUn(tempRegister.Operand, ctx, NativeContextOffsets.FlagsBaseOffset);
+
+                // Copy GE flags to destination register.
+                context.Arm64Assembler.Ubfx(rdOperand, tempRegister.Operand, 16, 4);
+
+                // Insert Q flag.
+                context.Arm64Assembler.And(tempRegister.Operand, tempRegister.Operand, InstEmitCommon.Const(1 << 27));
+                context.Arm64Assembler.Orr(rdOperand, rdOperand, tempRegister.Operand);
+
+                // Insert NZCV flags.
+                context.Arm64Assembler.MrsNzcv(tempRegister.Operand);
+                context.Arm64Assembler.Orr(rdOperand, rdOperand, tempRegister.Operand);
+
+                // All other flags can't be accessed in user mode or have "unknown" values.
+            }
+        }
+
+        public static void MrsBr(CodeGenContext context, uint rd, uint m1, bool r)
+        {
+            Operand rdOperand = InstEmitCommon.GetOutputGpr(context, rd);
+
+            // Reads banked register, unpredictable in user mode.
+
+            context.Arm64Assembler.Mov(rdOperand, 0u);
+        }
+
+        public static void MsrBr(CodeGenContext context, uint rn, uint m1, bool r)
+        {
+            // Writes banked register, unpredictable in user mode.
+        }
+
+        public static void MsrI(CodeGenContext context, uint imm, uint mask, bool r)
+        {
+            if (r)
+            {
+                // Writes SPSR, unpredictable in user mode.
+            }
+            else
+            {
+                Operand ctx = Register(context.RegisterAllocator.FixedContextRegister);
+
+                using ScopedRegister tempRegister = context.RegisterAllocator.AllocateTempGprRegisterScoped();
+                using ScopedRegister tempRegister2 = context.RegisterAllocator.AllocateTempGprRegisterScoped();
+
+                context.Arm64Assembler.LdrRiUn(tempRegister.Operand, ctx, NativeContextOffsets.FlagsBaseOffset);
+
+                if ((mask & 2) != 0)
+                {
+                    // Endian flag.
+
+                    context.Arm64Assembler.Mov(tempRegister2.Operand, (imm >> 9) & 1);
+                    context.Arm64Assembler.Bfi(tempRegister.Operand, tempRegister2.Operand, 9, 1);
+                }
+
+                if ((mask & 4) != 0)
+                {
+                    // GE flags.
+
+                    context.Arm64Assembler.Mov(tempRegister2.Operand, (imm >> 16) & 0xf);
+                    context.Arm64Assembler.Bfi(tempRegister.Operand, tempRegister2.Operand, 16, 4);
+                }
+
+                if ((mask & 8) != 0)
+                {
+                    // NZCVQ flags.
+
+                    context.Arm64Assembler.Mov(tempRegister2.Operand, (imm >> 27) & 0x1f);
+                    context.Arm64Assembler.Bfi(tempRegister.Operand, tempRegister2.Operand, 27, 5);
+                    context.Arm64Assembler.Mov(tempRegister2.Operand, (imm >> 28) & 0xf);
+                    InstEmitCommon.RestoreNzcvFlags(context, tempRegister2.Operand);
+                    context.SetNzcvModified();
+                }
+            }
+        }
+
+        public static void MsrR(CodeGenContext context, uint rn, uint mask, bool r)
+        {
+            Operand rnOperand = InstEmitCommon.GetInputGpr(context, rn);
+
+            if (r)
+            {
+                // Writes SPSR, unpredictable in user mode.
+            }
+            else
+            {
+                Operand ctx = Register(context.RegisterAllocator.FixedContextRegister);
+
+                using ScopedRegister tempRegister = context.RegisterAllocator.AllocateTempGprRegisterScoped();
+                using ScopedRegister tempRegister2 = context.RegisterAllocator.AllocateTempGprRegisterScoped();
+
+                context.Arm64Assembler.LdrRiUn(tempRegister.Operand, ctx, NativeContextOffsets.FlagsBaseOffset);
+
+                if ((mask & 2) != 0)
+                {
+                    // Endian flag.
+
+                    context.Arm64Assembler.Lsr(tempRegister2.Operand, rnOperand, InstEmitCommon.Const(9));
+                    context.Arm64Assembler.Bfi(tempRegister.Operand, tempRegister2.Operand, 9, 1);
+                }
+
+                if ((mask & 4) != 0)
+                {
+                    // GE flags.
+
+                    context.Arm64Assembler.Lsr(tempRegister2.Operand, rnOperand, InstEmitCommon.Const(16));
+                    context.Arm64Assembler.Bfi(tempRegister.Operand, tempRegister2.Operand, 16, 4);
+                }
+
+                if ((mask & 8) != 0)
+                {
+                    // NZCVQ flags.
+
+                    context.Arm64Assembler.Lsr(tempRegister2.Operand, rnOperand, InstEmitCommon.Const(27));
+                    context.Arm64Assembler.Bfi(tempRegister.Operand, tempRegister2.Operand, 27, 5);
+                    context.Arm64Assembler.Lsr(tempRegister2.Operand, rnOperand, InstEmitCommon.Const(28));
+                    InstEmitCommon.RestoreNzcvFlags(context, tempRegister2.Operand);
+                    context.SetNzcvModified();
+                }
+            }
+        }
+
+        public static void Setend(CodeGenContext context, bool e)
+        {
+            Operand ctx = Register(context.RegisterAllocator.FixedContextRegister);
+
+            using ScopedRegister tempRegister = context.RegisterAllocator.AllocateTempGprRegisterScoped();
+
+            context.Arm64Assembler.LdrRiUn(tempRegister.Operand, ctx, NativeContextOffsets.FlagsBaseOffset);
+
+            if (e)
+            {
+                context.Arm64Assembler.Orr(tempRegister.Operand, tempRegister.Operand, InstEmitCommon.Const(1 << 9));
+            }
+            else
+            {
+                context.Arm64Assembler.Bfc(tempRegister.Operand, 9, 1);
+            }
+
+            context.Arm64Assembler.StrRiUn(tempRegister.Operand, ctx, NativeContextOffsets.FlagsBaseOffset);
+        }
+
+        public static void Svc(CodeGenContext context, uint imm)
+        {
+            context.AddPendingSvc(imm);
+            context.Arm64Assembler.B(0);
+        }
+
+        public static void Udf(CodeGenContext context, uint encoding, uint imm)
+        {
+            context.AddPendingUdf(encoding);
+            context.Arm64Assembler.B(0);
+        }
+
+        public static void PrivilegedInstruction(CodeGenContext context, uint encoding)
+        {
+            Udf(context, encoding, 0);
+        }
+
+        private static IntPtr GetBkptHandlerPtr()
+        {
+            return Marshal.GetFunctionPointerForDelegate<SoftwareInterruptHandler>(NativeInterface.Break);
+        }
+
+        private static IntPtr GetSvcHandlerPtr()
+        {
+            return Marshal.GetFunctionPointerForDelegate<SoftwareInterruptHandler>(NativeInterface.SupervisorCall);
+        }
+
+        private static IntPtr GetUdfHandlerPtr()
+        {
+            return Marshal.GetFunctionPointerForDelegate<SoftwareInterruptHandler>(NativeInterface.Undefined);
+        }
+
+        private static IntPtr GetCntpctEl0Ptr()
+        {
+            return Marshal.GetFunctionPointerForDelegate<Get64>(NativeInterface.GetCntpctEl0);
+        }
+
+        private static IntPtr CheckSynchronizationPtr()
+        {
+            return Marshal.GetFunctionPointerForDelegate<GetBool>(NativeInterface.CheckSynchronization);
+        }
+
+        public static bool NeedsCall(InstName name)
+        {
+            // All instructions that might do a host call should be included here.
+            // That is required to reserve space on the stack for caller saved registers.
+
+            return name == InstName.Mrrc;
+        }
+
+        public static bool NeedsCallSkipContext(InstName name)
+        {
+            // All instructions that might do a host call should be included here.
+            // That is required to reserve space on the stack for caller saved registers.
+
+            switch (name)
+            {
+                case InstName.Mcr:
+                case InstName.Mrc:
+                case InstName.Svc:
+                case InstName.Udf:
+                    return true;
             }
 
             return false;
         }
 
-        private static bool IsCtrEl0AccessForbidden()
-        {
-            // Only Linux allows accessing CTR_EL0 from user mode.
-            return OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() || OperatingSystem.IsIOS();
-        }
-
-        public static bool IsCacheInstForbidden(uint encoding)
-        {
-            // Windows does not allow the cache maintenance instructions to be used from user mode.
-            return OperatingSystem.IsWindows() && SysUtils.IsCacheInstUciTrapped(encoding);
-        }
-
-        public static bool NeedsContextStoreLoad(InstName name)
-        {
-            return name == InstName.Svc;
-        }
-
-        private static nint GetBrkHandlerPtr()
-        {
-            return Marshal.GetFunctionPointerForDelegate<SoftwareInterruptHandler>(NativeInterface.Break);
-        }
-
-        private static nint GetSvcHandlerPtr()
-        {
-            return Marshal.GetFunctionPointerForDelegate<SoftwareInterruptHandler>(NativeInterface.SupervisorCall);
-        }
-
-        private static nint GetUdfHandlerPtr()
-        {
-            return Marshal.GetFunctionPointerForDelegate<SoftwareInterruptHandler>(NativeInterface.Undefined);
-        }
-
-        private static nint GetCntpctEl0Ptr()
-        {
-            return Marshal.GetFunctionPointerForDelegate<Get64>(NativeInterface.GetCntpctEl0);
-        }
-
-        private static nint CheckSynchronizationPtr()
-        {
-            return Marshal.GetFunctionPointerForDelegate<GetBool>(NativeInterface.CheckSynchronization);
-        }
-
-        public static void WriteSyncPoint(CodeWriter writer, RegisterAllocator regAlloc, TailMerger tailMerger, int spillBaseOffset)
+        public static void WriteBkpt(CodeWriter writer, RegisterAllocator regAlloc, TailMerger tailMerger, int spillBaseOffset, uint pc, uint imm)
         {
             Assembler asm = new(writer);
 
+            WriteCall(ref asm, regAlloc, GetBkptHandlerPtr(), skipContext: true, spillBaseOffset, null, pc, imm);
             WriteSyncPoint(writer, ref asm, regAlloc, tailMerger, spillBaseOffset);
         }
 
-        private static void WriteSyncPoint(CodeWriter writer, ref Assembler asm, RegisterAllocator regAlloc, TailMerger tailMerger, int spillBaseOffset)
+        public static void WriteSvc(CodeWriter writer, RegisterAllocator regAlloc, TailMerger tailMerger, int spillBaseOffset, uint pc, uint svcId)
+        {
+            Assembler asm = new(writer);
+
+            WriteCall(ref asm, regAlloc, GetSvcHandlerPtr(), skipContext: true, spillBaseOffset, null, pc, svcId);
+            WriteSyncPoint(writer, ref asm, regAlloc, tailMerger, spillBaseOffset);
+        }
+
+        public static void WriteUdf(CodeWriter writer, RegisterAllocator regAlloc, TailMerger tailMerger, int spillBaseOffset, uint pc, uint imm)
+        {
+            Assembler asm = new(writer);
+
+            WriteCall(ref asm, regAlloc, GetUdfHandlerPtr(), skipContext: true, spillBaseOffset, null, pc, imm);
+            WriteSyncPoint(writer, ref asm, regAlloc, tailMerger, spillBaseOffset);
+        }
+
+        public static void WriteReadCntpct(CodeWriter writer, RegisterAllocator regAlloc, int spillBaseOffset, int rt, int rt2)
+        {
+            Assembler asm = new(writer);
+
+            uint resultMask = (1u << rt) | (1u << rt2);
+            int tempRegister = 0;
+
+            while ((resultMask & (1u << tempRegister)) != 0 && tempRegister < 32)
+            {
+                tempRegister++;
+            }
+
+            Debug.Assert(tempRegister < 32);
+
+            WriteSpill(ref asm, regAlloc, resultMask, skipContext: false, spillBaseOffset, tempRegister);
+
+            Operand rn = Register(tempRegister);
+
+            asm.Mov(rn, (ulong)GetCntpctEl0Ptr());
+            asm.Blr(rn);
+
+            if (rt != rt2)
+            {
+                asm.Lsr(Register(rt2), Register(0), InstEmitCommon.Const(32));
+            }
+
+            asm.Mov(Register(rt, OperandType.I32), Register(0, OperandType.I32)); // Zero-extend.
+
+            WriteFill(ref asm, regAlloc, resultMask, skipContext: false, spillBaseOffset, tempRegister);
+        }
+
+        public static void WriteSyncPoint(
+            CodeWriter writer,
+            ref Assembler asm,
+            RegisterAllocator regAlloc,
+            TailMerger tailMerger,
+            int spillBaseOffset,
+            Action storeToContext = null,
+            Action loadFromContext = null)
         {
             int tempRegister = regAlloc.AllocateTempGprRegister();
 
@@ -187,7 +447,8 @@ namespace Ryujinx.Cpu.LightningJit.Arm64.Target.Arm64
             int branchIndex = writer.InstructionPointer;
             asm.Cbnz(rt, 0);
 
-            WriteSpill(ref asm, regAlloc, 1u << tempRegister, spillBaseOffset, tempRegister);
+            storeToContext?.Invoke();
+            WriteSpill(ref asm, regAlloc, 1u << tempRegister, skipContext: true, spillBaseOffset, tempRegister);
 
             Operand rn = Register(tempRegister == 0 ? 1 : 0);
 
@@ -196,7 +457,8 @@ namespace Ryujinx.Cpu.LightningJit.Arm64.Target.Arm64
 
             tailMerger.AddConditionalZeroReturn(writer, asm, Register(0, OperandType.I32));
 
-            WriteFill(ref asm, regAlloc, 1u << tempRegister, spillBaseOffset, tempRegister);
+            WriteFill(ref asm, regAlloc, 1u << tempRegister, skipContext: true, spillBaseOffset, tempRegister);
+            loadFromContext?.Invoke();
 
             asm.LdrRiUn(rt, Register(regAlloc.FixedContextRegister), NativeContextOffsets.CounterOffset);
 
@@ -209,212 +471,11 @@ namespace Ryujinx.Cpu.LightningJit.Arm64.Target.Arm64
             regAlloc.FreeTempGprRegister(tempRegister);
         }
 
-        public static void RewriteCallInstruction(
-            CodeWriter writer,
-            RegisterAllocator regAlloc,
-            TailMerger tailMerger,
-            Action writeEpilogue,
-            AddressTable<ulong> funcTable,
-            nint dispatchStubPtr,
-            InstName name,
-            ulong pc,
-            uint encoding,
-            int spillBaseOffset,
-            bool isTail = false)
-        {
-            Assembler asm = new(writer);
-
-            switch (name)
-            {
-                case InstName.BUncond:
-                case InstName.Bl:
-                case InstName.Blr:
-                case InstName.Br:
-                    if (name == InstName.BUncond || name == InstName.Bl)
-                    {
-                        int imm = ImmUtils.ExtractSImm26Times4(encoding);
-
-                        WriteCallWithGuestAddress(
-                            writer,
-                            ref asm,
-                            regAlloc,
-                            tailMerger,
-                            writeEpilogue,
-                            funcTable,
-                            dispatchStubPtr,
-                            spillBaseOffset,
-                            pc,
-                            new(OperandKind.Constant, OperandType.I64, pc + (ulong)imm),
-                            isTail);
-                    }
-                    else
-                    {
-                        int rnIndex = RegisterUtils.ExtractRn(encoding);
-                        if (rnIndex == RegisterUtils.ZrIndex)
-                        {
-                            WriteCallWithGuestAddress(
-                                writer,
-                                ref asm,
-                                regAlloc,
-                                tailMerger,
-                                writeEpilogue,
-                                funcTable,
-                                dispatchStubPtr,
-                                spillBaseOffset,
-                                pc,
-                                new(OperandKind.Constant, OperandType.I64, 0UL),
-                                isTail);
-                        }
-                        else
-                        {
-                            rnIndex = regAlloc.RemapReservedGprRegister(rnIndex);
-
-                            WriteCallWithGuestAddress(
-                                writer,
-                                ref asm,
-                                regAlloc,
-                                tailMerger,
-                                writeEpilogue,
-                                funcTable,
-                                dispatchStubPtr,
-                                spillBaseOffset,
-                                pc,
-                                Register(rnIndex),
-                                isTail);
-                        }
-                    }
-                    break;
-
-                default:
-                    Debug.Fail($"Unknown branch instruction \"{name}\".");
-                    break;
-            }
-        }
-
-        public unsafe static void WriteCallWithGuestAddress(
-            CodeWriter writer,
-            ref Assembler asm,
-            RegisterAllocator regAlloc,
-            TailMerger tailMerger,
-            Action writeEpilogue,
-            AddressTable<ulong> funcTable,
-            nint funcPtr,
-            int spillBaseOffset,
-            ulong pc,
-            Operand guestAddress,
-            bool isTail = false)
-        {
-            int tempRegister;
-            int tempGuestAddress = -1;
-
-            bool inlineLookup = guestAddress.Kind != OperandKind.Constant && 
-                                funcTable is { Sparse: true };
-
-            if (guestAddress.Kind == OperandKind.Constant)
-            {
-                tempRegister = regAlloc.AllocateTempGprRegister();
-
-                asm.Mov(Register(tempRegister), guestAddress.Value);
-                asm.StrRiUn(Register(tempRegister), Register(regAlloc.FixedContextRegister), NativeContextOffsets.DispatchAddressOffset);
-
-                regAlloc.FreeTempGprRegister(tempRegister);
-            }
-            else
-            {
-                asm.StrRiUn(guestAddress, Register(regAlloc.FixedContextRegister), NativeContextOffsets.DispatchAddressOffset);
-
-                if (inlineLookup && guestAddress.Value == 0)
-                {
-                    // X0 will be overwritten. Move the address to a temp register.
-                    tempGuestAddress = regAlloc.AllocateTempGprRegister();
-                    asm.Mov(Register(tempGuestAddress), guestAddress);
-                }
-            }
-
-            tempRegister = NextFreeRegister(1, tempGuestAddress);
-
-            if (!isTail)
-            {
-                WriteSpillSkipContext(ref asm, regAlloc, spillBaseOffset);
-            }
-
-            Operand rn = Register(tempRegister);
-
-            if (regAlloc.FixedContextRegister != 0)
-            {
-                asm.Mov(Register(0), Register(regAlloc.FixedContextRegister));
-            }
-
-            if (guestAddress.Kind == OperandKind.Constant && funcTable != null)
-            {
-                ulong funcPtrLoc = (ulong)Unsafe.AsPointer(ref funcTable.GetValue(guestAddress.Value));
-
-                asm.Mov(rn, funcPtrLoc & ~0xfffUL);
-                asm.LdrRiUn(rn, rn, (int)(funcPtrLoc & 0xfffUL));
-            }
-            else if (inlineLookup)
-            {
-                // Inline table lookup. Only enabled when the sparse function table is enabled with 2 levels.
-
-                Operand indexReg = Register(NextFreeRegister(tempRegister + 1, tempGuestAddress));
-
-                if (tempGuestAddress != -1)
-                {
-                    guestAddress = Register(tempGuestAddress);
-                }
-
-                ulong tableBase = (ulong)funcTable.Base;
-
-                // Index into the table.
-                asm.Mov(rn, tableBase);
-
-                for (int i = 0; i < funcTable.Levels.Length; i++)
-                {
-                    var level = funcTable.Levels[i];
-                    asm.Ubfx(indexReg, guestAddress, level.Index, level.Length);
-                    asm.Lsl(indexReg, indexReg, Const(3));
-
-                    // Index into the page.
-                    asm.Add(rn, rn, indexReg);
-
-                    // Load the page address.
-                    asm.LdrRiUn(rn, rn, 0);
-                }
-
-                if (tempGuestAddress != -1)
-                {
-                    regAlloc.FreeTempGprRegister(tempGuestAddress);
-                }
-            }
-            else
-            {
-                asm.Mov(rn, (ulong)funcPtr);
-            }
-
-            if (isTail)
-            {
-                writeEpilogue();
-                asm.Br(rn);
-            }
-            else
-            {
-                asm.Blr(rn);
-
-                ulong nextAddress = pc + 4UL;
-
-                asm.Mov(rn, nextAddress);
-                asm.Cmp(Register(0), rn);
-
-                tailMerger.AddConditionalReturn(writer, asm, ArmCondition.Ne);
-
-                WriteFillSkipContext(ref asm, regAlloc, spillBaseOffset);
-            }
-        }
-
         private static void WriteCall(
             ref Assembler asm,
             RegisterAllocator regAlloc,
-            nint funcPtr,
+            IntPtr funcPtr,
+            bool skipContext,
             int spillBaseOffset,
             int? resultRegister,
             params ulong[] callArgs)
@@ -433,7 +494,7 @@ namespace Ryujinx.Cpu.LightningJit.Arm64.Target.Arm64
                 tempRegister++;
             }
 
-            WriteSpill(ref asm, regAlloc, resultMask, spillBaseOffset, tempRegister);
+            WriteSpill(ref asm, regAlloc, resultMask, skipContext, spillBaseOffset, tempRegister);
 
             // We only support up to 7 arguments right now.
             // ABI defines the first 8 integer arguments to be passed on registers X0-X7.
@@ -457,17 +518,31 @@ namespace Ryujinx.Cpu.LightningJit.Arm64.Target.Arm64
                 asm.Mov(Register(resultRegister.Value), Register(0));
             }
 
-            WriteFill(ref asm, regAlloc, resultMask, spillBaseOffset, tempRegister);
+            WriteFill(ref asm, regAlloc, resultMask, skipContext, spillBaseOffset, tempRegister);
         }
 
-        private static void WriteSpill(ref Assembler asm, RegisterAllocator regAlloc, uint exceptMask, int spillOffset, int tempRegister)
+        private static void WriteSpill(ref Assembler asm, RegisterAllocator regAlloc, uint exceptMask, bool skipContext, int spillOffset, int tempRegister)
         {
-            WriteSpillOrFill(ref asm, regAlloc, exceptMask, spillOffset, tempRegister, spill: true);
+            if (skipContext)
+            {
+                InstEmitFlow.WriteSpillSkipContext(ref asm, regAlloc, spillOffset);
+            }
+            else
+            {
+                WriteSpillOrFill(ref asm, regAlloc, exceptMask, spillOffset, tempRegister, spill: true);
+            }
         }
 
-        private static void WriteFill(ref Assembler asm, RegisterAllocator regAlloc, uint exceptMask, int spillOffset, int tempRegister)
+        private static void WriteFill(ref Assembler asm, RegisterAllocator regAlloc, uint exceptMask, bool skipContext, int spillOffset, int tempRegister)
         {
-            WriteSpillOrFill(ref asm, regAlloc, exceptMask, spillOffset, tempRegister, spill: false);
+            if (skipContext)
+            {
+                InstEmitFlow.WriteFillSkipContext(ref asm, regAlloc, spillOffset);
+            }
+            else
+            {
+                WriteSpillOrFill(ref asm, regAlloc, exceptMask, spillOffset, tempRegister, spill: false);
+            }
         }
 
         private static void WriteSpillOrFill(
@@ -478,16 +553,16 @@ namespace Ryujinx.Cpu.LightningJit.Arm64.Target.Arm64
             int tempRegister,
             bool spill)
         {
-            uint gprMask = regAlloc.AllGprMask & ~(AbiConstants.GprCalleeSavedRegsMask | exceptMask);
+            uint gprMask = regAlloc.UsedGprsMask & ~(AbiConstants.GprCalleeSavedRegsMask | exceptMask);
 
-            if (regAlloc.AllPStateMask != 0 && !spill)
+            if (!spill)
             {
                 // We must reload the status register before reloading the GPRs,
                 // since we might otherwise trash one of them by using it as temp register.
 
                 Operand rt = Register(tempRegister, OperandType.I32);
 
-                asm.LdrRiUn(rt, Register(RegisterUtils.SpIndex), spillOffset + BitOperations.PopCount(gprMask) * 8);
+                asm.LdrRiUn(rt, Register(SpIndex), spillOffset + BitOperations.PopCount(gprMask) * 8);
                 asm.MsrNzcv(rt);
             }
 
@@ -499,19 +574,11 @@ namespace Ryujinx.Cpu.LightningJit.Arm64.Target.Arm64
                 {
                     if (spill)
                     {
-                        asm.StpRiUn(
-                            Register(regAlloc.RemapReservedGprRegister(reg)),
-                            Register(regAlloc.RemapReservedGprRegister(reg + 1)),
-                            Register(RegisterUtils.SpIndex),
-                            spillOffset);
+                        asm.StpRiUn(Register(reg), Register(reg + 1), Register(SpIndex), spillOffset);
                     }
                     else
                     {
-                        asm.LdpRiUn(
-                            Register(regAlloc.RemapReservedGprRegister(reg)),
-                            Register(regAlloc.RemapReservedGprRegister(reg + 1)),
-                            Register(RegisterUtils.SpIndex),
-                            spillOffset);
+                        asm.LdpRiUn(Register(reg), Register(reg + 1), Register(SpIndex), spillOffset);
                     }
 
                     gprMask &= ~(3u << reg);
@@ -521,11 +588,11 @@ namespace Ryujinx.Cpu.LightningJit.Arm64.Target.Arm64
                 {
                     if (spill)
                     {
-                        asm.StrRiUn(Register(regAlloc.RemapReservedGprRegister(reg)), Register(RegisterUtils.SpIndex), spillOffset);
+                        asm.StrRiUn(Register(reg), Register(SpIndex), spillOffset);
                     }
                     else
                     {
-                        asm.LdrRiUn(Register(regAlloc.RemapReservedGprRegister(reg)), Register(RegisterUtils.SpIndex), spillOffset);
+                        asm.LdrRiUn(Register(reg), Register(SpIndex), spillOffset);
                     }
 
                     gprMask &= ~(1u << reg);
@@ -533,25 +600,22 @@ namespace Ryujinx.Cpu.LightningJit.Arm64.Target.Arm64
                 }
             }
 
-            if (regAlloc.AllPStateMask != 0)
+            if (spill)
             {
-                if (spill)
-                {
-                    Operand rt = Register(tempRegister, OperandType.I32);
+                Operand rt = Register(tempRegister, OperandType.I32);
 
-                    asm.MrsNzcv(rt);
-                    asm.StrRiUn(rt, Register(RegisterUtils.SpIndex), spillOffset);
-                }
-
-                spillOffset += 8;
+                asm.MrsNzcv(rt);
+                asm.StrRiUn(rt, Register(SpIndex), spillOffset);
             }
+
+            spillOffset += 8;
 
             if ((spillOffset & 8) != 0)
             {
                 spillOffset += 8;
             }
 
-            uint fpSimdMask = regAlloc.AllFpSimdMask;
+            uint fpSimdMask = regAlloc.UsedFpSimdMask;
 
             while (fpSimdMask != 0)
             {
@@ -561,19 +625,11 @@ namespace Ryujinx.Cpu.LightningJit.Arm64.Target.Arm64
                 {
                     if (spill)
                     {
-                        asm.StpRiUn(
-                            Register(reg, OperandType.V128),
-                            Register(reg + 1, OperandType.V128),
-                            Register(RegisterUtils.SpIndex),
-                            spillOffset);
+                        asm.StpRiUn(Register(reg, OperandType.V128), Register(reg + 1, OperandType.V128), Register(SpIndex), spillOffset);
                     }
                     else
                     {
-                        asm.LdpRiUn(
-                            Register(reg, OperandType.V128),
-                            Register(reg + 1, OperandType.V128),
-                            Register(RegisterUtils.SpIndex),
-                            spillOffset);
+                        asm.LdpRiUn(Register(reg, OperandType.V128), Register(reg + 1, OperandType.V128), Register(SpIndex), spillOffset);
                     }
 
                     fpSimdMask &= ~(3u << reg);
@@ -583,11 +639,11 @@ namespace Ryujinx.Cpu.LightningJit.Arm64.Target.Arm64
                 {
                     if (spill)
                     {
-                        asm.StrRiUn(Register(reg, OperandType.V128), Register(RegisterUtils.SpIndex), spillOffset);
+                        asm.StrRiUn(Register(reg, OperandType.V128), Register(SpIndex), spillOffset);
                     }
                     else
                     {
-                        asm.LdrRiUn(Register(reg, OperandType.V128), Register(RegisterUtils.SpIndex), spillOffset);
+                        asm.LdrRiUn(Register(reg, OperandType.V128), Register(SpIndex), spillOffset);
                     }
 
                     fpSimdMask &= ~(1u << reg);
@@ -596,82 +652,9 @@ namespace Ryujinx.Cpu.LightningJit.Arm64.Target.Arm64
             }
         }
 
-        private static void WriteSpillSkipContext(ref Assembler asm, RegisterAllocator regAlloc, int spillOffset)
-        {
-            WriteSpillOrFillSkipContext(ref asm, regAlloc, spillOffset, spill: true);
-        }
-
-        private static void WriteFillSkipContext(ref Assembler asm, RegisterAllocator regAlloc, int spillOffset)
-        {
-            WriteSpillOrFillSkipContext(ref asm, regAlloc, spillOffset, spill: false);
-        }
-
-        private static void WriteSpillOrFillSkipContext(ref Assembler asm, RegisterAllocator regAlloc, int spillOffset, bool spill)
-        {
-            uint gprMask = regAlloc.AllGprMask & ((1u << regAlloc.FixedContextRegister) | (1u << regAlloc.FixedPageTableRegister));
-            gprMask &= ~AbiConstants.GprCalleeSavedRegsMask;
-
-            while (gprMask != 0)
-            {
-                int reg = BitOperations.TrailingZeroCount(gprMask);
-
-                if (reg < 31 && (gprMask & (2u << reg)) != 0 && spillOffset < RegisterSaveRestore.Encodable9BitsOffsetLimit)
-                {
-                    if (spill)
-                    {
-                        asm.StpRiUn(
-                            Register(regAlloc.RemapReservedGprRegister(reg)),
-                            Register(regAlloc.RemapReservedGprRegister(reg + 1)),
-                            Register(RegisterUtils.SpIndex),
-                            spillOffset);
-                    }
-                    else
-                    {
-                        asm.LdpRiUn(
-                            Register(regAlloc.RemapReservedGprRegister(reg)),
-                            Register(regAlloc.RemapReservedGprRegister(reg + 1)),
-                            Register(RegisterUtils.SpIndex),
-                            spillOffset);
-                    }
-
-                    gprMask &= ~(3u << reg);
-                    spillOffset += 16;
-                }
-                else
-                {
-                    if (spill)
-                    {
-                        asm.StrRiUn(Register(regAlloc.RemapReservedGprRegister(reg)), Register(RegisterUtils.SpIndex), spillOffset);
-                    }
-                    else
-                    {
-                        asm.LdrRiUn(Register(regAlloc.RemapReservedGprRegister(reg)), Register(RegisterUtils.SpIndex), spillOffset);
-                    }
-
-                    gprMask &= ~(1u << reg);
-                    spillOffset += 8;
-                }
-            }
-        }
-
-        private static Operand Register(int register, OperandType type = OperandType.I64)
+        public static Operand Register(int register, OperandType type = OperandType.I64)
         {
             return new Operand(register, RegisterType.Integer, type);
-        }
-
-        private static Operand Const(long value, OperandType type = OperandType.I64)
-        {
-            return new Operand(type, (ulong)value);
-        }
-
-        private static int NextFreeRegister(int start, int avoid)
-        {
-            if (start == avoid)
-            {
-                start++;
-            }
-
-            return start;
         }
     }
 }
