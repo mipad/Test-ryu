@@ -75,17 +75,21 @@ namespace Ryujinx.HLE.HOS.Services.Fatal
                     {
                         errorReport.AppendLine("\tStackTrace:");
 
+                        Span<ulong> stackTraceSpan = cpuContext64.StackTrace.AsSpan();
+
                         for (int i = 0; i < cpuContext64.StackTraceSize; i++)
                         {
-                            errorReport.AppendLine($"\t\t0x{cpuContext64.StackTrace[i]:x16}");
+                            errorReport.AppendLine($"\t\t0x{stackTraceSpan[i]:x16}");
                         }
                     }
 
                     errorReport.AppendLine("\tRegisters:");
+                    
+                    Span<ulong> xSpan = cpuContext64.X.AsSpan();
 
-                    for (int i = 0; i < cpuContext64.X.Length; i++)
+                    for (int i = 0; i < xSpan.Length; i++)
                     {
-                        errorReport.AppendLine($"\t\tX[{i:d2}]:\t0x{cpuContext64.X[i]:x16}");
+                        errorReport.AppendLine($"\t\tX[{i:d2}]:\t0x{xSpan[i]:x16}");
                     }
 
                     errorReport.AppendLine();
@@ -109,18 +113,22 @@ namespace Ryujinx.HLE.HOS.Services.Fatal
                     if (cpuContext32.StackTraceSize > 0)
                     {
                         errorReport.AppendLine("\tStackTrace:");
+                        
+                        Span<uint> stackTraceSpan = cpuContext32.StackTrace.AsSpan();
 
                         for (int i = 0; i < cpuContext32.StackTraceSize; i++)
                         {
-                            errorReport.AppendLine($"\t\t0x{cpuContext32.StackTrace[i]:x16}");
+                            errorReport.AppendLine($"\t\t0x{stackTraceSpan[i]:x16}");
                         }
                     }
 
                     errorReport.AppendLine("\tRegisters:");
+                    
+                    Span<uint> xSpan = cpuContext32.X.AsSpan();
 
-                    for (int i = 0; i < cpuContext32.X.Length; i++)
+                    for (int i = 0; i < xSpan.Length; i++)
                     {
-                        errorReport.AppendLine($"\t\tX[{i:d2}]:\t0x{cpuContext32.X[i]:x16}");
+                        errorReport.AppendLine($"\t\tX[{i:d2}]:\t0x{xSpan[i]:x16}");
                     }
 
                     errorReport.AppendLine();
