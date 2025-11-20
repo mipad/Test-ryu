@@ -848,3 +848,4 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         }
     }
 }
+
