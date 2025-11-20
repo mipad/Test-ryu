@@ -26,7 +26,7 @@ namespace Ryujinx.HLE.HOS
 
         public ulong ReservedSize { get; }
 
-        public IVirtualMemoryManager AddressSpace => _memoryManager;
+        public IVirtualMemoryManager AddressSpace => ICpuMemoryManager;
 
         public ulong AddressSpaceSize { get; }
 
