@@ -55,7 +55,7 @@ namespace Ryujinx.Common.Memory
             static readonly List<Holder> _pool = new();
             
             // ReSharper disable once StaticMemberInGenericType
-            static readonly Lock _lock = new();
+            static readonly object _lock = new();
             
             private static int BinarySearch(List<Holder> list, int size)
             {
