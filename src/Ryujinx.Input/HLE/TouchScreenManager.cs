@@ -44,13 +44,14 @@ namespace Ryujinx.Input.HLE
                         Angle = 90,
                     };
 
-                    _device.Hid.Touchscreen.Update(currentPoint);
-
+                    // 修改这里：将单个 TouchPoint 包装成数组
+                    _device.Hid.Touchscreen.Update(new TouchPoint[] { currentPoint });
                 }
 
                 _wasClicking = false;
 
-                _device.Hid.Touchscreen.Update();
+                // 修改这里：传递空的触摸点数组
+                _device.Hid.Touchscreen.Update(Array.Empty<TouchPoint>());
 
                 return false;
             }
@@ -84,7 +85,8 @@ namespace Ryujinx.Input.HLE
                     Angle = 90,
                 };
 
-                _device.Hid.Touchscreen.Update(currentPoint);
+                // 修改这里：将单个 TouchPoint 包装成数组
+                _device.Hid.Touchscreen.Update(new TouchPoint[] { currentPoint });
 
                 _wasClicking = isClicking;
 
