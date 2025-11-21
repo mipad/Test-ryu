@@ -5,9 +5,11 @@ using Ryujinx.HLE.HOS.Kernel.Common;
 using Ryujinx.HLE.HOS.Kernel.Process;
 using Ryujinx.HLE.HOS.Kernel.SupervisorCall;
 using Ryujinx.Horizon.Common;
+using Ryujinx.Memory;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Text;
 using System.Threading;
 
 namespace Ryujinx.HLE.HOS.Kernel.Threading
@@ -16,6 +18,23 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
     {
         private const int TlsUserDisableCountOffset = 0x100;
         private const int TlsUserInterruptFlagOffset = 0x102;
+
+        // Tls -> ThreadType
+        private const int TlsThreadTypeOffsetAArch64 = 0x1F8;
+        private const int TlsThreadTypeOffsetAArch32 = 0x1FC;
+
+        // Tls -> ThreadType -> Version
+        private const int TlsThreadTypeVersionOffsetAArch64 = 0x46;
+        private const int TlsThreadTypeVersionOffsetAArch32 = 0x26;
+
+        // Tls -> ThreadType (Version 0) -> ThreadNamePointer
+        private const int TlsThreadTypeVersion0ThreadNamePointerOffsetAArch64 = 0x1A8;
+        private const int TlsThreadTypeVersion0ThreadNamePointerOffsetAArch32 = 0xE8;
+
+        // Tls -> ThreadType (Version 1) -> ThreadNamePointer
+        private const int TlsThreadTypeThreadNamePointerOffsetAArch64 = 0x1A0;
+        private const int TlsThreadTypeThreadNamePointerOffsetAArch32 = 0xE4;
+
 
         public const int MaxWaitSyncObjects = 64;
 
@@ -29,10 +48,12 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 
         public KThreadContext ThreadContext { get; private set; }
 
-        public int DynamicPriority { get; set; }
-        public ulong AffinityMask { get; set; }
+        public int DynamicPriority { get; private set; }
+        public ulong AffinityMask { get; private set; }
 
         public ulong ThreadUid { get; private set; }
+        
+        public bool IsThreadNamed { get; set; }
 
         private long _totalTimeRunning;
 
@@ -62,18 +83,18 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 
         public long LastScheduledTime { get; set; }
 
-        public LinkedListNode<KThread>[] SiblingsPerCore { get; private set; }
+        public readonly LinkedListNode<KThread>[] SiblingsPerCore;
 
         public LinkedList<KThread> Withholder { get; set; }
-        public LinkedListNode<KThread> WithholderNode { get; set; }
+        public readonly LinkedListNode<KThread> WithholderNode;
 
-        public LinkedListNode<KThread> ProcessListNode { get; set; }
+        public readonly LinkedListNode<KThread> ProcessListNode;
 
         private readonly LinkedList<KThread> _mutexWaiters;
-        private LinkedListNode<KThread> _mutexWaiterNode;
+        private readonly LinkedListNode<KThread> _mutexWaiterNode;
 
         private readonly LinkedList<KThread> _pinnedWaiters;
-        private LinkedListNode<KThread> _pinnedWaiterNode;
+        private readonly LinkedListNode<KThread> _pinnedWaiterNode;
 
         public KThread MutexOwner { get; private set; }
 
@@ -114,7 +135,9 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 
         public bool WaitingInArbitration { get; set; }
 
-        private readonly object _activityOperationLock = new();
+        private readonly Lock _activityOperationLock = new();
+
+        internal readonly ManualResetEventSlim DebugHalt = new(false);
 
         public KThread(KernelContext context) : base(context)
         {
@@ -193,7 +216,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
                 is64Bits = true;
             }
 
-            HostThread = new Thread(ThreadStart);
+            HostThread = new Thread(ThreadStart) { Name = "HLE.KThread" };
 
             Context = owner?.CreateExecutionContext() ?? new ProcessExecutionContext();
 
@@ -214,8 +237,10 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
             }
 
             Context.TpidrroEl0 = (long)_tlsAddress;
+            Context.DebugPc = _entrypoint;
 
             ThreadUid = KernelContext.NewThreadUid();
+            Context.ThreadUid = ThreadUid;
 
             HostThread.Name = customThreadStart != null ? $"HLE.OsThread.{ThreadUid}" : $"HLE.GuestThread.{ThreadUid}";
 
@@ -319,7 +344,9 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
         {
             KernelContext.CriticalSection.Enter();
 
-            if (Owner != null && Owner.PinnedThreads[KernelStatic.GetCurrentThread().CurrentCore] == this)
+            KThread currentThread = KernelStatic.GetCurrentThread();
+
+            if (Owner != null && currentThread != null && Owner.PinnedThreads[currentThread.CurrentCore] == this)
             {
                 Owner.UnpinThread(this);
             }
@@ -374,7 +401,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
         {
             ThreadSchedState state = PrepareForTermination();
 
-            if (state != ThreadSchedState.TerminationPending)
+            if (KernelStatic.GetCurrentThread() == this && state != ThreadSchedState.TerminationPending)
             {
                 KernelContext.Synchronization.WaitFor(new KSynchronizationObject[] { this }, -1, out _);
             }
@@ -549,7 +576,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 
                 ThreadSchedState lowNibble = SchedFlags & ThreadSchedState.LowMask;
 
-                if (lowNibble != ThreadSchedState.Paused && lowNibble != ThreadSchedState.Running)
+                if (lowNibble is not ThreadSchedState.Paused and not ThreadSchedState.Running)
                 {
                     KernelContext.CriticalSection.Leave();
 
@@ -1043,11 +1070,11 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 
             if (nextPrio != null)
             {
-                thread._mutexWaiterNode = _mutexWaiters.AddBefore(nextPrio, thread);
+                _mutexWaiters.AddBefore(nextPrio, thread._mutexWaiterNode);
             }
             else
             {
-                thread._mutexWaiterNode = _mutexWaiters.AddLast(thread);
+                _mutexWaiters.AddLast(thread._mutexWaiterNode);
             }
         }
 
@@ -1247,7 +1274,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
         {
             if (_schedulerWaitEvent == null)
             {
-                var schedulerWaitEvent = new ManualResetEventSlim(false);
+                ManualResetEventSlim schedulerWaitEvent = new(false);
 
                 if (Interlocked.Exchange(ref _schedulerWaitEvent, schedulerWaitEvent) == null)
                 {
@@ -1263,6 +1290,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
         private void ThreadStart()
         {
             _schedulerWaitEvent.Wait();
+            DebugHalt.Reset();
             KernelStatic.SetKernelContext(KernelContext, this);
 
             if (_customThreadStart != null)
@@ -1317,7 +1345,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
         {
             Owner?.RemoveThread(this);
 
-            if (_tlsAddress != 0 && Owner?.FreeThreadLocalStorage(_tlsAddress) != Result.Success)
+            if (_tlsAddress != 0 && Owner.FreeThreadLocalStorage(_tlsAddress) != Result.Success)
             {
                 throw new InvalidOperationException("Unexpected failure freeing thread local storage.");
             }
@@ -1445,6 +1473,85 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
         public void ClearUserInterruptFlag()
         {
             Owner.CpuMemory.Write<ushort>(_tlsAddress + TlsUserInterruptFlagOffset, 0);
+        }
+
+        public string GetThreadName()
+        {
+            try
+            {
+                ulong threadNamePtr = 0;
+                if (Context.IsAarch32)
+                {
+                    uint threadTypePtr32 = Owner.CpuMemory.Read<uint>(_tlsAddress + TlsThreadTypeOffsetAArch32);
+                    if (threadTypePtr32 == 0)
+                    {
+                        return "";
+                    }
+
+                    ushort version = Owner.CpuMemory.Read<ushort>(threadTypePtr32 + TlsThreadTypeVersionOffsetAArch32);
+                    switch (version)
+                    {
+                        case 0x0000:
+                        case 0xFFFF:
+                            threadNamePtr = Owner.CpuMemory.Read<uint>(threadTypePtr32 + TlsThreadTypeVersion0ThreadNamePointerOffsetAArch32);
+                            break;
+                        case 0x0001:
+                            threadNamePtr = Owner.CpuMemory.Read<uint>(threadTypePtr32 + TlsThreadTypeThreadNamePointerOffsetAArch32);
+                            break;
+                        default:
+                            Logger.Warning?.Print(LogClass.Kernel, $"Unknown ThreadType struct version: {version}");
+                            break;
+                    }
+                }
+                else
+                {
+                    ulong threadTypePtr64 = Owner.CpuMemory.Read<ulong>(_tlsAddress + TlsThreadTypeOffsetAArch64);
+                    if (threadTypePtr64 == 0)
+                    {
+                        return "";
+                    }
+
+                    ushort version = Owner.CpuMemory.Read<ushort>(threadTypePtr64 + TlsThreadTypeVersionOffsetAArch64);
+                    switch (version)
+                    {
+                        case 0x0000:
+                        case 0xFFFF:
+                            threadNamePtr = Owner.CpuMemory.Read<ulong>(threadTypePtr64 + TlsThreadTypeVersion0ThreadNamePointerOffsetAArch64);
+                            break;
+                        case 0x0001:
+                            threadNamePtr = Owner.CpuMemory.Read<ulong>(threadTypePtr64 + TlsThreadTypeThreadNamePointerOffsetAArch64);
+                            break;
+                        default:
+                            Logger.Warning?.Print(LogClass.Kernel, $"Unknown ThreadType struct version: {version}");
+                            break;
+                    }
+                }
+
+                if (threadNamePtr == 0)
+                {
+                    return "";
+                }
+
+                List<byte> nameBytes = new();
+                for (int i = 0; i < 0x20; i++)
+                {
+                    byte b = Owner.CpuMemory.Read<byte>(threadNamePtr + (ulong)i);
+                    if (b == 0)
+                    {
+                        break;
+                    }
+                    nameBytes.Add(b);
+                }
+                return Encoding.UTF8.GetString(nameBytes.ToArray());
+
+            } catch (InvalidMemoryRegionException)
+            {
+                Logger.Warning?.Print(LogClass.Kernel, "Failed to get thread name.");
+                return "";
+            } catch (Exception e) {
+                Logger.Error?.Print(LogClass.Kernel, $"Error getting thread name: {e.Message}");
+                return "";
+            }
         }
     }
 }
