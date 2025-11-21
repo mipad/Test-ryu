@@ -9,7 +9,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace Ryujinx.Audio.Backends.Oboe
 {
@@ -236,34 +235,19 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         private void ReinitializeOboe(uint sampleRate, uint channelCount, SampleFormat sampleFormat)
         {
-            try
+            shutdownOboeAudio();
+            Thread.Sleep(50); // 给系统一点时间清理
+            
+            int formatValue = SampleFormatToInt(sampleFormat);
+            if (!initOboeAudioWithFormat((int)sampleRate, (int)channelCount, formatValue))
             {
-                shutdownOboeAudio();
-                Thread.Sleep(100); // 增加延迟，确保完全关闭
-                
-                int formatValue = SampleFormatToInt(sampleFormat);
-                if (!initOboeAudioWithFormat((int)sampleRate, (int)channelCount, formatValue))
-                {
-                    // 重试机制
-                    Thread.Sleep(50);
-                    if (!initOboeAudioWithFormat((int)sampleRate, (int)channelCount, formatValue))
-                    {
-                        throw new Exception("Oboe audio reinitialization failed after retry");
-                    }
-                }
-                
-                setOboeVolume(_volume);
-                _currentChannelCount = (int)channelCount;
-                _currentSampleFormat = sampleFormat;
-                _currentSampleRate = sampleRate;
-                
-                Logger.Info?.Print(LogClass.Audio, "Oboe audio reinitialized successfully");
+                throw new Exception("Oboe audio reinitialization failed");
             }
-            catch (Exception ex)
-            {
-                Logger.Error?.Print(LogClass.Audio, $"Oboe audio reinitialization failed: {ex}");
-                throw;
-            }
+            
+            setOboeVolume(_volume);
+            _currentChannelCount = (int)channelCount;
+            _currentSampleFormat = sampleFormat;
+            _currentSampleRate = sampleRate;
         }
 
         private int SampleFormatToInt(SampleFormat format)
@@ -411,26 +395,9 @@ namespace Ryujinx.Audio.Backends.Oboe
                 int bytesPerSample = GetBytesPerSample(_sampleFormat);
                 int frameCount = buffer.Data.Length / (bytesPerSample * _channelCount);
 
-                // 重试机制
-                bool writeSuccess = false;
-                int retryCount = 0;
-                
-                while (!writeSuccess && retryCount < 2)
-                {
-                    int formatValue = SampleFormatToInt(_sampleFormat);
-                    writeSuccess = writeOboeAudioRaw(buffer.Data, frameCount, formatValue);
-                    
-                    if (!writeSuccess)
-                    {
-                        retryCount++;
-                        if (retryCount < 2)
-                        {
-                            Logger.Warning?.Print(LogClass.Audio, 
-                                $"Audio write failed, retrying {retryCount}/2: {frameCount} frames, Format={_sampleFormat}");
-                            Thread.Sleep(5);
-                        }
-                    }
-                }
+                // 直接传递原始数据，不进行格式转换
+                int formatValue = SampleFormatToInt(_sampleFormat);
+                bool writeSuccess = writeOboeAudioRaw(buffer.Data, frameCount, formatValue);
 
                 if (writeSuccess)
                 {
@@ -444,14 +411,11 @@ namespace Ryujinx.Audio.Backends.Oboe
                 else
                 {
                     Logger.Warning?.Print(LogClass.Audio, 
-                        $"Audio write failed after retries: {frameCount} frames dropped, Format={_sampleFormat}, Rate={_sampleRate}Hz");
+                        $"Audio write failed: {frameCount} frames dropped, Format={_sampleFormat}, Rate={_sampleRate}Hz");
                     
-                    // 延迟重置，避免频繁重置
-                    Task.Run(async () =>
-                    {
-                        await Task.Delay(100);
-                        resetOboeAudio();
-                    });
+                    // 重置音频系统
+                    Logger.Warning?.Print(LogClass.Audio, "Audio write failure, resetting audio system");
+                    resetOboeAudio();
                 }
             }
 
