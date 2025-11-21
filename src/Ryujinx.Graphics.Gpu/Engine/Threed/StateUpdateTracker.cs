@@ -1,4 +1,3 @@
-using Ryujinx.Graphics.Device;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -109,7 +108,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
 
             if (index < BlockSize)
             {
-                int groupIndex = Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_registerToGroupMapping), (IntPtr)index);
+                int groupIndex = _registerToGroupMapping[index];
                 if (groupIndex != 0)
                 {
                     groupIndex--;
