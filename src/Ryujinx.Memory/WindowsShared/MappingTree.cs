@@ -36,15 +36,33 @@ namespace Ryujinx.Memory.WindowsShared
 
     class RangeNode<T> : IntrusiveRedBlackTreeNode<RangeNode<T>>, IComparable<RangeNode<T>>, IComparable<ulong>
     {
-        public ulong Start { get; }
+        public ulong Start { get; private set; }
         public ulong End { get; private set; }
-        public T Value { get; }
+        public T Value { get; private set; }
 
+        public RangeNode() { }
+        
         public RangeNode(ulong start, ulong end, T value)
         {
             Start = start;
             End = end;
             Value = value;
+        }
+
+        public RangeNode<T> Init(ulong start, ulong end, T value)
+        {
+            Start = start;
+            End = end;
+            Value = value;
+
+            Color = true;
+            Left = null;
+            Right = null;
+            Parent = null;
+            Predecessor = null;
+            Successor = null;
+
+            return this;
         }
 
         public void Extend(ulong sizeDelta)
