@@ -6,6 +6,7 @@ using Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.Mouse;
 using Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.Npad;
 using Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.TouchScreen;
 using System.Runtime.InteropServices;
+using System;
 
 namespace Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory
 {
@@ -62,9 +63,11 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory
                 Condition = NpadCondition.Create(),
             };
 
-            for (int i = 0; i < result.Npads.Length; i++)
+            Span<NpadState> npadsSpan = result.Npads.AsSpan();
+
+            for (int i = 0; i < npadsSpan.Length; i++)
             {
-                result.Npads[i] = NpadState.Create();
+                npadsSpan[i] = NpadState.Create();
             }
 
             return result;
