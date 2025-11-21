@@ -182,11 +182,15 @@ namespace Ryujinx.Memory.Tracking
         {
             if (region.Guest)
             {
+                _guestVirtualRegions.Lock.EnterWriteLock();
                 _guestVirtualRegions.Remove(region);
+                _guestVirtualRegions.Lock.ExitWriteLock();
             }
             else
             {
+                _virtualRegions.Lock.EnterWriteLock();
                 _virtualRegions.Remove(region);
+                _virtualRegions.Lock.ExitWriteLock();
             }
         }
 
@@ -230,7 +234,7 @@ namespace Ryujinx.Memory.Tracking
         /// <returns>The memory tracking handle</returns>
         public RegionHandle BeginTracking(ulong address, ulong size, int id, RegionFlags flags = RegionFlags.None)
         {
-            (ulong paAddress, ulong paSize) = PageAlign(address, size);
+            var (paAddress, paSize) = PageAlign(address, size);
 
             lock (TrackingLock)
             {
@@ -253,7 +257,7 @@ namespace Ryujinx.Memory.Tracking
         /// <returns>The memory tracking handle</returns>
         internal RegionHandle BeginTrackingBitmap(ulong address, ulong size, ConcurrentBitmap bitmap, int bit, int id, RegionFlags flags = RegionFlags.None)
         {
-            (ulong paAddress, ulong paSize) = PageAlign(address, size);
+            var (paAddress, paSize) = PageAlign(address, size);
 
             lock (TrackingLock)
             {
