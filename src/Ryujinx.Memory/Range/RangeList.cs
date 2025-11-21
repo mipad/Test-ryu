@@ -81,12 +81,73 @@ namespace Ryujinx.Memory.Range
                 {
                     if (Items[index].Value.Equals(item))
                     {
+                        RangeItem<T> rangeItem = new(item) { Previous = Items[index].Previous, Next = Items[index].Next };
+                        
+                        if (index > 0)
+                        {
+                            Items[index - 1].Next = rangeItem;
+                        }
+
+                        if (index < Count - 1)
+                        {
+                            Items[index + 1].Previous = rangeItem;
+                        }
+                        
                         foreach (ulong address in Items[index].QuickAccessAddresses)
                         {
                             _quickAccess.Remove(address);
                         }
                         
-                        Items[index] = new RangeItem<T>(item);
+                        Items[index] = rangeItem;
+
+                        return true;
+                    }
+
+                    if (Items[index].Address > item.Address)
+                    {
+                        break;
+                    }
+
+                    index++;
+                }
+            }
+
+            return false;
+        }
+        
+        /// <summary>
+        /// Updates an item's end address on the list. Address must be the same.
+        /// </summary>
+        /// <param name="item">The RangeItem to be updated</param>
+        /// <returns>True if the item was located and updated, false otherwise</returns>
+        protected override bool Update(RangeItem<T> item)
+        {
+            int index = BinarySearch(item.Address);
+
+            if (index >= 0)
+            {
+                while (index < Count)
+                {
+                    if (Items[index].Equals(item))
+                    {
+                        RangeItem<T> rangeItem = new(item.Value) { Previous = item.Previous, Next = item.Next };
+                        
+                        if (index > 0)
+                        {
+                            Items[index - 1].Next = rangeItem;
+                        }
+
+                        if (index < Count - 1)
+                        {
+                            Items[index + 1].Previous = rangeItem;
+                        }
+                        
+                        foreach (ulong address in item.QuickAccessAddresses)
+                        {
+                            _quickAccess.Remove(address);
+                        }
+                        
+                        Items[index] = rangeItem;
 
                         return true;
                     }

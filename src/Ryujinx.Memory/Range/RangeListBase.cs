@@ -30,7 +30,7 @@ namespace Ryujinx.Memory.Range
             return u1 == u2;
         }
 
-        public int GetHashCode(ulong value) => (int)(value >> 5);
+        public int GetHashCode(ulong value) => (int)(value << 5);
         
         public static readonly AddressEqualityComparer Comparer = new();
     }
@@ -62,6 +62,13 @@ namespace Ryujinx.Memory.Range
         /// <param name="item">The item to be updated</param>
         /// <returns>True if the item was located and updated, false otherwise</returns>
         protected abstract bool Update(T item);
+        
+        /// <summary>
+        /// Updates an item's end address on the list. Address must be the same.
+        /// </summary>
+        /// <param name="item">The RangeItem to be updated</param>
+        /// <returns>True if the item was located and updated, false otherwise</returns>
+        protected abstract bool Update(RangeItem<T> item);
         
         public abstract bool Remove(T item);
 

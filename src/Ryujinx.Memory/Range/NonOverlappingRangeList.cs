@@ -87,6 +87,43 @@ namespace Ryujinx.Memory.Range
             return false;
         }
         
+        /// <summary>
+        /// Updates an item's end address on the list. Address must be the same.
+        /// </summary>
+        /// <param name="item">The RangeItem to be updated</param>
+        /// <returns>True if the item was located and updated, false otherwise</returns>
+        protected override bool Update(RangeItem<T> item)
+        {
+            int index = BinarySearch(item.Address);
+
+            RangeItem<T> rangeItem = new(item.Value) { Previous = item.Previous, Next = item.Next };
+                
+            if (index > 0)
+            {
+                Items[index - 1].Next = rangeItem;
+            }
+
+            if (index < Count - 1)
+            {
+                Items[index + 1].Previous = rangeItem;
+            }
+                
+            foreach (ulong addr in item.QuickAccessAddresses)
+            {
+                _quickAccess.Remove(addr);
+                _fastQuickAccess.Remove(addr);
+            }
+                
+            Items[index] = rangeItem;
+
+            if (item.Address != rangeItem.Address)
+                _quickAccess.Remove(item.Address);
+            
+            _quickAccess[rangeItem.Address] = rangeItem;
+
+            return true;
+        }
+        
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void Insert(int index, RangeItem<T> item)
         {
@@ -193,10 +230,9 @@ namespace Ryujinx.Memory.Range
                 return;
             }
             
-            int startIndex = BinarySearch(startItem.Address);
-            int endIndex = BinarySearch(endItem.Address);
+            (int startIndex, int endIndex) = BinarySearchEdges(startItem.Address, endItem.EndAddress);
             
-            for (int i = startIndex; i <= endIndex; i++)
+            for (int i = startIndex; i < endIndex; i++)
             {
                 _quickAccess.Remove(Items[i].Address);
                 foreach (ulong addr in Items[i].QuickAccessAddresses)
@@ -205,26 +241,25 @@ namespace Ryujinx.Memory.Range
                     _fastQuickAccess.Remove(addr);
                 }
             }
-
-            if (endIndex < Count - 1)
+            
+            if (endIndex < Count)
             {
-                Items[endIndex + 1].Previous = startIndex > 0 ? Items[startIndex - 1] : null;
+                Items[endIndex].Previous = startIndex > 0 ? Items[startIndex - 1] : null;
             }
 
             if (startIndex > 0)
             {
-                Items[startIndex - 1].Next = endIndex < Count - 1 ? Items[endIndex + 1] : null;
+                Items[startIndex - 1].Next = endIndex < Count ? Items[endIndex] : null;
             }
             
             
-            if (endIndex < Count - 1)
+            if (endIndex < Count)
             {
-                Array.Copy(Items, endIndex + 1, Items, startIndex, Count - endIndex - 1);
+                Array.Copy(Items, endIndex, Items, startIndex, Count - endIndex);
             }
             
-            Count -= endIndex - startIndex + 1;
-
-                    }
+            Count -= endIndex - startIndex;
+        }
         
         /// <summary>
         /// Removes a range of items from the item list
@@ -240,8 +275,6 @@ namespace Ryujinx.Memory.Range
                 return;
             }
             
-            
-            
             int endIndex = startIndex;
             
             while (Items[endIndex] is not null && Items[endIndex].Address < address + size)
@@ -252,12 +285,12 @@ namespace Ryujinx.Memory.Range
                     _quickAccess.Remove(addr);
                     _fastQuickAccess.Remove(addr);
                 }
-                
+
                 if (endIndex == Count - 1)
                 {
                     break;
                 }
-
+                
                 endIndex++;
             }
             
