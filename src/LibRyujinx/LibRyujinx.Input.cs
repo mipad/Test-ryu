@@ -34,6 +34,7 @@ namespace LibRyujinx
         private static TouchScreenManager? _touchScreenManager;
         private static InputConfig[] _configs;
         private static float _aspectRatio = 1.0f;
+        private static bool _isFocused = true;
 
         public static void InitializeInput(int width, int height)
         {
@@ -62,8 +63,6 @@ namespace LibRyujinx
             if (SwitchDevice!.EmulationContext != null)
             {
                 _touchScreenManager.Initialize(SwitchDevice.EmulationContext);
-                // 设置触摸屏尺寸
-                _touchScreenManager.SetSize(width, height);
             }
             else
             {
@@ -79,22 +78,22 @@ namespace LibRyujinx
             {
                 _virtualTouchScreen.ClientSize = new Size(width, height);
                 _aspectRatio = width > 0 && height > 0 ? (float)width / height : 1.0f;
-                
-                // 更新触摸屏管理器尺寸
-                _touchScreenManager?.SetSize(width, height);
             }
+        }
+
+        public static void SetFocusState(bool focused)
+        {
+            _isFocused = focused;
         }
 
         public static void SetTouchPoint(int x, int y)
         {
             _virtualTouchScreen?.SetPosition(x, y);
-            _touchScreenManager?.SetTouchPoint(x, y); // 通知触摸屏管理器
         }
 
         public static void ReleaseTouchPoint()
         {
             _virtualTouchScreen?.ReleaseTouch();
-            _touchScreenManager?.ReleaseTouch(); // 通知触摸屏管理器
         }
 
         public static void SetButtonPressed(GamepadButtonInputId button, int id)
@@ -212,12 +211,12 @@ namespace LibRyujinx
         public static void UpdateInput()
         {
             _npadManager?.Update(_aspectRatio);
-            _touchScreenManager?.Update(_aspectRatio); // 更新触摸屏状态，传递宽高比
             
-           // if (SwitchDevice?.EmulationContext?.Hid != null)
-           // {
-           //     SwitchDevice.EmulationContext.Hid.Touchscreen.Update();
-          //  }
+            // 获取当前的点击状态
+            bool isClicking = _virtualTouchScreen?.Buttons[0] ?? false;
+            
+            // 更新触摸屏状态，传递正确的参数
+            _touchScreenManager?.Update(_isFocused, isClicking, _aspectRatio);
         }
     }
 
@@ -456,16 +455,5 @@ namespace LibRyujinx
         }
 
         public Ryujinx.Input.GamepadStateSnapshot GetStateSnapshot() => default;
-    }
-    
-    public static class TouchScreenManagerExtensions
-    {
-        public static void SetSize(this Ryujinx.Input.HLE.TouchScreenManager manager, int width, int height)
-        {
-            if (manager != null && manager.GetType().GetField("_mouse", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(manager) is VirtualTouchScreen touchScreen)
-            {
-                touchScreen.SetSize(width, height);
-            }
-        }
     }
 }
