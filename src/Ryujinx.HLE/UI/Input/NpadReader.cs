@@ -60,10 +60,10 @@ namespace Ryujinx.HLE.UI.Input
 
         public void Update(bool supressEvents = false)
         {
-            ref var npads = ref _device.Hid.SharedMemory.Npads;
+            int npadsCount = _device.Hid.SharedMemory.Npads.Length;
 
             // Process each input individually.
-            for (int npadIndex = 0; npadIndex < npads.Length; npadIndex++)
+            for (int npadIndex = 0; npadIndex < npadsCount; npadIndex++)
             {
                 UpdateNpad(npadIndex, supressEvents);
             }
