@@ -23,7 +23,7 @@ namespace Ryujinx.Input.HLE
         private static readonly ObjectPool<List<SixAxisInput>> _hleMotionStatesPool = new (() => new List<SixAxisInput>(NpadDevices.MaxControllers));
         private readonly CemuHookClient _cemuHookClient;
 
-        private readonly Lock _lock = new();
+        private readonly object _lock = new();
 
         private bool _blockInputUpdates;
 
