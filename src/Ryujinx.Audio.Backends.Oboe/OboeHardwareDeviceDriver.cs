@@ -413,7 +413,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                     Logger.Warning?.Print(LogClass.Audio, 
                         $"Audio write failed: {frameCount} frames dropped, Format={_sampleFormat}, Rate={_sampleRate}Hz");
                     
-                    // 重置音频系统
+                    // 减少重置频率，避免性能影响
                     Logger.Warning?.Print(LogClass.Audio, "Audio write failure, resetting audio system");
                     resetOboeAudio();
                 }
