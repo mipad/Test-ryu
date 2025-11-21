@@ -1,4 +1,4 @@
-using System;
+using System.Buffers;
 using System.Drawing;
 using System.Numerics;
 
@@ -48,7 +48,7 @@ namespace Ryujinx.Input
         /// <returns>A snaphost of the state of the mouse.</returns>
         public static MouseStateSnapshot GetMouseStateSnapshot(IMouse mouse)
         {
-            bool[] buttons = new bool[(int)MouseButton.Count];
+            bool[] buttons = ArrayPool<bool>.Shared.Rent((int)MouseButton.Count);
 
             mouse.Buttons.CopyTo(buttons, 0);
 
@@ -61,25 +61,47 @@ namespace Ryujinx.Input
         /// <param name="mousePosition">The position of the mouse in the client</param>
         /// <param name="clientSize">The size of the client</param>
         /// <param name="aspectRatio">The aspect ratio of the view</param>
-        /// <returns>The screen position adjusted for the display mode</returns>
+        /// <returns>A snaphost of the state of the mouse.</returns>
         public static Vector2 GetScreenPosition(Vector2 mousePosition, Size clientSize, float aspectRatio)
         {
             float mouseX = mousePosition.X;
             float mouseY = mousePosition.Y;
 
-            // 强制拉伸模式：直接按比例缩放
-            float scaleX = (float)SwitchPanelWidth / clientSize.Width;
-            float scaleY = (float)SwitchPanelHeight / clientSize.Height;
-            
-            // 计算转换后坐标
-            float resultX = mouseX * scaleX;
-            float resultY = mouseY * scaleY;
-            
-            // 确保坐标在有效范围内
-            resultX = Math.Clamp(resultX, 0, SwitchPanelWidth);
-            resultY = Math.Clamp(resultY, 0, SwitchPanelHeight);
-            
-            return new Vector2(resultX, resultY);
+            float aspectWidth = SwitchPanelHeight * aspectRatio;
+
+            int screenWidth = clientSize.Width;
+            int screenHeight = clientSize.Height;
+
+            if (clientSize.Width > clientSize.Height * aspectWidth / SwitchPanelHeight)
+            {
+                screenWidth = (int)(clientSize.Height * aspectWidth) / SwitchPanelHeight;
+            }
+            else
+            {
+                screenHeight = (clientSize.Width * SwitchPanelHeight) / (int)aspectWidth;
+            }
+
+            int startX = (clientSize.Width - screenWidth) >> 1;
+            int startY = (clientSize.Height - screenHeight) >> 1;
+
+            int endX = startX + screenWidth;
+            int endY = startY + screenHeight;
+
+            if (mouseX >= startX &&
+                mouseY >= startY &&
+                mouseX < endX &&
+                mouseY < endY)
+            {
+                int screenMouseX = (int)mouseX - startX;
+                int screenMouseY = (int)mouseY - startY;
+
+                mouseX = (screenMouseX * (int)aspectWidth) / screenWidth;
+                mouseY = (screenMouseY * SwitchPanelHeight) / screenHeight;
+
+                return new Vector2(mouseX, mouseY);
+            }
+
+            return new Vector2();
         }
     }
 }
