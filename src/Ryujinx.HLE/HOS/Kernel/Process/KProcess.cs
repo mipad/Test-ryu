@@ -40,8 +40,8 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
 
         public ProcessState State { get; private set; }
 
-        private readonly object _processLock = new();
-        private readonly object _threadingLock = new();
+        private readonly Lock _processLock = new();
+        private readonly Lock _threadingLock = new();
 
         public KAddressArbiter AddressArbiter { get; private set; }
 
@@ -71,9 +71,6 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
         private ulong _imageSize;
         private ulong _mainThreadStackSize;
         private ulong _memoryUsageCapacity;
-
-        // 改进1: 添加ASLR偏移常量
-        private const ulong AslrOffset32Bit = 0x500000;
 
         public KHandleTable HandleTable { get; private set; }
 
@@ -110,7 +107,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
             // TODO: Remove once we no longer need to initialize it externally.
             HandleTable = new KHandleTable();
 
-            _threads = new LinkedList<KThread>();
+            _threads = [];
 
             Debugger = new HleProcessDebugger(this);
         }
@@ -121,7 +118,6 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
             KPageList pageList,
             KResourceLimit resourceLimit,
             MemoryRegion memRegion,
-            MemoryConfiguration memConfig,
             IProcessContextFactory contextFactory,
             ThreadStart customThreadStart = null)
         {
@@ -151,7 +147,6 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
                 creationInfo.Flags,
                 !creationInfo.Flags.HasFlag(ProcessCreationFlags.EnableAslr),
                 memRegion,
-                memConfig,
                 codeAddress,
                 codeSize,
                 Context.ReservedSize,
@@ -189,7 +184,6 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
             ReadOnlySpan<uint> capabilities,
             KResourceLimit resourceLimit,
             MemoryRegion memRegion,
-            MemoryConfiguration memConfig,
             IProcessContextFactory contextFactory,
             ThreadStart customThreadStart = null,
             ulong entrypointOffset = 0UL)
@@ -246,13 +240,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
 
             InitializeMemoryManager(creationInfo.Flags);
 
-            // 改进3: 为32位进程添加ASLR偏移
             ulong codeAddress = creationInfo.CodeAddress + Context.ReservedSize;
-            if ((creationInfo.Flags & ProcessCreationFlags.AddressSpaceMask) == ProcessCreationFlags.AddressSpace32Bit ||
-                (creationInfo.Flags & ProcessCreationFlags.AddressSpaceMask) == ProcessCreationFlags.AddressSpace32BitWithoutAlias)
-            {
-                codeAddress += AslrOffset32Bit;
-            }
 
             ulong codeSize = codePagesCount * KPageTableBase.PageSize;
 
@@ -260,7 +248,6 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
                 creationInfo.Flags,
                 !creationInfo.Flags.HasFlag(ProcessCreationFlags.EnableAslr),
                 memRegion,
-                memConfig,
                 codeAddress,
                 codeSize,
                 Context.ReservedSize,
@@ -293,7 +280,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
                 return result;
             }
 
-            result = Capabilities.InitializeForUser(capabilities, MemoryManager);
+            result = Capabilities.InitializeForUser(capabilities, MemoryManager, IsApplication);
 
             if (result != Result.Success)
             {
@@ -355,32 +342,29 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
 
             Flags = creationInfo.Flags;
             TitleId = creationInfo.TitleId;
-            
-            // 改进1: 为32位地址空间添加ASLR偏移
             _entrypoint = creationInfo.CodeAddress + Context.ReservedSize;
-            if ((Flags & ProcessCreationFlags.AddressSpaceMask) == ProcessCreationFlags.AddressSpace32Bit ||
-                (Flags & ProcessCreationFlags.AddressSpaceMask) == ProcessCreationFlags.AddressSpace32BitWithoutAlias)
-            {
-                _entrypoint += AslrOffset32Bit;
-            }
-            
             _imageSize = (ulong)creationInfo.CodePagesCount * KPageTableBase.PageSize;
 
-            // 改进2: 使用区域大小计算内存容量
-            switch (Flags & ProcessCreationFlags.AddressSpaceMask)
+            // 19.0.0+ sets all regions to same size
+            _memoryUsageCapacity = MemoryManager.HeapRegionEnd - MemoryManager.HeapRegionStart;
+            /*switch (Flags & ProcessCreationFlags.AddressSpaceMask)
             {
                 case ProcessCreationFlags.AddressSpace32Bit:
                 case ProcessCreationFlags.AddressSpace64BitDeprecated:
                 case ProcessCreationFlags.AddressSpace64Bit:
-                    _memoryUsageCapacity = MemoryManager.GetHeapRegionSize();
+                    _memoryUsageCapacity = MemoryManager.HeapRegionEnd -
+                                           MemoryManager.HeapRegionStart;
                     break;
 
                 case ProcessCreationFlags.AddressSpace32BitWithoutAlias:
-                    _memoryUsageCapacity = MemoryManager.GetHeapRegionSize() + MemoryManager.GetAliasRegionSize();
+                    _memoryUsageCapacity = MemoryManager.HeapRegionEnd -
+                                           MemoryManager.HeapRegionStart +
+                                           MemoryManager.AliasRegionEnd -
+                                           MemoryManager.AliasRegionStart;
                     break;
                 default:
                     throw new InvalidOperationException($"Invalid MMU flags value 0x{Flags:x2}.");
-            }
+            }*/
 
             GenerateRandomEntropy();
 
@@ -558,7 +542,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
                 {
                     throw new InvalidOperationException("Trying to start a process with an invalid state!");
                 }
-
+                // TODO: after 19.0.0+ alignment is not needed
                 ulong stackSizeRounded = BitUtils.AlignUp<ulong>(stackSize, KPageTableBase.PageSize);
 
                 ulong neededSize = stackSizeRounded + _imageSize;
@@ -866,7 +850,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
         {
             lock (_threadingLock)
             {
-                thread.ProcessListNode = _threads.AddLast(thread);
+                _threads.AddLast(thread.ProcessListNode);
             }
         }
 
