@@ -230,7 +230,14 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 }
                 else
                 {
+                    if (pa == PteUnmapped)
+                {
+                    data.Slice(offset, size).Fill(0);
+                }
+                else
+                {
                     Physical.GetSpan(pa, size, tracked).CopyTo(data.Slice(offset, size));
+                }
                 }
             }
         }
@@ -736,5 +743,6 @@ namespace Ryujinx.Graphics.Gpu.Memory
         }
     }
 }
+
 
 
