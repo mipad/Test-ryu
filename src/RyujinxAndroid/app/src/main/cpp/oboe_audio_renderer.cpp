@@ -1,6 +1,8 @@
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
+#include <thread>
+#include <chrono>
 
 namespace RyujinxOboe {
 
@@ -49,6 +51,8 @@ bool OboeAudioRenderer::InitializeWithFormat(int32_t sampleRate, int32_t channel
 }
 
 void OboeAudioRenderer::Shutdown() {
+    m_shutting_down.store(true);
+    
     std::lock_guard<std::mutex> lock(m_stream_mutex);
     
     CloseStream();
@@ -56,6 +60,8 @@ void OboeAudioRenderer::Shutdown() {
     m_current_block.reset();
     m_initialized.store(false);
     m_stream_started.store(false);
+    
+    m_shutting_down.store(false);
 }
 
 void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& builder) {
@@ -215,6 +221,10 @@ void OboeAudioRenderer::SetVolume(float volume) {
 }
 
 void OboeAudioRenderer::Reset() {
+    if (m_shutting_down.load()) {
+        return;
+    }
+    
     std::lock_guard<std::mutex> lock(m_stream_mutex);
     
     m_audio_queue.clear();
@@ -223,7 +233,36 @@ void OboeAudioRenderer::Reset() {
     }
     
     CloseStream();
+    
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    
     ConfigureAndOpenStream();
+}
+
+void OboeAudioRenderer::SafeReinitialize() {
+    if (m_shutting_down.load() || m_reinitializing.load()) {
+        return;
+    }
+    
+    m_reinitializing.store(true);
+    
+    std::unique_lock<std::mutex> lock(m_stream_mutex, std::try_to_lock);
+    if (!lock.owns_lock()) {
+        m_reinitializing.store(false);
+        return;
+    }
+    
+    if (m_initialized.load() && !m_shutting_down.load()) {
+        CloseStream();
+        
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        
+        if (!ConfigureAndOpenStream()) {
+            m_initialized.store(false);
+        }
+    }
+    
+    m_reinitializing.store(false);
 }
 
 oboe::AudioFormat OboeAudioRenderer::MapSampleFormat(int32_t format) {
@@ -289,16 +328,10 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioS
 }
 
 void OboeAudioRenderer::OnStreamErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) {
-    std::lock_guard<std::mutex> lock(m_stream_mutex);
-    
-    if (m_initialized.load()) {
-        CloseStream();
-        ConfigureAndOpenStream();
-    }
+    SafeReinitialize();
 }
 
 void OboeAudioRenderer::OnStreamErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) {
-    std::lock_guard<std::mutex> lock(m_stream_mutex);
     m_stream_started.store(false);
 }
 
