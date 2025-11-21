@@ -26,13 +26,17 @@ namespace Ryujinx.Graphics.Vulkan
         public bool BecomesUnsetFrom(in BitMapStruct<T> from, ref BitMapStruct<T> into)
         {
             bool result = false;
+            
+            Span<long> masksSpan = _masks.AsSpan();
+            Span<long> fMasksSpan = from._masks.AsSpan();
+            Span<long> iMasksSpan = into._masks.AsSpan();
 
-            int masks = _masks.Length;
+            int masks = masksSpan.Length;
             for (int i = 0; i < masks; i++)
             {
-                long fromMask = from._masks[i];
-                long unsetMask = (~fromMask) & (fromMask ^ _masks[i]);
-                into._masks[i] = unsetMask;
+                long fromMask = fMasksSpan[i];
+                long unsetMask = (~fromMask) & (fromMask ^ masksSpan[i]);
+                iMasksSpan[i] = unsetMask;
 
                 result |= unsetMask != 0;
             }
@@ -49,11 +53,11 @@ namespace Ryujinx.Graphics.Vulkan
                 // Iterate the set bits in the result, and signal them.
 
                 int offset = 0;
-                int masks = _masks.Length;
-                ref T resultMasks = ref result._masks;
+                Span<long> rMasksSpan = result._masks.AsSpan();
+                int masks = rMasksSpan.Length;
                 for (int i = 0; i < masks; i++)
                 {
-                    long value = resultMasks[i];
+                    long value = rMasksSpan[i];
                     while (value != 0)
                     {
                         int bit = BitOperations.TrailingZeroCount((ulong)value);
@@ -75,10 +79,11 @@ namespace Ryujinx.Graphics.Vulkan
             // Iterate the set bits in the result, and signal them.
 
             int offset = 0;
-            int masks = _masks.Length;
+            Span<long> masksSpan = _masks.AsSpan();
+            int masks = masksSpan.Length;
             for (int i = 0; i < masks; i++)
             {
-                long value = _masks[i];
+                long value = masksSpan[i];
                 while (value != 0)
                 {
                     int bit = BitOperations.TrailingZeroCount((ulong)value);
@@ -94,9 +99,11 @@ namespace Ryujinx.Graphics.Vulkan
 
         public bool AnySet()
         {
-            for (int i = 0; i < _masks.Length; i++)
+            Span<long> masksSpan = _masks.AsSpan();
+            
+            for (int i = 0; i < masksSpan.Length; i++)
             {
-                if (_masks[i] != 0)
+                if (masksSpan[i] != 0)
                 {
                     return true;
                 }
@@ -139,10 +146,12 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 return true;
             }
+            
+            Span<long> masksSpan = _masks.AsSpan();
 
             for (int i = startIndex + 1; i < endIndex; i++)
             {
-                if (_masks[i] != 0)
+                if (masksSpan[i] != 0)
                 {
                     return true;
                 }
@@ -200,21 +209,23 @@ namespace Ryujinx.Graphics.Vulkan
             int endIndex = end >> IntShift;
             int endBit = end & IntMask;
             long endMask = (long)(ulong.MaxValue >> (IntMask - endBit));
+            
+            Span<long> masksSpan = _masks.AsSpan();
 
             if (startIndex == endIndex)
             {
-                _masks[startIndex] |= startMask & endMask;
+                masksSpan[startIndex] |= startMask & endMask;
             }
             else
             {
-                _masks[startIndex] |= startMask;
+                masksSpan[startIndex] |= startMask;
 
                 for (int i = startIndex + 1; i < endIndex; i++)
                 {
-                    _masks[i] |= -1L;
+                    masksSpan[i] |= -1L;
                 }
 
-                _masks[endIndex] |= endMask;
+                masksSpan[endIndex] |= endMask;
             }
         }
 
@@ -222,13 +233,13 @@ namespace Ryujinx.Graphics.Vulkan
         {
             var result = new BitMapStruct<T>();
 
-            ref var masks = ref _masks;
-            ref var otherMasks = ref other._masks;
-            ref var newMasks = ref result._masks;
+            var masksSpan = _masks.AsSpan();
+            var oMasksSpan = other._masks.AsSpan();
+            var nMasksSpan = result._masks.AsSpan();
 
-            for (int i = 0; i < masks.Length; i++)
+            for (int i = 0; i < masksSpan.Length; i++)
             {
-                newMasks[i] = masks[i] | otherMasks[i];
+                nMasksSpan[i] = masksSpan[i] | oMasksSpan[i];
             }
 
             return result;
@@ -246,17 +257,21 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void Clear()
         {
-            for (int i = 0; i < _masks.Length; i++)
+            Span<long> masksSpan = _masks.AsSpan();
+            
+            for (int i = 0; i < masksSpan.Length; i++)
             {
-                _masks[i] = 0;
+                masksSpan[i] = 0;
             }
         }
 
         public void ClearInt(int start, int end)
         {
+            Span<long> masksSpan = _masks.AsSpan();
+            
             for (int i = start; i <= end; i++)
             {
-                _masks[i] = 0;
+                masksSpan[i] = 0;
             }
         }
     }

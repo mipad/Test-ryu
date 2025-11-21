@@ -1,3 +1,4 @@
+using Ryujinx.Common.Memory;
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Shader;
 using Silk.NET.Vulkan;
@@ -1533,20 +1534,24 @@ namespace Ryujinx.Graphics.Vulkan
 
         private bool ChangeFeedbackLoop(FeedbackLoopAspects aspects)
         {
-            if (_feedbackLoop != aspects)
+            // AMD RDNA 3 GPUs + Qualcomm SoCs only
+            if (Gd.IsAmdRdna3 || Gd.Vendor == Vendor.Qualcomm)
             {
-                if (Gd.Capabilities.SupportsDynamicAttachmentFeedbackLoop)
+                if (_feedbackLoop != aspects)
                 {
-                    DynamicState.SetFeedbackLoop(aspects);
-                }
-                else
-                {
-                    _newState.FeedbackLoopAspects = aspects;
-                }
+                    if (Gd.Capabilities.SupportsDynamicAttachmentFeedbackLoop)
+                    {
+                        DynamicState.SetFeedbackLoop(aspects);
+                    }
+                    else
+                    {
+                        _newState.FeedbackLoopAspects = aspects;
+                    }
 
-                _feedbackLoop = aspects;
+                    _feedbackLoop = aspects;
 
-                return true;
+                    return true;
+                }
             }
 
             return false;
