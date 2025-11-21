@@ -10,7 +10,6 @@ using Ryujinx.HLE.Loaders.Processes;
 using Ryujinx.HLE.UI;
 using Ryujinx.Memory;
 using System;
-using System.IO;
 
 namespace Ryujinx.HLE
 {
@@ -28,7 +27,13 @@ namespace Ryujinx.HLE
         public TamperMachine TamperMachine { get; }
         public IHostUIHandler UIHandler { get; }
 
-        public bool EnableDeviceVsync { get; set; } = true;
+        public int CpuCoresCount = 4; //Switch 1 has 4 cores
+
+        public VSyncMode VSyncMode { get; set; } = VSyncMode.Switch;
+        public bool CustomVSyncIntervalEnabled { get; set; } = false;
+        public int CustomVSyncInterval { get; set; }
+
+        public long TargetVSyncInterval { get; set; } = 60;
 
         public bool IsFrameAvailable => Gpu.Window.IsFrameAvailable;
 
@@ -60,12 +65,14 @@ namespace Ryujinx.HLE
             System.State.SetLanguage(Configuration.SystemLanguage);
             System.State.SetRegion(Configuration.Region);
 
-            EnableDeviceVsync                       = Configuration.EnableVsync;
+            VSyncMode                               = Configuration.VSyncMode;
+            CustomVSyncInterval                     = Configuration.CustomVSyncInterval;
             System.State.DockedMode                 = Configuration.EnableDockedMode;
             System.PerformanceState.PerformanceMode = System.State.DockedMode ? PerformanceMode.Boost : PerformanceMode.Default;
             System.EnablePtc                        = Configuration.EnablePtc;
             System.FsIntegrityCheckLevel            = Configuration.FsIntegrityCheckLevel;
             System.GlobalAccessLogMode              = Configuration.FsGlobalAccessLogMode;
+            UpdateVSyncInterval();
 #pragma warning restore IDE0055
         }
 
@@ -94,26 +101,6 @@ namespace Ryujinx.HLE
             return Processes.LoadNxo(fileName);
         }
 
-        public bool LoadXci(Stream xciStream, ulong applicationId = 0, Stream updateStream = null)
-        {
-            return Processes.LoadXci(xciStream, applicationId, updateStream);
-        }
-
-        public bool LoadNca(Stream ncaStream)
-        {
-            return Processes.LoadNca(ncaStream);
-        }
-
-        public bool LoadNsp(Stream nspStream, ulong applicationId = 0, Stream updateStream = null)
-        {
-            return Processes.LoadNsp(nspStream, applicationId, updateStream);
-        }
-
-        public bool LoadProgram(Stream stream, bool isNro, string name)
-        {
-            return Processes.LoadNxo(stream, isNro, name);
-        }
-
         public bool WaitFifo()
         {
             return Gpu.GPFifo.WaitForCommands();
@@ -134,6 +121,34 @@ namespace Ryujinx.HLE
         public void PresentFrame(Action swapBuffersCallback)
         {
             Gpu.Window.Present(swapBuffersCallback);
+        }
+
+        public void IncrementCustomVSyncInterval()
+        {
+            CustomVSyncInterval += 1;
+            UpdateVSyncInterval();
+        }
+
+        public void DecrementCustomVSyncInterval()
+        {
+            CustomVSyncInterval -= 1;
+            UpdateVSyncInterval();
+        }
+
+        public void UpdateVSyncInterval()
+        {
+            switch (VSyncMode)
+            {
+                case VSyncMode.Custom:
+                    TargetVSyncInterval = CustomVSyncInterval;
+                    break;
+                case VSyncMode.Switch:
+                    TargetVSyncInterval = 60;
+                    break;
+                case VSyncMode.Unbounded:
+                    TargetVSyncInterval = 1;
+                    break;
+            }
         }
 
         public void SetVolume(float volume)
