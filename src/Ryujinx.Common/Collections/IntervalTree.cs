@@ -24,7 +24,10 @@ namespace Ryujinx.Common.Collections
         /// <exception cref="ArgumentNullException"><paramref name="key"/> is null</exception>
         public int Get(TKey key, ref TValue[] overlaps)
         {
-            ArgumentNullException.ThrowIfNull(key);
+            if (!typeof(TKey).IsValueType)
+            {
+                ArgumentNullException.ThrowIfNull(key);
+            }
 
             IntervalTreeNode<TKey, TValue> node = GetNode(key);
 
@@ -91,7 +94,10 @@ namespace Ryujinx.Common.Collections
         /// <returns>Number of deleted values</returns>
         public int Remove(TKey key, TValue value)
         {
-            ArgumentNullException.ThrowIfNull(key);
+            if (!typeof(TKey).IsValueType)
+            {
+                ArgumentNullException.ThrowIfNull(key);
+            }
 
             int removed = Delete(key, value);
 
@@ -106,7 +112,7 @@ namespace Ryujinx.Common.Collections
         /// <returns>A list of all RangeNodes sorted by Key Order</returns>
         public List<RangeNode<TKey, TValue>> AsList()
         {
-            List<RangeNode<TKey, TValue>> list = new();
+            List<RangeNode<TKey, TValue>> list = [];
 
             AddToList(Root, list);
 
@@ -122,7 +128,7 @@ namespace Ryujinx.Common.Collections
         /// </summary>
         /// <param name="node">The node to search for RangeNodes within</param>
         /// <param name="list">The list to add RangeNodes to</param>
-        private void AddToList(IntervalTreeNode<TKey, TValue> node, List<RangeNode<TKey, TValue>> list)
+        private static void AddToList(IntervalTreeNode<TKey, TValue> node, List<RangeNode<TKey, TValue>> list)
         {
             if (node == null)
             {
@@ -144,7 +150,10 @@ namespace Ryujinx.Common.Collections
         /// <exception cref="ArgumentNullException"><paramref name="key"/> is null</exception>
         private IntervalTreeNode<TKey, TValue> GetNode(TKey key)
         {
-            ArgumentNullException.ThrowIfNull(key);
+            if (!typeof(TKey).IsValueType)
+            {
+                ArgumentNullException.ThrowIfNull(key);
+            }
 
             IntervalTreeNode<TKey, TValue> node = Root;
             while (node != null)
@@ -163,6 +172,7 @@ namespace Ryujinx.Common.Collections
                     return node;
                 }
             }
+
             return null;
         }
 
@@ -173,7 +183,7 @@ namespace Ryujinx.Common.Collections
         /// <param name="end">End of the range</param>
         /// <param name="overlaps">Overlaps array to place results in</param>
         /// <param name="overlapCount">Overlaps count to update</param>
-        private void GetValues(IntervalTreeNode<TKey, TValue> node, TKey start, TKey end, ref TValue[] overlaps, ref int overlapCount)
+        private static void GetValues(IntervalTreeNode<TKey, TValue> node, TKey start, TKey end, ref TValue[] overlaps, ref int overlapCount)
         {
             if (node == null || start.CompareTo(node.Max) >= 0)
             {
@@ -313,6 +323,7 @@ namespace Ryujinx.Common.Collections
                     return node;
                 }
             }
+
             IntervalTreeNode<TKey, TValue> newNode = new(start, end, value, parent);
             if (newNode.Parent == null)
             {
@@ -492,7 +503,7 @@ namespace Ryujinx.Common.Collections
             Start = start;
             End = end;
             Max = end;
-            Values = new List<RangeNode<TKey, TValue>> { new RangeNode<TKey, TValue>(start, end, value) };
+            Values = [new RangeNode<TKey, TValue>(start, end, value)];
             Parent = parent;
         }
     }
