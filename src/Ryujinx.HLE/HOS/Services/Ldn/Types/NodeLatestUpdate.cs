@@ -14,7 +14,7 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.Types
 
     static class NodeLatestUpdateHelper
     {
-        private static readonly Lock _lock = new();
+        private static readonly object _lock = new();
 
         public static void CalculateLatestUpdate(this Array8<NodeLatestUpdate> array, Array8<NodeInfo> beforeNodes, Array8<NodeInfo> afterNodes)
         {
