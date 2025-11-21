@@ -4,9 +4,40 @@ using System.Runtime.CompilerServices;
 
 namespace Ryujinx.Memory.Range
 {
-    public abstract class RangeListBase<T> : IEnumerable<T> where T : IRange
+    public class RangeItem<TValue>(TValue value) where TValue : IRange
     {
-        protected const int BackingInitialSize = 1024;
+        public RangeItem<TValue> Next;
+        public RangeItem<TValue> Previous;
+        
+        public readonly ulong Address = value.Address;
+        public readonly ulong EndAddress = value.Address + value.Size;
+
+        public readonly TValue Value = value;
+
+        public readonly List<ulong> QuickAccessAddresses = [];
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool OverlapsWith(ulong address, ulong endAddress)
+        {
+            return Address < endAddress && address < EndAddress;
+        }
+    }
+    
+    class AddressEqualityComparer : IEqualityComparer<ulong>
+    {
+        public bool Equals(ulong u1, ulong u2)
+        {
+            return u1 == u2;
+        }
+
+        public int GetHashCode(ulong value) => (int)(value >> 5);
+        
+        public static readonly AddressEqualityComparer Comparer = new();
+    }
+    
+    public unsafe abstract class RangeListBase<T> : IEnumerable<T> where T : IRange
+    {
+        private const int BackingInitialSize = 1024;
 
         protected RangeItem<T>[] Items;
         protected readonly int BackingGrowthSize;

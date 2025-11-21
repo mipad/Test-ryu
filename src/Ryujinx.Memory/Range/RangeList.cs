@@ -6,37 +6,6 @@ using System.Threading;
 
 namespace Ryujinx.Memory.Range
 {
-    public class RangeItem<TValue>(TValue value) where TValue : IRange
-    {
-        public RangeItem<TValue> Next;
-        public RangeItem<TValue> Previous;
-        
-        public readonly ulong Address = value.Address;
-        public readonly ulong EndAddress = value.Address + value.Size;
-
-        public readonly TValue Value = value;
-
-        public readonly List<ulong> QuickAccessAddresses = [];
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool OverlapsWith(ulong address, ulong endAddress)
-        {
-            return Address < endAddress && address < EndAddress;
-        }
-    }
-    
-    class AddressEqualityComparer : IEqualityComparer<ulong>
-    {
-        public bool Equals(ulong u1, ulong u2)
-        {
-            return u1 == u2;
-        }
-
-        public int GetHashCode(ulong value) => (int)(value >> 5);
-        
-        public static readonly AddressEqualityComparer Comparer = new();
-    }
-    
     /// <summary>
     /// Result of an Overlaps Finder function. WARNING: if the result is from the optimized
     /// Overlaps Finder, the StartIndex will be -1 even when the result isn't empty
@@ -209,43 +178,46 @@ namespace Ryujinx.Memory.Range
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void RemoveRange(RangeItem<T> startItem, RangeItem<T> endItem)
         {
-            if (endItem.Next is not null)
+            if (startItem is null)
             {
-                endItem.Next.Previous = startItem.Previous;
+                return;
+            }
+
+            if (startItem == endItem)
+            {
+                Remove(startItem.Value);
+                return;
             }
             
-            if (startItem.Previous is not null)
-            {
-                startItem.Previous.Next = endItem.Next;
-            }
+            int startIndex = BinarySearch(startItem.Address);
+            int endIndex = BinarySearch(endItem.Address);
             
-            RangeItem<T> current = startItem;
-            while (current != endItem.Next)
+            for (int i = startIndex; i <= endIndex; i++)
             {
-                foreach (ulong address in current.QuickAccessAddresses)
+                _quickAccess.Remove(Items[i].Address);
+                foreach (ulong addr in Items[i].QuickAccessAddresses)
                 {
-                    _quickAccess.Remove(address);
+                    _quickAccess.Remove(addr);
                 }
-                
-                current = current.Next;
             }
             
-            RangeItem<T>[] array = [];
-            OverlapResult<T> overlapResult = FindOverlaps(startItem.Address, endItem.EndAddress, ref array);
+            if (endIndex < Count - 1)
+            {
+                Items[endIndex + 1].Previous = startIndex > 0 ? Items[startIndex - 1] : null;
+            }
+
+            if (startIndex > 0)
+            {
+                Items[startIndex - 1].Next = endIndex < Count - 1 ? Items[endIndex + 1] : null;
+            }
             
-            if (overlapResult.EndIndex < Count)
+            
+            if (endIndex < Count - 1)
             {
-                Array.Copy(Items, overlapResult.EndIndex, Items, overlapResult.StartIndex, Count - overlapResult.EndIndex);
-                Count -= overlapResult.Count;
+                Array.Copy(Items, endIndex + 1, Items, startIndex, Count - endIndex - 1);
             }
-            else if (overlapResult.EndIndex == Count)
-            {
-                Count = overlapResult.StartIndex;
-            }
-            else
-            {
-                Debug.Assert(false);
-            }
+            
+            Count -= endIndex - startIndex + 1;
         }
 
         /// <summary>

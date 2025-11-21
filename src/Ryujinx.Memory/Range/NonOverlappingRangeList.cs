@@ -10,7 +10,7 @@ namespace Ryujinx.Memory.Range
     /// A range list that assumes ranges are non-overlapping, with list items that can be split in two to avoid overlaps.
     /// </summary>
     /// <typeparam name="T">Type of the range.</typeparam>
-    public class NonOverlappingRangeList<T> : RangeListBase<T> where T : INonOverlappingRange
+    public unsafe class NonOverlappingRangeList<T> : RangeListBase<T> where T : class, INonOverlappingRange
     {
         private readonly Dictionary<ulong, RangeItem<T>> _quickAccess = new(AddressEqualityComparer.Comparer);
         private readonly Dictionary<ulong, RangeItem<T>> _fastQuickAccess = new(AddressEqualityComparer.Comparer);
@@ -196,6 +196,16 @@ namespace Ryujinx.Memory.Range
             int startIndex = BinarySearch(startItem.Address);
             int endIndex = BinarySearch(endItem.Address);
             
+            for (int i = startIndex; i <= endIndex; i++)
+            {
+                _quickAccess.Remove(Items[i].Address);
+                foreach (ulong addr in Items[i].QuickAccessAddresses)
+                {
+                    _quickAccess.Remove(addr);
+                    _fastQuickAccess.Remove(addr);
+                }
+            }
+
             if (endIndex < Count - 1)
             {
                 Items[endIndex + 1].Previous = startIndex > 0 ? Items[startIndex - 1] : null;
@@ -214,17 +224,7 @@ namespace Ryujinx.Memory.Range
             
             Count -= endIndex - startIndex + 1;
 
-            while (startItem != endItem.Next)
-            {
-                _quickAccess.Remove(startItem.Address);
-                foreach (ulong addr in startItem.QuickAccessAddresses)
-                {
-                    _quickAccess.Remove(addr);
-                    _fastQuickAccess.Remove(addr);
-                }
-                startItem = startItem.Next;
-            }
-        }
+                    }
         
         /// <summary>
         /// Removes a range of items from the item list
@@ -240,19 +240,24 @@ namespace Ryujinx.Memory.Range
                 return;
             }
             
-            RangeItem<T> startItem = Items[startIndex];
+            
             
             int endIndex = startIndex;
             
-            while (startItem is not null && startItem.Address < address + size)
+            while (Items[endIndex] is not null && Items[endIndex].Address < address + size)
             {
-                _quickAccess.Remove(startItem.Address);
-                foreach (ulong addr in startItem.QuickAccessAddresses)
+                _quickAccess.Remove(Items[endIndex].Address);
+                foreach (ulong addr in Items[endIndex].QuickAccessAddresses)
                 {
                     _quickAccess.Remove(addr);
                     _fastQuickAccess.Remove(addr);
                 }
-                startItem = startItem.Next;
+                
+                if (endIndex == Count - 1)
+                {
+                    break;
+                }
+
                 endIndex++;
             }
             
