@@ -135,7 +135,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 
         public bool WaitingInArbitration { get; set; }
 
-        private readonly Lock _activityOperationLock = new();
+        private readonly object _activityOperationLock = new();
 
         internal readonly ManualResetEventSlim DebugHalt = new(false);
 
