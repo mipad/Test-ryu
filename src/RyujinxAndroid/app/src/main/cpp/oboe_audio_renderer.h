@@ -6,7 +6,6 @@
 #include <atomic>
 #include <memory>
 #include <cstdint>
-#include <thread>
 #include "LockFreeQueue.h"
 
 namespace RyujinxOboe {
@@ -87,7 +86,6 @@ private:
     oboe::DataCallbackResult OnAudioReadyMultiFormat(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames);
     void OnStreamErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error);
     void OnStreamErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error);
-    void SafeReinitialize();
 
     oboe::AudioFormat MapSampleFormat(int32_t format);
     static size_t GetBytesPerSample(int32_t format);
@@ -100,8 +98,6 @@ private:
     std::mutex m_stream_mutex;
     std::atomic<bool> m_initialized{false};
     std::atomic<bool> m_stream_started{false};
-    std::atomic<bool> m_shutting_down{false};
-    std::atomic<bool> m_reinitializing{false};
     
     std::atomic<int32_t> m_sample_rate{48000};
     std::atomic<int32_t> m_channel_count{2};
