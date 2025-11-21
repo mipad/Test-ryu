@@ -120,11 +120,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         public void ExcludeModifiedRegions(ulong address, ulong size, Action<ulong, ulong> action)
         {
             // Slices a given region using the modified regions in the list. Calls the action for the new slices.
-            bool lockOwner = Lock.IsReadLockHeld;
-            if (!lockOwner)
-            {
-                Lock.EnterReadLock();
-            }
+            Lock.EnterReadLock();
 
             (RangeItem<BufferModifiedRange> first, RangeItem<BufferModifiedRange> last) = FindOverlaps(address, size);
 
@@ -145,10 +141,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 current = current.Next;
             }
 
-            if (!lockOwner)
-            {
-                Lock.ExitReadLock();
-            }
+            Lock.ExitReadLock();
 
             if ((long)size > 0)
             {
@@ -179,9 +172,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 return;
             }
 
-            BufferModifiedRange buffPost = null;
-            bool extendsPost = false;
-            bool extendsPre = false;
+            
 
             if (first == last)
             {
@@ -196,14 +187,12 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 if (first.Address < address)
                 {
                     first.Value.Size = address - first.Address;
-
-                    extendsPre = true;
+                    Update(first);
 
                     if (first.EndAddress > endAddress)
                     {
-                        buffPost = new BufferModifiedRange(endAddress, first.EndAddress - endAddress,
-                            first.Value.SyncNumber, first.Value.Parent);
-                        extendsPost = true;
+                        Add(new BufferModifiedRange(endAddress, first.EndAddress - endAddress,
+                            first.Value.SyncNumber, first.Value.Parent));
                     }
                 }
                 else
@@ -212,16 +201,12 @@ namespace Ryujinx.Graphics.Gpu.Memory
                     {
                         first.Value.Size = first.EndAddress - endAddress;
                         first.Value.Address = endAddress;
+                        Update(first);
                     }
                     else
                     {
                         Remove(first.Value);
                     }
-                }
-
-                if (extendsPre && extendsPost)
-                {
-                    Add(buffPost);
                 }
 
                 Add(new BufferModifiedRange(address, size, syncNumber, this));
@@ -231,6 +216,9 @@ namespace Ryujinx.Graphics.Gpu.Memory
             }
 
             BufferModifiedRange buffPre = null;
+            BufferModifiedRange buffPost = null;
+            bool extendsPost = false;
+            bool extendsPre = false;
 
             if (first.Address < address)
             {
@@ -329,7 +317,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         public bool HasRange(ulong address, ulong size)
         {
             Lock.EnterReadLock();
-            (RangeItem<BufferModifiedRange> first, RangeItem<BufferModifiedRange> _) = FindOverlaps(address, size);
+            RangeItem<BufferModifiedRange> first = FindOverlapFast(address, size);
             bool result = first is not null;
             Lock.ExitReadLock();
             return result;
@@ -386,9 +374,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
                         ulong clampAddress = Math.Max(address, overlap.Address);
                         ulong clampEnd = Math.Min(endAddress, overlap.EndAddress);
 
-                        Lock.EnterWriteLock();
                         ClearPart(overlap, clampAddress, clampEnd);
-                        Lock.ExitWriteLock();
 
                         RangeActionWithMigration(clampAddress, clampEnd - clampAddress, waitSync, _flushAction);
                     }
@@ -418,40 +404,33 @@ namespace Ryujinx.Graphics.Gpu.Memory
             ulong endAddress = address + size;
             ulong currentSync = _context.SyncNumber;
 
-            int rangeCount = 0;
-
             List<RangeItem<BufferModifiedRange>> overlaps = [];
 
             // Range list must be consistent for this operation
-            Lock.EnterReadLock();
             if (_migrationTarget != null)
-            {
-                rangeCount = -1;
-            }
-            else
-            {
-                // We use the non-span method here because the array is partially modified by the code, which would invalidate a span.
-                (RangeItem<BufferModifiedRange> first, RangeItem<BufferModifiedRange> last) = FindOverlaps(address, size);
-            
-                RangeItem<BufferModifiedRange> current = first;
-                while (last != null && current != last.Next)
-                {
-                    rangeCount++;
-                    overlaps.Add(current);
-                    current = current.Next;
-                }
-            }
-            Lock.ExitReadLock();
-
-            if (rangeCount == -1)
             {
                 _migrationTarget!.WaitForAndFlushRanges(address, size);
 
                 return;
             }
+            
+            Lock.EnterWriteLock();
+            // We use the non-span method here because the array is partially modified by the code, which would invalidate a span.
+            (RangeItem<BufferModifiedRange> first, RangeItem<BufferModifiedRange> last) = FindOverlaps(address, size);
+            
+            RangeItem<BufferModifiedRange> current = first;
+            while (last != null && current != last.Next)
+            {
+                overlaps.Add(current);
+                current = current.Next;
+            }
+                
+            int rangeCount = overlaps.Count;
 
             if (rangeCount == 0)
             {
+                Lock.ExitWriteLock();
+                
                 return;
             }
 
@@ -474,6 +453,8 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
             if (highestDiff == long.MinValue)
             {
+                Lock.ExitWriteLock();
+                
                 return;
             }
 
@@ -481,6 +462,8 @@ namespace Ryujinx.Graphics.Gpu.Memory
             _context.Renderer.WaitSync(currentSync + (ulong)highestDiff);
 
             RemoveRangesAndFlush(overlaps.ToArray(), rangeCount, highestDiff, currentSync, address, endAddress);
+            
+            Lock.ExitWriteLock();
         }
 
         /// <summary>
@@ -607,22 +590,17 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 return;
             }
 
-            BufferModifiedRange buffPost = null;
-            bool extendsPost = false;
-            bool extendsPre = false;
-
             if (first == last)
             {
                 if (first.Address < address)
                 {
                     first.Value.Size = address - first.Address;
-                    extendsPre = true;
+                    Update(first);
 
                     if (first.EndAddress > endAddress)
                     {
-                        buffPost = new BufferModifiedRange(endAddress, first.EndAddress - endAddress,
-                            first.Value.SyncNumber, first.Value.Parent);
-                        extendsPost = true;
+                        Add(new BufferModifiedRange(endAddress, first.EndAddress - endAddress,
+                            first.Value.SyncNumber, first.Value.Parent));
                     }
                 }
                 else
@@ -631,6 +609,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
                     {
                         first.Value.Size = first.EndAddress - endAddress;
                         first.Value.Address = endAddress;
+                        Update(first);
                     }
                     else
                     {
@@ -638,16 +617,14 @@ namespace Ryujinx.Graphics.Gpu.Memory
                     }
                 }
 
-                if (extendsPre && extendsPost)
-                {
-                    Add(buffPost);
-                }
-
                 Lock.ExitWriteLock();
                 return;
             }
 
             BufferModifiedRange buffPre = null;
+            BufferModifiedRange buffPost = null;
+            bool extendsPost = false;
+            bool extendsPre = false;
 
             if (first.Address < address)
             {
