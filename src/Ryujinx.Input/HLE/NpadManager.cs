@@ -19,12 +19,11 @@ using Switch = Ryujinx.HLE.Switch;
 namespace Ryujinx.Input.HLE
 {
     public class NpadManager : IDisposable
-    {   
+    {
         private static readonly ObjectPool<List<SixAxisInput>> _hleMotionStatesPool = new (() => new List<SixAxisInput>(NpadDevices.MaxControllers));
-        
         private readonly CemuHookClient _cemuHookClient;
 
-        private readonly object _lock = new();
+        private readonly Lock _lock = new();
 
         private bool _blockInputUpdates;
 
@@ -50,7 +49,7 @@ namespace Ryujinx.Input.HLE
             _keyboardDriver = keyboardDriver;
             _gamepadDriver = gamepadDriver;
             _mouseDriver = mouseDriver;
-            _inputConfig = new List<InputConfig>();
+            _inputConfig = [];
 
             _gamepadDriver.OnGamepadConnected += HandleOnGamepadConnected;
             _gamepadDriver.OnGamepadDisconnected += HandleOnGamepadDisconnected;
@@ -60,8 +59,8 @@ namespace Ryujinx.Input.HLE
         {
             lock (_lock)
             {
-                List<InputConfig> validInputs = new();
-                foreach (var inputConfigEntry in _inputConfig)
+                List<InputConfig> validInputs = [];
+                foreach (InputConfig inputConfigEntry in _inputConfig)
                 {
                     if (_controllers[(int)inputConfigEntry.PlayerIndex] != null)
                     {
@@ -128,7 +127,7 @@ namespace Ryujinx.Input.HLE
             {
                 NpadController[] oldControllers = _controllers.ToArray();
 
-                List<InputConfig> validInputs = new();
+                List<InputConfig> validInputs = [];
 
                 foreach (InputConfig inputConfigEntry in inputConfig)
                 {
@@ -189,6 +188,15 @@ namespace Ryujinx.Input.HLE
             }
         }
 
+        public bool InputUpdatesBlocked
+        {
+            get
+            {
+                lock (_lock)
+                    return _blockInputUpdates;
+            }
+        }
+
         public void BlockInputUpdates()
         {
             lock (_lock)
@@ -209,7 +217,7 @@ namespace Ryujinx.Input.HLE
         {
             lock (_lock)
             {
-                List<GamepadInput> hleInputStates = new();
+                List<GamepadInput> hleInputStates = [];
                 List<SixAxisInput> hleMotionStates = _hleMotionStatesPool.Allocate();
 
                 KeyboardInput? hleKeyboardInput = null;
@@ -239,7 +247,7 @@ namespace Ryujinx.Input.HLE
 
                         isJoyconPair = inputConfig.ControllerType == ControllerType.JoyconPair;
 
-                        var altMotionState = isJoyconPair ? controller.GetHLEMotionState(true) : default;
+                        SixAxisInput altMotionState = isJoyconPair ? controller.GetHLEMotionState(true) : default;
 
                         motionState = (controller.GetHLEMotionState(), altMotionState);
                     }
@@ -278,9 +286,9 @@ namespace Ryujinx.Input.HLE
 
                 if (_enableMouse)
                 {
-                    var mouse = _mouseDriver.GetGamepad("0") as IMouse;
+                    IMouse mouse = _mouseDriver.GetGamepad("0") as IMouse;
 
-                    var mouseInput = IMouse.GetMouseStateSnapshot(mouse);
+                    MouseStateSnapshot mouseInput = IMouse.GetMouseStateSnapshot(mouse);
 
                     uint buttons = 0;
 
@@ -309,9 +317,11 @@ namespace Ryujinx.Input.HLE
                         buttons |= 1 << 4;
                     }
 
-                    var position = IMouse.GetScreenPosition(mouseInput.Position, mouse.ClientSize, aspectRatio);
+                    Vector2 position = IMouse.GetScreenPosition(mouseInput.Position, mouse.ClientSize, aspectRatio);
 
                     _device.Hid.Mouse.Update((int)position.X, (int)position.Y, buttons, (int)mouseInput.Scroll.X, (int)mouseInput.Scroll.Y, true);
+                    
+                    ArrayPool<bool>.Shared.Return(mouseInput.ButtonState);
                 }
                 else
                 {
@@ -319,8 +329,6 @@ namespace Ryujinx.Input.HLE
                 }
 
                 _device.TamperMachine.UpdateInput(hleInputStates);
-                
-                hleMotionStates.Clear();
                 
                 _hleMotionStatesPool.Release(hleMotionStates);
             }
@@ -330,7 +338,7 @@ namespace Ryujinx.Input.HLE
         {
             lock (_lock)
             {
-                return _inputConfig.Find(x => x.PlayerIndex == (Common.Configuration.Hid.PlayerIndex)index);
+                return _inputConfig.FirstOrDefault(x => x.PlayerIndex == (Common.Configuration.Hid.PlayerIndex)index);
             }
         }
 
@@ -365,5 +373,3 @@ namespace Ryujinx.Input.HLE
         }
     }
 }
-
-
