@@ -63,6 +63,8 @@ namespace Ryujinx.HLE.HOS.Kernel
             TickSource = tickSource;
             Device = device;
             Memory = memory;
+            
+            KScheduler.CpuCoresCount = device.CpuCoresCount;
 
             Running = true;
 
