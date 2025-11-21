@@ -8,7 +8,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid
     {
         public TouchDevice(Switch device, bool active) : base(device, active) { }
 
-        public void Update(params TouchPoint[] points)
+        public void Update(params ReadOnlySpan<TouchPoint> points)
         {
             ref RingLifo<TouchScreenState> lifo = ref _device.Hid.SharedMemory.TouchScreen;
 
@@ -23,12 +23,14 @@ namespace Ryujinx.HLE.HOS.Services.Hid
             {
                 newState.TouchesCount = points.Length;
 
-                int pointsLength = Math.Min(points.Length, newState.Touches.Length);
+                Span<TouchState> touchesSpan = newState.Touches.AsSpan();
+                
+                int pointsLength = Math.Min(points.Length, touchesSpan.Length);
 
                 for (int i = 0; i < pointsLength; ++i)
                 {
                     TouchPoint pi = points[i];
-                    newState.Touches[i] = new TouchState
+                    touchesSpan[i] = new TouchState
                     {
                         DeltaTime = newState.SamplingNumber,
                         Attribute = pi.Attribute,
