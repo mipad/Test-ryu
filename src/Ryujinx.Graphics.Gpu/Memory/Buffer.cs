@@ -93,6 +93,9 @@ namespace Ryujinx.Graphics.Gpu.Memory
         private ulong _dirtyStart = ulong.MaxValue;
         private ulong _dirtyEnd = ulong.MaxValue;
 
+        private readonly Action<ulong, ulong> _syncPreRangeAction;
+        private readonly Action<ulong, ulong> _syncRangeAction;
+
         /// <summary>
         /// Creates a new instance of the buffer.
         /// </summary>
@@ -177,6 +180,9 @@ namespace Ryujinx.Graphics.Gpu.Memory
             _modifiedDelegate = RegionModified;
 
             _virtualDependenciesLock = new ReaderWriterLockSlim();
+
+            _syncPreRangeAction = SyncPreRangeAction;
+            _syncRangeAction = SyncRangeAction;
         }
 
         /// <summary>
@@ -401,12 +407,14 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                 if (_preFlush.ShouldCopy)
                 {
-                    _modifiedRanges?.GetRangesAtSync(Address, Size, _context.SyncNumber, (address, size) =>
-                    {
-                        _preFlush.CopyModified(address, size);
-                    });
+                    _modifiedRanges?.GetRangesAtSync(Address, Size, _context.SyncNumber, _syncPreRangeAction);
                 }
             }
+        }
+        
+        void SyncPreRangeAction(ulong address, ulong size)
+        {
+            _preFlush.CopyModified(address, size);
         }
 
         /// <summary>
@@ -420,11 +428,9 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
             if (_useGranular)
             {
-                _modifiedRanges?.GetRanges(Address, Size, (address, size) =>
-                {
-                    _memoryTrackingGranular.RegisterAction(address, size, _externalFlushDelegate);
-                    SynchronizeMemory(address, size);
-                });
+                
+
+                _modifiedRanges?.GetRanges(Address, Size, _syncRangeAction);
             }
             else
             {
@@ -433,6 +439,12 @@ namespace Ryujinx.Graphics.Gpu.Memory
             }
 
             return true;
+        }
+        
+        void SyncRangeAction(ulong address, ulong size)
+        {
+            _memoryTrackingGranular.RegisterAction(address, size, _externalFlushDelegate);
+            SynchronizeMemory(address, size);
         }
 
         /// <summary>
@@ -704,7 +716,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         {
             BufferHandle handle = Handle;
 
-            return (ulong address, ulong size, ulong _) =>
+            return (address, size, _) =>
             {
                 FlushImpl(handle, address, size);
             };
@@ -734,7 +746,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         {
             _context.Renderer.BackgroundContextAction(() =>
             {
-                var ranges = _modifiedRanges;
+                BufferModifiedRangeList ranges = _modifiedRanges;
 
                 if (ranges != null)
                 {
@@ -849,7 +861,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         {
             if (_virtualDependencies != null)
             {
-                foreach (var virtualBuffer in _virtualDependencies)
+                foreach (MultiRangeBuffer virtualBuffer in _virtualDependencies)
                 {
                     CopyToDependantVirtualBuffer(virtualBuffer, address, size);
                 }
@@ -874,7 +886,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void CopyFromDependantVirtualBuffersImpl()
         {
-            foreach (var virtualBuffer in _virtualDependencies.OrderBy(x => x.ModificationSequenceNumber))
+            foreach (MultiRangeBuffer virtualBuffer in _virtualDependencies.OrderBy(x => x.ModificationSequenceNumber))
             {
                 virtualBuffer.ConsumeModifiedRegion(this, (mAddress, mSize) =>
                 {
@@ -913,7 +925,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 {
                     byte[] storage = dataSpan.ToArray();
 
-                    foreach (var virtualBuffer in _virtualDependencies.OrderBy(x => x.ModificationSequenceNumber))
+                    foreach (MultiRangeBuffer virtualBuffer in _virtualDependencies.OrderBy(x => x.ModificationSequenceNumber))
                     {
                         virtualBuffer.ConsumeModifiedRegion(address, size, (mAddress, mSize) =>
                         {
