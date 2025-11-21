@@ -45,7 +45,11 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// </summary>
         private const int GranularLayerThreshold = 8;
 
-        private delegate void HandlesCallbackDelegate(int baseHandle, int regionCount, bool split = false);
+        private delegate bool HandlesCallbackDelegate(int baseHandle, int regionCount, bool split = false, bool specialData = false);
+
+        private readonly HandlesCallbackDelegate _signalModifyingCallback;
+        private readonly HandlesCallbackDelegate _discardDataCallback;
+        private readonly HandlesCallbackDelegate _checkDirtyCallback;
 
         /// <summary>
         /// The storage texture associated with this group.
@@ -126,6 +130,10 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             _incompatibleOverlaps = incompatibleOverlaps;
             _flushIncompatibleOverlaps = TextureCompatibility.IsFormatHostIncompatible(storage.Info, context.Capabilities);
+
+            _signalModifyingCallback = SignalModifyingCallback;
+            _discardDataCallback = DiscardDataCallback;
+            _checkDirtyCallback = CheckDirtyCallback;
         }
 
         /// <summary>
@@ -218,7 +226,6 @@ namespace Ryujinx.Graphics.Gpu.Image
             }
         }
 
-
         /// <summary>
         /// Flushes incompatible overlaps if the storage format requires it, and they have been modified.
         /// This allows unsupported host formats to accept data written to format aliased textures.
@@ -231,7 +238,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             {
                 bool flushed = false;
 
-                foreach (var overlap in _incompatibleOverlaps)
+                foreach (TextureIncompatibleOverlap overlap in _incompatibleOverlaps)
                 {
                     flushed |= overlap.Group.Storage.FlushModified(true);
                 }
@@ -255,28 +262,32 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <returns>True if a flag was dirty, false otherwise</returns>
         public bool CheckDirty(Texture texture, bool consume)
         {
+            EvaluateRelevantHandles(texture, _checkDirtyCallback, out bool dirty, consume);
+
+            return dirty;
+        }
+        
+        bool CheckDirtyCallback(int baseHandle, int regionCount, bool split, bool consume)
+        {
             bool dirty = false;
-
-            EvaluateRelevantHandles(texture, (baseHandle, regionCount, _) =>
+            
+            for (int i = 0; i < regionCount; i++)
             {
-                for (int i = 0; i < regionCount; i++)
+                TextureGroupHandle group = _handles[baseHandle + i];
+
+                foreach (RegionHandle handle in group.Handles)
                 {
-                    TextureGroupHandle group = _handles[baseHandle + i];
-
-                    foreach (RegionHandle handle in group.Handles)
+                    if (handle.Dirty)
                     {
-                        if (handle.Dirty)
+                        if (consume)
                         {
-                            if (consume)
-                            {
-                                handle.Reprotect();
-                            }
-
-                            dirty = true;
+                            handle.Reprotect();
                         }
+
+                        dirty = true;
                     }
                 }
-            });
+            }
 
             return dirty;
         }
@@ -288,15 +299,19 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="texture">The texture being discarded</param>
         public void DiscardData(Texture texture)
         {
-            EvaluateRelevantHandles(texture, (baseHandle, regionCount, _) =>
+            EvaluateRelevantHandles(texture, _discardDataCallback, out _);
+        }
+        
+        bool DiscardDataCallback(int baseHandle, int regionCount, bool split, bool bound)
+        {
+            for (int i = 0; i < regionCount; i++)
             {
-                for (int i = 0; i < regionCount; i++)
-                {
-                    TextureGroupHandle group = _handles[baseHandle + i];
+                TextureGroupHandle group = _handles[baseHandle + i];
 
-                    group.DiscardData();
-                }
-            });
+                group.DiscardData();
+            }
+
+            return true;
         }
 
         /// <summary>
@@ -308,7 +323,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         {
             FlushIncompatibleOverlapsIfNeeded();
 
-            EvaluateRelevantHandles(texture, (baseHandle, regionCount, split) =>
+            EvaluateRelevantHandles(texture, (baseHandle, regionCount, split, bound) =>
             {
                 bool dirty = false;
                 bool anyModified = false;
@@ -384,7 +399,9 @@ namespace Ryujinx.Graphics.Gpu.Image
                         texture.SynchronizeFull();
                     }
                 }
-            });
+
+                return true;
+            }, out _);
         }
 
         /// <summary>
@@ -403,7 +420,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             {
                 if (_loadNeeded[baseHandle + i])
                 {
-                    var info = GetHandleInformation(baseHandle + i);
+                    (int BaseLayer, int BaseLevel, int Levels, int Layers, int Index) info = GetHandleInformation(baseHandle + i);
 
                     // Ensure the data for this handle is loaded in the span.
                     if (spanEndIndex <= i - 1)
@@ -426,7 +443,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                             }
                         }
 
-                        var endInfo = spanEndIndex == i ? info : GetHandleInformation(baseHandle + spanEndIndex);
+                        (int BaseLayer, int BaseLevel, int Levels, int Layers, int Index) endInfo = spanEndIndex == i ? info : GetHandleInformation(baseHandle + spanEndIndex);
 
                         spanBase = _allOffsets[info.Index];
                         int spanLast = _allOffsets[endInfo.Index + endInfo.Layers * endInfo.Levels - 1];
@@ -461,7 +478,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="texture">The texture to synchronize dependents of</param>
         public void SynchronizeDependents(Texture texture)
         {
-            EvaluateRelevantHandles(texture, (baseHandle, regionCount, _) =>
+            EvaluateRelevantHandles(texture, (baseHandle, regionCount, split, bound) =>
             {
                 for (int i = 0; i < regionCount; i++)
                 {
@@ -469,7 +486,9 @@ namespace Ryujinx.Graphics.Gpu.Image
 
                     group.SynchronizeDependents();
                 }
-            });
+
+                return true;
+            }, out _);
         }
 
         /// <summary>
@@ -479,7 +498,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <returns>True if flushes should be tracked, false otherwise</returns>
         private bool ShouldFlushTriggerTracking()
         {
-            foreach (var overlap in _incompatibleOverlaps)
+            foreach (TextureIncompatibleOverlap overlap in _incompatibleOverlaps)
             {
                 if (overlap.Group._flushIncompatibleOverlaps)
                 {
@@ -551,7 +570,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             tracked = tracked || ShouldFlushTriggerTracking();
             bool flushed = false;
 
-            EvaluateRelevantHandles(texture, (baseHandle, regionCount, split) =>
+            EvaluateRelevantHandles(texture, (baseHandle, regionCount, split, bound) =>
             {
                 int startSlice = 0;
                 int endSlice = 0;
@@ -605,7 +624,9 @@ namespace Ryujinx.Graphics.Gpu.Image
 
                     flushed = true;
                 }
-            });
+
+                return true;
+            }, out _);
 
             Storage.SignalModifiedDirty();
 
@@ -619,95 +640,48 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="handle">Handle of the texture group to flush slices of</param>
         public void FlushIntoBuffer(TextureGroupHandle handle)
         {
-            try
+            // Ensure that the buffer exists.
+
+            if (_flushBufferInvalid && _flushBuffer != BufferHandle.Null)
             {
-                // Clean up imported flush buffer if invalid
-                if (_flushBufferInvalid && _flushBuffer != BufferHandle.Null)
+                _flushBufferInvalid = false;
+                _context.Renderer.DeleteBuffer(_flushBuffer);
+                _flushBuffer = BufferHandle.Null;
+            }
+
+            if (_flushBuffer == BufferHandle.Null)
+            {
+                if (!TextureCompatibility.CanTextureFlush(Storage.Info, _context.Capabilities))
                 {
-                    _flushBufferInvalid = false;
-                    _context.Renderer.DeleteBuffer(_flushBuffer);
-                    _flushBuffer = BufferHandle.Null;
-                }
-
-                // Early exit if hardware/format combination doesn't support texture flush
-                if (_flushBuffer == BufferHandle.Null)
-                {
-                    if (!TextureCompatibility.CanTextureFlush(Storage.Info, _context.Capabilities))
-                    {
-                        return;
-                    }
-
-                    bool canImport = Storage.Info.IsLinear &&
-                                     Storage.Info.Stride >= Storage.Info.Width * Storage.Info.FormatInfo.BytesPerPixel;
-
-                    var hostPointer = canImport ? _physicalMemory.GetHostPointer(Storage.Range) : 0;
-
-                    if (hostPointer != 0 && _context.Renderer.PrepareHostMapping(hostPointer, Storage.Size))
-                    {
-                        _flushBuffer = _context.Renderer.CreateBuffer(hostPointer, (int)Storage.Size);
-                        _flushBufferImported = true;
-                    }
-                    else
-                    {
-                        _flushBuffer = _context.Renderer.CreateBuffer((int)Storage.Size, BufferAccess.HostMemory);
-                        _flushBufferImported = false;
-                    }
-
-                    Storage.BlacklistScale();
-                }
-
-                // NEW: defensively check if a valid host texture for flushing exists
-                var flushTex = Storage.GetFlushTexture();
-                if (flushTex == null)
-                {
-                    // Can be missing right after device/surface reset → skip quietly
                     return;
                 }
 
-                int sliceStart = handle.BaseSlice;
-                int sliceEnd = sliceStart + handle.SliceCount;
+                bool canImport = Storage.Info.IsLinear && Storage.Info.Stride >= Storage.Info.Width * Storage.Info.FormatInfo.BytesPerPixel;
 
-                for (int i = sliceStart; i < sliceEnd; i++)
+                IntPtr hostPointer = canImport ? _physicalMemory.GetHostPointer(Storage.Range) : 0;
+
+                if (hostPointer != 0 && _context.Renderer.PrepareHostMapping(hostPointer, Storage.Size))
                 {
-                    (int layer, int level) = GetLayerLevelForView(i);
-
-                    // NEW: bounds checks to avoid indexing outside offsets/slice sizes
-                    if ((uint)i >= (uint)_allOffsets.Length)
-                    {
-                        continue;
-                    }
-                    if ((uint)level >= (uint)_sliceSizes.Length)
-                    {
-                        continue;
-                    }
-
-                    int dstStride = _flushBufferImported ? Storage.Info.Stride : 0;
-
-                    // NEW: wrap individual slice flush defensively
-                    try
-                    {
-                        flushTex.CopyTo(
-                            new BufferRange(_flushBuffer, _allOffsets[i], _sliceSizes[level]),
-                            layer,
-                            level,
-                            dstStride);
-                    }
-                    catch (NullReferenceException)
-                    {
-                        // Single slice became invalid (e.g. during recreate) → skip
-                        continue;
-                    }
-                    catch (ArgumentOutOfRangeException)
-                    {
-                        // Unexpected range – skip instead of crash
-                        continue;
-                    }
+                    _flushBuffer = _context.Renderer.CreateBuffer(hostPointer, (int)Storage.Size);
+                    _flushBufferImported = true;
                 }
+                else
+                {
+                    _flushBuffer = _context.Renderer.CreateBuffer((int)Storage.Size, BufferAccess.HostMemory);
+                    _flushBufferImported = false;
+                }
+
+                Storage.BlacklistScale();
             }
-            catch (NullReferenceException)
+
+            int sliceStart = handle.BaseSlice;
+            int sliceEnd = sliceStart + handle.SliceCount;
+
+            for (int i = sliceStart; i < sliceEnd; i++)
             {
-                // Entire flush path temporarily invalid → exit safely
-                return;
+                (int layer, int level) = GetLayerLevelForView(i);
+
+                Storage.GetFlushTexture().CopyTo(new BufferRange(_flushBuffer, _allOffsets[i], _sliceSizes[level]), layer, level, _flushBufferImported ? Storage.Info.Stride : 0);
             }
         }
 
@@ -741,7 +715,7 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             ClearIncompatibleOverlaps(texture);
 
-            EvaluateRelevantHandles(texture, (baseHandle, regionCount, _) =>
+            EvaluateRelevantHandles(texture, (baseHandle, regionCount, split, bound) =>
             {
                 for (int i = 0; i < regionCount; i++)
                 {
@@ -749,7 +723,9 @@ namespace Ryujinx.Graphics.Gpu.Image
 
                     group.SignalModified(_context);
                 }
-            });
+                
+                return true;
+            }, out _);
         }
 
         /// <summary>
@@ -762,16 +738,20 @@ namespace Ryujinx.Graphics.Gpu.Image
             ModifiedSequence = _context.GetModifiedSequence();
 
             ClearIncompatibleOverlaps(texture);
-
-            EvaluateRelevantHandles(texture, (baseHandle, regionCount, _) =>
+            
+            EvaluateRelevantHandles(texture, _signalModifyingCallback, out _, bound);
+        }
+        
+        bool SignalModifyingCallback(int baseHandle, int regionCount, bool split, bool bound)
+        {
+            for (int i = 0; i < regionCount; i++)
             {
-                for (int i = 0; i < regionCount; i++)
-                {
-                    TextureGroupHandle group = _handles[baseHandle + i];
+                TextureGroupHandle group = _handles[baseHandle + i];
 
-                    group.SignalModifying(bound, _context);
-                }
-            });
+                group.SignalModifying(bound, _context);
+            }
+            
+            return true;
         }
 
         /// <summary>
@@ -815,16 +795,16 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// A function to be called with the base index of the range of handles for the given texture, and the number of handles it covers.
         /// This can be called for multiple disjoint ranges, if required.
         /// </param>
-        private void EvaluateRelevantHandles(Texture texture, HandlesCallbackDelegate callback)
+        private void EvaluateRelevantHandles(Texture texture, HandlesCallbackDelegate callback, out bool result, bool specialData = false)
         {
             if (texture == Storage || !(_hasMipViews || _hasLayerViews))
             {
-                callback(0, _handles.Length);
+                result = callback(0, _handles.Length, specialData: specialData);
 
                 return;
             }
 
-            EvaluateRelevantHandles(texture.FirstLayer, texture.FirstLevel, texture.Info.GetSlices(), texture.Info.Levels, callback);
+            EvaluateRelevantHandles(texture.FirstLayer, texture.FirstLevel, texture.Info.GetSlices(), texture.Info.Levels, callback, out result, specialData);
         }
 
         /// <summary>
@@ -839,11 +819,13 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// A function to be called with the base index of the range of handles for the given texture, and the number of handles it covers.
         /// This can be called for multiple disjoint ranges, if required.
         /// </param>
-        private void EvaluateRelevantHandles(int firstLayer, int firstLevel, int slices, int levels, HandlesCallbackDelegate callback)
+        private void EvaluateRelevantHandles(int firstLayer, int firstLevel, int slices, int levels, HandlesCallbackDelegate callback, out bool result, bool specialData = false)
         {
             int targetLayerHandles = _hasLayerViews ? slices : 1;
             int targetLevelHandles = _hasMipViews ? levels : 1;
 
+            result = false;
+            
             if (_isBuffer)
             {
                 return;
@@ -856,7 +838,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                 {
                     // When there are no layer views, the mips are at a consistent offset.
 
-                    callback(firstLevel, targetLevelHandles);
+                    result = callback(firstLevel, targetLevelHandles, specialData: specialData);
                 }
                 else
                 {
@@ -870,7 +852,7 @@ namespace Ryujinx.Graphics.Gpu.Image
 
                         while (levels-- > 1)
                         {
-                            callback(firstLayer + levelIndex, slices);
+                            result = callback(firstLayer + levelIndex, slices, specialData: specialData);
 
                             levelIndex += layerCount;
                             layerCount = Math.Max(layerCount >> 1, 1);
@@ -887,7 +869,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                             totalSize += layerCount;
                         }
 
-                        callback(firstLayer + levelIndex, totalSize);
+                        result = callback(firstLayer + levelIndex, totalSize, specialData: specialData);
                     }
                 }
             }
@@ -904,12 +886,12 @@ namespace Ryujinx.Graphics.Gpu.Image
 
                     for (int i = 0; i < slices; i++)
                     {
-                        callback(firstLevel + (firstLayer + i) * levelHandles, targetLevelHandles, true);
+                        result = callback(firstLevel + (firstLayer + i) * levelHandles, targetLevelHandles, true, specialData: specialData);
                     }
                 }
                 else
                 {
-                    callback(firstLevel + firstLayer * levelHandles, targetLevelHandles + (targetLayerHandles - 1) * levelHandles);
+                    result = callback(firstLevel + firstLayer * levelHandles, targetLevelHandles + (targetLayerHandles - 1) * levelHandles, specialData: specialData);
                 }
             }
         }
@@ -1066,7 +1048,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             int endOffset = _allOffsets[viewEnd] + _sliceSizes[lastLevel];
             int size = endOffset - offset;
 
-            var result = new List<RegionHandle>();
+            List<RegionHandle> result = [];
 
             for (int i = 0; i < TextureRange.Count; i++)
             {
@@ -1100,7 +1082,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             offset = _allOffsets[viewStart];
             ulong maxSize = Storage.Size - (ulong)offset;
 
-            var groupHandle = new TextureGroupHandle(
+            TextureGroupHandle groupHandle = new(
                 this,
                 offset,
                 Math.Min(maxSize, (ulong)size),
@@ -1180,7 +1162,6 @@ namespace Ryujinx.Graphics.Gpu.Image
             SignalAllDirty();
         }
 
-
         /// <summary>
         /// Removes a view from the group, removing it from all overlap lists.
         /// </summary>
@@ -1207,17 +1188,17 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="relativeOffset">The offset of the old handles in relation to the new ones</param>
         private void InheritHandles(TextureGroupHandle[] oldHandles, TextureGroupHandle[] handles, int relativeOffset)
         {
-            foreach (var group in handles)
+            foreach (TextureGroupHandle group in handles)
             {
-                foreach (var handle in group.Handles)
+                foreach (RegionHandle handle in group.Handles)
                 {
                     bool dirty = false;
 
-                    foreach (var oldGroup in oldHandles)
+                    foreach (TextureGroupHandle oldGroup in oldHandles)
                     {
                         if (group.OverlapsWith(oldGroup.Offset + relativeOffset, oldGroup.Size))
                         {
-                            foreach (var oldHandle in oldGroup.Handles)
+                            foreach (RegionHandle oldHandle in oldGroup.Handles)
                             {
                                 if (handle.OverlapsWith(oldHandle.Address, oldHandle.Size))
                                 {
@@ -1241,7 +1222,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                 }
             }
 
-            foreach (var oldGroup in oldHandles)
+            foreach (TextureGroupHandle oldGroup in oldHandles)
             {
                 oldGroup.Modified = false;
             }
@@ -1301,7 +1282,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                             continue;
                         }
 
-                        foreach (var oldGroup in _handles)
+                        foreach (TextureGroupHandle oldGroup in _handles)
                         {
                             if (!groupHandle.OverlapsWith(oldGroup.Offset, oldGroup.Size))
                             {
@@ -1312,7 +1293,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                             {
                                 bool hasMatch = false;
 
-                                foreach (var oldHandle in oldGroup.Handles)
+                                foreach (RegionHandle oldHandle in oldGroup.Handles)
                                 {
                                     if (oldHandle.RangeEquals(handle))
                                     {
@@ -1339,9 +1320,9 @@ namespace Ryujinx.Graphics.Gpu.Image
 
                 InheritHandles(_handles, handles, 0);
 
-                foreach (var oldGroup in _handles)
+                foreach (TextureGroupHandle oldGroup in _handles)
                 {
-                    foreach (var oldHandle in oldGroup.Handles)
+                    foreach (RegionHandle oldHandle in oldGroup.Handles)
                     {
                         oldHandle.Dispose();
                     }
@@ -1362,17 +1343,17 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             if (_isBuffer)
             {
-                handles = Array.Empty<TextureGroupHandle>();
+                handles = [];
             }
             else if (!(_hasMipViews || _hasLayerViews))
             {
                 // Single dirty region.
-                var cpuRegionHandles = new RegionHandle[TextureRange.Count];
+                RegionHandle[] cpuRegionHandles = new RegionHandle[TextureRange.Count];
                 int count = 0;
 
                 for (int i = 0; i < TextureRange.Count; i++)
                 {
-                    var currentRange = TextureRange.GetSubRange(i);
+                    MemoryRange currentRange = TextureRange.GetSubRange(i);
                     if (currentRange.Address != MemoryManager.PteUnmapped)
                     {
                         cpuRegionHandles[count++] = GenerateHandle(currentRange.Address, currentRange.Size);
@@ -1384,9 +1365,9 @@ namespace Ryujinx.Graphics.Gpu.Image
                     Array.Resize(ref cpuRegionHandles, count);
                 }
 
-                var groupHandle = new TextureGroupHandle(this, 0, Storage.Size, _views, 0, 0, 0, _allOffsets.Length, cpuRegionHandles);
+                TextureGroupHandle groupHandle = new(this, 0, Storage.Size, _views, 0, 0, 0, _allOffsets.Length, cpuRegionHandles);
 
-                handles = new TextureGroupHandle[] { groupHandle };
+                handles = [groupHandle];
             }
             else
             {
@@ -1402,7 +1383,7 @@ namespace Ryujinx.Graphics.Gpu.Image
 
                 if (_is3D)
                 {
-                    var handlesList = new List<TextureGroupHandle>();
+                    List<TextureGroupHandle> handlesList = [];
 
                     for (int i = 0; i < levelHandles; i++)
                     {
@@ -1485,11 +1466,19 @@ namespace Ryujinx.Graphics.Gpu.Image
             // Get the location of each texture within its storage, so we can find the handles to apply the dependency to.
             // This can consist of multiple disjoint regions, for example if this is a mip slice of an array texture.
 
-            var targetRange = new List<(int BaseHandle, int RegionCount)>();
-            var otherRange = new List<(int BaseHandle, int RegionCount)>();
+            List<(int BaseHandle, int RegionCount)> targetRange = [];
+            List<(int BaseHandle, int RegionCount)> otherRange = [];
 
-            EvaluateRelevantHandles(firstLayer, firstLevel, other.Info.GetSlices(), other.Info.Levels, (baseHandle, regionCount, _) => targetRange.Add((baseHandle, regionCount)));
-            otherGroup.EvaluateRelevantHandles(other, (baseHandle, regionCount, _) => otherRange.Add((baseHandle, regionCount)));
+            EvaluateRelevantHandles(firstLayer, firstLevel, other.Info.GetSlices(), other.Info.Levels, (baseHandle, regionCount, split, specialData) =>
+            {
+                targetRange.Add((baseHandle, regionCount));
+                return true;
+            }, out _);
+            otherGroup.EvaluateRelevantHandles(other, (baseHandle, regionCount, split, specialData) =>
+            {
+                otherRange.Add((baseHandle, regionCount));
+                return true;
+            }, out _);
 
             int targetIndex = 0;
             int otherIndex = 0;
@@ -1749,3 +1738,4 @@ namespace Ryujinx.Graphics.Gpu.Image
         }
     }
 }
+
