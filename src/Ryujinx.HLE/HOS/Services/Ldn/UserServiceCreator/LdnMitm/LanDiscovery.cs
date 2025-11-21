@@ -28,8 +28,8 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnMitm
         private readonly Ssid _fakeSsid;
         private ILdnTcpSocket _tcp;
         private LdnProxyUdpServer _udp, _udp2;
-        private readonly List<LdnProxyTcpSession> _stations = new();
-        private readonly object _lock = new();
+        private readonly List<LdnProxyTcpSession> _stations = [];
+        private readonly Lock _lock = new();
 
         private readonly AutoResetEvent _apConnected = new(false);
 
@@ -77,9 +77,11 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnMitm
                 },
             };
 
+            Span<NodeInfo> nodesSpan = networkInfo.Ldn.Nodes.AsSpan();
+
             for (int i = 0; i < LdnConst.NodeCountMax; i++)
             {
-                networkInfo.Ldn.Nodes[i] = new NodeInfo
+                nodesSpan[i] = new NodeInfo
                 {
                     MacAddress = new Array6<byte>(),
                     UserName = new Array33<byte>(),
@@ -229,11 +231,13 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnMitm
                 NetworkInfo.Common.Ssid = _fakeSsid;
 
                 NetworkInfo.Ldn.Nodes = new Array8<NodeInfo>();
+                
+                Span<NodeInfo> nodesSpan = NetworkInfo.Ldn.Nodes.AsSpan();
 
                 for (int i = 0; i < LdnConst.NodeCountMax; i++)
                 {
-                    NetworkInfo.Ldn.Nodes[i].NodeId = (byte)i;
-                    NetworkInfo.Ldn.Nodes[i].IsConnected = 0;
+                    nodesSpan[i].NodeId = (byte)i;
+                    nodesSpan[i].IsConnected = 0;
                 }
             }
         }
@@ -340,10 +344,10 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnMitm
 
             if (_protocol.SendBroadcast(_udp, LanPacketType.Scan, DefaultPort) < 0)
             {
-                return Array.Empty<NetworkInfo>();
+                return [];
             }
 
-            List<NetworkInfo> outNetworkInfo = new();
+            List<NetworkInfo> outNetworkInfo = [];
 
             foreach (KeyValuePair<ulong, NetworkInfo> item in _udp.GetScanResults())
             {
@@ -408,11 +412,11 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnMitm
 
         private int LocateEmptyNode()
         {
-            Array8<NodeInfo> nodes = NetworkInfo.Ldn.Nodes;
+            Span<NodeInfo> nodesSpan = NetworkInfo.Ldn.Nodes.AsSpan();
 
-            for (int i = 1; i < nodes.Length; i++)
+            for (int i = 1; i < nodesSpan.Length; i++)
             {
-                if (nodes[i].IsConnected == 0)
+                if (nodesSpan[i].IsConnected == 0)
                 {
                     return i;
                 }
