@@ -13,11 +13,6 @@ OboeAudioRenderer::~OboeAudioRenderer() {
     Shutdown();
 }
 
-OboeAudioRenderer& OboeAudioRenderer::GetInstance() {
-    static OboeAudioRenderer instance;
-    return instance;
-}
-
 bool OboeAudioRenderer::Initialize(int32_t sampleRate, int32_t channelCount) {
     return InitializeWithFormat(sampleRate, channelCount, PCM_INT16);
 }
@@ -68,7 +63,7 @@ void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& bu
            ->setFormat(m_oboe_format)
            ->setFormatConversionAllowed(true)
            ->setUsage(oboe::Usage::Game)
-           ->setFramesPerCallback(480);  // 增加回调帧数
+           ->setFramesPerCallback(240);
     
     auto channel_count = m_channel_count.load();
     auto channel_mask = [&]() {
@@ -130,7 +125,7 @@ bool OboeAudioRenderer::OptimizeBufferSize() {
     if (!m_stream) return false;
     
     int32_t framesPerBurst = m_stream->getFramesPerBurst();
-    int32_t desired_buffer_size = framesPerBurst > 0 ? framesPerBurst * 4 : 1920;  // 增加缓冲区大小
+    int32_t desired_buffer_size = framesPerBurst > 0 ? framesPerBurst * 2 : 960;
     
     m_stream->setBufferSizeInFrames(desired_buffer_size);
     return true;
@@ -156,14 +151,10 @@ bool OboeAudioRenderer::WriteAudio(const int16_t* data, int32_t num_frames) {
     
     int32_t system_channels = m_channel_count.load();
     size_t data_size = num_frames * system_channels * sizeof(int16_t);
-    return WriteAudioBatched(reinterpret_cast<const void*>(data), num_frames, PCM_INT16);
+    return WriteAudioRaw(reinterpret_cast<const void*>(data), num_frames, PCM_INT16);
 }
 
 bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int32_t sampleFormat) {
-    return WriteAudioBatched(data, num_frames, sampleFormat);
-}
-
-bool OboeAudioRenderer::WriteAudioBatched(const void* data, int32_t num_frames, int32_t sampleFormat) {
     if (!m_initialized.load() || !data || num_frames <= 0) return false;
     
     int32_t system_channels = m_channel_count.load();
@@ -173,12 +164,6 @@ bool OboeAudioRenderer::WriteAudioBatched(const void* data, int32_t num_frames, 
     const uint8_t* byte_data = static_cast<const uint8_t*>(data);
     size_t bytes_remaining = total_bytes;
     size_t bytes_processed = 0;
-    
-    // 批量预分配blocks
-    const size_t max_blocks_needed = (total_bytes + AudioBlock::BLOCK_SIZE - 1) / AudioBlock::BLOCK_SIZE;
-    if (max_blocks_needed > m_object_pool.available()) {
-        return false;
-    }
     
     while (bytes_remaining > 0) {
         auto block = m_object_pool.acquire();
@@ -191,9 +176,7 @@ bool OboeAudioRenderer::WriteAudioBatched(const void* data, int32_t num_frames, 
         block->sample_format = sampleFormat;
         block->consumed = false;
         
-        if (!m_audio_queue.push(std::move(block))) {
-            return false;
-        }
+        if (!m_audio_queue.push(std::move(block))) return false;
         
         bytes_processed += copy_size;
         bytes_remaining -= copy_size;

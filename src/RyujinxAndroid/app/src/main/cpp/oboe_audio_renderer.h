@@ -18,7 +18,7 @@ enum SampleFormat {
 };
 
 struct AudioBlock {
-    static constexpr size_t BLOCK_SIZE = 8192;  // 从4096增加到8192
+    static constexpr size_t BLOCK_SIZE = 4096;
     
     uint8_t data[BLOCK_SIZE];
     size_t data_size = 0;
@@ -39,7 +39,8 @@ struct AudioBlock {
 
 class OboeAudioRenderer {
 public:
-    static OboeAudioRenderer& GetInstance();
+    OboeAudioRenderer();
+    ~OboeAudioRenderer();
 
     bool Initialize(int32_t sampleRate, int32_t channelCount);
     bool InitializeWithFormat(int32_t sampleRate, int32_t channelCount, int32_t sampleFormat);
@@ -58,9 +59,6 @@ public:
     void Reset();
 
 private:
-    OboeAudioRenderer();
-    ~OboeAudioRenderer();
-
     class AAudioExclusiveCallback : public oboe::AudioStreamDataCallback {
     public:
         explicit AAudioExclusiveCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
@@ -90,7 +88,6 @@ private:
     oboe::AudioFormat MapSampleFormat(int32_t format);
     static size_t GetBytesPerSample(int32_t format);
     bool OptimizeBufferSize();
-    bool WriteAudioBatched(const void* data, int32_t num_frames, int32_t sampleFormat);
 
     std::shared_ptr<oboe::AudioStream> m_stream;
     std::unique_ptr<AAudioExclusiveCallback> m_audio_callback;
@@ -108,8 +105,8 @@ private:
     int32_t m_device_channels = 2;
     oboe::AudioFormat m_oboe_format{oboe::AudioFormat::I16};
     
-    static constexpr uint32_t AUDIO_QUEUE_SIZE = 512;    // 从256增加到512
-    static constexpr uint32_t OBJECT_POOL_SIZE = 1024;   // 从512增加到1024
+    static constexpr uint32_t AUDIO_QUEUE_SIZE = 256;
+    static constexpr uint32_t OBJECT_POOL_SIZE = 512;
     
     LockFreeQueue<std::unique_ptr<AudioBlock>, AUDIO_QUEUE_SIZE> m_audio_queue;
     LockFreeObjectPool<AudioBlock, OBJECT_POOL_SIZE> m_object_pool;
