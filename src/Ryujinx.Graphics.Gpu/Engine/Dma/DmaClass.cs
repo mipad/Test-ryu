@@ -163,6 +163,99 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         }
 
         /// <summary>
+        /// Invalidates JIT cache regions affected by DMA operations to prevent stale code execution.
+        /// </summary>
+        /// <param name="srcGpuVa">Source GPU virtual address</param>
+        /// <param name="dstGpuVa">Destination GPU virtual address</param>
+        /// <param name="size">Size of the operation in bytes</param>
+        /// <param name="copy2D">Whether this is a 2D copy operation</param>
+        private void InvalidateJitCacheForDma(ulong srcGpuVa, ulong dstGpuVa, ulong size, bool copy2D)
+        {
+            try
+            {
+                // Get the translator instance from the context
+                var translator = _context.Translator;
+                if (translator == null)
+                {
+                    return;
+                }
+
+                // Invalidate both source and destination regions
+                // This ensures that any JIT-compiled code that might access these memory regions
+                // will be recompiled with updated memory mappings
+                translator.InvalidateJitCacheRegion(srcGpuVa, size);
+                translator.InvalidateJitCacheRegion(dstGpuVa, size);
+
+                // For 2D operations, we might need to invalidate a larger range
+                if (copy2D)
+                {
+                    uint lineCount = _state.State.LineCount;
+                    if (lineCount > 1)
+                    {
+                        ulong totalSize = size * lineCount;
+                        translator.InvalidateJitCacheRegion(srcGpuVa, totalSize);
+                        translator.InvalidateJitCacheRegion(dstGpuVa, totalSize);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log but don't fail the DMA operation if JIT cache invalidation fails
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Failed to invalidate JIT cache for DMA operation: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Validates DMA addresses before performing copy operations.
+        /// </summary>
+        /// <param name="memoryManager">Memory manager instance</param>
+        /// <param name="srcGpuVa">Source GPU virtual address</param>
+        /// <param name="dstGpuVa">Destination GPU virtual address</param>
+        /// <param name="size">Size of the operation</param>
+        /// <returns>True if addresses are valid, false otherwise</returns>
+        private bool ValidateDmaAddresses(MemoryManager memoryManager, ulong srcGpuVa, ulong dstGpuVa, ulong size)
+        {
+            try
+            {
+                // Check if source address is mapped and accessible
+                if (!memoryManager.IsMapped(srcGpuVa))
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        $"DMA source address not mapped: 0x{srcGpuVa:X16}");
+                    return false;
+                }
+
+                // Check if destination address is mapped and accessible
+                if (!memoryManager.IsMapped(dstGpuVa))
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        $"DMA destination address not mapped: 0x{dstGpuVa:X16}");
+                    return false;
+                }
+
+                // Check if the entire range is accessible
+                ulong srcEnd = srcGpuVa + size - 1;
+                ulong dstEnd = dstGpuVa + size - 1;
+
+                if (!memoryManager.IsMapped(srcEnd) || !memoryManager.IsMapped(dstEnd))
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        $"DMA address range partially unmapped: src=0x{srcGpuVa:X16}-0x{srcEnd:X16}, dst=0x{dstGpuVa:X16}-0x{dstEnd:X16}");
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Error validating DMA addresses: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Releases a semaphore for a given LaunchDma method call.
         /// </summary>
         /// <param name="argument">The LaunchDma call argument</param>
@@ -208,6 +301,17 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
 
             ulong srcGpuVa = ((ulong)_state.State.OffsetInUpperUpper << 32) | _state.State.OffsetInLower;
             ulong dstGpuVa = ((ulong)_state.State.OffsetOutUpperUpper << 32) | _state.State.OffsetOutLower;
+
+            // Invalidate JIT cache before DMA operation to prevent stale code execution
+            InvalidateJitCacheForDma(srcGpuVa, dstGpuVa, size, copy2D);
+
+            // Validate addresses before proceeding
+            if (!ValidateDmaAddresses(memoryManager, srcGpuVa, dstGpuVa, size))
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"DMA copy aborted due to invalid addresses: src=0x{srcGpuVa:X16}, dst=0x{dstGpuVa:X16}, size={size}");
+                return;
+            }
 
             int xCount = (int)_state.State.LineLengthIn;
             int yCount = (int)_state.State.LineCount;
