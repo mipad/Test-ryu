@@ -110,7 +110,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
             ulong address = memoryManager.Translate(gpuVa);
 
-            if (address != MemoryManager.PteUnmapped)
+            if (address != MemoryManager.PteUnmapped && IsValidAddress(address))
             {
                 CreateBuffer(address, size, stage);
             }
@@ -177,7 +177,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             {
                 MemoryRange subRange = range.GetSubRange(i);
 
-                if (subRange.Address != MemoryManager.PteUnmapped)
+                if (subRange.Address != MemoryManager.PteUnmapped && IsValidAddress(subRange.Address))
                 {
                     if (range.Count > 1)
                     {
@@ -209,7 +209,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             {
                 MemoryRange subRange = range.GetSubRange(0);
 
-                if (subRange.Address != MemoryManager.PteUnmapped)
+                if (subRange.Address != MemoryManager.PteUnmapped && IsValidAddress(subRange.Address))
                 {
                     CreateBuffer(subRange.Address, subRange.Size, stage);
                 }
@@ -225,10 +225,22 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="stage">The type of usage that created the buffer</param>
         public void CreateBuffer(ulong address, ulong size, BufferStage stage)
         {
+            // 检查地址是否有效
+            if (!IsValidAddress(address))
+            {
+                return;
+            }
+
             ulong endAddress = address + size;
 
             ulong alignedAddress = address & ~BufferAlignmentMask;
             ulong alignedEndAddress = (endAddress + BufferAlignmentMask) & ~BufferAlignmentMask;
+
+            // 检查对齐后的地址是否有效
+            if (!IsValidAddress(alignedAddress))
+            {
+                return;
+            }
 
             // The buffer must have the size of at least one page.
             if (alignedEndAddress == alignedAddress)
@@ -249,12 +261,24 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="alignment">Alignment of the start address of the buffer in bytes</param>
         public void CreateBuffer(ulong address, ulong size, BufferStage stage, ulong alignment)
         {
+            // 检查地址是否有效
+            if (!IsValidAddress(address))
+            {
+                return;
+            }
+
             ulong alignmentMask = alignment - 1;
             ulong pageAlignmentMask = BufferAlignmentMask;
             ulong endAddress = address + size;
 
             ulong alignedAddress = address & ~alignmentMask;
             ulong alignedEndAddress = (endAddress + pageAlignmentMask) & ~pageAlignmentMask;
+
+            // 检查对齐后的地址是否有效
+            if (!IsValidAddress(alignedAddress))
+            {
+                return;
+            }
 
             // The buffer must have the size of at least one page.
             if (alignedEndAddress == alignedAddress)
@@ -263,6 +287,36 @@ namespace Ryujinx.Graphics.Gpu.Memory
             }
 
             CreateBufferAligned(alignedAddress, alignedEndAddress - alignedAddress, stage, alignment);
+        }
+
+        /// <summary>
+        /// Checks if an address is valid and mapped.
+        /// </summary>
+        /// <param name="address">Address to check</param>
+        /// <returns>True if the address is valid, false otherwise</returns>
+        private bool IsValidAddress(ulong address)
+        {
+            // 检查是否是未映射的特殊值
+            if (address == MemoryManager.PteUnmapped)
+            {
+                return false;
+            }
+
+            // 检查是否是明显无效的地址（如 0xFFFFFFFFFFFFF000）
+            if (address >= 0xFFFFFFFFFFFFF000UL)
+            {
+                return false;
+            }
+
+            // 检查地址是否在物理内存中映射
+            try
+            {
+                return _physicalMemory.IsMapped(address);
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         /// <summary>
@@ -278,7 +332,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             {
                 MemoryRange subRange = range.GetSubRange(i);
 
-                if (subRange.Address != MemoryManager.PteUnmapped)
+                if (subRange.Address != MemoryManager.PteUnmapped && IsValidAddress(subRange.Address))
                 {
                     CreateBuffer(subRange.Address, subRange.Size, stage, SparseBufferAlignmentSize);
                 }
@@ -320,7 +374,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 {
                     MemoryRange subRange = range.GetSubRange(i);
 
-                    if (subRange.Address != MemoryManager.PteUnmapped)
+                    if (subRange.Address != MemoryManager.PteUnmapped && IsValidAddress(subRange.Address))
                     {
                         ulong endAddress = subRange.Address + subRange.Size;
 
@@ -328,11 +382,21 @@ namespace Ryujinx.Graphics.Gpu.Memory
                         ulong alignedEndAddress = (endAddress + alignmentMask) & ~alignmentMask;
                         ulong alignedSize = alignedEndAddress - alignedAddress;
 
-                        Buffer buffer = _buffers.FindOverlap(alignedAddress, alignedSize).Value;
-                        BufferRange bufferRange = buffer.GetRange(alignedAddress, alignedSize, false);
+                        var overlap = _buffers.FindOverlap(alignedAddress, alignedSize);
+                        if (overlap != null)
+                        {
+                            Buffer buffer = overlap.Value;
+                            BufferRange bufferRange = buffer.GetRange(alignedAddress, alignedSize, false);
 
-                        alignedSubRanges[i] = new MemoryRange(alignedAddress, alignedSize);
-                        storages[i] = bufferRange;
+                            alignedSubRanges[i] = new MemoryRange(alignedAddress, alignedSize);
+                            storages[i] = bufferRange;
+                        }
+                        else
+                        {
+                            // 如果没有找到重叠的缓冲区，跳过这个子范围
+                            alignedSubRanges[i] = new MemoryRange(MemoryManager.PteUnmapped, subRange.Size);
+                            storages[i] = new BufferRange(BufferHandle.Null, 0, (int)subRange.Size);
+                        }
                     }
                     else
                     {
@@ -351,7 +415,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 {
                     MemoryRange subRange = range.GetSubRange(i);
 
-                    if (subRange.Address != MemoryManager.PteUnmapped)
+                    if (subRange.Address != MemoryManager.PteUnmapped && IsValidAddress(subRange.Address))
                     {
                         ulong endAddress = subRange.Address + subRange.Size;
 
@@ -393,7 +457,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             {
                 MemoryRange subRange = virtualBuffer.Range.GetSubRange(i);
 
-                if (subRange.Address != MemoryManager.PteUnmapped)
+                if (subRange.Address != MemoryManager.PteUnmapped && IsValidAddress(subRange.Address))
                 {
                     var overlap = _buffers.FindOverlap(subRange.Address, subRange.Size);
                     if (overlap != null)
@@ -447,9 +511,17 @@ namespace Ryujinx.Graphics.Gpu.Memory
             {
                 MultiRange range = TranslateAndCreateBuffer(memoryManager, gpuVa, size, BufferStage.Internal);
                 ulong address = range.GetSubRange(0).Address;
-                result = new BufferCacheEntry(address, gpuVa, GetBuffer(address, size, BufferStage.Internal));
-
-                _dirtyCache[gpuVa] = result;
+                
+                // 检查地址是否有效
+                if (address != MemoryManager.PteUnmapped && IsValidAddress(address))
+                {
+                    result = new BufferCacheEntry(address, gpuVa, GetBuffer(address, size, BufferStage.Internal));
+                    _dirtyCache[gpuVa] = result;
+                }
+                else
+                {
+                    return;
+                }
             }
 
             result.Buffer.ForceDirty(result.Address, size);
@@ -464,6 +536,8 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <returns>True if modified, false otherwise</returns>
         public bool CheckModified(MemoryManager memoryManager, ulong gpuVa, ulong size, out ulong outAddr)
         {
+            outAddr = 0;
+
             if (_pruneCaches)
             {
                 Prune();
@@ -482,9 +556,17 @@ namespace Ryujinx.Graphics.Gpu.Memory
             {
                 MultiRange range = TranslateAndCreateBuffer(memoryManager, alignedGpuVa, size, BufferStage.None);
                 ulong address = range.GetSubRange(0).Address;
-                result = new BufferCacheEntry(address, alignedGpuVa, GetBuffer(address, size, BufferStage.None));
-
-                _modifiedCache[alignedGpuVa] = result;
+                
+                // 检查地址是否有效
+                if (address != MemoryManager.PteUnmapped && IsValidAddress(address))
+                {
+                    result = new BufferCacheEntry(address, alignedGpuVa, GetBuffer(address, size, BufferStage.None));
+                    _modifiedCache[alignedGpuVa] = result;
+                }
+                else
+                {
+                    return false;
+                }
             }
 
             outAddr = result.Address | (gpuVa & mask);
@@ -502,6 +584,12 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="stage">The type of usage that created the buffer</param>
         private void CreateBufferAligned(ulong address, ulong size, BufferStage stage)
         {
+            // 检查地址是否有效
+            if (!IsValidAddress(address))
+            {
+                return;
+            }
+
             Buffer newBuffer = null;
             
             _buffers.Lock.EnterWriteLock();
@@ -547,6 +635,13 @@ namespace Ryujinx.Graphics.Gpu.Memory
                     
                     address = Math.Min(address, overlaps[0].Address);
                     endAddress = Math.Max(endAddress, overlaps[^1].EndAddress);
+                    
+                    // 检查调整后的地址是否仍然有效
+                    if (!IsValidAddress(address))
+                    {
+                        _buffers.Lock.ExitWriteLock();
+                        return;
+                    }
                     
                     for (int i = 0; i < overlaps.Length; i++)
                     {
@@ -597,6 +692,12 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="alignment">Alignment of the start address of the buffer</param>
         private void CreateBufferAligned(ulong address, ulong size, BufferStage stage, ulong alignment)
         {
+            // 检查地址是否有效
+            if (!IsValidAddress(address))
+            {
+                return;
+            }
+
             bool sparseAligned = alignment >= SparseBufferAlignmentSize;
             Buffer newBuffer = null;
             
@@ -629,6 +730,13 @@ namespace Ryujinx.Graphics.Gpu.Memory
                         endAddress = Math.Max(endAddress, overlaps[^1].EndAddress);
 
                         address &= ~(alignment - 1);
+
+                        // 检查对齐后的地址是否有效
+                        if (!IsValidAddress(address))
+                        {
+                            _buffers.Lock.ExitWriteLock();
+                            return;
+                        }
 
                         oldOverlapCount = overlaps.Length;
                         overlaps = _buffers.FindOverlapsAsSpan(address, endAddress - address);
@@ -680,26 +788,42 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="overlaps">Buffers overlapping the range</param>
         private Buffer CreateBufferAligned(ulong address, ulong size, BufferStage stage, bool sparseCompatible, RangeItem<Buffer>[] overlaps)
         {
-            Buffer newBuffer = new(_context, _physicalMemory, address, size, stage, sparseCompatible, overlaps);
-
-            for (int index = 0; index < overlaps.Length; index++)
+            // 检查地址是否有效
+            if (!IsValidAddress(address))
             {
-                Buffer buffer = overlaps[index].Value;
-
-                int dstOffset = (int)(buffer.Address - newBuffer.Address);
-
-                buffer.CopyTo(newBuffer, dstOffset);
-                newBuffer.InheritModifiedRanges(buffer);
-
-                buffer.DecrementReferenceCount();
+                return null;
             }
 
-            newBuffer.SynchronizeMemory(address, size);
+            Buffer newBuffer = null;
+            try
+            {
+                newBuffer = new(_context, _physicalMemory, address, size, stage, sparseCompatible, overlaps);
 
-            // Existing buffers were modified, we need to rebind everything.
-            NotifyBuffersModified?.Invoke();
+                for (int index = 0; index < overlaps.Length; index++)
+                {
+                    Buffer buffer = overlaps[index].Value;
 
-            RecreateMultiRangeBuffers(address, size);
+                    int dstOffset = (int)(buffer.Address - newBuffer.Address);
+
+                    buffer.CopyTo(newBuffer, dstOffset);
+                    newBuffer.InheritModifiedRanges(buffer);
+
+                    buffer.DecrementReferenceCount();
+                }
+
+                newBuffer.SynchronizeMemory(address, size);
+
+                // Existing buffers were modified, we need to rebind everything.
+                NotifyBuffersModified?.Invoke();
+
+                RecreateMultiRangeBuffers(address, size);
+            }
+            catch (Exception ex) when (ex is Ryujinx.Memory.InvalidMemoryRegionException || ex is System.NullReferenceException)
+            {
+                // 处理无效内存区域异常，返回 null 表示创建失败
+                newBuffer?.Dispose();
+                newBuffer = null;
+            }
             
             return newBuffer;
         }
@@ -712,6 +836,12 @@ namespace Ryujinx.Graphics.Gpu.Memory
         private void RecreateMultiRangeBuffers(ulong address, ulong size)
         {
             if ((address & (SparseBufferAlignmentSize - 1)) != 0 || (size & (SparseBufferAlignmentSize - 1)) != 0)
+            {
+                return;
+            }
+
+            // 检查地址是否有效
+            if (!IsValidAddress(address))
             {
                 return;
             }
@@ -801,6 +931,12 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="size">Size in bytes of the copy</param>
         private void CopyBufferSingleRange(MemoryManager memoryManager, ulong srcAddress, ulong dstAddress, ulong size)
         {
+            // 检查地址是否有效
+            if (!IsValidAddress(srcAddress) || !IsValidAddress(dstAddress))
+            {
+                return;
+            }
+
             Buffer srcBuffer = GetBuffer(srcAddress, size, BufferStage.Copy);
             Buffer dstBuffer = GetBuffer(dstAddress, size, BufferStage.Copy);
 
@@ -846,15 +982,20 @@ namespace Ryujinx.Graphics.Gpu.Memory
             for (int index = 0; index < range.Count; index++)
             {
                 MemoryRange subRange = range.GetSubRange(index);
-                Buffer buffer = GetBuffer(subRange.Address, subRange.Size, BufferStage.Copy);
+                
+                // 检查子范围地址是否有效
+                if (subRange.Address != MemoryManager.PteUnmapped && IsValidAddress(subRange.Address))
+                {
+                    Buffer buffer = GetBuffer(subRange.Address, subRange.Size, BufferStage.Copy);
 
-                int offset = (int)(subRange.Address - buffer.Address);
+                    int offset = (int)(subRange.Address - buffer.Address);
 
-                _context.Renderer.Pipeline.ClearBuffer(buffer.Handle, offset, (int)subRange.Size, value);
+                    _context.Renderer.Pipeline.ClearBuffer(buffer.Handle, offset, (int)subRange.Size, value);
 
-                memoryManager.Physical.FillTrackedResource(subRange.Address, subRange.Size, value, ResourceKind.Buffer);
+                    memoryManager.Physical.FillTrackedResource(subRange.Address, subRange.Size, value, ResourceKind.Buffer);
 
-                buffer.CopyToDependantVirtualBuffers(subRange.Address, subRange.Size);
+                    buffer.CopyToDependantVirtualBuffers(subRange.Address, subRange.Size);
+                }
             }
         }
 
@@ -912,31 +1053,35 @@ namespace Ryujinx.Graphics.Gpu.Memory
             {
                 MemoryRange subRange = range.GetSubRange(i);
 
-                var overlap = _buffers.FindOverlap(subRange.Address, subRange.Size);
-                if (overlap != null)
+                // 检查子范围地址是否有效
+                if (subRange.Address != MemoryManager.PteUnmapped && IsValidAddress(subRange.Address))
                 {
-                    Buffer subBuffer = overlap.Value;
-
-                    subBuffer.SynchronizeMemory(subRange.Address, subRange.Size);
-
-                    if (write)
+                    var overlap = _buffers.FindOverlap(subRange.Address, subRange.Size);
+                    if (overlap != null)
                     {
-                        subBuffer.SignalModified(subRange.Address, subRange.Size, stage);
-                    }
-                }
-                else
-                {
-                    // 如果没有找到重叠的缓冲区，创建一个新的
-                    CreateBuffer(subRange.Address, subRange.Size, stage);
-                    var newOverlap = _buffers.FindOverlap(subRange.Address, subRange.Size);
-                    if (newOverlap != null)
-                    {
-                        Buffer subBuffer = newOverlap.Value;
+                        Buffer subBuffer = overlap.Value;
+
                         subBuffer.SynchronizeMemory(subRange.Address, subRange.Size);
 
                         if (write)
                         {
                             subBuffer.SignalModified(subRange.Address, subRange.Size, stage);
+                        }
+                    }
+                    else
+                    {
+                        // 如果没有找到重叠的缓冲区，创建一个新的
+                        CreateBuffer(subRange.Address, subRange.Size, stage);
+                        var newOverlap = _buffers.FindOverlap(subRange.Address, subRange.Size);
+                        if (newOverlap != null)
+                        {
+                            Buffer subBuffer = newOverlap.Value;
+                            subBuffer.SynchronizeMemory(subRange.Address, subRange.Size);
+
+                            if (write)
+                            {
+                                subBuffer.SignalModified(subRange.Address, subRange.Size, stage);
+                            }
                         }
                     }
                 }
@@ -997,6 +1142,12 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
             if (size != 0)
             {
+                // 检查地址是否有效
+                if (!IsValidAddress(address))
+                {
+                    throw new InvalidOperationException($"Invalid address 0x{address:X16} for buffer access");
+                }
+
                 var overlap = _buffers.FindOverlap(address, size);
                 if (overlap != null)
                 {
@@ -1088,7 +1239,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SynchronizeBufferRange(ulong address, ulong size, bool copyBackVirtual)
         {
-            if (size != 0)
+            if (size != 0 && IsValidAddress(address))
             {
                 var overlap = _buffers.FindOverlap(address, size);
                 if (overlap != null)
@@ -1101,23 +1252,6 @@ namespace Ryujinx.Graphics.Gpu.Memory
                     }
 
                     buffer.SynchronizeMemory(address, size);
-                }
-                else
-                {
-                    // 如果没有找到缓冲区，创建一个
-                    CreateBuffer(address, size, BufferStage.None);
-                    var newOverlap = _buffers.FindOverlap(address, size);
-                    if (newOverlap != null)
-                    {
-                        Buffer buffer = newOverlap.Value;
-
-                        if (copyBackVirtual)
-                        {
-                            buffer.CopyFromDependantVirtualBuffers();
-                        }
-
-                        buffer.SynchronizeMemory(address, size);
-                    }
                 }
             }
         }
