@@ -1,5 +1,4 @@
 using Ryujinx.Common;
-using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.Device;
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Gpu.Engine.GPFifo;
@@ -45,11 +44,6 @@ namespace Ryujinx.Graphics.Gpu
         /// Presentation window.
         /// </summary>
         public Window Window { get; }
-
-        /// <summary>
-        /// JIT cache invalidator for CPU code cache management.
-        /// </summary>
-        public IJitCacheInvalidator JitCacheInvalidator { get; set; }
 
         /// <summary>
         /// Internal sequence number, used to avoid needless resource data updates
@@ -142,9 +136,6 @@ namespace Ryujinx.Graphics.Gpu
 
             SupportBufferUpdater = new SupportBufferUpdater(renderer);
 
-            // Initialize with a default JIT cache invalidator
-            JitCacheInvalidator = new DefaultJitCacheInvalidator();
-
             _firstTimestamp = ConvertNanosecondsToTicks((ulong)PerformanceCounter.ElapsedNanoseconds);
         }
 
@@ -199,10 +190,6 @@ namespace Ryujinx.Graphics.Gpu
         public void RegisterProcess(ulong pid, Cpu.IVirtualMemoryManagerTracked cpuMemory)
         {
             var physicalMemory = new PhysicalMemory(this, cpuMemory);
-            
-            // Set the JIT cache invalidator for the new physical memory
-            physicalMemory.JitCacheInvalidator = JitCacheInvalidator;
-            
             if (!PhysicalMemoryRegistry.TryAdd(pid, physicalMemory))
             {
                 throw new ArgumentException("The PID was already registered", nameof(pid));
@@ -223,43 +210,6 @@ namespace Ryujinx.Graphics.Gpu
                 physicalMemory.Dispose();
             }
         }
-
-        /// <summary>
-        /// Sets the JIT cache invalidator for all registered physical memory instances.
-        /// </summary>
-        /// <param name="invalidator">The JIT cache invalidator to use</param>
-        public void SetJitCacheInvalidator(IJitCacheInvalidator invalidator)
-        {
-            JitCacheInvalidator = invalidator;
-            
-            // Update all existing physical memory instances
-            foreach (var physicalMemory in PhysicalMemoryRegistry.Values)
-            {
-                physicalMemory.JitCacheInvalidator = invalidator;
-            }
-            
-            Logger.Info?.Print(LogClass.Gpu, "JIT cache invalidator updated for all physical memory instances");
-        }
-
-        /// <summary>
-        /// Invalidates JIT cache for a specific memory region across all processes.
-        /// </summary>
-        /// <param name="address">Start address of the region</param>
-        /// <param name="size">Size of the region</param>
-        public void InvalidateJitCache(ulong address, ulong size)
-        {
-            try
-            {
-                JitCacheInvalidator?.Invalidate(address, size);
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Failed to invalidate JIT cache for region 0x{address:X16}-0x{address + size:X16}: {ex.Message}");
-            }
-        }
-
-        // ... 其余现有方法保持不变 ...
 
         /// <summary>
         /// Converts a nanoseconds timestamp value to Maxwell time ticks.
