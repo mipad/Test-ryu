@@ -1,3 +1,4 @@
+using Ryujinx.Common.Logging;
 using Ryujinx.Common.Memory;
 using Ryujinx.Cpu;
 using Ryujinx.Graphics.Device;
@@ -16,6 +17,62 @@ using System.Runtime.CompilerServices;
 
 namespace Ryujinx.Graphics.Gpu.Memory
 {
+    /// <summary>
+    /// Interface for JIT cache invalidation.
+    /// </summary>
+    public interface IJitCacheInvalidator
+    {
+        /// <summary>
+        /// Invalidates JIT cache for the specified memory region.
+        /// </summary>
+        /// <param name="address">Start address of the region</param>
+        /// <param name="size">Size of the region</param>
+        void Invalidate(ulong address, ulong size);
+    }
+
+    /// <summary>
+    /// Default implementation of JIT cache invalidator.
+    /// </summary>
+    public class DefaultJitCacheInvalidator : IJitCacheInvalidator
+    {
+        private readonly Action<ulong, ulong> _invalidationCallback;
+
+        /// <summary>
+        /// Creates a new instance of the default JIT cache invalidator.
+        /// </summary>
+        /// <param name="invalidationCallback">Callback to perform actual JIT cache invalidation</param>
+        public DefaultJitCacheInvalidator(Action<ulong, ulong> invalidationCallback = null)
+        {
+            _invalidationCallback = invalidationCallback;
+        }
+
+        /// <summary>
+        /// Invalidates JIT cache for the specified memory region.
+        /// </summary>
+        /// <param name="address">Start address of the region</param>
+        /// <param name="size">Size of the region</param>
+        public void Invalidate(ulong address, ulong size)
+        {
+            try
+            {
+                if (_invalidationCallback != null)
+                {
+                    _invalidationCallback(address, size);
+                }
+                else
+                {
+                    Logger.Debug?.Print(LogClass.Gpu, 
+                        $"JIT cache invalidation requested for 0x{address:X16}-0x{address + size:X16} (no callback registered)");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Failed to invalidate JIT cache: {ex.Message}");
+            }
+        }
+    }
+
     /// <summary>
     /// Represents physical memory, accessible from the GPU.
     /// This is actually working CPU virtual addresses, of memory mapped on the application process.
@@ -42,6 +99,11 @@ namespace Ryujinx.Graphics.Gpu.Memory
         public TextureCache TextureCache { get; }
 
         /// <summary>
+        /// JIT cache invalidator interface.
+        /// </summary>
+        public IJitCacheInvalidator JitCacheInvalidator { get; set; }
+
+        /// <summary>
         /// Creates a new instance of the physical memory.
         /// </summary>
         /// <param name="context">GPU context that the physical memory belongs to</param>
@@ -53,6 +115,9 @@ namespace Ryujinx.Graphics.Gpu.Memory
             ShaderCache = new ShaderCache(context);
             BufferCache = new BufferCache(context, this);
             TextureCache = new TextureCache(context, this);
+
+            // Initialize with a default invalidator that logs but does nothing
+            JitCacheInvalidator = new DefaultJitCacheInvalidator();
 
             if (cpuMemory is IRefCounted rc)
             {
@@ -88,6 +153,40 @@ namespace Ryujinx.Graphics.Gpu.Memory
         public DeviceMemoryManager CreateDeviceMemoryManager()
         {
             return new DeviceMemoryManager(_cpuMemory);
+        }
+
+        /// <summary>
+        /// Invalidates JIT cache for a specific memory region.
+        /// </summary>
+        /// <param name="address">Start address of the region</param>
+        /// <param name="size">Size of the region</param>
+        public void InvalidateJitCache(ulong address, ulong size)
+        {
+            try
+            {
+                JitCacheInvalidator?.Invalidate(address, size);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Failed to invalidate JIT cache for region 0x{address:X16}-0x{address + size:X16}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Invalidates JIT cache for multiple memory regions.
+        /// </summary>
+        /// <param name="ranges">Memory ranges to invalidate</param>
+        public void InvalidateJitCache(MultiRange ranges)
+        {
+            for (int i = 0; i < ranges.Count; i++)
+            {
+                var range = ranges.GetSubRange(i);
+                if (range.Address != MemoryManager.PteUnmapped)
+                {
+                    InvalidateJitCache(range.Address, range.Size);
+                }
+            }
         }
 
         /// <summary>
@@ -248,24 +347,30 @@ namespace Ryujinx.Graphics.Gpu.Memory
         }
 
         /// <summary>
-        /// Writes data to the application process, triggering a precise memory tracking event.
+        /// Writes data to the application process, triggering a precise memory tracking event and JIT cache invalidation.
         /// </summary>
         /// <param name="address">Address to write into</param>
         /// <param name="data">Data to be written</param>
         public void WriteTrackedResource(ulong address, ReadOnlySpan<byte> data)
         {
+            // Invalidate JIT cache before writing
+            InvalidateJitCache(address, (ulong)data.Length);
+            
             _cpuMemory.SignalMemoryTracking(address, (ulong)data.Length, true, precise: true);
             _cpuMemory.WriteUntracked(address, data);
         }
 
         /// <summary>
-        /// Writes data to the application process, triggering a precise memory tracking event.
+        /// Writes data to the application process, triggering a precise memory tracking event and JIT cache invalidation.
         /// </summary>
         /// <param name="address">Address to write into</param>
         /// <param name="data">Data to be written</param>
         /// <param name="kind">Kind of the resource being written, which will not be signalled as CPU modified</param>
         public void WriteTrackedResource(ulong address, ReadOnlySpan<byte> data, ResourceKind kind)
         {
+            // Invalidate JIT cache before writing
+            InvalidateJitCache(address, (ulong)data.Length);
+            
             _cpuMemory.SignalMemoryTracking(address, (ulong)data.Length, true, precise: true, exemptId: (int)kind);
             _cpuMemory.WriteUntracked(address, data);
         }
@@ -359,7 +464,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         }
 
         /// <summary>
-        /// Fills the specified memory region with a 32-bit integer value.
+        /// Fills the specified memory region with a 32-bit integer value and invalidates JIT cache.
         /// </summary>
         /// <param name="address">CPU virtual address of the region</param>
         /// <param name="size">Size of the region</param>
@@ -367,6 +472,9 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="kind">Kind of the resource being filled, which will not be signalled as CPU modified</param>
         public void FillTrackedResource(ulong address, ulong size, uint value, ResourceKind kind)
         {
+            // Invalidate JIT cache before filling
+            InvalidateJitCache(address, size);
+            
             _cpuMemory.SignalMemoryTracking(address, size, write: true, precise: true, (int)kind);
 
             using WritableRegion region = _cpuMemory.GetWritableRegion(address, (int)size);
