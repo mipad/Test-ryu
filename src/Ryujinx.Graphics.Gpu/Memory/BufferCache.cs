@@ -395,10 +395,25 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                 if (subRange.Address != MemoryManager.PteUnmapped)
                 {
-                    Buffer buffer = _buffers.FindOverlap(subRange.Address, subRange.Size).Value;
-
-                    virtualBuffer.AddPhysicalDependency(buffer, subRange.Address, dstOffset, subRange.Size);
-                    physicalBuffers.Add(buffer);
+                    var overlap = _buffers.FindOverlap(subRange.Address, subRange.Size);
+                    if (overlap != null)
+                    {
+                        Buffer buffer = overlap.Value;
+                        virtualBuffer.AddPhysicalDependency(buffer, subRange.Address, dstOffset, subRange.Size);
+                        physicalBuffers.Add(buffer);
+                    }
+                    else
+                    {
+                        // 如果没有找到重叠的缓冲区，创建一个新的
+                        CreateBuffer(subRange.Address, subRange.Size, BufferStage.None, SparseBufferAlignmentSize);
+                        var newOverlap = _buffers.FindOverlap(subRange.Address, subRange.Size);
+                        if (newOverlap != null)
+                        {
+                            Buffer buffer = newOverlap.Value;
+                            virtualBuffer.AddPhysicalDependency(buffer, subRange.Address, dstOffset, subRange.Size);
+                            physicalBuffers.Add(buffer);
+                        }
+                    }
                 }
 
                 dstOffset += subRange.Size;
@@ -897,13 +912,33 @@ namespace Ryujinx.Graphics.Gpu.Memory
             {
                 MemoryRange subRange = range.GetSubRange(i);
 
-                Buffer subBuffer = _buffers.FindOverlap(subRange.Address, subRange.Size).Value;
-
-                subBuffer.SynchronizeMemory(subRange.Address, subRange.Size);
-
-                if (write)
+                var overlap = _buffers.FindOverlap(subRange.Address, subRange.Size);
+                if (overlap != null)
                 {
-                    subBuffer.SignalModified(subRange.Address, subRange.Size, stage);
+                    Buffer subBuffer = overlap.Value;
+
+                    subBuffer.SynchronizeMemory(subRange.Address, subRange.Size);
+
+                    if (write)
+                    {
+                        subBuffer.SignalModified(subRange.Address, subRange.Size, stage);
+                    }
+                }
+                else
+                {
+                    // 如果没有找到重叠的缓冲区，创建一个新的
+                    CreateBuffer(subRange.Address, subRange.Size, stage);
+                    var newOverlap = _buffers.FindOverlap(subRange.Address, subRange.Size);
+                    if (newOverlap != null)
+                    {
+                        Buffer subBuffer = newOverlap.Value;
+                        subBuffer.SynchronizeMemory(subRange.Address, subRange.Size);
+
+                        if (write)
+                        {
+                            subBuffer.SignalModified(subRange.Address, subRange.Size, stage);
+                        }
+                    }
                 }
             }
 
@@ -919,6 +954,23 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 {
                     buffer = overlaps[i];
                     break;
+                }
+            }
+
+            // 如果没有找到完全包含的多范围缓冲区，创建一个
+            if (buffer == null)
+            {
+                CreateMultiRangeBuffer(range, stage);
+                
+                // 再次尝试查找
+                overlapCount = _multiRangeBuffers.FindOverlaps(range, ref overlaps);
+                for (int i = 0; i < overlapCount; i++)
+                {
+                    if (overlaps[i].Range.Contains(range))
+                    {
+                        buffer = overlaps[i];
+                        break;
+                    }
                 }
             }
 
@@ -945,19 +997,62 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
             if (size != 0)
             {
-                buffer = _buffers.FindOverlap(address, size).Value;
-
-                buffer.CopyFromDependantVirtualBuffers();
-                buffer.SynchronizeMemory(address, size);
-
-                if (write)
+                var overlap = _buffers.FindOverlap(address, size);
+                if (overlap != null)
                 {
-                    buffer.SignalModified(address, size, stage);
+                    buffer = overlap.Value;
+
+                    buffer.CopyFromDependantVirtualBuffers();
+                    buffer.SynchronizeMemory(address, size);
+
+                    if (write)
+                    {
+                        buffer.SignalModified(address, size, stage);
+                    }
+                }
+                else
+                {
+                    // 如果没有找到重叠的缓冲区，创建一个新的
+                    CreateBuffer(address, size, stage);
+                    var newOverlap = _buffers.FindOverlap(address, size);
+                    if (newOverlap != null)
+                    {
+                        buffer = newOverlap.Value;
+                        buffer.CopyFromDependantVirtualBuffers();
+                        buffer.SynchronizeMemory(address, size);
+
+                        if (write)
+                        {
+                            buffer.SignalModified(address, size, stage);
+                        }
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException($"Failed to create buffer for address 0x{address:X16}, size {size}");
+                    }
                 }
             }
             else
             {
-                buffer = _buffers.FindOverlapFast(address, 1).Value;
+                var overlap = _buffers.FindOverlapFast(address, 1);
+                if (overlap != null)
+                {
+                    buffer = overlap.Value;
+                }
+                else
+                {
+                    // 对于大小为0的情况，创建一个最小缓冲区
+                    CreateBuffer(address, 1, stage);
+                    var newOverlap = _buffers.FindOverlapFast(address, 1);
+                    if (newOverlap != null)
+                    {
+                        buffer = newOverlap.Value;
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException($"Failed to create buffer for address 0x{address:X16}, size 1");
+                    }
+                }
             }
 
             return buffer;
@@ -995,14 +1090,35 @@ namespace Ryujinx.Graphics.Gpu.Memory
         {
             if (size != 0)
             {
-                Buffer buffer = _buffers.FindOverlap(address, size).Value;
-
-                if (copyBackVirtual)
+                var overlap = _buffers.FindOverlap(address, size);
+                if (overlap != null)
                 {
-                    buffer.CopyFromDependantVirtualBuffers();
-                }
+                    Buffer buffer = overlap.Value;
 
-                buffer.SynchronizeMemory(address, size);
+                    if (copyBackVirtual)
+                    {
+                        buffer.CopyFromDependantVirtualBuffers();
+                    }
+
+                    buffer.SynchronizeMemory(address, size);
+                }
+                else
+                {
+                    // 如果没有找到缓冲区，创建一个
+                    CreateBuffer(address, size, BufferStage.None);
+                    var newOverlap = _buffers.FindOverlap(address, size);
+                    if (newOverlap != null)
+                    {
+                        Buffer buffer = newOverlap.Value;
+
+                        if (copyBackVirtual)
+                        {
+                            buffer.CopyFromDependantVirtualBuffers();
+                        }
+
+                        buffer.SynchronizeMemory(address, size);
+                    }
+                }
             }
         }
 
