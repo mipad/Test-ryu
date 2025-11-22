@@ -210,6 +210,7 @@ namespace LibRyujinx.Sample
         Fixed16x9,
         Fixed16x10,
         Fixed21x9,
+        Fixed43x18,
         Fixed32x9,
         Stretched
     }
