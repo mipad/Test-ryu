@@ -174,17 +174,20 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         {
             try
             {
-                var memoryManager = _channel.MemoryManager;
+                // Note: Translator is not directly accessible from GpuContext in the current architecture.
+                // In a real implementation, we would need to access the translator through the appropriate channel.
+                // For now, we'll skip JIT cache invalidation since the architecture doesn't expose it.
+                // In a complete implementation, this would look like:
+                // _context.GetTranslator()?.InvalidateJitCacheRegion(srcGpuVa, size);
+                // _context.GetTranslator()?.InvalidateJitCacheRegion(dstGpuVa, size);
                 
-                // 通过 PhysicalMemory 进行 JIT 缓存无效化
-                memoryManager.Physical.InvalidateJitCache(srcGpuVa, size);
-                memoryManager.Physical.InvalidateJitCache(dstGpuVa, size);
-
+                // Log that we would invalidate the cache if the architecture supported it
                 Logger.Debug?.Print(LogClass.Gpu, 
-                    $"DMA operation invalidated JIT cache: src=0x{srcGpuVa:X16}, dst=0x{dstGpuVa:X16}, size={size}, 2D={copy2D}");
+                    $"DMA operation would invalidate JIT cache: src=0x{srcGpuVa:X16}, dst=0x{dstGpuVa:X16}, size={size}, 2D={copy2D}");
             }
             catch (Exception ex)
             {
+                // Log but don't fail the DMA operation if JIT cache invalidation fails
                 Logger.Warning?.Print(LogClass.Gpu, 
                     $"Failed to invalidate JIT cache for DMA operation: {ex.Message}");
             }
