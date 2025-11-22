@@ -92,6 +92,8 @@ private:
     static size_t GetBytesPerSample(int32_t format);
     bool OptimizeBufferSize();
     bool TryOpenStreamWithRetry(int maxRetryCount = 3);
+    void PreFillBuffer();
+    void HandleBufferUnderrun();
 
     std::shared_ptr<oboe::AudioStream> m_stream;
     std::unique_ptr<AAudioExclusiveCallback> m_audio_callback;
@@ -105,6 +107,10 @@ private:
     std::atomic<int32_t> m_channel_count{2};
     std::atomic<int32_t> m_sample_format{PCM_INT16};
     std::atomic<float> m_volume{1.0f};
+    
+    // 缓冲区监控
+    std::atomic<int32_t> m_underrun_count{0};
+    std::chrono::steady_clock::time_point m_last_underrun_time;
     
     int32_t m_device_channels = 2;
     oboe::AudioFormat m_oboe_format{oboe::AudioFormat::I16};
