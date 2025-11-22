@@ -1053,7 +1053,7 @@ AnimatedVisibility(visible = showResScaleOptions.value) {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(text = "Aspect Ratio")
-                                val aspectRatioMap = listOf("4:3", "16:9", "16:10", "21:9", "32:9", "Stretched")
+                                val aspectRatioMap = listOf("4:3", "16:9", "16:10", "21:9", "43x18", "32:9", "Stretched")
                                 Text(
                                     text = aspectRatioMap[aspectRatio.value],
                                     modifier = Modifier.clickable(
@@ -1073,7 +1073,7 @@ AnimatedVisibility(visible = showResScaleOptions.value) {
                             // 画面比例选项修改
 AnimatedVisibility(visible = showAspectRatioOptions.value) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        val aspectRatioOptions = listOf("4:3", "16:9", "16:10", "21:9", "32:9", "Stretched")
+        val aspectRatioOptions = listOf("4:3", "16:9", "16:10", "21:9", "43x18", "32:9", "Stretched")
         
         Row(
             modifier = Modifier
@@ -1140,12 +1140,12 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                 Text(text = "Anisotropic Filtering")
                                 Text(
                                     text = when (maxAnisotropy.value) {
-                                        0f -> "Off"
+                                        0f -> "0x"
                                         2f -> "2x"
                                         4f -> "4x"
                                         8f -> "8x"
                                         16f -> "16x"
-                                        else -> "Off"
+                                        else -> "0x"
                                     },
                                     modifier = Modifier.clickable(
                                         interactionSource = remember { MutableInteractionSource() },
