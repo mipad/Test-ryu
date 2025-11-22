@@ -210,10 +210,10 @@ JNIEXPORT jboolean JNICALL
 Java_org_ryujinx_android_NativeHelpers_writeOboeRendererAudioRaw(JNIEnv *env, jobject thiz, jlong renderer_ptr, jbyteArray audio_data, jint num_frames, jint sample_format) {
     auto renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer_ptr);
     if (!renderer || !audio_data || num_frames <= 0) return JNI_FALSE;
-    jbyte* data = env->GetByteArrayElements(audio_data, nullptr);
+    jbyte* data = env->GetPrimitiveArrayCritical(audio_data, nullptr);
     if (data) {
         bool success = renderer->WriteAudioRaw(reinterpret_cast<uint8_t*>(data), num_frames, sample_format);
-        env->ReleaseByteArrayElements(audio_data, data, JNI_ABORT);
+        env->ReleasePrimitiveArrayCritical(audio_data, data, JNI_ABORT);
         return success ? JNI_TRUE : JNI_FALSE;
     }
     return JNI_FALSE;
