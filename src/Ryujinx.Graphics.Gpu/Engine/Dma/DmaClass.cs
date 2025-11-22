@@ -1,4 +1,5 @@
 using Ryujinx.Common;
+using Ryujinx.Common.Logging;
 using Ryujinx.Common.Memory;
 using Ryujinx.Graphics.Device;
 using Ryujinx.Graphics.Gpu.Engine.Threed;
@@ -173,30 +174,16 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         {
             try
             {
-                // Get the translator instance from the context
-                var translator = _context.Translator;
-                if (translator == null)
-                {
-                    return;
-                }
-
-                // Invalidate both source and destination regions
-                // This ensures that any JIT-compiled code that might access these memory regions
-                // will be recompiled with updated memory mappings
-                translator.InvalidateJitCacheRegion(srcGpuVa, size);
-                translator.InvalidateJitCacheRegion(dstGpuVa, size);
-
-                // For 2D operations, we might need to invalidate a larger range
-                if (copy2D)
-                {
-                    uint lineCount = _state.State.LineCount;
-                    if (lineCount > 1)
-                    {
-                        ulong totalSize = size * lineCount;
-                        translator.InvalidateJitCacheRegion(srcGpuVa, totalSize);
-                        translator.InvalidateJitCacheRegion(dstGpuVa, totalSize);
-                    }
-                }
+                // Note: Translator is not directly accessible from GpuContext in the current architecture.
+                // In a real implementation, we would need to access the translator through the appropriate channel.
+                // For now, we'll skip JIT cache invalidation since the architecture doesn't expose it.
+                // In a complete implementation, this would look like:
+                // _context.GetTranslator()?.InvalidateJitCacheRegion(srcGpuVa, size);
+                // _context.GetTranslator()?.InvalidateJitCacheRegion(dstGpuVa, size);
+                
+                // Log that we would invalidate the cache if the architecture supported it
+                Logger.Debug?.Print(LogClass.Gpu, 
+                    $"DMA operation would invalidate JIT cache: src=0x{srcGpuVa:X16}, dst=0x{dstGpuVa:X16}, size={size}, 2D={copy2D}");
             }
             catch (Exception ex)
             {
