@@ -2,8 +2,6 @@ using ARMeilleure.IntermediateRepresentation;
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using static ARMeilleure.IntermediateRepresentation.Operand;
 
 namespace ARMeilleure.CodeGen.Arm64
@@ -756,7 +754,6 @@ namespace ARMeilleure.CodeGen.Arm64
             Ubfm(rd, rn, 0, 15);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteInstructionAuto(
             uint instI,
             uint instR,
@@ -788,7 +785,6 @@ namespace ARMeilleure.CodeGen.Arm64
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteInstructionAuto(
             uint instruction,
             Operand rd,
@@ -805,7 +801,6 @@ namespace ARMeilleure.CodeGen.Arm64
             WriteInstructionRm16Auto(instruction, rd, rn, rm);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteInstructionBitwiseAuto(
             uint instI,
             uint instR,
@@ -830,7 +825,6 @@ namespace ARMeilleure.CodeGen.Arm64
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteInstructionBitwiseAuto(
             uint instruction,
             Operand rd,
@@ -839,14 +833,17 @@ namespace ARMeilleure.CodeGen.Arm64
             ArmShiftType shiftType = ArmShiftType.Lsl,
             int shiftAmount = 0)
         {
-            instruction |= rd.Type is OperandType.I64 or OperandType.FP64 ? SfFlag : 0;
+            if (rd.Type == OperandType.I64)
+            {
+                instruction |= SfFlag;
+            }
+
             instruction |= EncodeUImm6(shiftAmount) << 10;
             instruction |= (uint)shiftType << 22;
 
             WriteInstructionRm16(instruction, rd, rn, rm);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteInstructionLdrStrAuto(
             uint instruction,
             Operand rd,
@@ -861,97 +858,115 @@ namespace ARMeilleure.CodeGen.Arm64
             }
 
             instruction |= (uint)extensionType << 13;
-            instruction |= rd.Type is OperandType.I64 or OperandType.FP64 ? 1u << 30 : 0;
+
+            if (rd.Type == OperandType.I64)
+            {
+                instruction |= 1u << 30;
+            }
 
             WriteInstructionRm16(instruction, rd, rn, rm);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteInstructionAuto(uint instruction, Operand rd)
         {
-            instruction |= rd.Type is OperandType.I64 or OperandType.FP64 ? SfFlag : 0;
+            if (rd.Type == OperandType.I64)
+            {
+                instruction |= SfFlag;
+            }
+
             WriteInstruction(instruction, rd);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void WriteInstructionAuto(uint instruction, Operand rd, Operand rn)
         {
-            instruction |= rd.Type is OperandType.I64 or OperandType.FP64 ? SfFlag : 0;
+            if (rd.Type == OperandType.I64)
+            {
+                instruction |= SfFlag;
+            }
+
             WriteInstruction(instruction, rd, rn);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteInstructionAuto(uint instruction, Operand rd, Operand rn, Operand rm, Operand ra)
         {
-            instruction |= rd.Type is OperandType.I64 or OperandType.FP64 ? SfFlag : 0;
+            if (rd.Type == OperandType.I64)
+            {
+                instruction |= SfFlag;
+            }
+
             WriteInstruction(instruction, rd, rn, rm, ra);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void WriteInstruction(uint instruction, Operand rd)
         {
             WriteUInt32(instruction | EncodeReg(rd));
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void WriteInstruction(uint instruction, Operand rd, Operand rn)
         {
             WriteUInt32(instruction | EncodeReg(rd) | (EncodeReg(rn) << 5));
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void WriteInstruction(uint instruction, Operand rd, Operand rn, Operand rm)
         {
             WriteUInt32(instruction | EncodeReg(rd) | (EncodeReg(rn) << 5) | (EncodeReg(rm) << 10));
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void WriteInstruction(uint instruction, Operand rd, Operand rn, Operand rm, Operand ra)
         {
             WriteUInt32(instruction | EncodeReg(rd) | (EncodeReg(rn) << 5) | (EncodeReg(ra) << 10) | (EncodeReg(rm) << 16));
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteFPInstructionAuto(uint instruction, Operand rd, Operand rn)
         {
-            instruction |= rd.Type is OperandType.FP64 or OperandType.V128 ? 1u << 22 : 0;
+            if (rd.Type == OperandType.FP64)
+            {
+                instruction |= 1u << 22;
+            }
+
             WriteUInt32(instruction | EncodeReg(rd) | (EncodeReg(rn) << 5));
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteFPInstructionAuto(uint instruction, Operand rd, Operand rn, Operand rm)
         {
-            instruction |= rd.Type is OperandType.FP64 or OperandType.V128 ? 1u << 22 : 0;
+            if (rd.Type == OperandType.FP64)
+            {
+                instruction |= 1u << 22;
+            }
+
             WriteInstructionRm16(instruction, rd, rn, rm);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteSimdInstruction(uint instruction, Operand rd, Operand rn, Operand rm, bool q = true)
         {
-            instruction |= q ? 1u << 30 : 0;
+            if (q)
+            {
+                instruction |= 1u << 30;
+            }
+
             WriteInstructionRm16(instruction, rd, rn, rm);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteInstructionRm16Auto(uint instruction, Operand rd, Operand rn, Operand rm)
         {
-            instruction |= rd.Type is OperandType.I64 or OperandType.FP64 ? SfFlag : 0;
+            if (rd.Type == OperandType.I64)
+            {
+                instruction |= SfFlag;
+            }
+
             WriteInstructionRm16(instruction, rd, rn, rm);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void WriteInstructionRm16(uint instruction, Operand rd, Operand rn, Operand rm)
         {
             WriteUInt32(instruction | EncodeReg(rd) | (EncodeReg(rn) << 5) | (EncodeReg(rm) << 16));
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void WriteInstructionRm16NoRet(uint instruction, Operand rn, Operand rm)
         {
             WriteUInt32(instruction | (EncodeReg(rn) << 5) | (EncodeReg(rm) << 16));
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static uint GetLdpStpInstruction(uint intInst, uint vecInst, int imm, OperandType type)
         {
             uint instruction;
@@ -989,7 +1004,6 @@ namespace ARMeilleure.CodeGen.Arm64
             return instruction;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static uint GetLdrStrInstruction(uint intInst, uint vecInst, OperandType type)
         {
             uint instruction;
@@ -1020,7 +1034,6 @@ namespace ARMeilleure.CodeGen.Arm64
             return instruction;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static uint EncodeIndexSizeImm5(int index, int size)
         {
             Debug.Assert((uint)size < 4);
@@ -1028,7 +1041,6 @@ namespace ARMeilleure.CodeGen.Arm64
             return ((uint)index << (size + 1)) | (1u << size);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static uint EncodeSImm7(int value, int scale)
         {
             uint imm = (uint)(value >> scale) & 0x7f;
@@ -1036,7 +1048,6 @@ namespace ARMeilleure.CodeGen.Arm64
             return imm;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static uint EncodeSImm9(int value)
         {
             uint imm = (uint)value & 0x1ff;
@@ -1044,7 +1055,6 @@ namespace ARMeilleure.CodeGen.Arm64
             return imm;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static uint EncodeSImm19_2(int value)
         {
             uint imm = (uint)(value >> 2) & 0x7ffff;
@@ -1052,7 +1062,6 @@ namespace ARMeilleure.CodeGen.Arm64
             return imm;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static uint EncodeSImm26_2(int value)
         {
             uint imm = (uint)(value >> 2) & 0x3ffffff;
@@ -1060,7 +1069,6 @@ namespace ARMeilleure.CodeGen.Arm64
             return imm;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static uint EncodeUImm4(int value)
         {
             uint imm = (uint)value & 0xf;
@@ -1068,7 +1076,6 @@ namespace ARMeilleure.CodeGen.Arm64
             return imm;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static uint EncodeUImm6(int value)
         {
             uint imm = (uint)value & 0x3f;
@@ -1076,13 +1083,11 @@ namespace ARMeilleure.CodeGen.Arm64
             return imm;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static uint EncodeUImm12(int value, OperandType type)
         {
             return EncodeUImm12(value, GetScaleForType(type));
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static uint EncodeUImm12(int value, int scale)
         {
             uint imm = (uint)(value >> scale) & 0xfff;
@@ -1090,7 +1095,6 @@ namespace ARMeilleure.CodeGen.Arm64
             return imm;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static uint EncodeUImm16(int value)
         {
             uint imm = (uint)value & 0xffff;
@@ -1098,7 +1102,6 @@ namespace ARMeilleure.CodeGen.Arm64
             return imm;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static uint EncodeReg(Operand reg)
         {
             if (reg.Kind == OperandKind.Constant && reg.Value == 0)
@@ -1112,7 +1115,6 @@ namespace ARMeilleure.CodeGen.Arm64
             return regIndex;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int GetScaleForType(OperandType type)
         {
             return type switch
@@ -1126,40 +1128,35 @@ namespace ARMeilleure.CodeGen.Arm64
             };
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void WriteUInt32(uint value)
-        {
-            Span<byte> buffer = stackalloc byte[4];
-            Unsafe.WriteUnaligned(ref buffer[0], value);
-            _stream.Write(buffer);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void WriteUInt16(ushort value)
-        {
-            Span<byte> buffer = stackalloc byte[2];
-            Unsafe.WriteUnaligned(ref buffer[0], value);
-            _stream.Write(buffer);
-        }
-
-#pragma warning disable IDE0051
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+#pragma warning disable IDE0051 // Remove unused private member
         private void WriteInt16(short value)
         {
             WriteUInt16((ushort)value);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteInt32(int value)
         {
             WriteUInt32((uint)value);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteByte(byte value)
         {
             _stream.WriteByte(value);
         }
 #pragma warning restore IDE0051
+
+        private void WriteUInt16(ushort value)
+        {
+            _stream.WriteByte((byte)(value >> 0));
+            _stream.WriteByte((byte)(value >> 8));
+        }
+
+        private void WriteUInt32(uint value)
+        {
+            _stream.WriteByte((byte)(value >> 0));
+            _stream.WriteByte((byte)(value >> 8));
+            _stream.WriteByte((byte)(value >> 16));
+            _stream.WriteByte((byte)(value >> 24));
+        }
     }
 }
