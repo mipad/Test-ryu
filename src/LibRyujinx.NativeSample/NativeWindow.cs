@@ -67,8 +67,8 @@ namespace LibRyujinx.NativeSample
                 // 更新 InitializeDevice 调用，添加系统时间偏移参数
                 success = LibRyujinxInterop.InitializeDevice(true,
                     false,
-                    SystemLanguage.AmericanEnglish,
-                    RegionCode.USA,
+                    SystemLanguage.TraditionalChinese,
+                    RegionCode.Japan,
                     true,
                     true,
                     true,
