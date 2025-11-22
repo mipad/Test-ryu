@@ -51,7 +51,8 @@ namespace Ryujinx.Audio.Backends.Oboe
         private bool _disposed;
         private readonly ManualResetEvent _pauseEvent = new(true);
         private readonly ManualResetEvent _updateRequiredEvent = new(false);
-        private readonly ConcurrentDictionary<OboeAudioSession, byte> _sessions = new();
+        private readonly ConcurrentBag<OboeAudioSession> _sessions = new();
+        private readonly CancellationTokenSource _cancellationTokenSource = new();
         private Thread _updateThread;
         private bool _stillRunning = true;
 
@@ -67,13 +68,20 @@ namespace Ryujinx.Audio.Backends.Oboe
         {
             _updateThread = new Thread(() =>
             {
-                while (_stillRunning)
+                const int updateIntervalMs = 15;
+                var spinWait = new SpinWait();
+                
+                while (!_cancellationTokenSource.Token.IsCancellationRequested && _stillRunning)
                 {
                     try
                     {
-                        Thread.Sleep(10); // 10ms更新频率
+                        if (_sessions.IsEmpty)
+                        {
+                            Thread.Sleep(updateIntervalMs);
+                            continue;
+                        }
                         
-                        foreach (var session in _sessions.Keys)
+                        foreach (var session in _sessions)
                         {
                             if (session.IsActive)
                             {
@@ -81,17 +89,23 @@ namespace Ryujinx.Audio.Backends.Oboe
                                 session.UpdatePlaybackStatus(bufferedFrames);
                             }
                         }
+                        
+                        for (int i = 0; i < updateIntervalMs && !_cancellationTokenSource.Token.IsCancellationRequested && _stillRunning; i++)
+                        {
+                            spinWait.SpinOnce();
+                        }
                     }
                     catch (Exception ex)
                     {
                         Logger.Error?.Print(LogClass.Audio, $"Update thread error: {ex.Message}");
+                        Thread.Sleep(updateIntervalMs);
                     }
                 }
             })
             {
                 Name = "Audio.Oboe.UpdateThread",
                 IsBackground = true,
-                Priority = ThreadPriority.Normal
+                Priority = ThreadPriority.BelowNormal
             };
             _updateThread.Start();
         }
@@ -109,10 +123,26 @@ namespace Ryujinx.Audio.Backends.Oboe
                 if (disposing)
                 {
                     _stillRunning = false;
-                    _updateThread?.Join(100);
+                    _cancellationTokenSource.Cancel();
+                    
+                    try
+                    {
+                        _updateThread?.Join(100);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error?.Print(LogClass.Audio, $"Dispose error: {ex.Message}");
+                    }
                     
                     _pauseEvent?.Dispose();
                     _updateRequiredEvent?.Dispose();
+                    _cancellationTokenSource?.Dispose();
+                    
+                    foreach (var session in _sessions)
+                    {
+                        session?.Dispose();
+                    }
+                    _sessions.Clear();
                 }
                 _disposed = true;
             }
@@ -159,14 +189,50 @@ namespace Ryujinx.Audio.Backends.Oboe
             }
 
             var session = new OboeAudioSession(this, memoryManager, sampleFormat, sampleRate, channelCount);
-            _sessions.TryAdd(session, 0);
+            _sessions.Add(session);
             
             return session;
         }
 
         private bool Unregister(OboeAudioSession session) 
         {
-            return _sessions.TryRemove(session, out _);
+            try
+            {
+                var newBag = new ConcurrentBag<OboeAudioSession>();
+                bool found = false;
+                
+                foreach (var existingSession in _sessions)
+                {
+                    if (existingSession != session)
+                    {
+                        newBag.Add(existingSession);
+                    }
+                    else
+                    {
+                        found = true;
+                    }
+                }
+                
+                if (found)
+                {
+                    while (!_sessions.IsEmpty)
+                    {
+                        _sessions.TryTake(out _);
+                    }
+                    
+                    foreach (var sessionItem in newBag)
+                    {
+                        _sessions.Add(sessionItem);
+                    }
+                }
+                
+                return found;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Audio, $"Unregister session error: {ex.Message}");
+                return false;
+            }
         }
 
         // ========== 音频会话类 ==========
@@ -182,6 +248,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             private readonly uint _sampleRate;
             private readonly SampleFormat _sampleFormat;
             private readonly IntPtr _rendererPtr;
+            private readonly object _bufferLock = new object();
 
             public bool IsActive => _active;
 
@@ -273,6 +340,11 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
                 
                 _driver.Unregister(this);
+                
+                lock (_bufferLock)
+                {
+                    while (_queuedBuffers.TryDequeue(out _)) { }
+                }
             }
 
             public override void PrepareToClose() 
@@ -293,7 +365,10 @@ namespace Ryujinx.Audio.Backends.Oboe
                 if (_active)
                 {
                     _active = false;
-                    _queuedBuffers.Clear();
+                    lock (_bufferLock)
+                    {
+                        _queuedBuffers.Clear();
+                    }
                 }
             }
 
@@ -314,7 +389,10 @@ namespace Ryujinx.Audio.Backends.Oboe
                 if (writeSuccess)
                 {
                     ulong sampleCount = (ulong)(frameCount * _channelCount);
-                    _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, sampleCount));
+                    lock (_bufferLock)
+                    {
+                        _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, sampleCount));
+                    }
                     _totalWrittenSamples += sampleCount;
                 }
                 else
@@ -353,8 +431,11 @@ namespace Ryujinx.Audio.Backends.Oboe
 
             public override bool WasBufferFullyConsumed(AudioBuffer buffer)
             {
-                return !_queuedBuffers.TryPeek(out var driverBuffer) || 
-                       driverBuffer.DriverIdentifier != buffer.DataPointer;
+                lock (_bufferLock)
+                {
+                    return !_queuedBuffers.TryPeek(out var driverBuffer) || 
+                           driverBuffer.DriverIdentifier != buffer.DataPointer;
+                }
             }
 
             public override void SetVolume(float volume)
@@ -375,10 +456,13 @@ namespace Ryujinx.Audio.Backends.Oboe
 
             public override void UnregisterBuffer(AudioBuffer buffer)
             {
-                if (_queuedBuffers.TryPeek(out var driverBuffer) && 
-                    driverBuffer.DriverIdentifier == buffer.DataPointer)
+                lock (_bufferLock)
                 {
-                    _queuedBuffers.TryDequeue(out _);
+                    if (_queuedBuffers.TryPeek(out var driverBuffer) && 
+                        driverBuffer.DriverIdentifier == buffer.DataPointer)
+                    {
+                        _queuedBuffers.TryDequeue(out _);
+                    }
                 }
             }
         }
