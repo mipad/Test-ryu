@@ -1,3 +1,4 @@
+// LockFreeQueue.h - 修复版本
 /*
  * Copyright 2018 The Android Open Source Project
  *
@@ -29,7 +30,7 @@ public:
     static_assert(std::is_unsigned<INDEX_TYPE>::value, "Index type must be unsigned");
 
     bool pop(T &val) {
-        INDEX_TYPE currentRead = readCounter.load(std::memory_order_relaxed);
+        INDEX_TYPE currentRead = readCounter.load(std::memory_order_acquire);
         INDEX_TYPE currentWrite = writeCounter.load(std::memory_order_acquire);
         
         if (currentRead == currentWrite) {
@@ -42,7 +43,7 @@ public:
     }
 
     bool push(const T& item) {
-        INDEX_TYPE currentWrite = writeCounter.load(std::memory_order_relaxed);
+        INDEX_TYPE currentWrite = writeCounter.load(std::memory_order_acquire);
         INDEX_TYPE currentRead = readCounter.load(std::memory_order_acquire);
         
         if ((currentWrite - currentRead) == CAPACITY) {
@@ -55,7 +56,7 @@ public:
     }
 
     bool push(T&& item) {
-        INDEX_TYPE currentWrite = writeCounter.load(std::memory_order_relaxed);
+        INDEX_TYPE currentWrite = writeCounter.load(std::memory_order_acquire);
         INDEX_TYPE currentRead = readCounter.load(std::memory_order_acquire);
         
         if ((currentWrite - currentRead) == CAPACITY) {
