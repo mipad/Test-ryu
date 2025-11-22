@@ -1,21 +1,18 @@
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
+#include <thread>
 
 namespace RyujinxOboe {
 
 OboeAudioRenderer::OboeAudioRenderer() {
     m_audio_callback = std::make_unique<AAudioExclusiveCallback>(this);
     m_error_callback = std::make_unique<AAudioExclusiveErrorCallback>(this);
+    PreallocateBlocks(64);
 }
 
 OboeAudioRenderer::~OboeAudioRenderer() {
     Shutdown();
-}
-
-OboeAudioRenderer& OboeAudioRenderer::GetInstance() {
-    static OboeAudioRenderer instance;
-    return instance;
 }
 
 bool OboeAudioRenderer::Initialize(int32_t sampleRate, int32_t channelCount) {
@@ -40,7 +37,7 @@ bool OboeAudioRenderer::InitializeWithFormat(int32_t sampleRate, int32_t channel
     m_sample_format.store(sampleFormat);
     m_oboe_format = MapSampleFormat(sampleFormat);
     
-    if (!ConfigureAndOpenStream()) {
+    if (!TryOpenStreamWithRetry(3)) {
         return false;
     }
     
@@ -83,6 +80,19 @@ void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& bu
     builder.setChannelCount(channel_count)
            ->setChannelMask(channel_mask)
            ->setChannelConversionAllowed(true);
+}
+
+bool OboeAudioRenderer::TryOpenStreamWithRetry(int maxRetryCount) {
+    for (int attempt = 0; attempt < maxRetryCount; ++attempt) {
+        if (ConfigureAndOpenStream()) {
+            return true;
+        }
+        
+        if (attempt < maxRetryCount - 1) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50 * (1 << attempt)));
+        }
+    }
+    return false;
 }
 
 bool OboeAudioRenderer::ConfigureAndOpenStream() {
@@ -175,7 +185,19 @@ bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int3
         if (!block) return false;
         
         size_t copy_size = std::min(bytes_remaining, AudioBlock::BLOCK_SIZE);
-        std::memcpy(block->data, byte_data + bytes_processed, copy_size);
+        
+        if (sampleFormat == PCM_INT16) {
+            const int16_t* src = reinterpret_cast<const int16_t*>(byte_data + bytes_processed);
+            int16_t* dst = reinterpret_cast<int16_t*>(block->data);
+            std::memcpy(dst, src, copy_size);
+        } else if (sampleFormat == PCM_FLOAT) {
+            const float* src = reinterpret_cast<const float*>(byte_data + bytes_processed);
+            float* dst = reinterpret_cast<float*>(block->data);
+            std::memcpy(dst, src, copy_size);
+        } else {
+            std::memcpy(block->data, byte_data + bytes_processed, copy_size);
+        }
+        
         block->data_size = copy_size;
         block->data_played = 0;
         block->sample_format = sampleFormat;
@@ -224,6 +246,10 @@ void OboeAudioRenderer::Reset() {
     
     CloseStream();
     ConfigureAndOpenStream();
+}
+
+void OboeAudioRenderer::PreallocateBlocks(size_t count) {
+    m_object_pool.preallocate(count);
 }
 
 oboe::AudioFormat OboeAudioRenderer::MapSampleFormat(int32_t format) {
