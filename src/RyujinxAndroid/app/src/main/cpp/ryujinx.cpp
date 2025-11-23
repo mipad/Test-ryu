@@ -254,6 +254,12 @@ Java_org_ryujinx_android_NativeHelpers_resetOboeRenderer(JNIEnv *env, jobject th
     }
 }
 
+JNIEXPORT jlong JNICALL
+Java_org_ryujinx_android_NativeHelpers_getOboeRendererOutputLatency(JNIEnv *env, jobject thiz, jlong renderer_ptr) {
+    auto renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer_ptr);
+    return renderer ? static_cast<jlong>(renderer->GetCurrentOutputLatency()) : 0;
+}
+
 JNIEXPORT jstring JNICALL
 Java_org_ryujinx_android_NativeHelpers_getAndroidDeviceModel(JNIEnv *env, jobject thiz) {
     char model[PROP_VALUE_MAX];
@@ -333,6 +339,11 @@ void resetOboeRenderer(void* renderer) {
     if (oboe_renderer) {
         oboe_renderer->Reset();
     }
+}
+
+long getOboeRendererOutputLatency(void* renderer) {
+    auto oboe_renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer);
+    return oboe_renderer ? static_cast<long>(oboe_renderer->GetCurrentOutputLatency()) : 0;
 }
 
 const char* GetAndroidDeviceModel() {
