@@ -5,6 +5,13 @@ package org.ryujinx.android.views
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.VideogameAsset
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -19,10 +26,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.Dialog
 import compose.icons.CssGgIcons
 import compose.icons.cssggicons.ToolbarBottom
 import org.ryujinx.android.GameController
@@ -76,10 +84,18 @@ class GameViews {
             val showRam = remember { mutableStateOf(initialStatsSettings.showRam) }
             val showBatteryTemperature = remember { mutableStateOf(initialStatsSettings.showBatteryTemperature) }
             val showBatteryLevel = remember { mutableStateOf(initialStatsSettings.showBatteryLevel) }
-            val showFifo = remember { mutableStateOf(initialStatsSettings.showFifo) } // 添加FIFO显示状态
+            val showFifo = remember { mutableStateOf(initialStatsSettings.showFifo) }
 
             // 编辑模式状态
             val isEditing = remember { mutableStateOf(false) }
+
+            // 侧边菜单状态
+            val showSideMenu = remember { mutableStateOf(false) }
+
+            // 对话框状态
+            val showPerformanceSettings = remember { mutableStateOf(false) }
+            val showAdjustControlsDialog = remember { mutableStateOf(false) }
+            val showExitConfirmDialog = remember { mutableStateOf(false) }
 
             Box(modifier = Modifier.fillMaxSize()) {
                 if (showStats.value) {
@@ -101,15 +117,6 @@ class GameViews {
                 }
                 val enableMotion = remember {
                     mutableStateOf(QuickSettings(mainViewModel.activity).enableMotion)
-                }
-                val showMore = remember {
-                    mutableStateOf(false)
-                }
-                val showPerformanceSettings = remember {
-                    mutableStateOf(false)
-                }
-                val showAdjustControlsDialog = remember {
-                    mutableStateOf(false)
                 }
 
                 val showLoading = remember {
@@ -169,151 +176,83 @@ class GameViews {
                         }
                     }) {
                 }
-                if (!showLoading.value) {
-                    GameController.Compose(mainViewModel)
 
-                    Row(
+                // 点击外部关闭侧边菜单
+                if (showSideMenu.value) {
+                    Surface(
+                        color = Color.Transparent,
                         modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(8.dp)
-                    ) {
-                        IconButton(modifier = Modifier.padding(4.dp), onClick = {
-                            showMore.value = true
-                        }) {
-                            Icon(
-                                imageVector = CssGgIcons.ToolbarBottom,
-                                contentDescription = "Open Panel"
-                            )
-                        }
-                    }
-
-                    if (showMore.value) {
-                        Popup(
-                            alignment = Alignment.BottomCenter,
-                            onDismissRequest = { showMore.value = false }) {
-                            Surface(
-                                modifier = Modifier.padding(16.dp),
-                                shape = MaterialTheme.shapes.medium
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 16.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = "Enable Motion",
-                                            modifier = Modifier
-                                                .align(Alignment.CenterVertically)
-                                                .padding(end = 16.dp)
-                                        )
-                                        Switch(checked = enableMotion.value, onCheckedChange = {
-                                            showMore.value = false
-                                            enableMotion.value = !enableMotion.value
-                                            val settings = QuickSettings(mainViewModel.activity)
-                                            settings.enableMotion = enableMotion.value
-                                            settings.save()
-                                            if (enableMotion.value)
-                                                mainViewModel.motionSensorManager?.register()
-                                            else
-                                                mainViewModel.motionSensorManager?.unregister()
-                                        })
-                                    }
-                                    Row(
-                                        modifier = Modifier.padding(8.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        IconButton(modifier = Modifier.padding(4.dp), onClick = {
-                                            showMore.value = false
-                                            showController.value = !showController.value
-                                            RyujinxNative.jnaInstance.inputReleaseTouchPoint()
-                                            mainViewModel.controller?.setVisible(showController.value)
-                                        }) {
-                                            Icon(
-                                                imageVector = Icons.videoGame(),
-                                                contentDescription = "Toggle Virtual Pad"
-                                            )
-                                        }
-                                        IconButton(modifier = Modifier.padding(4.dp), onClick = {
-                                            showMore.value = false
-                                            enableVsync.value = !enableVsync.value
-                                            RyujinxNative.jnaInstance.graphicsRendererSetVsync(
-                                                enableVsync.value
-                                            )
-                                        }) {
-                                            Icon(
-                                                imageVector = Icons.vSync(),
-                                                tint = if (enableVsync.value) Color.Green else Color.Red,
-                                                contentDescription = "Toggle VSync"
-                                            )
-                                        }
-                                        // 编辑按钮 - 使用文本表情符号
-                                        IconButton(modifier = Modifier.padding(4.dp), onClick = {
-                                            showMore.value = false
-                                            isEditing.value = true
-                                            mainViewModel.controller?.setEditingMode(true)
-                                        }) {
-                                            Text(
-                                                text = "✏️", // 编辑表情符号
-                                                fontSize = 20.sp
-                                            )
-                                        }
-                                        // 性能设置图标
-                                        IconButton(modifier = Modifier.padding(4.dp), onClick = {
-                                            showMore.value = false
-                                            showPerformanceSettings.value = true
-                                        }) {
-                                            Icon(
-                                                imageVector = Icons.stats(),
-                                                tint = if (showStats.value) Color.Green else Color.Red,
-                                                contentDescription = "Performance Settings"
-                                            )
-                                        }
-                                        // 调整按键图标
-                                        IconButton(modifier = Modifier.padding(4.dp), onClick = {
-                                            showMore.value = false
-                                            showAdjustControlsDialog.value = true
-                                        }) {
-                                            Text(
-                                                text = "🎮", // 游戏手柄表情符号
-                                                fontSize = 20.sp
-                                            )
+                            .fillMaxSize()
+                            .pointerInput(Unit) {
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        if (event.type == PointerEventType.Press) {
+                                            showSideMenu.value = false
                                         }
                                     }
                                 }
                             }
-                        }
-                    }
+                    ) {}
+                }
 
-                    // 性能设置对话框
-                    if (showPerformanceSettings.value) {
-                        PerformanceSettingsDialog(
+                if (!showLoading.value) {
+                    GameController.Compose(mainViewModel)
+
+                    // 侧边菜单
+                    if (showSideMenu.value) {
+                        SideMenu(
                             mainViewModel = mainViewModel,
-                            showStats = showStats,
-                            showFps = showFps,
-                            showRam = showRam,
-                            showBatteryTemperature = showBatteryTemperature,
-                            showBatteryLevel = showBatteryLevel,
-                            showFifo = showFifo,
-                            onDismiss = { showPerformanceSettings.value = false }
+                            showController = showController,
+                            enableVsync = enableVsync,
+                            enableMotion = enableMotion,
+                            isEditing = isEditing,
+                            showPerformanceSettings = showPerformanceSettings,
+                            showAdjustControlsDialog = showAdjustControlsDialog,
+                            showExitConfirmDialog = showExitConfirmDialog,
+                            onDismiss = { showSideMenu.value = false }
                         )
                     }
 
-                    // 调整按键对话框 - 现在使用 ControlEditViews 中的实现
-                    if (showAdjustControlsDialog.value) {
-                        ControlEditViews.AdjustControlsDialog(
-                            mainViewModel = mainViewModel,
-                            onDismiss = { showAdjustControlsDialog.value = false }
-                        )
+                    // 返回键处理 - 打开侧边菜单
+                    BackHandler(enabled = !showSideMenu.value) {
+                        showSideMenu.value = true
+                    }
+
+                    // 返回键处理 - 关闭侧边菜单
+                    BackHandler(enabled = showSideMenu.value) {
+                        showSideMenu.value = false
                     }
                 }
 
-                val showBackNotice = remember {
-                    mutableStateOf(false)
+                // 性能设置对话框
+                if (showPerformanceSettings.value) {
+                    PerformanceSettingsDialog(
+                        mainViewModel = mainViewModel,
+                        showStats = showStats,
+                        showFps = showFps,
+                        showRam = showRam,
+                        showBatteryTemperature = showBatteryTemperature,
+                        showBatteryLevel = showBatteryLevel,
+                        showFifo = showFifo,
+                        onDismiss = { showPerformanceSettings.value = false }
+                    )
                 }
 
-                BackHandler {
-                    showBackNotice.value = true
+                // 调整按键对话框
+                if (showAdjustControlsDialog.value) {
+                    ControlEditViews.AdjustControlsDialog(
+                        mainViewModel = mainViewModel,
+                        onDismiss = { showAdjustControlsDialog.value = false }
+                    )
+                }
+
+                // 退出确认对话框
+                if (showExitConfirmDialog.value) {
+                    ExitConfirmDialog(
+                        mainViewModel = mainViewModel,
+                        onDismiss = { showExitConfirmDialog.value = false }
+                    )
                 }
 
                 if (showLoading.value) {
@@ -347,54 +286,6 @@ class GameViews {
                                         .padding(top = 16.dp)
                                 )
                         }
-
-                    }
-                }
-
-                if (showBackNotice.value) {
-                    BasicAlertDialog(onDismissRequest = { showBackNotice.value = false }) {
-                        Column {
-                            Surface(
-                                modifier = Modifier
-                                    .wrapContentWidth()
-                                    .wrapContentHeight(),
-                                shape = MaterialTheme.shapes.large,
-                                tonalElevation = AlertDialogDefaults.TonalElevation
-                            ) {
-                                Column {
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(16.dp)
-                                    ) {
-                                        Text(text = "Are you sure you want to exit the game?")
-                                        Text(text = "All unsaved data will be lost!")
-                                    }
-                                    Row(
-                                        horizontalArrangement = Arrangement.End,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(16.dp)
-                                    ) {
-                                        Button(onClick = {
-                                            showBackNotice.value = false
-                                            mainViewModel.closeGame()
-                                            mainViewModel.activity.setFullScreen(false)
-                                            mainViewModel.navController?.popBackStack()
-                                            mainViewModel.activity.isGameRunning = false
-                                        }, modifier = Modifier.padding(16.dp)) {
-                                            Text(text = "Exit Game")
-                                        }
-
-                                        Button(onClick = {
-                                            showBackNotice.value = false
-                                        }, modifier = Modifier.padding(16.dp)) {
-                                            Text(text = "Dismiss")
-                                        }
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
 
@@ -402,6 +293,284 @@ class GameViews {
             }
         }
 
+        @Composable
+        fun SideMenu(
+            mainViewModel: MainViewModel,
+            showController: androidx.compose.runtime.MutableState<Boolean>,
+            enableVsync: androidx.compose.runtime.MutableState<Boolean>,
+            enableMotion: androidx.compose.runtime.MutableState<Boolean>,
+            isEditing: androidx.compose.runtime.MutableState<Boolean>,
+            showPerformanceSettings: androidx.compose.runtime.MutableState<Boolean>,
+            showAdjustControlsDialog: androidx.compose.runtime.MutableState<Boolean>,
+            showExitConfirmDialog: androidx.compose.runtime.MutableState<Boolean>,
+            onDismiss: () -> Unit
+        ) {
+            // 获取当前游戏标题
+            val gameTitle = mainViewModel.gameModel?.title ?: "Unknown Game"
+
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(280.dp)
+                    .background(
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                        MaterialTheme.shapes.medium
+                    )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    // 游戏标题
+                    Text(
+                        text = gameTitle,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    )
+
+                    HorizontalDivider()
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // 菜单项
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp)
+                    ) {
+                        // Enable Motion
+                        SideMenuItem(
+                            icon = Icons.Default.Tune,
+                            text = "Enable Motion",
+                            trailingContent = {
+                                Switch(
+                                    checked = enableMotion.value,
+                                    onCheckedChange = {
+                                        enableMotion.value = it
+                                        val settings = QuickSettings(mainViewModel.activity)
+                                        settings.enableMotion = enableMotion.value
+                                        settings.save()
+                                        if (enableMotion.value)
+                                            mainViewModel.motionSensorManager?.register()
+                                        else
+                                            mainViewModel.motionSensorManager?.unregister()
+                                    },
+                                    modifier = Modifier.size(width = 36.dp, height = 24.dp)
+                                )
+                            },
+                            onClick = { /* 开关已处理 */ }
+                        )
+
+                        // 虚拟手柄开关
+                        SideMenuItem(
+                            icon = Icons.Default.VideogameAsset,
+                            text = "Virtual Controller",
+                            onClick = {
+                                onDismiss()
+                                showController.value = !showController.value
+                                RyujinxNative.jnaInstance.inputReleaseTouchPoint()
+                                mainViewModel.controller?.setVisible(showController.value)
+                            }
+                        )
+
+                        // VSync 开关
+                        SideMenuItem(
+                            icon = Icons.vSync(),
+                            text = "VSync",
+                            trailingContent = {
+                                Icon(
+                                    imageVector = Icons.vSync(),
+                                    tint = if (enableVsync.value) Color.Green else Color.Red,
+                                    contentDescription = "VSync"
+                                )
+                            },
+                            onClick = {
+                                onDismiss()
+                                enableVsync.value = !enableVsync.value
+                                RyujinxNative.jnaInstance.graphicsRendererSetVsync(
+                                    enableVsync.value
+                                )
+                            }
+                        )
+
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                        // 编辑模式
+                        SideMenuItem(
+                            icon = null,
+                            text = "✏️ Edit Mode",
+                            onClick = {
+                                onDismiss()
+                                isEditing.value = true
+                                mainViewModel.controller?.setEditingMode(true)
+                            }
+                        )
+
+                        // 性能设置
+                        SideMenuItem(
+                            icon = Icons.stats(),
+                            text = "Performance Settings",
+                            onClick = {
+                                onDismiss()
+                                showPerformanceSettings.value = true
+                            }
+                        )
+
+                        // 调整按键
+                        SideMenuItem(
+                            icon = null,
+                            text = "🎮 Adjust Controls",
+                            onClick = {
+                                onDismiss()
+                                showAdjustControlsDialog.value = true
+                            }
+                        )
+
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                        // 退出游戏
+                        SideMenuItem(
+                            icon = Icons.Default.ExitToApp,
+                            text = "Exit Game",
+                            onClick = {
+                                onDismiss()
+                                showExitConfirmDialog.value = true
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        @Composable
+        fun SideMenuItem(
+            icon: Any?, // 可以是 ImageVector 或 null（用于表情符号）
+            text: String,
+            trailingContent: @Composable (() -> Unit)? = null,
+            onClick: () -> Unit
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                color = Color.Transparent,
+                onClick = onClick
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        when {
+                            icon is androidx.compose.ui.graphics.vector.ImageVector -> {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .padding(end = 12.dp)
+                                )
+                            }
+                            icon == null && text.contains(Regex("[\\p{So}\\p{Cn}]")) -> {
+                                // 使用表情符号
+                                Text(
+                                    text = text.substring(0, 2), // 取前两个字符（表情符号）
+                                    fontSize = 20.sp,
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .padding(end = 12.dp)
+                                )
+                            }
+                            else -> {
+                                Spacer(modifier = Modifier.size(24.dp).padding(end = 12.dp))
+                            }
+                        }
+                        
+                        Text(
+                            text = if (icon == null && text.contains(Regex("[\\p{So}\\p{Cn}]"))) {
+                                text.substring(2).trim() // 移除表情符号部分
+                            } else {
+                                text
+                            },
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    
+                    trailingContent?.invoke() ?: Icon(
+                        imageVector = Icons.Default.ArrowForwardIos,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        }
+
+        @Composable
+        fun ExitConfirmDialog(
+            mainViewModel: MainViewModel,
+            onDismiss: () -> Unit
+        ) {
+            Dialog(onDismissRequest = onDismiss) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth(0.8f)
+                        .wrapContentHeight(),
+                    shape = MaterialTheme.shapes.large,
+                    tonalElevation = AlertDialogDefaults.TonalElevation
+                ) {
+                    Column {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp)
+                        ) {
+                            Text(
+                                text = "Exit Game?",
+                                style = MaterialTheme.typography.headlineSmall
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(text = "Are you sure you want to exit the game?")
+                            Text(text = "All unsaved data will be lost!")
+                        }
+                        Row(
+                            horizontalArrangement = Arrangement.End,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp)
+                        ) {
+                            TextButton(
+                                onClick = onDismiss,
+                                modifier = Modifier.padding(end = 8.dp)
+                            ) {
+                                Text(text = "Cancel")
+                            }
+                            Button(
+                                onClick = {
+                                    onDismiss()
+                                    mainViewModel.closeGame()
+                                    mainViewModel.activity.setFullScreen(false)
+                                    mainViewModel.navController?.popBackStack()
+                                    mainViewModel.activity.isGameRunning = false
+                                }
+                            ) {
+                                Text(text = "Exit")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ... 保留 PerformanceSettingsDialog 和 GameStats 函数（保持不变）
         @Composable
         fun PerformanceSettingsDialog(
             mainViewModel: MainViewModel,
@@ -426,7 +595,7 @@ class GameViews {
                 mainViewModel.savePerformanceStatsSettings(settings)
             }
 
-            BasicAlertDialog(onDismissRequest = onDismiss) {
+            Dialog(onDismissRequest = onDismiss) {
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth(0.8f)
@@ -665,7 +834,6 @@ class GameViews {
                                             color = Color.Black.copy(alpha = 0.26f),
                                             shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
                                         )
-                                        //.padding(horizontal = 4.dp, vertical = 2.dp)
                                 )
                             }
                         }
@@ -682,7 +850,6 @@ class GameViews {
                                             color = Color.Black.copy(alpha = 0.26f),
                                             shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
                                         )
-                                        //.padding(horizontal = 4.dp, vertical = 2.dp)
                                 )
                             }
                         }
@@ -699,7 +866,6 @@ class GameViews {
                                             color = Color.Black.copy(alpha = 0.26f),
                                             shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
                                         )
-                                        //.padding(horizontal = 4.dp, vertical = 2.dp)
                                 )
                             }
                         }
