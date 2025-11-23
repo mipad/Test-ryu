@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (多实例架构 + DirectByteBuffer)
+// OboeHardwareDeviceDriver.cs (多实例架构 + 共享内存)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -30,20 +30,6 @@ namespace Ryujinx.Audio.Backends.Oboe
         [DllImport("libryujinxjni", EntryPoint = "writeOboeRendererAudioRaw")]
         private static extern bool writeOboeRendererAudioRaw(IntPtr renderer, byte[] audioData, int num_frames, int sample_format);
 
-        // 新增：DirectByteBuffer 写入接口
-        [DllImport("libryujinxjni", EntryPoint = "writeOboeRendererDirect")]
-        private static extern bool writeOboeRendererDirect(IntPtr renderer, IntPtr direct_buffer, int num_frames, int sample_format);
-
-        // 新增：共享内存管理接口
-        [DllImport("libryujinxjni", EntryPoint = "allocateSharedMemory")]
-        private static extern long allocateSharedMemory(int size);
-
-        [DllImport("libryujinxjni", EntryPoint = "freeSharedMemory")]
-        private static extern void freeSharedMemory(long ptr);
-
-        [DllImport("libryujinxjni", EntryPoint = "createDirectBuffer")]
-        private static extern IntPtr createDirectBuffer(long ptr, int size);
-
         [DllImport("libryujinxjni", EntryPoint = "setOboeRendererVolume")]
         private static extern void setOboeRendererVolume(IntPtr renderer, float volume);
 
@@ -59,6 +45,19 @@ namespace Ryujinx.Audio.Backends.Oboe
         [DllImport("libryujinxjni", EntryPoint = "resetOboeRenderer")]
         private static extern void resetOboeRenderer(IntPtr renderer);
 
+        // ========== 共享内存 P/Invoke ==========
+        [DllImport("libryujinxjni", EntryPoint = "initSharedAudioMemory")]
+        private static extern bool initSharedAudioMemory(int size);
+
+        [DllImport("libryujinxjni", EntryPoint = "getSharedAudioMemoryAddr")]
+        private static extern long getSharedAudioMemoryAddr();
+
+        [DllImport("libryujinxjni", EntryPoint = "writeSharedAudioData")]
+        private static extern void writeSharedAudioData(IntPtr renderer, int data_size, int sample_rate, int channels, int sample_format);
+
+        [DllImport("libryujinxjni", EntryPoint = "getSharedAudioAvailable")]
+        private static extern int getSharedAudioAvailable();
+
         // ========== 属性 ==========
         public static bool IsSupported => true;
 
@@ -69,12 +68,63 @@ namespace Ryujinx.Audio.Backends.Oboe
         private Thread _updateThread;
         private bool _stillRunning = true;
 
+        // 共享内存相关
+        private const int SHARED_MEMORY_SIZE = 2 * 1024 * 1024; // 2MB 共享内存
+        private bool _sharedMemoryInitialized = false;
+        private unsafe SharedAudioHeader* _sharedMemoryHeader;
+        private byte* _sharedAudioData;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private unsafe struct SharedAudioHeader
+        {
+            public uint write_pos;
+            public uint read_pos;
+            public uint data_size;
+            public uint buffer_size;
+            public uint sample_rate;
+            public uint channels;
+            public uint sample_format;
+        }
+
         public float Volume { get; set; } = 1.0f;
 
         // ========== 构造与生命周期 ==========
         public OboeHardwareDeviceDriver()
         {
+            InitializeSharedMemory();
             StartUpdateThread();
+        }
+
+        private void InitializeSharedMemory()
+        {
+            try
+            {
+                if (initSharedAudioMemory(SHARED_MEMORY_SIZE))
+                {
+                    long sharedMemAddr = getSharedAudioMemoryAddr();
+                    if (sharedMemAddr != 0)
+                    {
+                        unsafe
+                        {
+                            _sharedMemoryHeader = (SharedAudioHeader*)sharedMemAddr;
+                            _sharedAudioData = (byte*)(sharedMemAddr + sizeof(SharedAudioHeader));
+                            
+                            _sharedMemoryHeader->write_pos = 0;
+                            _sharedMemoryHeader->read_pos = 0;
+                            _sharedMemoryHeader->data_size = 0;
+                            _sharedMemoryHeader->buffer_size = (uint)(SHARED_MEMORY_SIZE - sizeof(SharedAudioHeader));
+                            
+                            _sharedMemoryInitialized = true;
+                            Logger.Info?.Print(LogClass.Audio, "Shared audio memory initialized successfully");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Audio, $"Failed to initialize shared audio memory: {ex.Message}");
+                _sharedMemoryInitialized = false;
+            }
         }
 
         private void StartUpdateThread()
@@ -172,7 +222,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 sampleRate = 48000;
             }
 
-            var session = new OboeAudioSession(this, memoryManager, sampleFormat, sampleRate, channelCount);
+            var session = new OboeAudioSession(this, memoryManager, sampleFormat, sampleRate, channelCount, _sharedMemoryInitialized);
             _sessions.TryAdd(session, 0);
             
             return session;
@@ -183,7 +233,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             return _sessions.TryRemove(session, out _);
         }
 
-        // ========== 音频会话类 (使用 DirectByteBuffer) ==========
+        // ========== 音频会话类 ==========
         private class OboeAudioSession : HardwareDeviceSessionOutputBase
         {
             private readonly OboeHardwareDeviceDriver _driver;
@@ -196,12 +246,12 @@ namespace Ryujinx.Audio.Backends.Oboe
             private readonly uint _sampleRate;
             private readonly SampleFormat _sampleFormat;
             private readonly IntPtr _rendererPtr;
-            
-            // DirectByteBuffer 相关字段
-            private readonly IntPtr _directBuffer;
-            private readonly long _sharedMemoryPtr;
-            private readonly int _bufferSize;
-            private readonly object _bufferLock = new object();
+            private readonly bool _useSharedMemory;
+
+            // 共享内存相关
+            private unsafe SharedAudioHeader* _sharedHeader;
+            private unsafe byte* _sharedData;
+            private readonly object _sharedMemoryLock = new object();
 
             public bool IsActive => _active;
 
@@ -210,7 +260,8 @@ namespace Ryujinx.Audio.Backends.Oboe
                 IVirtualMemoryManager memoryManager,
                 SampleFormat sampleFormat,
                 uint sampleRate,
-                uint channelCount) 
+                uint channelCount,
+                bool useSharedMemory) 
                 : base(memoryManager, sampleFormat, sampleRate, channelCount)
             {
                 _driver = driver;
@@ -218,6 +269,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 _sampleRate = sampleRate;
                 _sampleFormat = sampleFormat;
                 _volume = 1.0f;
+                _useSharedMemory = useSharedMemory;
                 
                 // 创建独立的渲染器实例
                 _rendererPtr = createOboeRenderer();
@@ -236,30 +288,24 @@ namespace Ryujinx.Audio.Backends.Oboe
 
                 setOboeRendererVolume(_rendererPtr, _volume);
 
-                // 初始化共享内存和 DirectByteBuffer
-                _bufferSize = CalculateOptimalBufferSize(sampleRate, channelCount, sampleFormat);
-                _sharedMemoryPtr = allocateSharedMemory(_bufferSize);
-                if (_sharedMemoryPtr == 0)
+                // 初始化共享内存
+                if (_useSharedMemory)
                 {
-                    destroyOboeRenderer(_rendererPtr);
-                    throw new Exception("Failed to allocate shared memory for audio");
+                    unsafe
+                    {
+                        long sharedMemAddr = getSharedAudioMemoryAddr();
+                        if (sharedMemAddr != 0)
+                        {
+                            _sharedHeader = (SharedAudioHeader*)sharedMemAddr;
+                            _sharedData = (byte*)(sharedMemAddr + sizeof(SharedAudioHeader));
+                            
+                            // 更新音频参数到共享内存头
+                            _sharedHeader->sample_rate = sampleRate;
+                            _sharedHeader->channels = channelCount;
+                            _sharedHeader->sample_format = (uint)formatValue;
+                        }
+                    }
                 }
-
-                _directBuffer = createDirectBuffer(_sharedMemoryPtr, _bufferSize);
-                if (_directBuffer == IntPtr.Zero)
-                {
-                    freeSharedMemory(_sharedMemoryPtr);
-                    destroyOboeRenderer(_rendererPtr);
-                    throw new Exception("Failed to create DirectByteBuffer for audio");
-                }
-            }
-
-            private int CalculateOptimalBufferSize(uint sampleRate, uint channelCount, SampleFormat format)
-            {
-                int bytesPerSample = GetBytesPerSample(format);
-                // 预分配 100ms 的音频数据缓冲区
-                int framesPer100ms = (int)(sampleRate * 0.1f);
-                return framesPer100ms * (int)channelCount * bytesPerSample;
             }
 
             public int GetBufferedFrames()
@@ -317,12 +363,6 @@ namespace Ryujinx.Audio.Backends.Oboe
                     destroyOboeRenderer(_rendererPtr);
                 }
                 
-                // 释放共享内存
-                if (_sharedMemoryPtr != 0)
-                {
-                    freeSharedMemory(_sharedMemoryPtr);
-                }
-                
                 _driver.Unregister(this);
             }
 
@@ -358,70 +398,97 @@ namespace Ryujinx.Audio.Backends.Oboe
                 int bytesPerSample = GetBytesPerSample(_sampleFormat);
                 int frameCount = buffer.Data.Length / (bytesPerSample * _channelCount);
 
-                bool writeSuccess = false;
-
-                // 使用 DirectByteBuffer 写入数据
-                lock (_bufferLock)
+                if (_useSharedMemory)
                 {
-                    // 检查缓冲区大小是否足够
-                    if (buffer.Data.Length <= _bufferSize)
-                    {
-                        try
-                        {
-                            // 将数据拷贝到共享内存
-                            Marshal.Copy(buffer.Data, 0, _directBuffer, buffer.Data.Length);
-                            
-                            // 使用 DirectByteBuffer 写入音频数据
-                            int formatValue = SampleFormatToInt(_sampleFormat);
-                            writeSuccess = writeOboeRendererDirect(_rendererPtr, _directBuffer, frameCount, formatValue);
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.Warning?.Print(LogClass.Audio, $"Direct buffer write failed: {ex.Message}");
-                            writeSuccess = false;
-                        }
-                    }
-                }
-
-                // 如果 DirectByteBuffer 写入失败，回退到传统方式
-                if (!writeSuccess)
-                {
-                    int formatValue = SampleFormatToInt(_sampleFormat);
-                    writeSuccess = writeOboeRendererAudioRaw(_rendererPtr, buffer.Data, frameCount, formatValue);
-                }
-
-                if (writeSuccess)
-                {
-                    ulong sampleCount = (ulong)(frameCount * _channelCount);
-                    _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, sampleCount));
-                    _totalWrittenSamples += sampleCount;
+                    // 使用共享内存路径
+                    WriteToSharedMemory(buffer.Data, frameCount);
                 }
                 else
                 {
-                    Logger.Warning?.Print(LogClass.Audio, 
-                        $"Audio write failed: {frameCount} frames dropped, Format={_sampleFormat}, Rate={_sampleRate}Hz, Buffered={GetBufferedFrames()} frames");
-                    
-                    // 增加重试机制
-                    for (int i = 0; i < 2 && !writeSuccess; i++)
+                    // 传统路径
+                    int formatValue = SampleFormatToInt(_sampleFormat);
+                    bool writeSuccess = writeOboeRendererAudioRaw(_rendererPtr, buffer.Data, frameCount, formatValue);
+
+                    if (writeSuccess)
                     {
-                        Thread.Sleep(1);
-                        int formatValue = SampleFormatToInt(_sampleFormat);
-                        writeSuccess = writeOboeRendererAudioRaw(_rendererPtr, buffer.Data, frameCount, formatValue);
-                        
-                        if (writeSuccess)
-                        {
-                            ulong sampleCount = (ulong)(frameCount * _channelCount);
-                            _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, sampleCount));
-                            _totalWrittenSamples += sampleCount;
-                            break;
-                        }
+                        ulong sampleCount = (ulong)(frameCount * _channelCount);
+                        _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, sampleCount));
+                        _totalWrittenSamples += sampleCount;
                     }
-                    
-                    if (!writeSuccess)
+                    else
                     {
-                        Logger.Warning?.Print(LogClass.Audio, "Audio write failed after retries, resetting renderer");
+                        Logger.Warning?.Print(LogClass.Audio, 
+                            $"Audio write failed: {frameCount} frames dropped, Format={_sampleFormat}, Rate={_sampleRate}Hz");
+                        
+                        // 重置渲染器
                         resetOboeRenderer(_rendererPtr);
                     }
+                }
+            }
+
+            private unsafe void WriteToSharedMemory(byte[] audioData, int frameCount)
+            {
+                lock (_sharedMemoryLock)
+                {
+                    if (_sharedHeader == null || _sharedData == null) return;
+
+                    int dataSize = audioData.Length;
+                    uint bufferSize = _sharedHeader->buffer_size;
+                    uint writePos = _sharedHeader->write_pos;
+                    uint readPos = _sharedHeader->read_pos;
+                    uint currentDataSize = _sharedHeader->data_size;
+
+                    // 检查可用空间
+                    uint availableSpace = bufferSize - currentDataSize;
+                    if (availableSpace < dataSize)
+                    {
+                        // 缓冲区不足，等待空间释放
+                        int waitCount = 0;
+                        while (availableSpace < dataSize && waitCount < 50) // 最多等待5ms
+                        {
+                            Thread.Sleep(100); // 100us
+                            availableSpace = bufferSize - _sharedHeader->data_size;
+                            waitCount++;
+                        }
+
+                        if (availableSpace < dataSize)
+                        {
+                            Logger.Warning?.Print(LogClass.Audio, 
+                                $"Shared audio buffer overflow: need {dataSize}, available {availableSpace}");
+                            return;
+                        }
+                    }
+
+                    // 写入数据到环形缓冲区
+                    if (writePos + dataSize <= bufferSize)
+                    {
+                        Marshal.Copy(audioData, 0, (IntPtr)(_sharedData + writePos), dataSize);
+                        writePos += (uint)dataSize;
+                        if (writePos == bufferSize)
+                        {
+                            writePos = 0;
+                        }
+                    }
+                    else
+                    {
+                        uint firstPart = bufferSize - writePos;
+                        Marshal.Copy(audioData, 0, (IntPtr)(_sharedData + writePos), (int)firstPart);
+                        Marshal.Copy(audioData, (int)firstPart, (IntPtr)_sharedData, dataSize - (int)firstPart);
+                        writePos = (uint)(dataSize - firstPart);
+                    }
+
+                    // 更新共享内存头
+                    _sharedHeader->write_pos = writePos;
+                    _sharedHeader->data_size = currentDataSize + (uint)dataSize;
+
+                    // 通知Native端有新数据
+                    int formatValue = SampleFormatToInt(_sampleFormat);
+                    writeSharedAudioData(_rendererPtr, dataSize, (int)_sampleRate, _channelCount, formatValue);
+
+                    // 更新本地队列状态
+                    ulong sampleCount = (ulong)(frameCount * _channelCount);
+                    _queuedBuffers.Enqueue(new OboeAudioBuffer((ulong)audioData.Length, sampleCount));
+                    _totalWrittenSamples += sampleCount;
                 }
             }
 
@@ -452,7 +519,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             public override bool WasBufferFullyConsumed(AudioBuffer buffer)
             {
                 return !_queuedBuffers.TryPeek(out var driverBuffer) || 
-                       driverBuffer.DriverIdentifier != buffer.DataPointer;
+                       driverBuffer.DriverIdentifier != (ulong)buffer.Data.Length;
             }
 
             public override void SetVolume(float volume)
@@ -474,7 +541,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             public override void UnregisterBuffer(AudioBuffer buffer)
             {
                 if (_queuedBuffers.TryPeek(out var driverBuffer) && 
-                    driverBuffer.DriverIdentifier == buffer.DataPointer)
+                    driverBuffer.DriverIdentifier == (ulong)buffer.Data.Length)
                 {
                     _queuedBuffers.TryDequeue(out _);
                 }
