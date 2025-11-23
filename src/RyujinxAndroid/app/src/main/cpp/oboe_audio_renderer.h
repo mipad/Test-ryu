@@ -2,13 +2,10 @@
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
 #include <oboe/Oboe.h>
-#include <mutex>
 #include <atomic>
 #include <memory>
 #include <cstdint>
-#include <thread>
-#include <chrono>
-#include <cstring>
+#include "LockFreeQueue.h"
 
 namespace RyujinxOboe {
 
@@ -19,87 +16,16 @@ enum SampleFormat {
     PCM_FLOAT = 4
 };
 
-class RingBuffer {
-public:
-    RingBuffer(size_t capacity) 
-        : capacity_(capacity), 
-          buffer_(new uint8_t[capacity]),
-          read_pos_(0),
-          write_pos_(0),
-          available_(0) {}
+struct AudioBlock {
+    static constexpr size_t BLOCK_SIZE = 4096; // 4KB blocks
     
-    ~RingBuffer() {
-        delete[] buffer_;
-    }
-    
-    size_t write(const void* data, size_t size) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        
-        if (size > capacity_ - available_) {
-            size = capacity_ - available_;
-            if (size == 0) return 0;
-        }
-        
-        size_t first_chunk = std::min(size, capacity_ - write_pos_);
-        std::memcpy(buffer_ + write_pos_, data, first_chunk);
-        
-        if (first_chunk < size) {
-            std::memcpy(buffer_, static_cast<const uint8_t*>(data) + first_chunk, size - first_chunk);
-        }
-        
-        write_pos_ = (write_pos_ + size) % capacity_;
-        available_ += size;
-        
-        return size;
-    }
-    
-    size_t read(void* data, size_t size) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        
-        if (size > available_) {
-            size = available_;
-            if (size == 0) return 0;
-        }
-        
-        size_t first_chunk = std::min(size, capacity_ - read_pos_);
-        std::memcpy(data, buffer_ + read_pos_, first_chunk);
-        
-        if (first_chunk < size) {
-            std::memcpy(static_cast<uint8_t*>(data) + first_chunk, buffer_, size - first_chunk);
-        }
-        
-        read_pos_ = (read_pos_ + size) % capacity_;
-        available_ -= size;
-        
-        return size;
-    }
-    
-    size_t available() const {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return available_;
-    }
-    
-    size_t free() const {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return capacity_ - available_;
-    }
+    uint8_t data[BLOCK_SIZE];
+    size_t data_size = 0;
+    int32_t sample_format = PCM_INT16;
     
     void clear() {
-        std::lock_guard<std::mutex> lock(mutex_);
-        read_pos_ = 0;
-        write_pos_ = 0;
-        available_ = 0;
+        data_size = 0;
     }
-    
-    size_t capacity() const { return capacity_; }
-
-private:
-    size_t capacity_;
-    uint8_t* buffer_;
-    size_t read_pos_;
-    size_t write_pos_;
-    size_t available_;
-    mutable std::mutex mutex_;
 };
 
 class OboeAudioRenderer {
@@ -159,7 +85,6 @@ private:
     std::unique_ptr<AAudioExclusiveCallback> m_audio_callback;
     std::unique_ptr<AAudioExclusiveErrorCallback> m_error_callback;
     
-    std::mutex m_stream_mutex;
     std::atomic<bool> m_initialized{false};
     std::atomic<bool> m_stream_started{false};
     
@@ -171,9 +96,16 @@ private:
     int32_t m_device_channels = 2;
     oboe::AudioFormat m_oboe_format{oboe::AudioFormat::I16};
     
-    // 使用环形缓冲区替代队列
-    static constexpr size_t RING_BUFFER_CAPACITY = 256 * 1024; // 256KB
-    std::unique_ptr<RingBuffer> m_ring_buffer;
+    // 使用无锁队列替代环形缓冲区
+    static constexpr uint32_t AUDIO_QUEUE_SIZE = 1024; // 2的幂次方
+    static constexpr uint32_t OBJECT_POOL_SIZE = 2048; // 2的幂次方
+    
+    LockFreeQueue<std::unique_ptr<AudioBlock>, AUDIO_QUEUE_SIZE> m_audio_queue;
+    LockFreeObjectPool<AudioBlock, OBJECT_POOL_SIZE> m_object_pool;
+    
+    // 当前正在播放的块
+    std::unique_ptr<AudioBlock> m_current_block;
+    size_t m_current_block_pos{0};
 };
 
 } // namespace RyujinxOboe
