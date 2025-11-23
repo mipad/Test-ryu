@@ -213,7 +213,14 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                 size = Math.Min(data.Length, (int)PageSize - (int)(va & PageMask));
 
-                Physical.GetSpan(pa, size, tracked).CopyTo(data[..size]);
+                if (pa == PteUnmapped)
+                {
+                    data.Slice(0, size).Fill(0);
+                }
+                else
+                {
+                    Physical.GetSpan(pa, size, tracked).CopyTo(data[..size]);
+                }
 
                 offset += size;
             }
@@ -230,14 +237,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 }
                 else
                 {
-                    if (pa == PteUnmapped)
-                {
-                    data.Slice(offset, size).Fill(0);
-                }
-                else
-                {
                     Physical.GetSpan(pa, size, tracked).CopyTo(data.Slice(offset, size));
-                }
                 }
             }
         }
