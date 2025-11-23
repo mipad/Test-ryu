@@ -10,6 +10,10 @@
 #include <unistd.h>
 #include <cstring>
 
+// Android ashmem 头文件
+#include <linux/ashmem.h>
+#include <sys/ioctl.h>
+
 long _renderingThreadId = 0;
 JavaVM *_vm = nullptr;
 jobject _mainActivity = nullptr;
@@ -27,6 +31,26 @@ struct SharedAudioMemory {
 };
 
 SharedAudioMemory g_shared_audio_memory = {-1, nullptr, 0, {false}};
+
+// Android ashmem 辅助函数
+static int ashmem_create_region(const char *name, size_t size) {
+    int fd = open("/dev/ashmem", O_RDWR);
+    if (fd < 0) {
+        return -1;
+    }
+    
+    if (ioctl(fd, ASHMEM_SET_NAME, name) == -1) {
+        close(fd);
+        return -1;
+    }
+    
+    if (ioctl(fd, ASHMEM_SET_SIZE, size) == -1) {
+        close(fd);
+        return -1;
+    }
+    
+    return fd;
+}
 
 extern "C" {
 
@@ -195,17 +219,10 @@ Java_org_ryujinx_android_NativeHelpers_initSharedAudioMemory(JNIEnv *env, jobjec
         return JNI_TRUE;
     }
 
-    // 创建共享内存文件
-    const char* shm_name = "/ryujinx_audio_shm";
-    g_shared_audio_memory.shm_fd = shm_open(shm_name, O_CREAT | O_RDWR, 0666);
+    // 使用 Android ashmem 创建共享内存
+    const char* shm_name = "ryujinx_audio_shm";
+    g_shared_audio_memory.shm_fd = ashmem_create_region(shm_name, size);
     if (g_shared_audio_memory.shm_fd < 0) {
-        return JNI_FALSE;
-    }
-
-    // 设置共享内存大小
-    if (ftruncate(g_shared_audio_memory.shm_fd, size) != 0) {
-        close(g_shared_audio_memory.shm_fd);
-        g_shared_audio_memory.shm_fd = -1;
         return JNI_FALSE;
     }
 
