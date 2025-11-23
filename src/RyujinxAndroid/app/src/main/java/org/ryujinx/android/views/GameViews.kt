@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class)
 
 package org.ryujinx.android.views
 
@@ -68,7 +68,6 @@ class GameViews {
             }
         }
 
-        @OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class)
         @Composable
         fun GameOverlay(mainViewModel: MainViewModel) {
             // 从MainViewModel加载持久化的性能统计显示设置
@@ -204,17 +203,17 @@ class GameViews {
                         visible = showSideMenu.value,
                         enter = slideInHorizontally(
                             animationSpec = tween(
-                                durationMillis = 400, // 增加到400毫秒
+                                durationMillis = 400,
                                 easing = FastOutSlowInEasing
                             ),
-                            initialOffsetX = { -it } // 从左侧滑入
+                            initialOffsetX = { -it }
                         ),
                         exit = slideOutHorizontally(
                             animationSpec = tween(
-                                durationMillis = 300, // 增加到300毫秒
+                                durationMillis = 300,
                                 easing = FastOutSlowInEasing
                             ),
-                            targetOffsetX = { -it } // 向左侧滑出
+                            targetOffsetX = { -it }
                         )
                     ) {
                         SideMenu(
@@ -456,7 +455,7 @@ class GameViews {
                             ) {
                                 SideMenuItem(
                                     icon = null,
-                                    text = "✏️ Edit Mode",
+                                    text = "✏️ Edit Controls",
                                     onClick = {
                                         onDismiss()
                                         isEditing.value = true
@@ -475,7 +474,7 @@ class GameViews {
                             ) {
                                 SideMenuItem(
                                     icon = null,
-                                    text = "📊 Performance Settings",
+                                    text = "📊 Performance information",
                                     onClick = {
                                         onDismiss()
                                         showPerformanceSettings.value = true
@@ -528,7 +527,7 @@ class GameViews {
 
         @Composable
         fun SideMenuItem(
-            icon: Any?, // 可以是 ImageVector 或 null（用于表情符号）
+            icon: Any?,
             text: String,
             trailingContent: @Composable (() -> Unit)? = null,
             onClick: () -> Unit
@@ -561,7 +560,6 @@ class GameViews {
                                 )
                             }
                             icon == null && text.contains(Regex("[\\p{So}\\p{Cn}]")) -> {
-                                // 使用表情符号
                                 val emoji = text.takeWhile { it.isEmoji() }
                                 Text(
                                     text = emoji,
@@ -605,8 +603,6 @@ class GameViews {
                    this in '\u2700'..'\u27BF'
         }
 
-        // ... 保留其他函数（ExitConfirmDialog、PerformanceSettingsDialog、GameStats）
-        // 这些函数保持不变，这里省略以节省空间
         @Composable
         fun ExitConfirmDialog(
             mainViewModel: MainViewModel,
@@ -674,7 +670,6 @@ class GameViews {
             showFifo: androidx.compose.runtime.MutableState<Boolean>,
             onDismiss: () -> Unit
         ) {
-            // 保存设置到MainViewModel
             fun saveSettings() {
                 val settings = PerformanceStatsSettings(
                     showStats = showStats.value,
@@ -709,17 +704,14 @@ class GameViews {
                                 .align(Alignment.CenterHorizontally)
                         )
                         
-                        // 两列布局
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            // 左列
                             Column(
                                 modifier = Modifier.weight(1f),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                // FIFO显示开关
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -736,7 +728,6 @@ class GameViews {
                                     )
                                 }
                                 
-                                // FPS显示开关
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -753,7 +744,6 @@ class GameViews {
                                     )
                                 }
                                 
-                                // 内存显示开关
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -771,12 +761,10 @@ class GameViews {
                                 }
                             }
                             
-                            // 右列
                             Column(
                                 modifier = Modifier.weight(1f),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                // 电池温度显示开关
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -793,7 +781,6 @@ class GameViews {
                                     )
                                 }
                                 
-                                // 电池电量显示开关
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -812,7 +799,6 @@ class GameViews {
                             }
                         }
                         
-                        // 分隔线
                         HorizontalDivider(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -821,7 +807,6 @@ class GameViews {
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
                         )
                         
-                        // 全局显示/隐藏开关（单独一行）
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -884,37 +869,31 @@ class GameViews {
             val totalMem = remember {
                 mutableIntStateOf(0)
             }
-            // 电池温度状态
             val batteryTemperature = remember {
                 mutableDoubleStateOf(0.0)
             }
-            // 电池电量状态
             val batteryLevel = remember {
                 mutableIntStateOf(-1)
             }
-            // 充电状态
             val isCharging = remember {
                 mutableStateOf(false)
             }
 
-            // 完全透明的文字面板
             CompositionLocalProvider(
                 LocalTextStyle provides TextStyle(
                     fontSize = 10.sp,
-                    color = Color.White // 确保文字在游戏画面上可见
+                    color = Color.White
                 )
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
-                    // 左上角的性能指标
                     Column(
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .padding(16.dp)
-                            .background(Color.Transparent) // 完全透明背景
+                            .background(Color.Transparent)
                     ) {
                         val gameTimeVal = if (!gameTime.value.isInfinite()) gameTime.value else 0.0
                         
-                        // FIFO显示（根据设置决定是否显示）
                         if (showFifo) {
                             Box(
                                 modifier = Modifier.align(Alignment.Start)
@@ -930,7 +909,6 @@ class GameViews {
                             }
                         }
                         
-                        // FPS显示（根据设置决定是否显示）
                         if (showFps) {
                             Box(
                                 modifier = Modifier.align(Alignment.Start)
@@ -946,7 +924,6 @@ class GameViews {
                             }
                         }
                         
-                        // 内存使用（根据设置决定是否显示）
                         if (showRam) {
                             Box(
                                 modifier = Modifier.align(Alignment.Start)
@@ -963,7 +940,6 @@ class GameViews {
                         }
                     }
 
-                    // 顶部中央的电池信息显示（横屏时横向排列）
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
@@ -973,7 +949,6 @@ class GameViews {
                             horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // 电池温度显示（根据设置决定是否显示）
                             if (showBatteryTemperature && batteryTemperature.value > 0) {
                                 Box(
                                     modifier = Modifier
@@ -994,7 +969,6 @@ class GameViews {
                                 }
                             }
                             
-                            // 电池电量显示（根据设置决定是否显示）
                             if (showBatteryLevel && batteryLevel.value >= 0) {
                                 if (showBatteryTemperature && batteryTemperature.value > 0) {
                                     Spacer(modifier = Modifier.padding(horizontal = 4.dp))
