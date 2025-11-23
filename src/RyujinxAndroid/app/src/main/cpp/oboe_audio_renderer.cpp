@@ -2,13 +2,14 @@
 #include <cstring>
 #include <algorithm>
 #include <thread>
+#include <chrono>
 
 namespace RyujinxOboe {
 
 OboeAudioRenderer::OboeAudioRenderer() {
     m_audio_callback = std::make_unique<AAudioExclusiveCallback>(this);
     m_error_callback = std::make_unique<AAudioExclusiveErrorCallback>(this);
-    PreallocateBlocks(128); // 增加到128个块
+    PreallocateBlocks(128); // 增加到128个预分配块
 }
 
 OboeAudioRenderer::~OboeAudioRenderer() {
@@ -48,11 +49,18 @@ bool OboeAudioRenderer::InitializeWithFormat(int32_t sampleRate, int32_t channel
 void OboeAudioRenderer::Shutdown() {
     std::lock_guard<std::mutex> lock(m_stream_mutex);
     
+    // 停止共享内存处理线程
+    m_shared_memory_running.store(false);
+    if (m_shared_memory_thread.joinable()) {
+        m_shared_memory_thread.join();
+    }
+    
     CloseStream();
     m_audio_queue.clear();
     m_current_block.reset();
     m_initialized.store(false);
     m_stream_started.store(false);
+    m_shared_memory_initialized.store(false);
 }
 
 void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& builder) {
@@ -89,8 +97,7 @@ bool OboeAudioRenderer::TryOpenStreamWithRetry(int maxRetryCount) {
         }
         
         if (attempt < maxRetryCount - 1) {
-            // 增加重试间隔，使用指数退避
-            std::this_thread::sleep_for(std::chrono::milliseconds(100 * (1 << attempt)));
+            std::this_thread::sleep_for(std::chrono::milliseconds(50 * (1 << attempt)));
             
             // 每次重试前清理资源
             CloseStream();
@@ -201,14 +208,7 @@ bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int3
     
     while (bytes_remaining > 0) {
         auto block = m_object_pool.acquire();
-        if (!block) {
-            // 对象池耗尽，记录警告
-            static int warning_count = 0;
-            if (warning_count++ < 10) {
-                // 限制警告频率
-            }
-            return false;
-        }
+        if (!block) return false;
         
         size_t copy_size = std::min(bytes_remaining, AudioBlock::BLOCK_SIZE);
         
@@ -230,8 +230,13 @@ bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int3
         block->consumed = false;
         
         if (!m_audio_queue.push(std::move(block))) {
-            // 队列已满，释放块并返回失败
-            m_object_pool.release(std::move(block));
+            // 队列满，重试几次
+            for (int i = 0; i < 3; ++i) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                if (m_audio_queue.push(std::move(block))) {
+                    break;
+                }
+            }
             return false;
         }
         
@@ -240,6 +245,114 @@ bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int3
     }
     
     return true;
+}
+
+void OboeAudioRenderer::WriteSharedAudioData(void* shared_memory_addr, int32_t data_size,
+                                            int32_t sample_rate, int32_t channels, 
+                                            int32_t sample_format) {
+    if (!shared_memory_addr || data_size <= 0) return;
+    
+    // 初始化共享内存处理
+    if (!m_shared_memory_initialized.load()) {
+        m_shared_memory_addr = shared_memory_addr;
+        m_shared_memory_initialized.store(true);
+        
+        // 启动共享内存处理线程
+        m_shared_memory_running.store(true);
+        m_shared_memory_thread = std::thread([this]() {
+            ProcessSharedAudioData();
+        });
+    }
+    
+    // 更新音频参数（如果需要）
+    if (m_sample_rate.load() != sample_rate || 
+        m_channel_count.load() != channels ||
+        m_sample_format.load() != sample_format) {
+        
+        std::lock_guard<std::mutex> lock(m_stream_mutex);
+        m_sample_rate.store(sample_rate);
+        m_channel_count.store(channels);
+        m_sample_format.store(sample_format);
+        m_oboe_format = MapSampleFormat(sample_format);
+        
+        // 重新初始化流
+        CloseStream();
+        ConfigureAndOpenStream();
+    }
+}
+
+void OboeAudioRenderer::ProcessSharedAudioData() {
+    SharedAudioHeader* header = static_cast<SharedAudioHeader*>(m_shared_memory_addr);
+    uint8_t* audio_data = reinterpret_cast<uint8_t*>(header + 1);
+    
+    while (m_shared_memory_running.load()) {
+        if (!m_initialized.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            continue;
+        }
+        
+        uint32_t data_size = header->data_size.load();
+        if (data_size > 0) {
+            uint32_t read_pos = header->read_pos.load();
+            uint32_t write_pos = header->write_pos.load();
+            
+            // 计算可读取的数据量
+            uint32_t available_to_read = 0;
+            if (write_pos >= read_pos) {
+                available_to_read = write_pos - read_pos;
+            } else {
+                available_to_read = header->buffer_size - read_pos + write_pos;
+            }
+            
+            available_to_read = std::min(available_to_read, data_size);
+            
+            if (available_to_read > 0) {
+                // 读取数据并写入音频队列
+                size_t bytes_remaining = available_to_read;
+                size_t current_read_pos = read_pos;
+                
+                while (bytes_remaining > 0) {
+                    auto block = m_object_pool.acquire();
+                    if (!block) break;
+                    
+                    size_t copy_size = std::min(bytes_remaining, AudioBlock::BLOCK_SIZE);
+                    
+                    // 处理环形缓冲区读取
+                    if (current_read_pos + copy_size <= header->buffer_size) {
+                        std::memcpy(block->data, audio_data + current_read_pos, copy_size);
+                        current_read_pos += copy_size;
+                        if (current_read_pos == header->buffer_size) {
+                            current_read_pos = 0;
+                        }
+                    } else {
+                        size_t first_part = header->buffer_size - current_read_pos;
+                        std::memcpy(block->data, audio_data + current_read_pos, first_part);
+                        std::memcpy(block->data + first_part, audio_data, copy_size - first_part);
+                        current_read_pos = copy_size - first_part;
+                    }
+                    
+                    block->data_size = copy_size;
+                    block->data_played = 0;
+                    block->sample_format = header->sample_format;
+                    block->consumed = false;
+                    
+                    if (!m_audio_queue.push(std::move(block))) {
+                        // 队列满，稍后重试
+                        m_object_pool.release(std::move(block));
+                        break;
+                    }
+                    
+                    bytes_remaining -= copy_size;
+                }
+                
+                // 更新读取位置
+                header->read_pos.store(current_read_pos);
+                header->data_size.fetch_sub(available_to_read - bytes_remaining);
+            }
+        }
+        
+        std::this_thread::sleep_for(std::chrono::microseconds(100)); // 100us 间隔
+    }
 }
 
 int32_t OboeAudioRenderer::GetBufferedFrames() const {
@@ -309,12 +422,6 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioS
         size_t bytes_requested = num_frames * channels * bytes_per_sample;
         std::memset(audioData, 0, bytes_requested);
         return oboe::DataCallbackResult::Continue;
-    }
-    
-    // 监控缓冲区状态
-    uint32_t queue_size = m_audio_queue.size();
-    if (queue_size < 4) {
-        // 缓冲区不足，可以在这里添加监控逻辑
     }
     
     uint8_t* output = static_cast<uint8_t*>(audioData);

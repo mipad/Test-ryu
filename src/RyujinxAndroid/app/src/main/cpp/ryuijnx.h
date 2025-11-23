@@ -17,6 +17,7 @@
 #include "adrenotools/driver.h"
 #include "native_window.h"
 #include <pthread.h>
+#include <atomic>
 
 #define CALL_VK(func) if (VK_SUCCESS != (func)) { assert(false); }
 #define VK_CHECK(x) CALL_VK(x)

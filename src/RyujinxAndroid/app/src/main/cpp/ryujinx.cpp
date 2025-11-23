@@ -5,6 +5,10 @@
 #include <android/log.h>
 #include <stdarg.h>
 #include <sys/system_properties.h>
+#include <sys/mman.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <cstring>
 
 long _renderingThreadId = 0;
 JavaVM *_vm = nullptr;
@@ -14,67 +18,15 @@ pthread_t _renderingThreadIdNative;
 std::chrono::time_point<std::chrono::steady_clock, std::chrono::nanoseconds> _currentTimePoint;
 bool isInitialOrientationFlipped = true;
 
-// 共享内存管理器
-class SharedMemoryManager {
-private:
-    struct SharedMemoryBlock {
-        void* data;
-        size_t size;
-        bool used;
-    };
-    
-    std::vector<SharedMemoryBlock> blocks;
-    std::mutex mutex;
-    static const size_t MAX_BLOCKS = 256;
-    static const size_t BLOCK_SIZE = 64 * 1024; // 64KB per block
-    
-public:
-    SharedMemoryManager() {
-        // 预分配内存块
-        for (size_t i = 0; i < MAX_BLOCKS; ++i) {
-            void* block = malloc(BLOCK_SIZE);
-            if (block) {
-                blocks.push_back({block, BLOCK_SIZE, false});
-            }
-        }
-    }
-    
-    ~SharedMemoryManager() {
-        std::lock_guard<std::mutex> lock(mutex);
-        for (auto& block : blocks) {
-            if (block.data) {
-                free(block.data);
-            }
-        }
-        blocks.clear();
-    }
-    
-    void* allocate(size_t size) {
-        std::lock_guard<std::mutex> lock(mutex);
-        for (auto& block : blocks) {
-            if (!block.used && block.size >= size) {
-                block.used = true;
-                return block.data;
-            }
-        }
-        return nullptr;
-    }
-    
-    void deallocate(void* ptr) {
-        std::lock_guard<std::mutex> lock(mutex);
-        for (auto& block : blocks) {
-            if (block.data == ptr) {
-                block.used = false;
-                break;
-            }
-        }
-    }
-    
-    static SharedMemoryManager& getInstance() {
-        static SharedMemoryManager instance;
-        return instance;
-    }
+// 共享内存管理
+struct SharedAudioMemory {
+    int shm_fd;
+    void* shm_addr;
+    size_t shm_size;
+    std::atomic<bool> initialized;
 };
+
+SharedAudioMemory g_shared_audio_memory = {-1, nullptr, 0, {false}};
 
 extern "C" {
 
@@ -134,7 +86,18 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
     return JNI_VERSION_1_6; 
 }
 
-JNIEXPORT void JNICALL JNI_OnUnload(JavaVM* vm, void* reserved) {}
+JNIEXPORT void JNICALL JNI_OnUnload(JavaVM* vm, void* reserved) {
+    // 清理共享内存
+    if (g_shared_audio_memory.shm_addr != nullptr) {
+        munmap(g_shared_audio_memory.shm_addr, g_shared_audio_memory.shm_size);
+        g_shared_audio_memory.shm_addr = nullptr;
+    }
+    if (g_shared_audio_memory.shm_fd >= 0) {
+        close(g_shared_audio_memory.shm_fd);
+        g_shared_audio_memory.shm_fd = -1;
+    }
+    g_shared_audio_memory.initialized.store(false);
+}
 
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_MainActivity_initVm(JNIEnv *env, jobject thiz) {
@@ -224,28 +187,103 @@ Java_org_ryujinx_android_NativeHelpers_setIsInitialOrientationFlipped(JNIEnv *en
     isInitialOrientationFlipped = is_flipped;
 }
 
-// ========== DirectByteBuffer 共享内存接口 ==========
+// ========== 共享内存音频接口 ==========
+
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_initSharedAudioMemory(JNIEnv *env, jobject thiz, jint size) {
+    if (g_shared_audio_memory.initialized.load()) {
+        return JNI_TRUE;
+    }
+
+    // 创建共享内存文件
+    const char* shm_name = "/ryujinx_audio_shm";
+    g_shared_audio_memory.shm_fd = shm_open(shm_name, O_CREAT | O_RDWR, 0666);
+    if (g_shared_audio_memory.shm_fd < 0) {
+        return JNI_FALSE;
+    }
+
+    // 设置共享内存大小
+    if (ftruncate(g_shared_audio_memory.shm_fd, size) != 0) {
+        close(g_shared_audio_memory.shm_fd);
+        g_shared_audio_memory.shm_fd = -1;
+        return JNI_FALSE;
+    }
+
+    // 内存映射
+    g_shared_audio_memory.shm_addr = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, g_shared_audio_memory.shm_fd, 0);
+    if (g_shared_audio_memory.shm_addr == MAP_FAILED) {
+        close(g_shared_audio_memory.shm_fd);
+        g_shared_audio_memory.shm_fd = -1;
+        g_shared_audio_memory.shm_addr = nullptr;
+        return JNI_FALSE;
+    }
+
+    g_shared_audio_memory.shm_size = size;
+    g_shared_audio_memory.initialized.store(true);
+    
+    // 初始化共享内存头信息
+    struct SharedAudioHeader {
+        std::atomic<uint32_t> write_pos;
+        std::atomic<uint32_t> read_pos;
+        std::atomic<uint32_t> data_size;
+        uint32_t buffer_size;
+        uint32_t sample_rate;
+        uint32_t channels;
+        uint32_t sample_format;
+    };
+    
+    SharedAudioHeader* header = static_cast<SharedAudioHeader*>(g_shared_audio_memory.shm_addr);
+    header->write_pos.store(0);
+    header->read_pos.store(0);
+    header->data_size.store(0);
+    header->buffer_size = size - sizeof(SharedAudioHeader);
+    
+    return JNI_TRUE;
+}
 
 JNIEXPORT jlong JNICALL
-Java_org_ryujinx_android_NativeHelpers_allocateSharedMemory(JNIEnv *env, jobject thiz, jint size) {
-    void* memory = SharedMemoryManager::getInstance().allocate(size);
-    return reinterpret_cast<jlong>(memory);
+Java_org_ryujinx_android_NativeHelpers_getSharedAudioMemoryAddr(JNIEnv *env, jobject thiz) {
+    if (!g_shared_audio_memory.initialized.load()) {
+        return 0;
+    }
+    return reinterpret_cast<jlong>(g_shared_audio_memory.shm_addr);
 }
 
 JNIEXPORT void JNICALL
-Java_org_ryujinx_android_NativeHelpers_freeSharedMemory(JNIEnv *env, jobject thiz, jlong ptr) {
-    void* memory = reinterpret_cast<void*>(ptr);
-    SharedMemoryManager::getInstance().deallocate(memory);
+Java_org_ryujinx_android_NativeHelpers_writeSharedAudioData(JNIEnv *env, jobject thiz, 
+                                                           jlong renderer_ptr, jint data_size,
+                                                           jint sample_rate, jint channels, 
+                                                           jint sample_format) {
+    auto renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer_ptr);
+    if (!renderer || !g_shared_audio_memory.initialized.load()) {
+        return;
+    }
+    
+    renderer->WriteSharedAudioData(g_shared_audio_memory.shm_addr, data_size, 
+                                  sample_rate, channels, sample_format);
 }
 
-JNIEXPORT jobject JNICALL
-Java_org_ryujinx_android_NativeHelpers_createDirectBuffer(JNIEnv *env, jobject thiz, jlong ptr, jint size) {
-    void* memory = reinterpret_cast<void*>(ptr);
-    if (memory == nullptr) return nullptr;
-    return env->NewDirectByteBuffer(memory, size);
+JNIEXPORT jint JNICALL
+Java_org_ryujinx_android_NativeHelpers_getSharedAudioAvailable(JNIEnv *env, jobject thiz) {
+    if (!g_shared_audio_memory.initialized.load()) {
+        return 0;
+    }
+    
+    struct SharedAudioHeader {
+        std::atomic<uint32_t> write_pos;
+        std::atomic<uint32_t> read_pos;
+        std::atomic<uint32_t> data_size;
+        uint32_t buffer_size;
+        uint32_t sample_rate;
+        uint32_t channels;
+        uint32_t sample_format;
+    };
+    
+    SharedAudioHeader* header = static_cast<SharedAudioHeader*>(g_shared_audio_memory.shm_addr);
+    return header->buffer_size - header->data_size.load();
 }
 
-// ========== 多实例 Oboe Audio JNI接口 (优化版本) ==========
+// ========== 多实例 Oboe Audio JNI接口 ==========
 
 JNIEXPORT jlong JNICALL
 Java_org_ryujinx_android_NativeHelpers_createOboeRenderer(JNIEnv *env, jobject thiz) {
@@ -298,22 +336,6 @@ Java_org_ryujinx_android_NativeHelpers_writeOboeRendererAudioRaw(JNIEnv *env, jo
     if (data) {
         bool success = renderer->WriteAudioRaw(reinterpret_cast<uint8_t*>(data), num_frames, sample_format);
         env->ReleasePrimitiveArrayCritical(audio_data, data, JNI_ABORT);
-        return success ? JNI_TRUE : JNI_FALSE;
-    }
-    return JNI_FALSE;
-}
-
-// 新增：使用 DirectByteBuffer 写入音频数据
-JNIEXPORT jboolean JNICALL
-Java_org_ryujinx_android_NativeHelpers_writeOboeRendererDirect(JNIEnv *env, jobject thiz, jlong renderer_ptr, jobject direct_buffer, jint num_frames, jint sample_format) {
-    auto renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer_ptr);
-    if (!renderer || !direct_buffer || num_frames <= 0) return JNI_FALSE;
-    
-    void* buffer_ptr = env->GetDirectBufferAddress(direct_buffer);
-    jlong buffer_size = env->GetDirectBufferCapacity(direct_buffer);
-    
-    if (buffer_ptr && buffer_size > 0) {
-        bool success = renderer->WriteAudioRaw(reinterpret_cast<uint8_t*>(buffer_ptr), num_frames, sample_format);
         return success ? JNI_TRUE : JNI_FALSE;
     }
     return JNI_FALSE;

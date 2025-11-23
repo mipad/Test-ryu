@@ -51,6 +51,10 @@ public:
     bool WriteAudio(const int16_t* data, int32_t num_frames);
     bool WriteAudioRaw(const void* data, int32_t num_frames, int32_t sampleFormat);
     
+    // 共享内存音频写入
+    void WriteSharedAudioData(void* shared_memory_addr, int32_t data_size,
+                             int32_t sample_rate, int32_t channels, int32_t sample_format);
+    
     bool IsInitialized() const { return m_initialized.load(); }
     bool IsPlaying() const { return m_stream && m_stream->getState() == oboe::StreamState::Started; }
     int32_t GetBufferedFrames() const;
@@ -92,8 +96,18 @@ private:
     static size_t GetBytesPerSample(int32_t format);
     bool OptimizeBufferSize();
     bool TryOpenStreamWithRetry(int maxRetryCount = 3);
-    void PreFillBuffer();
-    void HandleBufferUnderrun();
+
+    // 共享内存处理
+    void ProcessSharedAudioData();
+    struct SharedAudioHeader {
+        std::atomic<uint32_t> write_pos;
+        std::atomic<uint32_t> read_pos;
+        std::atomic<uint32_t> data_size;
+        uint32_t buffer_size;
+        uint32_t sample_rate;
+        uint32_t channels;
+        uint32_t sample_format;
+    };
 
     std::shared_ptr<oboe::AudioStream> m_stream;
     std::unique_ptr<AAudioExclusiveCallback> m_audio_callback;
@@ -108,10 +122,6 @@ private:
     std::atomic<int32_t> m_sample_format{PCM_INT16};
     std::atomic<float> m_volume{1.0f};
     
-    // 缓冲区监控
-    std::atomic<int32_t> m_underrun_count{0};
-    std::chrono::steady_clock::time_point m_last_underrun_time;
-    
     int32_t m_device_channels = 2;
     oboe::AudioFormat m_oboe_format{oboe::AudioFormat::I16};
     
@@ -122,6 +132,12 @@ private:
     LockFreeObjectPool<AudioBlock, OBJECT_POOL_SIZE> m_object_pool;
     
     std::unique_ptr<AudioBlock> m_current_block;
+    
+    // 共享内存相关
+    void* m_shared_memory_addr{nullptr};
+    std::atomic<bool> m_shared_memory_initialized{false};
+    std::thread m_shared_memory_thread;
+    std::atomic<bool> m_shared_memory_running{false};
 };
 
 } // namespace RyujinxOboe
