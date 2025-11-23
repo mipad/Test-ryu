@@ -2,6 +2,7 @@
 #include <cstring>
 #include <algorithm>
 #include <thread>
+#include <android/log.h>
 
 namespace RyujinxOboe {
 
@@ -69,7 +70,7 @@ void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& bu
            ->setFormat(m_oboe_format)
            ->setFormatConversionAllowed(true)
            ->setUsage(oboe::Usage::Game)
-           ->setFramesPerCallback(512); // 增加回调帧数
+           ->setFramesPerCallback(256); // 适中的回调大小
     
     auto channel_count = m_channel_count.load();
     auto channel_mask = [&]() {
@@ -93,7 +94,7 @@ bool OboeAudioRenderer::TryOpenStreamWithRetry(int maxRetryCount) {
         }
         
         if (attempt < maxRetryCount - 1) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100 * (1 << attempt)));
+            std::this_thread::sleep_for(std::chrono::milliseconds(50 * (1 << attempt)));
             CloseStream();
         }
     }
@@ -110,10 +111,12 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() {
     auto result = builder.openStream(m_stream);
     
     if (result != oboe::Result::OK) {
+        // 尝试共享模式
         builder.setSharingMode(oboe::SharingMode::Shared);
         result = builder.openStream(m_stream);
         
         if (result != oboe::Result::OK) {
+            // 尝试 OpenSL ES
             builder.setAudioApi(oboe::AudioApi::OpenSLES)
                    ->setSharingMode(oboe::SharingMode::Shared);
             result = builder.openStream(m_stream);
@@ -150,7 +153,7 @@ bool OboeAudioRenderer::OptimizeBufferSize() {
     }
     
     // 使用更大的缓冲区减少欠载风险
-    int32_t desired_buffer_size = framesPerBurst * 8; // 增加到8倍脉冲串
+    int32_t desired_buffer_size = framesPerBurst * 6; // 6倍脉冲串
     
     auto result = m_stream->setBufferSizeInFrames(desired_buffer_size);
     if (result != oboe::Result::OK) {
@@ -195,8 +198,15 @@ bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int3
     // 写入环形缓冲区
     size_t written = m_ring_buffer->write(data, total_bytes);
     
-    // 如果缓冲区空间不足，返回false
-    return written == total_bytes;
+    // 如果缓冲区空间不足，记录警告
+    if (written < total_bytes) {
+        __android_log_print(ANDROID_LOG_WARN, "OboeAudio", 
+                           "Ring buffer overflow: tried to write %zu, only wrote %zu", 
+                           total_bytes, written);
+        return false;
+    }
+    
+    return true;
 }
 
 int32_t OboeAudioRenderer::GetBufferedFrames() const {
@@ -205,6 +215,10 @@ int32_t OboeAudioRenderer::GetBufferedFrames() const {
     size_t bytes_available = m_ring_buffer->available();
     size_t bytes_per_sample = GetBytesPerSample(m_sample_format.load());
     int32_t device_channels = m_device_channels;
+    
+    if (bytes_per_sample == 0 || device_channels == 0) {
+        return 0;
+    }
     
     return static_cast<int32_t>(bytes_available / (device_channels * bytes_per_sample));
 }
@@ -221,7 +235,11 @@ void OboeAudioRenderer::Reset() {
     }
     
     CloseStream();
-    ConfigureAndOpenStream();
+    
+    // 重新初始化流
+    if (m_initialized.load()) {
+        ConfigureAndOpenStream();
+    }
 }
 
 oboe::AudioFormat OboeAudioRenderer::MapSampleFormat(int32_t format) {
@@ -263,8 +281,9 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioS
     if (bytes_read < bytes_requested) {
         std::memset(output + bytes_read, 0, bytes_requested - bytes_read);
         
-        // 可以在这里添加日志记录欠载情况
-        // __android_log_print(ANDROID_LOG_WARN, "OboeAudio", "Audio underrun: requested %zu, got %zu", 
+        // 记录欠载情况（调试用）
+        // __android_log_print(ANDROID_LOG_DEBUG, "OboeAudio", 
+        //                    "Audio underrun: requested %zu, got %zu", 
         //                    bytes_requested, bytes_read);
     }
     
