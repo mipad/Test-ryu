@@ -32,7 +32,7 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly Vk _api;
         private readonly ExtExternalMemoryHost _hostMemoryApi;
         private readonly Device _device;
-        private readonly Lock _lock = new();
+        private readonly object _lock = new();
 
         private readonly List<HostMemoryAllocation> _allocations;
         private readonly IntervalTree<ulong, HostMemoryAllocation> _allocationTree;
