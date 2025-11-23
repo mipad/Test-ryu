@@ -62,17 +62,17 @@ public:
     void PreallocateBlocks(size_t count);
 
 private:
-    class OboeSharedCallback : public oboe::AudioStreamDataCallback {
+    class AAudioExclusiveCallback : public oboe::AudioStreamDataCallback {
     public:
-        explicit OboeSharedCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
+        explicit AAudioExclusiveCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
         oboe::DataCallbackResult onAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) override;
     private:
         OboeAudioRenderer* m_renderer;
     };
 
-    class OboeSharedErrorCallback : public oboe::AudioStreamErrorCallback {
+    class AAudioExclusiveErrorCallback : public oboe::AudioStreamErrorCallback {
     public:
-        explicit OboeSharedErrorCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
+        explicit AAudioExclusiveErrorCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
         void onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) override;
         void onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) override;
     private:
@@ -82,7 +82,7 @@ private:
     bool OpenStream();
     void CloseStream();
     bool ConfigureAndOpenStream();
-    void ConfigureForOboeShared(oboe::AudioStreamBuilder& builder);
+    void ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& builder);
 
     oboe::DataCallbackResult OnAudioReadyMultiFormat(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames);
     void OnStreamErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error);
@@ -93,20 +93,15 @@ private:
     bool OptimizeBufferSize();
     bool TryOpenStreamWithRetry(int maxRetryCount = 3);
 
-    // yuzu 参数
-    static constexpr int32_t TARGET_SAMPLE_RATE = 48000;
-    static constexpr int32_t TARGET_SAMPLE_COUNT = 240;
-    static constexpr int32_t BUFFER_CAPACITY_FACTOR = 2;
-
     std::shared_ptr<oboe::AudioStream> m_stream;
-    std::unique_ptr<OboeSharedCallback> m_audio_callback;
-    std::unique_ptr<OboeSharedErrorCallback> m_error_callback;
+    std::unique_ptr<AAudioExclusiveCallback> m_audio_callback;
+    std::unique_ptr<AAudioExclusiveErrorCallback> m_error_callback;
     
     std::mutex m_stream_mutex;
     std::atomic<bool> m_initialized{false};
     std::atomic<bool> m_stream_started{false};
     
-    std::atomic<int32_t> m_sample_rate{TARGET_SAMPLE_RATE};
+    std::atomic<int32_t> m_sample_rate{48000};
     std::atomic<int32_t> m_channel_count{2};
     std::atomic<int32_t> m_sample_format{PCM_INT16};
     std::atomic<float> m_volume{1.0f};
@@ -114,8 +109,8 @@ private:
     int32_t m_device_channels = 2;
     oboe::AudioFormat m_oboe_format{oboe::AudioFormat::I16};
     
-    static constexpr uint32_t AUDIO_QUEUE_SIZE = 1024;
-    static constexpr uint32_t OBJECT_POOL_SIZE = 2048;
+    static constexpr uint32_t AUDIO_QUEUE_SIZE = 512;
+    static constexpr uint32_t OBJECT_POOL_SIZE = 1024;
     
     LockFreeQueue<std::unique_ptr<AudioBlock>, AUDIO_QUEUE_SIZE> m_audio_queue;
     LockFreeObjectPool<AudioBlock, OBJECT_POOL_SIZE> m_object_pool;

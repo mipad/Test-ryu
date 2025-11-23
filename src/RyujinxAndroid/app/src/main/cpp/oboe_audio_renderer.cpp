@@ -6,8 +6,8 @@
 namespace RyujinxOboe {
 
 OboeAudioRenderer::OboeAudioRenderer() {
-    m_audio_callback = std::make_unique<OboeSharedCallback>(this);
-    m_error_callback = std::make_unique<OboeSharedErrorCallback>(this);
+    m_audio_callback = std::make_unique<AAudioExclusiveCallback>(this);
+    m_error_callback = std::make_unique<AAudioExclusiveErrorCallback>(this);
     PreallocateBlocks(64);
 }
 
@@ -55,18 +55,17 @@ void OboeAudioRenderer::Shutdown() {
     m_stream_started.store(false);
 }
 
-void OboeAudioRenderer::ConfigureForOboeShared(oboe::AudioStreamBuilder& builder) {
+void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& builder) {
     builder.setPerformanceMode(oboe::PerformanceMode::LowLatency)
            ->setAudioApi(oboe::AudioApi::AAudio)
-           ->setSharingMode(oboe::SharingMode::Shared)  // 改为共享模式
+           ->setSharingMode(oboe::SharingMode::Shared)
            ->setDirection(oboe::Direction::Output)
            ->setSampleRate(m_sample_rate.load())
-           ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::High)  // yuzu 使用 High
+           ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::High)
            ->setFormat(m_oboe_format)
            ->setFormatConversionAllowed(true)
-           ->setUsage(oboe::Usage::Game)
-           ->setBufferCapacityInFrames(TARGET_SAMPLE_COUNT * BUFFER_CAPACITY_FACTOR)  // yuzu 风格
-           ->setFramesPerCallback(TARGET_SAMPLE_COUNT);  // 使用 yuzu 的目标采样数
+           ->setUsage(oboe::Usage::Game);
+           // 移除硬编码的 setFramesPerCallback，让Oboe自动选择最优值
     
     auto channel_count = m_channel_count.load();
     auto channel_mask = [&]() {
@@ -99,20 +98,24 @@ bool OboeAudioRenderer::TryOpenStreamWithRetry(int maxRetryCount) {
 bool OboeAudioRenderer::ConfigureAndOpenStream() {
     oboe::AudioStreamBuilder builder;
     
-    ConfigureForOboeShared(builder);
+    ConfigureForAAudioExclusive(builder);
     builder.setDataCallback(m_audio_callback.get())
            ->setErrorCallback(m_error_callback.get());
     
     auto result = builder.openStream(m_stream);
     
     if (result != oboe::Result::OK) {
-        // 如果 AAudio 失败，回退到 OpenSL ES
-        builder.setAudioApi(oboe::AudioApi::OpenSLES)
-               ->setSharingMode(oboe::SharingMode::Shared);
+        builder.setSharingMode(oboe::SharingMode::Shared);
         result = builder.openStream(m_stream);
         
         if (result != oboe::Result::OK) {
-            return false;
+            builder.setAudioApi(oboe::AudioApi::OpenSLES)
+                   ->setSharingMode(oboe::SharingMode::Shared);
+            result = builder.openStream(m_stream);
+            
+            if (result != oboe::Result::OK) {
+                return false;
+            }
         }
     }
     
@@ -137,11 +140,29 @@ bool OboeAudioRenderer::OptimizeBufferSize() {
     if (!m_stream) return false;
     
     int32_t framesPerBurst = m_stream->getFramesPerBurst();
-    int32_t desired_buffer_size = framesPerBurst > 0 ? 
-        framesPerBurst * BUFFER_CAPACITY_FACTOR : TARGET_SAMPLE_COUNT * BUFFER_CAPACITY_FACTOR;
+    int32_t bufferCapacity = m_stream->getBufferCapacityInFrames();
+    
+    if (framesPerBurst <= 0 || bufferCapacity <= 0) {
+        return true; // 使用默认设置
+    }
+    
+    // 安全设置：不超过容量的一半，且至少为2个burst
+    int32_t desired_buffer_size = std::min(
+        framesPerBurst * 2, 
+        bufferCapacity / 2
+    );
+    
+    // 确保至少为1个burst
+    desired_buffer_size = std::max(desired_buffer_size, framesPerBurst);
     
     auto result = m_stream->setBufferSizeInFrames(desired_buffer_size);
-    return result == oboe::Result::OK;
+    if (result) {
+        int32_t actualSize = result.value();
+        // 可以记录日志
+        return true;
+    }
+    
+    return false; // 设置失败
 }
 
 bool OboeAudioRenderer::OpenStream() {
@@ -326,16 +347,16 @@ void OboeAudioRenderer::OnStreamErrorBeforeClose(oboe::AudioStream* audioStream,
     m_stream_started.store(false);
 }
 
-oboe::DataCallbackResult OboeAudioRenderer::OboeSharedCallback::onAudioReady(
+oboe::DataCallbackResult OboeAudioRenderer::AAudioExclusiveCallback::onAudioReady(
     oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) {
     return m_renderer->OnAudioReadyMultiFormat(audioStream, audioData, num_frames);
 }
 
-void OboeAudioRenderer::OboeSharedErrorCallback::onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) {
+void OboeAudioRenderer::AAudioExclusiveErrorCallback::onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) {
     m_renderer->OnStreamErrorAfterClose(audioStream, error);
 }
 
-void OboeAudioRenderer::OboeSharedErrorCallback::onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) {
+void OboeAudioRenderer::AAudioExclusiveErrorCallback::onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) {
     m_renderer->OnStreamErrorBeforeClose(audioStream, error);
 }
 

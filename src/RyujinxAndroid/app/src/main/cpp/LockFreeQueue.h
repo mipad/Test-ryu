@@ -21,7 +21,7 @@
 #include <atomic>
 #include <memory>
 
-template <typename T, uint32_t CAPACITY = 1024, typename INDEX_TYPE = uint32_t>
+template <typename T, uint32_t CAPACITY, typename INDEX_TYPE = uint32_t>
 class LockFreeQueue {
 public:
     static constexpr bool isPowerOfTwo(uint32_t n) { return (n & (n - 1)) == 0; }
@@ -110,7 +110,7 @@ private:
     std::atomic<INDEX_TYPE> readCounter { 0 };
 };
 
-template<typename T, uint32_t POOL_SIZE = 2048>
+template<typename T, uint32_t POOL_SIZE>
 class LockFreeObjectPool {
 public:
     LockFreeObjectPool() {
