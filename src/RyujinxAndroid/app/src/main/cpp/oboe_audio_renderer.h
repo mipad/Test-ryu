@@ -17,14 +17,62 @@ enum SampleFormat {
 };
 
 struct AudioBlock {
-    static constexpr size_t BLOCK_SIZE = 4096; // 4KB blocks
-    
-    uint8_t data[BLOCK_SIZE];
+    uint8_t* data = nullptr;
     size_t data_size = 0;
+    size_t data_used = 0;
     int32_t sample_format = PCM_INT16;
     
+    AudioBlock() = default;
+    
+    explicit AudioBlock(size_t size) {
+        data = new uint8_t[size];
+        data_size = size;
+        data_used = 0;
+    }
+    
+    ~AudioBlock() {
+        if (data) {
+            delete[] data;
+        }
+    }
+    
     void clear() {
-        data_size = 0;
+        data_used = 0;
+    }
+    
+    size_t available() const {
+        return data_size - data_used;
+    }
+    
+    // 禁止拷贝
+    AudioBlock(const AudioBlock&) = delete;
+    AudioBlock& operator=(const AudioBlock&) = delete;
+    
+    // 允许移动
+    AudioBlock(AudioBlock&& other) noexcept {
+        data = other.data;
+        data_size = other.data_size;
+        data_used = other.data_used;
+        sample_format = other.sample_format;
+        other.data = nullptr;
+        other.data_size = 0;
+        other.data_used = 0;
+    }
+    
+    AudioBlock& operator=(AudioBlock&& other) noexcept {
+        if (this != &other) {
+            if (data) {
+                delete[] data;
+            }
+            data = other.data;
+            data_size = other.data_size;
+            data_used = other.data_used;
+            sample_format = other.sample_format;
+            other.data = nullptr;
+            other.data_size = 0;
+            other.data_used = 0;
+        }
+        return *this;
     }
 };
 
@@ -80,6 +128,9 @@ private:
     static size_t GetBytesPerSample(int32_t format);
     bool OptimizeBufferSize();
     bool TryOpenStreamWithRetry(int maxRetryCount = 3);
+    
+    size_t CalculateOptimalBlockSize() const;
+    std::unique_ptr<AudioBlock> CreateAudioBlock(size_t size);
 
     std::shared_ptr<oboe::AudioStream> m_stream;
     std::unique_ptr<AAudioExclusiveCallback> m_audio_callback;
@@ -95,17 +146,14 @@ private:
     
     int32_t m_device_channels = 2;
     oboe::AudioFormat m_oboe_format{oboe::AudioFormat::I16};
+    int32_t m_frames_per_burst{256};
     
-    // 使用无锁队列替代环形缓冲区
-    static constexpr uint32_t AUDIO_QUEUE_SIZE = 1024; // 2的幂次方
-    static constexpr uint32_t OBJECT_POOL_SIZE = 2048; // 2的幂次方
-    
+    // 动态调整的无锁队列
+    static constexpr uint32_t AUDIO_QUEUE_SIZE = 128; // 较小的队列大小
     LockFreeQueue<std::unique_ptr<AudioBlock>, AUDIO_QUEUE_SIZE> m_audio_queue;
-    LockFreeObjectPool<AudioBlock, OBJECT_POOL_SIZE> m_object_pool;
     
     // 当前正在播放的块
     std::unique_ptr<AudioBlock> m_current_block;
-    size_t m_current_block_pos{0};
 };
 
 } // namespace RyujinxOboe
