@@ -924,3 +924,4 @@ namespace Ryujinx.Graphics.Vulkan
         }
     }
 }
+
