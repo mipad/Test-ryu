@@ -323,6 +323,13 @@ bool writeOboeRendererAudioRaw(void* renderer, const uint8_t* data, int32_t num_
     return oboe_renderer && data && num_frames > 0 && oboe_renderer->WriteAudioRaw(data, num_frames, sample_format);
 }
 
+// 新增：DirectByteBuffer 支持 - C接口实现
+bool writeOboeRendererDirectBuffer(void* renderer, void* direct_buffer, int32_t buffer_size, int32_t num_frames, int32_t sample_format) {
+    auto oboe_renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer);
+    return oboe_renderer && direct_buffer && buffer_size > 0 && num_frames > 0 && 
+           oboe_renderer->WriteAudioRaw(reinterpret_cast<uint8_t*>(direct_buffer), num_frames, sample_format);
+}
+
 void setOboeRendererVolume(void* renderer, float volume) {
     auto oboe_renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer);
     if (oboe_renderer) {
