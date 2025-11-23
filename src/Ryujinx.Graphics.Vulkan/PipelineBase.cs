@@ -1698,7 +1698,7 @@ namespace Ryujinx.Graphics.Vulkan
 
                 Auto<DisposablePipeline> pipeline = pbp == PipelineBindPoint.Compute
                     ? _newState.CreateComputePipeline(Gd, Device, _program, PipelineCache)
-                    : _newState.CreateGraphicsPipeline(Gd, Device, _program, PipelineCache, _renderPass.Get(Cbs).Value);
+                    : _newState.CreateGraphicsPipeline(Gd, Device, _program, PipelineCache, _renderPass!.Get(Cbs).Value);
 
                 if (pipeline == null)
                 {
