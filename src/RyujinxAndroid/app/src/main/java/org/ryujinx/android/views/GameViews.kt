@@ -3,6 +3,8 @@
 package org.ryujinx.android.views
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
@@ -66,7 +68,7 @@ class GameViews {
             }
         }
 
-        @OptIn(ExperimentalMaterial3Api::class)
+        @OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class)
         @Composable
         fun GameOverlay(mainViewModel: MainViewModel) {
             // 从MainViewModel加载持久化的性能统计显示设置
@@ -197,8 +199,24 @@ class GameViews {
                 if (!showLoading.value) {
                     GameController.Compose(mainViewModel)
 
-                    // 侧边菜单
-                    if (showSideMenu.value) {
+                    // 侧边菜单 - 使用动画
+                    AnimatedVisibility(
+                        visible = showSideMenu.value,
+                        enter = slideInHorizontally(
+                            animationSpec = tween(
+                                durationMillis = 400, // 增加到400毫秒
+                                easing = FastOutSlowInEasing
+                            ),
+                            initialOffsetX = { -it } // 从左侧滑入
+                        ),
+                        exit = slideOutHorizontally(
+                            animationSpec = tween(
+                                durationMillis = 300, // 增加到300毫秒
+                                easing = FastOutSlowInEasing
+                            ),
+                            targetOffsetX = { -it } // 向左侧滑出
+                        )
+                    ) {
                         SideMenu(
                             mainViewModel = mainViewModel,
                             showController = showController,
@@ -306,138 +324,203 @@ class GameViews {
             // 获取当前游戏标题 - 使用 getDisplayName()
             val gameTitle = mainViewModel.gameModel?.getDisplayName() ?: "Unknown Game"
 
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .width(280.dp)
-                    .background(
-                        MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-                        MaterialTheme.shapes.medium
-                    )
+            // 为菜单内容添加淡入动画
+            AnimatedContent(
+                targetState = Unit,
+                transitionSpec = {
+                    fadeIn(animationSpec = tween(300, delayMillis = 100)) with
+                    fadeOut(animationSpec = tween(100))
+                }
             ) {
-                Column(
+                Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
+                        .fillMaxHeight()
+                        .width(280.dp)
+                        .background(
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                            MaterialTheme.shapes.medium
+                        )
                 ) {
-                    // 游戏标题
-                    Text(
-                        text = gameTitle,
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                    )
-
-                    HorizontalDivider()
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // 菜单项
                     Column(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp)
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
                     ) {
-                        // Enable Motion
-                        SideMenuItem(
-                            icon = Icons.Default.Settings,
-                            text = "Enable Motion",
-                            trailingContent = {
-                                Switch(
-                                    checked = enableMotion.value,
-                                    onCheckedChange = {
-                                        enableMotion.value = it
-                                        val settings = QuickSettings(mainViewModel.activity)
-                                        settings.enableMotion = enableMotion.value
-                                        settings.save()
-                                        if (enableMotion.value)
-                                            mainViewModel.motionSensorManager?.register()
-                                        else
-                                            mainViewModel.motionSensorManager?.unregister()
+                        // 游戏标题
+                        Text(
+                            text = gameTitle,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp)
+                        )
+
+                        HorizontalDivider()
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // 菜单项
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp)
+                        ) {
+                            // Enable Motion - 添加动画延迟
+                            AnimatedVisibility(
+                                visible = true,
+                                enter = slideInHorizontally(
+                                    animationSpec = tween(300, delayMillis = 150),
+                                    initialOffsetX = { -it / 2 }
+                                ) + fadeIn(animationSpec = tween(300, delayMillis = 150))
+                            ) {
+                                SideMenuItem(
+                                    icon = Icons.Default.Settings,
+                                    text = "Enable Motion",
+                                    trailingContent = {
+                                        Switch(
+                                            checked = enableMotion.value,
+                                            onCheckedChange = {
+                                                enableMotion.value = it
+                                                val settings = QuickSettings(mainViewModel.activity)
+                                                settings.enableMotion = enableMotion.value
+                                                settings.save()
+                                                if (enableMotion.value)
+                                                    mainViewModel.motionSensorManager?.register()
+                                                else
+                                                    mainViewModel.motionSensorManager?.unregister()
+                                            },
+                                            modifier = Modifier.size(width = 36.dp, height = 24.dp)
+                                        )
                                     },
-                                    modifier = Modifier.size(width = 36.dp, height = 24.dp)
-                                )
-                            },
-                            onClick = { /* 开关已处理 */ }
-                        )
-
-                        // 虚拟手柄开关
-                        SideMenuItem(
-                            icon = null,
-                            text = "🎮 Virtual Controller",
-                            onClick = {
-                                onDismiss()
-                                showController.value = !showController.value
-                                RyujinxNative.jnaInstance.inputReleaseTouchPoint()
-                                mainViewModel.controller?.setVisible(showController.value)
-                            }
-                        )
-
-                        // VSync 开关
-                        SideMenuItem(
-                            icon = null,
-                            text = "🔄 VSync",
-                            trailingContent = {
-                                Text(
-                                    text = if (enableVsync.value) "ON" else "OFF",
-                                    color = if (enableVsync.value) Color.Green else Color.Red
-                                )
-                            },
-                            onClick = {
-                                onDismiss()
-                                enableVsync.value = !enableVsync.value
-                                RyujinxNative.jnaInstance.graphicsRendererSetVsync(
-                                    enableVsync.value
+                                    onClick = { /* 开关已处理 */ }
                                 )
                             }
-                        )
 
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-                        // 编辑模式
-                        SideMenuItem(
-                            icon = null,
-                            text = "✏️ Edit Mode",
-                            onClick = {
-                                onDismiss()
-                                isEditing.value = true
-                                mainViewModel.controller?.setEditingMode(true)
+                            // 虚拟手柄开关
+                            AnimatedVisibility(
+                                visible = true,
+                                enter = slideInHorizontally(
+                                    animationSpec = tween(300, delayMillis = 200),
+                                    initialOffsetX = { -it / 2 }
+                                ) + fadeIn(animationSpec = tween(300, delayMillis = 200))
+                            ) {
+                                SideMenuItem(
+                                    icon = null,
+                                    text = "🎮 Virtual Controller",
+                                    onClick = {
+                                        onDismiss()
+                                        showController.value = !showController.value
+                                        RyujinxNative.jnaInstance.inputReleaseTouchPoint()
+                                        mainViewModel.controller?.setVisible(showController.value)
+                                    }
+                                )
                             }
-                        )
 
-                        // 性能设置
-                        SideMenuItem(
-                            icon = null,
-                            text = "📊 Performance Settings",
-                            onClick = {
-                                onDismiss()
-                                showPerformanceSettings.value = true
+                            // VSync 开关
+                            AnimatedVisibility(
+                                visible = true,
+                                enter = slideInHorizontally(
+                                    animationSpec = tween(300, delayMillis = 250),
+                                    initialOffsetX = { -it / 2 }
+                                ) + fadeIn(animationSpec = tween(300, delayMillis = 250))
+                            ) {
+                                SideMenuItem(
+                                    icon = null,
+                                    text = "🔄 VSync",
+                                    trailingContent = {
+                                        Text(
+                                            text = if (enableVsync.value) "ON" else "OFF",
+                                            color = if (enableVsync.value) Color.Green else Color.Red
+                                        )
+                                    },
+                                    onClick = {
+                                        onDismiss()
+                                        enableVsync.value = !enableVsync.value
+                                        RyujinxNative.jnaInstance.graphicsRendererSetVsync(
+                                            enableVsync.value
+                                        )
+                                    }
+                                )
                             }
-                        )
 
-                        // 调整按键
-                        SideMenuItem(
-                            icon = null,
-                            text = "⚙️ Adjust Controls",
-                            onClick = {
-                                onDismiss()
-                                showAdjustControlsDialog.value = true
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                            // 编辑模式
+                            AnimatedVisibility(
+                                visible = true,
+                                enter = slideInHorizontally(
+                                    animationSpec = tween(300, delayMillis = 300),
+                                    initialOffsetX = { -it / 2 }
+                                ) + fadeIn(animationSpec = tween(300, delayMillis = 300))
+                            ) {
+                                SideMenuItem(
+                                    icon = null,
+                                    text = "✏️ Edit Mode",
+                                    onClick = {
+                                        onDismiss()
+                                        isEditing.value = true
+                                        mainViewModel.controller?.setEditingMode(true)
+                                    }
+                                )
                             }
-                        )
 
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-                        // 退出游戏
-                        SideMenuItem(
-                            icon = Icons.Default.ExitToApp,
-                            text = "Exit Game",
-                            onClick = {
-                                onDismiss()
-                                showExitConfirmDialog.value = true
+                            // 性能设置
+                            AnimatedVisibility(
+                                visible = true,
+                                enter = slideInHorizontally(
+                                    animationSpec = tween(300, delayMillis = 350),
+                                    initialOffsetX = { -it / 2 }
+                                ) + fadeIn(animationSpec = tween(300, delayMillis = 350))
+                            ) {
+                                SideMenuItem(
+                                    icon = null,
+                                    text = "📊 Performance Settings",
+                                    onClick = {
+                                        onDismiss()
+                                        showPerformanceSettings.value = true
+                                    }
+                                )
                             }
-                        )
+
+                            // 调整按键
+                            AnimatedVisibility(
+                                visible = true,
+                                enter = slideInHorizontally(
+                                    animationSpec = tween(300, delayMillis = 400),
+                                    initialOffsetX = { -it / 2 }
+                                ) + fadeIn(animationSpec = tween(300, delayMillis = 400))
+                            ) {
+                                SideMenuItem(
+                                    icon = null,
+                                    text = "⚙️ Adjust Controls",
+                                    onClick = {
+                                        onDismiss()
+                                        showAdjustControlsDialog.value = true
+                                    }
+                                )
+                            }
+
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                            // 退出游戏
+                            AnimatedVisibility(
+                                visible = true,
+                                enter = slideInHorizontally(
+                                    animationSpec = tween(300, delayMillis = 450),
+                                    initialOffsetX = { -it / 2 }
+                                ) + fadeIn(animationSpec = tween(300, delayMillis = 450))
+                            ) {
+                                SideMenuItem(
+                                    icon = Icons.Default.ExitToApp,
+                                    text = "Exit Game",
+                                    onClick = {
+                                        onDismiss()
+                                        showExitConfirmDialog.value = true
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -522,6 +605,8 @@ class GameViews {
                    this in '\u2700'..'\u27BF'
         }
 
+        // ... 保留其他函数（ExitConfirmDialog、PerformanceSettingsDialog、GameStats）
+        // 这些函数保持不变，这里省略以节省空间
         @Composable
         fun ExitConfirmDialog(
             mainViewModel: MainViewModel,
