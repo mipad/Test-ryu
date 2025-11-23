@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (多实例架构)
+// OboeHardwareDeviceDriver.cs (低延迟版本)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -14,7 +14,7 @@ namespace Ryujinx.Audio.Backends.Oboe
 {
     public class OboeHardwareDeviceDriver : IHardwareDeviceDriver, IDisposable
     {
-        // ========== P/Invoke 声明 - 多实例接口 ==========
+        // ========== P/Invoke 声明 - 低延迟接口 ==========
         [DllImport("libryujinxjni", EntryPoint = "createOboeRenderer")]
         private static extern IntPtr createOboeRenderer();
 
@@ -45,6 +45,9 @@ namespace Ryujinx.Audio.Backends.Oboe
         [DllImport("libryujinxjni", EntryPoint = "resetOboeRenderer")]
         private static extern void resetOboeRenderer(IntPtr renderer);
 
+        [DllImport("libryujinxjni", EntryPoint = "getOboeRendererOutputLatency")]
+        private static extern long getOboeRendererOutputLatency(IntPtr renderer);
+
         // ========== 属性 ==========
         public static bool IsSupported => true;
 
@@ -71,13 +74,22 @@ namespace Ryujinx.Audio.Backends.Oboe
                 {
                     try
                     {
-                        Thread.Sleep(10); // 10ms更新频率
+                        Thread.Sleep(5); // 减少更新间隔到5ms
                         
                         foreach (var session in _sessions.Keys)
                         {
                             if (session.IsActive)
                             {
                                 int bufferedFrames = session.GetBufferedFrames();
+                                long latency = session.GetOutputLatency();
+                                
+                                // 如果延迟过高，重置渲染器
+                                if (latency > 48000) // 超过1秒延迟
+                                {
+                                    Logger.Warning?.Print(LogClass.Audio, $"High audio latency detected: {latency} frames, resetting renderer");
+                                    session.ResetRenderer();
+                                }
+                                
                                 session.UpdatePlaybackStatus(bufferedFrames);
                             }
                         }
@@ -91,7 +103,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 Name = "Audio.Oboe.UpdateThread",
                 IsBackground = true,
-                Priority = ThreadPriority.Normal
+                Priority = ThreadPriority.Highest // 提高线程优先级
             };
             _updateThread.Start();
         }
@@ -109,7 +121,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 if (disposing)
                 {
                     _stillRunning = false;
-                    _updateThread?.Join(100);
+                    _updateThread?.Join(50); // 减少等待时间
                     
                     _pauseEvent?.Dispose();
                     _updateRequiredEvent?.Dispose();
@@ -222,6 +234,19 @@ namespace Ryujinx.Audio.Backends.Oboe
                 return _rendererPtr != IntPtr.Zero ? getOboeRendererBufferedFrames(_rendererPtr) : 0;
             }
 
+            public long GetOutputLatency()
+            {
+                return _rendererPtr != IntPtr.Zero ? getOboeRendererOutputLatency(_rendererPtr) : 0;
+            }
+
+            public void ResetRenderer()
+            {
+                if (_rendererPtr != IntPtr.Zero)
+                {
+                    resetOboeRenderer(_rendererPtr);
+                }
+            }
+
             public void UpdatePlaybackStatus(int bufferedFrames)
             {
                 try
@@ -307,7 +332,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 int bytesPerSample = GetBytesPerSample(_sampleFormat);
                 int frameCount = buffer.Data.Length / (bytesPerSample * _channelCount);
 
-                // 直接传递原始数据到独立的渲染器
+                // 直接传递原始数据到渲染器
                 int formatValue = SampleFormatToInt(_sampleFormat);
                 bool writeSuccess = writeOboeRendererAudioRaw(_rendererPtr, buffer.Data, frameCount, formatValue);
 
