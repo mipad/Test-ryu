@@ -64,8 +64,8 @@ void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& bu
            ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::High)
            ->setFormat(m_oboe_format)
            ->setFormatConversionAllowed(true)
-           ->setUsage(oboe::Usage::Game);
-           // 移除硬编码的 setFramesPerCallback，让Oboe自动选择最优值
+           ->setUsage(oboe::Usage::Game)
+           //->setFramesPerCallback(240);
     
     auto channel_count = m_channel_count.load();
     auto channel_mask = [&]() {
@@ -140,29 +140,10 @@ bool OboeAudioRenderer::OptimizeBufferSize() {
     if (!m_stream) return false;
     
     int32_t framesPerBurst = m_stream->getFramesPerBurst();
-    int32_t bufferCapacity = m_stream->getBufferCapacityInFrames();
+    int32_t desired_buffer_size = framesPerBurst > 0 ? framesPerBurst * 2 : 960;
     
-    if (framesPerBurst <= 0 || bufferCapacity <= 0) {
-        return true; // 使用默认设置
-    }
-    
-    // 安全设置：不超过容量的一半，且至少为2个burst
-    int32_t desired_buffer_size = std::min(
-        framesPerBurst * 2, 
-        bufferCapacity / 2
-    );
-    
-    // 确保至少为1个burst
-    desired_buffer_size = std::max(desired_buffer_size, framesPerBurst);
-    
-    auto result = m_stream->setBufferSizeInFrames(desired_buffer_size);
-    if (result) {
-        int32_t actualSize = result.value();
-        // 可以记录日志
-        return true;
-    }
-    
-    return false; // 设置失败
+    m_stream->setBufferSizeInFrames(desired_buffer_size);
+    return true;
 }
 
 bool OboeAudioRenderer::OpenStream() {
