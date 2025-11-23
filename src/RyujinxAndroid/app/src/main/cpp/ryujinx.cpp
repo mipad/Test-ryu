@@ -14,6 +14,68 @@ pthread_t _renderingThreadIdNative;
 std::chrono::time_point<std::chrono::steady_clock, std::chrono::nanoseconds> _currentTimePoint;
 bool isInitialOrientationFlipped = true;
 
+// 共享内存管理器
+class SharedMemoryManager {
+private:
+    struct SharedMemoryBlock {
+        void* data;
+        size_t size;
+        bool used;
+    };
+    
+    std::vector<SharedMemoryBlock> blocks;
+    std::mutex mutex;
+    static const size_t MAX_BLOCKS = 256;
+    static const size_t BLOCK_SIZE = 64 * 1024; // 64KB per block
+    
+public:
+    SharedMemoryManager() {
+        // 预分配内存块
+        for (size_t i = 0; i < MAX_BLOCKS; ++i) {
+            void* block = malloc(BLOCK_SIZE);
+            if (block) {
+                blocks.push_back({block, BLOCK_SIZE, false});
+            }
+        }
+    }
+    
+    ~SharedMemoryManager() {
+        std::lock_guard<std::mutex> lock(mutex);
+        for (auto& block : blocks) {
+            if (block.data) {
+                free(block.data);
+            }
+        }
+        blocks.clear();
+    }
+    
+    void* allocate(size_t size) {
+        std::lock_guard<std::mutex> lock(mutex);
+        for (auto& block : blocks) {
+            if (!block.used && block.size >= size) {
+                block.used = true;
+                return block.data;
+            }
+        }
+        return nullptr;
+    }
+    
+    void deallocate(void* ptr) {
+        std::lock_guard<std::mutex> lock(mutex);
+        for (auto& block : blocks) {
+            if (block.data == ptr) {
+                block.used = false;
+                break;
+            }
+        }
+    }
+    
+    static SharedMemoryManager& getInstance() {
+        static SharedMemoryManager instance;
+        return instance;
+    }
+};
+
 extern "C" {
 
 JNIEXPORT jlong JNICALL
@@ -162,7 +224,28 @@ Java_org_ryujinx_android_NativeHelpers_setIsInitialOrientationFlipped(JNIEnv *en
     isInitialOrientationFlipped = is_flipped;
 }
 
-// ========== 多实例 Oboe Audio JNI接口 ==========
+// ========== DirectByteBuffer 共享内存接口 ==========
+
+JNIEXPORT jlong JNICALL
+Java_org_ryujinx_android_NativeHelpers_allocateSharedMemory(JNIEnv *env, jobject thiz, jint size) {
+    void* memory = SharedMemoryManager::getInstance().allocate(size);
+    return reinterpret_cast<jlong>(memory);
+}
+
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_freeSharedMemory(JNIEnv *env, jobject thiz, jlong ptr) {
+    void* memory = reinterpret_cast<void*>(ptr);
+    SharedMemoryManager::getInstance().deallocate(memory);
+}
+
+JNIEXPORT jobject JNICALL
+Java_org_ryujinx_android_NativeHelpers_createDirectBuffer(JNIEnv *env, jobject thiz, jlong ptr, jint size) {
+    void* memory = reinterpret_cast<void*>(ptr);
+    if (memory == nullptr) return nullptr;
+    return env->NewDirectByteBuffer(memory, size);
+}
+
+// ========== 多实例 Oboe Audio JNI接口 (优化版本) ==========
 
 JNIEXPORT jlong JNICALL
 Java_org_ryujinx_android_NativeHelpers_createOboeRenderer(JNIEnv *env, jobject thiz) {
@@ -215,6 +298,22 @@ Java_org_ryujinx_android_NativeHelpers_writeOboeRendererAudioRaw(JNIEnv *env, jo
     if (data) {
         bool success = renderer->WriteAudioRaw(reinterpret_cast<uint8_t*>(data), num_frames, sample_format);
         env->ReleasePrimitiveArrayCritical(audio_data, data, JNI_ABORT);
+        return success ? JNI_TRUE : JNI_FALSE;
+    }
+    return JNI_FALSE;
+}
+
+// 新增：使用 DirectByteBuffer 写入音频数据
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_writeOboeRendererDirect(JNIEnv *env, jobject thiz, jlong renderer_ptr, jobject direct_buffer, jint num_frames, jint sample_format) {
+    auto renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer_ptr);
+    if (!renderer || !direct_buffer || num_frames <= 0) return JNI_FALSE;
+    
+    void* buffer_ptr = env->GetDirectBufferAddress(direct_buffer);
+    jlong buffer_size = env->GetDirectBufferCapacity(direct_buffer);
+    
+    if (buffer_ptr && buffer_size > 0) {
+        bool success = renderer->WriteAudioRaw(reinterpret_cast<uint8_t*>(buffer_ptr), num_frames, sample_format);
         return success ? JNI_TRUE : JNI_FALSE;
     }
     return JNI_FALSE;
