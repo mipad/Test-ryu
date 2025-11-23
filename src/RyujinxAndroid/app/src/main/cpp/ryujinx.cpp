@@ -220,6 +220,23 @@ Java_org_ryujinx_android_NativeHelpers_writeOboeRendererAudioRaw(JNIEnv *env, jo
     return JNI_FALSE;
 }
 
+// 新增：DirectByteBuffer 支持
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_writeOboeRendererDirectBuffer(JNIEnv *env, jobject thiz, jlong renderer_ptr, jobject direct_buffer, jint buffer_size, jint num_frames, jint sample_format) {
+    auto renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer_ptr);
+    if (!renderer || !direct_buffer || num_frames <= 0 || buffer_size <= 0) return JNI_FALSE;
+    
+    void* buffer_ptr = env->GetDirectBufferAddress(direct_buffer);
+    jlong buffer_capacity = env->GetDirectBufferCapacity(direct_buffer);
+    
+    if (!buffer_ptr || buffer_capacity < buffer_size) {
+        return JNI_FALSE;
+    }
+    
+    bool success = renderer->WriteAudioRaw(reinterpret_cast<uint8_t*>(buffer_ptr), num_frames, sample_format);
+    return success ? JNI_TRUE : JNI_FALSE;
+}
+
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setOboeRendererVolume(JNIEnv *env, jobject thiz, jlong renderer_ptr, jfloat volume) {
     auto renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer_ptr);

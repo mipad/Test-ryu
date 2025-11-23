@@ -39,6 +39,10 @@ extern "C" {
     void shutdownOboeRenderer(void* renderer);
     bool writeOboeRendererAudio(void* renderer, const int16_t* data, int32_t num_frames);
     bool writeOboeRendererAudioRaw(void* renderer, const uint8_t* data, int32_t num_frames, int32_t sample_format);
+    
+    // 新增：DirectByteBuffer 支持
+    bool writeOboeRendererDirectBuffer(void* renderer, void* direct_buffer, int32_t buffer_size, int32_t num_frames, int32_t sample_format);
+    
     void setOboeRendererVolume(void* renderer, float volume);
     bool isOboeRendererInitialized(void* renderer);
     bool isOboeRendererPlaying(void* renderer);

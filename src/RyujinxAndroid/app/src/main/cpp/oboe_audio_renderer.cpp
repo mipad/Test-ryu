@@ -8,7 +8,7 @@ namespace RyujinxOboe {
 OboeAudioRenderer::OboeAudioRenderer() {
     m_audio_callback = std::make_unique<AAudioExclusiveCallback>(this);
     m_error_callback = std::make_unique<AAudioExclusiveErrorCallback>(this);
-    PreallocateBlocks(64);
+    PreallocateBlocks(128); // 从64增加到128
 }
 
 OboeAudioRenderer::~OboeAudioRenderer() {
@@ -89,7 +89,15 @@ bool OboeAudioRenderer::TryOpenStreamWithRetry(int maxRetryCount) {
         }
         
         if (attempt < maxRetryCount - 1) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(50 * (1 << attempt)));
+            // 增加重试间隔，使用指数退避
+            std::this_thread::sleep_for(std::chrono::milliseconds(100 * (1 << attempt)));
+            
+            // 每次重试前清理资源
+            CloseStream();
+            m_audio_queue.clear();
+            if (m_current_block) {
+                m_object_pool.release(std::move(m_current_block));
+            }
         }
     }
     return false;
@@ -140,9 +148,20 @@ bool OboeAudioRenderer::OptimizeBufferSize() {
     if (!m_stream) return false;
     
     int32_t framesPerBurst = m_stream->getFramesPerBurst();
-    int32_t desired_buffer_size = framesPerBurst > 0 ? framesPerBurst * 2 : 960;
+    if (framesPerBurst <= 0) {
+        framesPerBurst = 240; // 默认值
+    }
     
-    m_stream->setBufferSizeInFrames(desired_buffer_size);
+    // 使用更大的缓冲区减少欠载风险 - 增加到4倍脉冲串
+    int32_t desired_buffer_size = framesPerBurst * 4;
+    
+    auto result = m_stream->setBufferSizeInFrames(desired_buffer_size);
+    if (result != oboe::Result::OK) {
+        // 如果设置失败，回退到2倍
+        desired_buffer_size = framesPerBurst * 2;
+        m_stream->setBufferSizeInFrames(desired_buffer_size);
+    }
+    
     return true;
 }
 
@@ -279,6 +298,12 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioS
         size_t bytes_requested = num_frames * channels * bytes_per_sample;
         std::memset(audioData, 0, bytes_requested);
         return oboe::DataCallbackResult::Continue;
+    }
+    
+    // 监控缓冲区状态
+    uint32_t queue_size = m_audio_queue.size();
+    if (queue_size < 4) {
+        // 缓冲区不足警告，可以在这里添加日志
     }
     
     uint8_t* output = static_cast<uint8_t*>(audioData);
