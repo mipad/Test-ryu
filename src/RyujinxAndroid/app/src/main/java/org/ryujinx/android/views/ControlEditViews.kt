@@ -3,6 +3,7 @@ package org.ryujinx.android.views
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.background // 添加这个导入
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -501,7 +502,7 @@ class ControlEditViews {
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 16.dp)
-                                    .background(
+                                    .background( // 这里使用了 background 修饰符
                                         Color.LightGray.copy(alpha = 0.2f),
                                         MaterialTheme.shapes.small
                                     )
