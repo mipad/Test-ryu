@@ -15,7 +15,7 @@ namespace Ryujinx.Graphics.Vulkan
     {
         // The shaderc.net dependency's Options constructor and dispose are not thread safe.
         // Take this lock when using them.
-        private static readonly Lock _shaderOptionsLock = new();
+        private static readonly object _shaderOptionsLock = new();
 
         private static readonly nint _ptrMainEntryPointName = Marshal.StringToHGlobalAnsi("main");
 
