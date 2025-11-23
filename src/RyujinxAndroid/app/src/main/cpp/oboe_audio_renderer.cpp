@@ -224,10 +224,11 @@ int32_t OboeAudioRenderer::GetBufferedFrames() const {
         total_frames += static_cast<int32_t>(bytes_remaining / (device_channels * bytes_per_sample));
     }
     
-    uint32_t queue_size = m_audio_queue.size();
+    // 计算队列中所有块的帧数
+    size_t queue_size = m_audio_queue.size();
     size_t bytes_per_sample = GetBytesPerSample(m_sample_format.load());
     int32_t frames_per_block = static_cast<int32_t>(AudioBlock::BLOCK_SIZE / (device_channels * bytes_per_sample));
-    total_frames += queue_size * frames_per_block;
+    total_frames += static_cast<int32_t>(queue_size * frames_per_block);
     
     return total_frames;
 }

@@ -275,47 +275,64 @@ private:
     size_t _segment_size;
 };
 
-// 保持原有LockFreeObjectPool兼容性
+// 新的LockFreeObjectPool，使用SegmentBasedLockFreeQueue
 template<typename T, uint32_t POOL_SIZE>
 class LockFreeObjectPool {
 public:
     LockFreeObjectPool() {
+        // 预分配POOL_SIZE个对象
         for (uint32_t i = 0; i < POOL_SIZE; ++i) {
-            objects[i] = std::make_unique<T>();
-            pool.push(std::move(objects[i]));
+            auto obj = std::make_unique<T>();
+            push_object(std::move(obj));
         }
     }
 
     std::unique_ptr<T> acquire() {
         std::unique_ptr<T> obj;
-        if (pool.pop(obj)) {
+        if (_queue.pop(obj)) {
+            _count.fetch_sub(1, std::memory_order_acq_rel);
             return obj;
         }
         return std::make_unique<T>();
     }
 
     bool release(std::unique_ptr<T> obj) {
-        if (obj) {
-            obj->clear();
-            return pool.push(std::move(obj));
+        if (!obj) return false;
+        
+        // 如果当前池中对象数量已经达到POOL_SIZE，则不再回收
+        uint32_t current_count = _count.load(std::memory_order_acquire);
+        if (current_count >= POOL_SIZE) {
+            return false;
+        }
+        
+        obj->clear();
+        if (push_object(std::move(obj))) {
+            _count.fetch_add(1, std::memory_order_acq_rel);
+            return true;
         }
         return false;
     }
 
     uint32_t available() const {
-        return static_cast<uint32_t>(pool.size());
+        return _count.load(std::memory_order_acquire);
     }
 
     void preallocate(uint32_t count) {
+        // 预分配count个对象，但不超过POOL_SIZE
         for (uint32_t i = 0; i < count && available() < POOL_SIZE; ++i) {
             auto obj = std::make_unique<T>();
-            pool.push(std::move(obj));
+            push_object(std::move(obj));
+            _count.fetch_add(1, std::memory_order_acq_rel);
         }
     }
 
 private:
-    SegmentBasedLockFreeQueue<std::unique_ptr<T>> pool;
-    std::unique_ptr<T> objects[POOL_SIZE];
+    bool push_object(std::unique_ptr<T> obj) {
+        return _queue.push(std::move(obj));
+    }
+
+    SegmentBasedLockFreeQueue<std::unique_ptr<T>> _queue;
+    std::atomic<uint32_t> _count{0};
 };
 
 #endif //RHYTHMGAME_LOCKFREEQUEUE_H
