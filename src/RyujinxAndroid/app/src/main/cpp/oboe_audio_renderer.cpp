@@ -73,7 +73,7 @@ void OboeAudioRenderer::ConfigureForLowLatency(oboe::AudioStreamBuilder& builder
            ->setFormat(m_oboe_format)
            ->setFormatConversionAllowed(true)
            ->setUsage(oboe::Usage::Game)
-           ->setContentType(oboe::ContentType::Game)
+           ->setContentType(oboe::ContentType::Media)
            ->setFramesPerCallback(128); // 减少回调帧数以降低延迟
     
     auto channel_count = m_channel_count.load();
