@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (多实例架构 + DirectByteBuffer 支持)
+// OboeHardwareDeviceDriver.cs (简化版 + 环形缓冲区)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -6,7 +6,6 @@ using Ryujinx.Audio.Integration;
 using Ryujinx.Common.Logging;
 using Ryujinx.Memory;
 using System;
-using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Threading;
 
@@ -14,7 +13,7 @@ namespace Ryujinx.Audio.Backends.Oboe
 {
     public class OboeHardwareDeviceDriver : IHardwareDeviceDriver, IDisposable
     {
-        // ========== P/Invoke 声明 - 多实例接口 ==========
+        // ========== P/Invoke 声明 ==========
         [DllImport("libryujinxjni", EntryPoint = "createOboeRenderer")]
         private static extern IntPtr createOboeRenderer();
 
@@ -29,10 +28,6 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         [DllImport("libryujinxjni", EntryPoint = "writeOboeRendererAudioRaw")]
         private static extern bool writeOboeRendererAudioRaw(IntPtr renderer, byte[] audioData, int num_frames, int sample_format);
-
-        // 新增：DirectByteBuffer 支持
-        [DllImport("libryujinxjni", EntryPoint = "writeOboeRendererDirectBuffer")]
-        private static extern bool writeOboeRendererDirectBuffer(IntPtr renderer, IntPtr direct_buffer, int buffer_size, int num_frames, int sample_format);
 
         [DllImport("libryujinxjni", EntryPoint = "setOboeRendererVolume")]
         private static extern void setOboeRendererVolume(IntPtr renderer, float volume);
@@ -55,50 +50,11 @@ namespace Ryujinx.Audio.Backends.Oboe
         private bool _disposed;
         private readonly ManualResetEvent _pauseEvent = new(true);
         private readonly ManualResetEvent _updateRequiredEvent = new(false);
-        private readonly ConcurrentDictionary<OboeAudioSession, byte> _sessions = new();
-        private Thread _updateThread;
-        private bool _stillRunning = true;
 
         public float Volume { get; set; } = 1.0f;
 
         // ========== 构造与生命周期 ==========
-        public OboeHardwareDeviceDriver()
-        {
-            StartUpdateThread();
-        }
-
-        private void StartUpdateThread()
-        {
-            _updateThread = new Thread(() =>
-            {
-                while (_stillRunning)
-                {
-                    try
-                    {
-                        Thread.Sleep(10); // 10ms更新频率
-                        
-                        foreach (var session in _sessions.Keys)
-                        {
-                            if (session.IsActive)
-                            {
-                                int bufferedFrames = session.GetBufferedFrames();
-                                session.UpdatePlaybackStatus(bufferedFrames);
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error?.Print(LogClass.Audio, $"Update thread error: {ex.Message}");
-                    }
-                }
-            })
-            {
-                Name = "Audio.Oboe.UpdateThread",
-                IsBackground = true,
-                Priority = ThreadPriority.Normal
-            };
-            _updateThread.Start();
-        }
+        public OboeHardwareDeviceDriver() { }
 
         public void Dispose()
         {
@@ -112,9 +68,6 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 if (disposing)
                 {
-                    _stillRunning = false;
-                    _updateThread?.Join(100);
-                    
                     _pauseEvent?.Dispose();
                     _updateRequiredEvent?.Dispose();
                 }
@@ -162,35 +115,20 @@ namespace Ryujinx.Audio.Backends.Oboe
                 sampleRate = 48000;
             }
 
-            var session = new OboeAudioSession(this, memoryManager, sampleFormat, sampleRate, channelCount);
-            _sessions.TryAdd(session, 0);
-            
-            return session;
-        }
-
-        private bool Unregister(OboeAudioSession session) 
-        {
-            return _sessions.TryRemove(session, out _);
+            return new OboeAudioSession(this, memoryManager, sampleFormat, sampleRate, channelCount);
         }
 
         // ========== 音频会话类 ==========
         private class OboeAudioSession : HardwareDeviceSessionOutputBase
         {
             private readonly OboeHardwareDeviceDriver _driver;
-            private readonly ConcurrentQueue<OboeAudioBuffer> _queuedBuffers = new();
-            private ulong _totalWrittenSamples;
-            private ulong _totalPlayedSamples;
+            private ulong _playedSampleCount;
             private bool _active;
             private float _volume;
             private readonly int _channelCount;
             private readonly uint _sampleRate;
             private readonly SampleFormat _sampleFormat;
             private readonly IntPtr _rendererPtr;
-
-            // DirectByteBuffer 相关字段
-            private IntPtr _directBufferPtr = IntPtr.Zero;
-            private int _directBufferSize = 0;
-            private readonly object _bufferLock = new object();
 
             public bool IsActive => _active;
 
@@ -207,6 +145,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 _sampleRate = sampleRate;
                 _sampleFormat = sampleFormat;
                 _volume = 1.0f;
+                _playedSampleCount = 0;
                 
                 // 创建独立的渲染器实例
                 _rendererPtr = createOboeRenderer();
@@ -224,73 +163,6 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
 
                 setOboeRendererVolume(_rendererPtr, _volume);
-
-                // 预分配 DirectByteBuffer (64KB)
-                AllocateDirectBuffer(64 * 1024);
-            }
-
-            private void AllocateDirectBuffer(int size)
-            {
-                lock (_bufferLock)
-                {
-                    if (_directBufferPtr != IntPtr.Zero)
-                    {
-                        Marshal.FreeHGlobal(_directBufferPtr);
-                    }
-                    
-                    _directBufferPtr = Marshal.AllocHGlobal(size);
-                    _directBufferSize = size;
-                    
-                    if (_directBufferPtr == IntPtr.Zero)
-                    {
-                        throw new OutOfMemoryException("Failed to allocate DirectByteBuffer for audio");
-                    }
-                }
-            }
-
-            public int GetBufferedFrames()
-            {
-                return _rendererPtr != IntPtr.Zero ? getOboeRendererBufferedFrames(_rendererPtr) : 0;
-            }
-
-            public void UpdatePlaybackStatus(int bufferedFrames)
-            {
-                try
-                {
-                    // 计算已播放的样本数
-                    ulong playedSamples = _totalWrittenSamples - (ulong)(bufferedFrames * _channelCount);
-                    
-                    // 防止回退
-                    if (playedSamples < _totalPlayedSamples)
-                    {
-                        _totalPlayedSamples = playedSamples;
-                        return;
-                    }
-                    
-                    ulong availableSampleCount = playedSamples - _totalPlayedSamples;
-                    
-                    // 更新缓冲区播放状态
-                    while (availableSampleCount > 0 && _queuedBuffers.TryPeek(out OboeAudioBuffer driverBuffer))
-                    {
-                        ulong sampleStillNeeded = driverBuffer.SampleCount - driverBuffer.SamplePlayed;
-                        ulong playedAudioBufferSampleCount = Math.Min(sampleStillNeeded, availableSampleCount);
-                        
-                        driverBuffer.SamplePlayed += playedAudioBufferSampleCount;
-                        availableSampleCount -= playedAudioBufferSampleCount;
-                        _totalPlayedSamples += playedAudioBufferSampleCount;
-                        
-                        // 如果缓冲区播放完毕，移除它
-                        if (driverBuffer.SamplePlayed == driverBuffer.SampleCount)
-                        {
-                            _queuedBuffers.TryDequeue(out _);
-                            _driver.GetUpdateRequiredEvent().Set();
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error?.Print(LogClass.Audio, $"Error in UpdatePlaybackStatus: {ex.Message}");
-                }
             }
 
             public override void Dispose()
@@ -302,19 +174,6 @@ namespace Ryujinx.Audio.Backends.Oboe
                     shutdownOboeRenderer(_rendererPtr);
                     destroyOboeRenderer(_rendererPtr);
                 }
-
-                // 释放 DirectByteBuffer
-                lock (_bufferLock)
-                {
-                    if (_directBufferPtr != IntPtr.Zero)
-                    {
-                        Marshal.FreeHGlobal(_directBufferPtr);
-                        _directBufferPtr = IntPtr.Zero;
-                        _directBufferSize = 0;
-                    }
-                }
-                
-                _driver.Unregister(this);
             }
 
             public override void PrepareToClose() 
@@ -335,7 +194,6 @@ namespace Ryujinx.Audio.Backends.Oboe
                 if (_active)
                 {
                     _active = false;
-                    _queuedBuffers.Clear();
                 }
             }
 
@@ -349,57 +207,23 @@ namespace Ryujinx.Audio.Backends.Oboe
                 int bytesPerSample = GetBytesPerSample(_sampleFormat);
                 int frameCount = buffer.Data.Length / (bytesPerSample * _channelCount);
 
-                // 使用 DirectByteBuffer 写入音频数据
-                bool writeSuccess = WriteAudioWithDirectBuffer(buffer.Data, frameCount);
+                // 写入音频数据
+                int formatValue = SampleFormatToInt(_sampleFormat);
+                bool writeSuccess = writeOboeRendererAudioRaw(_rendererPtr, buffer.Data, frameCount, formatValue);
 
-                if (writeSuccess)
-                {
-                    ulong sampleCount = (ulong)(frameCount * _channelCount);
-                    _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, sampleCount));
-                    _totalWrittenSamples += sampleCount;
-                }
-                else
+                if (!writeSuccess)
                 {
                     Logger.Warning?.Print(LogClass.Audio, 
                         $"Audio write failed: {frameCount} frames dropped, Format={_sampleFormat}, Rate={_sampleRate}Hz");
                     
                     // 重置渲染器
                     resetOboeRenderer(_rendererPtr);
-                    
-                    // 重试使用传统方法
-                    writeSuccess = WriteAudioWithFallback(buffer.Data, frameCount);
-                    if (writeSuccess)
-                    {
-                        ulong sampleCount = (ulong)(frameCount * _channelCount);
-                        _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, sampleCount));
-                        _totalWrittenSamples += sampleCount;
-                    }
                 }
-            }
-
-            private bool WriteAudioWithDirectBuffer(byte[] audioData, int frameCount)
-            {
-                lock (_bufferLock)
+                else
                 {
-                    if (_directBufferPtr == IntPtr.Zero || audioData.Length > _directBufferSize)
-                    {
-                        return false;
-                    }
-
-                    // 拷贝数据到 DirectByteBuffer
-                    Marshal.Copy(audioData, 0, _directBufferPtr, audioData.Length);
-
-                    // 使用 DirectByteBuffer 写入
-                    int formatValue = SampleFormatToInt(_sampleFormat);
-                    return writeOboeRendererDirectBuffer(_rendererPtr, _directBufferPtr, audioData.Length, frameCount, formatValue);
+                    // 更新播放样本计数
+                    _playedSampleCount += (ulong)(frameCount * _channelCount);
                 }
-            }
-
-            private bool WriteAudioWithFallback(byte[] audioData, int frameCount)
-            {
-                // 回退到传统方法
-                int formatValue = SampleFormatToInt(_sampleFormat);
-                return writeOboeRendererAudioRaw(_rendererPtr, audioData, frameCount, formatValue);
             }
 
             private int SampleFormatToInt(SampleFormat format)
@@ -428,8 +252,9 @@ namespace Ryujinx.Audio.Backends.Oboe
 
             public override bool WasBufferFullyConsumed(AudioBuffer buffer)
             {
-                return !_queuedBuffers.TryPeek(out var driverBuffer) || 
-                       driverBuffer.DriverIdentifier != buffer.DataPointer;
+                // 对于环形缓冲区，我们假设数据总是被立即消费
+                // 实际的消费状态由环形缓冲区内部管理
+                return true;
             }
 
             public override void SetVolume(float volume)
@@ -445,31 +270,12 @@ namespace Ryujinx.Audio.Backends.Oboe
 
             public override ulong GetPlayedSampleCount()
             {
-                return _totalPlayedSamples;
+                return _playedSampleCount;
             }
 
             public override void UnregisterBuffer(AudioBuffer buffer)
             {
-                if (_queuedBuffers.TryPeek(out var driverBuffer) && 
-                    driverBuffer.DriverIdentifier == buffer.DataPointer)
-                {
-                    _queuedBuffers.TryDequeue(out _);
-                }
-            }
-        }
-
-        // ========== 内部缓冲区类 ==========
-        private class OboeAudioBuffer
-        {
-            public readonly ulong DriverIdentifier;
-            public readonly ulong SampleCount;
-            public ulong SamplePlayed;
-
-            public OboeAudioBuffer(ulong driverIdentifier, ulong sampleCount)
-            {
-                DriverIdentifier = driverIdentifier;
-                SampleCount = sampleCount;
-                SamplePlayed = 0;
+                // 对于环形缓冲区，不需要手动取消注册缓冲区
             }
         }
     }
