@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (多实例架构)
+// OboeHardwareDeviceDriver.cs (多实例架构 + DirectByteBuffer 支持)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -29,6 +29,10 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         [DllImport("libryujinxjni", EntryPoint = "writeOboeRendererAudioRaw")]
         private static extern bool writeOboeRendererAudioRaw(IntPtr renderer, byte[] audioData, int num_frames, int sample_format);
+
+        // 新增：DirectByteBuffer 支持
+        [DllImport("libryujinxjni", EntryPoint = "writeOboeRendererDirectBuffer")]
+        private static extern bool writeOboeRendererDirectBuffer(IntPtr renderer, IntPtr direct_buffer, int buffer_size, int num_frames, int sample_format);
 
         [DllImport("libryujinxjni", EntryPoint = "setOboeRendererVolume")]
         private static extern void setOboeRendererVolume(IntPtr renderer, float volume);
@@ -183,6 +187,11 @@ namespace Ryujinx.Audio.Backends.Oboe
             private readonly SampleFormat _sampleFormat;
             private readonly IntPtr _rendererPtr;
 
+            // DirectByteBuffer 相关字段
+            private IntPtr _directBufferPtr = IntPtr.Zero;
+            private int _directBufferSize = 0;
+            private readonly object _bufferLock = new object();
+
             public bool IsActive => _active;
 
             public OboeAudioSession(
@@ -215,6 +224,28 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
 
                 setOboeRendererVolume(_rendererPtr, _volume);
+
+                // 预分配 DirectByteBuffer (64KB)
+                AllocateDirectBuffer(64 * 1024);
+            }
+
+            private void AllocateDirectBuffer(int size)
+            {
+                lock (_bufferLock)
+                {
+                    if (_directBufferPtr != IntPtr.Zero)
+                    {
+                        Marshal.FreeHGlobal(_directBufferPtr);
+                    }
+                    
+                    _directBufferPtr = Marshal.AllocHGlobal(size);
+                    _directBufferSize = size;
+                    
+                    if (_directBufferPtr == IntPtr.Zero)
+                    {
+                        throw new OutOfMemoryException("Failed to allocate DirectByteBuffer for audio");
+                    }
+                }
             }
 
             public int GetBufferedFrames()
@@ -271,6 +302,17 @@ namespace Ryujinx.Audio.Backends.Oboe
                     shutdownOboeRenderer(_rendererPtr);
                     destroyOboeRenderer(_rendererPtr);
                 }
+
+                // 释放 DirectByteBuffer
+                lock (_bufferLock)
+                {
+                    if (_directBufferPtr != IntPtr.Zero)
+                    {
+                        Marshal.FreeHGlobal(_directBufferPtr);
+                        _directBufferPtr = IntPtr.Zero;
+                        _directBufferSize = 0;
+                    }
+                }
                 
                 _driver.Unregister(this);
             }
@@ -307,9 +349,8 @@ namespace Ryujinx.Audio.Backends.Oboe
                 int bytesPerSample = GetBytesPerSample(_sampleFormat);
                 int frameCount = buffer.Data.Length / (bytesPerSample * _channelCount);
 
-                // 直接传递原始数据到独立的渲染器
-                int formatValue = SampleFormatToInt(_sampleFormat);
-                bool writeSuccess = writeOboeRendererAudioRaw(_rendererPtr, buffer.Data, frameCount, formatValue);
+                // 使用 DirectByteBuffer 写入音频数据
+                bool writeSuccess = WriteAudioWithDirectBuffer(buffer.Data, frameCount);
 
                 if (writeSuccess)
                 {
@@ -324,7 +365,41 @@ namespace Ryujinx.Audio.Backends.Oboe
                     
                     // 重置渲染器
                     resetOboeRenderer(_rendererPtr);
+                    
+                    // 重试使用传统方法
+                    writeSuccess = WriteAudioWithFallback(buffer.Data, frameCount);
+                    if (writeSuccess)
+                    {
+                        ulong sampleCount = (ulong)(frameCount * _channelCount);
+                        _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, sampleCount));
+                        _totalWrittenSamples += sampleCount;
+                    }
                 }
+            }
+
+            private bool WriteAudioWithDirectBuffer(byte[] audioData, int frameCount)
+            {
+                lock (_bufferLock)
+                {
+                    if (_directBufferPtr == IntPtr.Zero || audioData.Length > _directBufferSize)
+                    {
+                        return false;
+                    }
+
+                    // 拷贝数据到 DirectByteBuffer
+                    Marshal.Copy(audioData, 0, _directBufferPtr, audioData.Length);
+
+                    // 使用 DirectByteBuffer 写入
+                    int formatValue = SampleFormatToInt(_sampleFormat);
+                    return writeOboeRendererDirectBuffer(_rendererPtr, _directBufferPtr, audioData.Length, frameCount, formatValue);
+                }
+            }
+
+            private bool WriteAudioWithFallback(byte[] audioData, int frameCount)
+            {
+                // 回退到传统方法
+                int formatValue = SampleFormatToInt(_sampleFormat);
+                return writeOboeRendererAudioRaw(_rendererPtr, audioData, frameCount, formatValue);
             }
 
             private int SampleFormatToInt(SampleFormat format)
