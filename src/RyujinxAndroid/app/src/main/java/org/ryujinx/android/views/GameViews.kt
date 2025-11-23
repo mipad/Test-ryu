@@ -10,8 +10,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.VideogameAsset
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -35,7 +34,6 @@ import compose.icons.CssGgIcons
 import compose.icons.cssggicons.ToolbarBottom
 import org.ryujinx.android.GameController
 import org.ryujinx.android.GameHost
-import org.ryujinx.android.Icons
 import org.ryujinx.android.MainActivity
 import org.ryujinx.android.RyujinxNative
 import org.ryujinx.android.viewmodels.MainViewModel
@@ -305,8 +303,8 @@ class GameViews {
             showExitConfirmDialog: androidx.compose.runtime.MutableState<Boolean>,
             onDismiss: () -> Unit
         ) {
-            // 获取当前游戏标题
-            val gameTitle = mainViewModel.gameModel?.title ?: "Unknown Game"
+            // 获取当前游戏标题 - 使用 getDisplayName()
+            val gameTitle = mainViewModel.gameModel?.getDisplayName() ?: "Unknown Game"
 
             Box(
                 modifier = Modifier
@@ -344,7 +342,7 @@ class GameViews {
                     ) {
                         // Enable Motion
                         SideMenuItem(
-                            icon = Icons.Default.Tune,
+                            icon = Icons.Default.Settings,
                             text = "Enable Motion",
                             trailingContent = {
                                 Switch(
@@ -367,8 +365,8 @@ class GameViews {
 
                         // 虚拟手柄开关
                         SideMenuItem(
-                            icon = Icons.Default.VideogameAsset,
-                            text = "Virtual Controller",
+                            icon = null,
+                            text = "🎮 Virtual Controller",
                             onClick = {
                                 onDismiss()
                                 showController.value = !showController.value
@@ -379,13 +377,12 @@ class GameViews {
 
                         // VSync 开关
                         SideMenuItem(
-                            icon = Icons.vSync(),
-                            text = "VSync",
+                            icon = null,
+                            text = "🔄 VSync",
                             trailingContent = {
-                                Icon(
-                                    imageVector = Icons.vSync(),
-                                    tint = if (enableVsync.value) Color.Green else Color.Red,
-                                    contentDescription = "VSync"
+                                Text(
+                                    text = if (enableVsync.value) "ON" else "OFF",
+                                    color = if (enableVsync.value) Color.Green else Color.Red
                                 )
                             },
                             onClick = {
@@ -412,8 +409,8 @@ class GameViews {
 
                         // 性能设置
                         SideMenuItem(
-                            icon = Icons.stats(),
-                            text = "Performance Settings",
+                            icon = null,
+                            text = "📊 Performance Settings",
                             onClick = {
                                 onDismiss()
                                 showPerformanceSettings.value = true
@@ -423,7 +420,7 @@ class GameViews {
                         // 调整按键
                         SideMenuItem(
                             icon = null,
-                            text = "🎮 Adjust Controls",
+                            text = "⚙️ Adjust Controls",
                             onClick = {
                                 onDismiss()
                                 showAdjustControlsDialog.value = true
@@ -482,8 +479,9 @@ class GameViews {
                             }
                             icon == null && text.contains(Regex("[\\p{So}\\p{Cn}]")) -> {
                                 // 使用表情符号
+                                val emoji = text.takeWhile { it.isEmoji() }
                                 Text(
-                                    text = text.substring(0, 2), // 取前两个字符（表情符号）
+                                    text = emoji,
                                     fontSize = 20.sp,
                                     modifier = Modifier
                                         .size(24.dp)
@@ -497,7 +495,7 @@ class GameViews {
                         
                         Text(
                             text = if (icon == null && text.contains(Regex("[\\p{So}\\p{Cn}]"))) {
-                                text.substring(2).trim() // 移除表情符号部分
+                                text.dropWhile { it.isEmoji() }.trim()
                             } else {
                                 text
                             },
@@ -506,12 +504,22 @@ class GameViews {
                     }
                     
                     trailingContent?.invoke() ?: Icon(
-                        imageVector = Icons.Default.ArrowForwardIos,
+                        imageVector = Icons.Default.ArrowForward,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp)
                     )
                 }
             }
+        }
+
+        // 扩展函数：检查字符是否为表情符号
+        private fun Char.isEmoji(): Boolean {
+            return this in '\uE000'..'\uF8FF' || 
+                   this in '\uD83C'..'\uDBFF' || 
+                   this in '\uDC00'..'\uDFFF' ||
+                   this in '\u2000'..'\u2BFF' ||
+                   this in '\u2600'..'\u26FF' ||
+                   this in '\u2700'..'\u27BF'
         }
 
         @Composable
@@ -570,7 +578,6 @@ class GameViews {
             }
         }
 
-        // ... 保留 PerformanceSettingsDialog 和 GameStats 函数（保持不变）
         @Composable
         fun PerformanceSettingsDialog(
             mainViewModel: MainViewModel,
