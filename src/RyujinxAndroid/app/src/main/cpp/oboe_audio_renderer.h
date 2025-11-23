@@ -2,9 +2,12 @@
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
 #include <oboe/Oboe.h>
+#include <mutex>
 #include <atomic>
 #include <memory>
 #include <cstdint>
+#include <thread>
+#include <chrono>
 #include "LockFreeQueue.h"
 
 namespace RyujinxOboe {
@@ -17,62 +20,22 @@ enum SampleFormat {
 };
 
 struct AudioBlock {
-    uint8_t* data = nullptr;
+    static constexpr size_t BLOCK_SIZE = 4096;
+    
+    uint8_t data[BLOCK_SIZE];
     size_t data_size = 0;
-    size_t data_used = 0;
+    size_t data_played = 0;
     int32_t sample_format = PCM_INT16;
-    
-    AudioBlock() = default;
-    
-    explicit AudioBlock(size_t size) {
-        data = new uint8_t[size];
-        data_size = size;
-        data_used = 0;
-    }
-    
-    ~AudioBlock() {
-        if (data) {
-            delete[] data;
-        }
-    }
+    bool consumed = true;
     
     void clear() {
-        data_used = 0;
+        data_size = 0;
+        data_played = 0;
+        consumed = true;
     }
     
     size_t available() const {
-        return data_size - data_used;
-    }
-    
-    // 禁止拷贝
-    AudioBlock(const AudioBlock&) = delete;
-    AudioBlock& operator=(const AudioBlock&) = delete;
-    
-    // 允许移动
-    AudioBlock(AudioBlock&& other) noexcept {
-        data = other.data;
-        data_size = other.data_size;
-        data_used = other.data_used;
-        sample_format = other.sample_format;
-        other.data = nullptr;
-        other.data_size = 0;
-        other.data_used = 0;
-    }
-    
-    AudioBlock& operator=(AudioBlock&& other) noexcept {
-        if (this != &other) {
-            if (data) {
-                delete[] data;
-            }
-            data = other.data;
-            data_size = other.data_size;
-            data_used = other.data_used;
-            sample_format = other.sample_format;
-            other.data = nullptr;
-            other.data_size = 0;
-            other.data_used = 0;
-        }
-        return *this;
+        return data_size - data_played;
     }
 };
 
@@ -96,6 +59,7 @@ public:
     float GetVolume() const { return m_volume.load(); }
 
     void Reset();
+    void PreallocateBlocks(size_t count);
 
 private:
     class AAudioExclusiveCallback : public oboe::AudioStreamDataCallback {
@@ -128,14 +92,12 @@ private:
     static size_t GetBytesPerSample(int32_t format);
     bool OptimizeBufferSize();
     bool TryOpenStreamWithRetry(int maxRetryCount = 3);
-    
-    size_t CalculateOptimalBlockSize() const;
-    std::unique_ptr<AudioBlock> CreateAudioBlock(size_t size);
 
     std::shared_ptr<oboe::AudioStream> m_stream;
     std::unique_ptr<AAudioExclusiveCallback> m_audio_callback;
     std::unique_ptr<AAudioExclusiveErrorCallback> m_error_callback;
     
+    std::mutex m_stream_mutex;
     std::atomic<bool> m_initialized{false};
     std::atomic<bool> m_stream_started{false};
     
@@ -146,13 +108,13 @@ private:
     
     int32_t m_device_channels = 2;
     oboe::AudioFormat m_oboe_format{oboe::AudioFormat::I16};
-    int32_t m_frames_per_burst{256};
     
-    // 动态调整的无锁队列
-    static constexpr uint32_t AUDIO_QUEUE_SIZE = 128; // 较小的队列大小
+    static constexpr uint32_t AUDIO_QUEUE_SIZE = 512;
+    static constexpr uint32_t OBJECT_POOL_SIZE = 1024;
+    
     LockFreeQueue<std::unique_ptr<AudioBlock>, AUDIO_QUEUE_SIZE> m_audio_queue;
+    LockFreeObjectPool<AudioBlock, OBJECT_POOL_SIZE> m_object_pool;
     
-    // 当前正在播放的块
     std::unique_ptr<AudioBlock> m_current_block;
 };
 

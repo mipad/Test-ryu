@@ -220,23 +220,6 @@ Java_org_ryujinx_android_NativeHelpers_writeOboeRendererAudioRaw(JNIEnv *env, jo
     return JNI_FALSE;
 }
 
-// 新增：DirectByteBuffer 支持
-JNIEXPORT jboolean JNICALL
-Java_org_ryujinx_android_NativeHelpers_writeOboeRendererDirectBuffer(JNIEnv *env, jobject thiz, jlong renderer_ptr, jobject direct_buffer, jint buffer_size, jint num_frames, jint sample_format) {
-    auto renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer_ptr);
-    if (!renderer || !direct_buffer || num_frames <= 0 || buffer_size <= 0) return JNI_FALSE;
-    
-    void* buffer_ptr = env->GetDirectBufferAddress(direct_buffer);
-    jlong buffer_capacity = env->GetDirectBufferCapacity(direct_buffer);
-    
-    if (!buffer_ptr || buffer_capacity < buffer_size) {
-        return JNI_FALSE;
-    }
-    
-    bool success = renderer->WriteAudioRaw(reinterpret_cast<uint8_t*>(buffer_ptr), num_frames, sample_format);
-    return success ? JNI_TRUE : JNI_FALSE;
-}
-
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setOboeRendererVolume(JNIEnv *env, jobject thiz, jlong renderer_ptr, jfloat volume) {
     auto renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer_ptr);
@@ -321,13 +304,6 @@ bool writeOboeRendererAudio(void* renderer, const int16_t* data, int32_t num_fra
 bool writeOboeRendererAudioRaw(void* renderer, const uint8_t* data, int32_t num_frames, int32_t sample_format) {
     auto oboe_renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer);
     return oboe_renderer && data && num_frames > 0 && oboe_renderer->WriteAudioRaw(data, num_frames, sample_format);
-}
-
-// 新增：DirectByteBuffer 支持 - C接口实现
-bool writeOboeRendererDirectBuffer(void* renderer, void* direct_buffer, int32_t buffer_size, int32_t num_frames, int32_t sample_format) {
-    auto oboe_renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer);
-    return oboe_renderer && direct_buffer && buffer_size > 0 && num_frames > 0 && 
-           oboe_renderer->WriteAudioRaw(reinterpret_cast<uint8_t*>(direct_buffer), num_frames, sample_format);
 }
 
 void setOboeRendererVolume(void* renderer, float volume) {
