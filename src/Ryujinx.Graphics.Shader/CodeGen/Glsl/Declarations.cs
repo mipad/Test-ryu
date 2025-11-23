@@ -512,9 +512,13 @@ namespace Ryujinx.Graphics.Shader.CodeGen.Glsl
                 if (context.Definitions.Stage == ShaderStage.Fragment && context.Definitions.DualSourceBlend)
                 {
                     IoDefinition firstOutput = outputs.ElementAtOrDefault(0);
+                    IoDefinition secondOutput = outputs.ElementAtOrDefault(1);
 
-                    DeclareOutputDualSourceBlendAttribute(context, firstOutput.Location);
-                    outputs = outputs.Skip(2);
+                    if (firstOutput.Location + 1 == secondOutput.Location)
+                    {
+                        DeclareOutputDualSourceBlendAttribute(context, firstOutput.Location);
+                        outputs = outputs.Skip(2);
+                    }
                 }
 
                 foreach (var ioDefinition in outputs)
