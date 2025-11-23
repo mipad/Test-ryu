@@ -12,7 +12,7 @@ using System.Threading;
 
 namespace Ryujinx.Audio.Backends.Oboe
 {
-    public class OboeHardwareDeviceDriver : IHardwareDeviceDriver, IDisposable
+    public unsafe class OboeHardwareDeviceDriver : IHardwareDeviceDriver, IDisposable
     {
         // ========== P/Invoke 声明 - 多实例接口 ==========
         [DllImport("libryujinxjni", EntryPoint = "createOboeRenderer")]
@@ -71,11 +71,11 @@ namespace Ryujinx.Audio.Backends.Oboe
         // 共享内存相关
         private const int SHARED_MEMORY_SIZE = 2 * 1024 * 1024; // 2MB 共享内存
         private bool _sharedMemoryInitialized = false;
-        private unsafe SharedAudioHeader* _sharedMemoryHeader;
+        private SharedAudioHeader* _sharedMemoryHeader;
         private byte* _sharedAudioData;
 
         [StructLayout(LayoutKind.Sequential)]
-        private unsafe struct SharedAudioHeader
+        private struct SharedAudioHeader
         {
             public uint write_pos;
             public uint read_pos;
@@ -234,7 +234,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         }
 
         // ========== 音频会话类 ==========
-        private class OboeAudioSession : HardwareDeviceSessionOutputBase
+        private unsafe class OboeAudioSession : HardwareDeviceSessionOutputBase
         {
             private readonly OboeHardwareDeviceDriver _driver;
             private readonly ConcurrentQueue<OboeAudioBuffer> _queuedBuffers = new();
@@ -249,8 +249,8 @@ namespace Ryujinx.Audio.Backends.Oboe
             private readonly bool _useSharedMemory;
 
             // 共享内存相关
-            private unsafe SharedAudioHeader* _sharedHeader;
-            private unsafe byte* _sharedData;
+            private SharedAudioHeader* _sharedHeader;
+            private byte* _sharedData;
             private readonly object _sharedMemoryLock = new object();
 
             public bool IsActive => _active;
@@ -291,19 +291,16 @@ namespace Ryujinx.Audio.Backends.Oboe
                 // 初始化共享内存
                 if (_useSharedMemory)
                 {
-                    unsafe
+                    long sharedMemAddr = getSharedAudioMemoryAddr();
+                    if (sharedMemAddr != 0)
                     {
-                        long sharedMemAddr = getSharedAudioMemoryAddr();
-                        if (sharedMemAddr != 0)
-                        {
-                            _sharedHeader = (SharedAudioHeader*)sharedMemAddr;
-                            _sharedData = (byte*)(sharedMemAddr + sizeof(SharedAudioHeader));
-                            
-                            // 更新音频参数到共享内存头
-                            _sharedHeader->sample_rate = sampleRate;
-                            _sharedHeader->channels = channelCount;
-                            _sharedHeader->sample_format = (uint)formatValue;
-                        }
+                        _sharedHeader = (SharedAudioHeader*)sharedMemAddr;
+                        _sharedData = (byte*)(sharedMemAddr + sizeof(SharedAudioHeader));
+                        
+                        // 更新音频参数到共享内存头
+                        _sharedHeader->sample_rate = sampleRate;
+                        _sharedHeader->channels = channelCount;
+                        _sharedHeader->sample_format = (uint)formatValue;
                     }
                 }
             }
@@ -426,7 +423,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
             }
 
-            private unsafe void WriteToSharedMemory(byte[] audioData, int frameCount)
+            private void WriteToSharedMemory(byte[] audioData, int frameCount)
             {
                 lock (_sharedMemoryLock)
                 {
