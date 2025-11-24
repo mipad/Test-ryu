@@ -9,6 +9,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Settings
@@ -32,6 +36,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextAlign
 import compose.icons.CssGgIcons
 import compose.icons.cssggicons.ToolbarBottom
 import org.ryujinx.android.GameController
@@ -960,7 +966,10 @@ class GameViews {
                                 Text(text = "Resolution Scale")
                                 Text(
                                     text = "%.2fx".format(resScale.value),
-                                    modifier = Modifier.clickable {
+                                    modifier = Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) {
                                         showResScaleOptions.value = !showResScaleOptions.value
                                         // 隐藏其他选项
                                         showAspectRatioOptions.value = false
@@ -1035,7 +1044,10 @@ class GameViews {
                                 val aspectRatioMap = listOf("4:3", "16:9", "16:10", "21:9", "32:9", "Stretched")
                                 Text(
                                     text = aspectRatioMap[aspectRatio.value],
-                                    modifier = Modifier.clickable {
+                                    modifier = Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) {
                                         showAspectRatioOptions.value = !showAspectRatioOptions.value
                                         // 隐藏其他选项
                                         showResScaleOptions.value = false
@@ -1067,7 +1079,10 @@ class GameViews {
                                                     .width(80.dp)
                                                     .height(40.dp)
                                                     .clip(MaterialTheme.shapes.small)
-                                                    .clickable {
+                                                    .clickable(
+                                                        interactionSource = remember { MutableInteractionSource() },
+                                                        indication = null
+                                                    ) {
                                                         aspectRatio.value = index
                                                         showAspectRatioOptions.value = false
                                                         quickSettings.aspectRatio = index
@@ -1122,7 +1137,10 @@ class GameViews {
                                         16f -> "16x"
                                         else -> "Off"
                                     },
-                                    modifier = Modifier.clickable {
+                                    modifier = Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) {
                                         showAnisotropyOptions.value = !showAnisotropyOptions.value
                                         // 隐藏其他选项
                                         showResScaleOptions.value = false
@@ -1207,7 +1225,10 @@ class GameViews {
                                         1 -> "On"
                                         else -> "Auto"
                                     },
-                                    modifier = Modifier.clickable {
+                                    modifier = Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) {
                                         showBackendThreadingOptions.value = !showBackendThreadingOptions.value
                                         // 隐藏其他选项
                                         showResScaleOptions.value = false
@@ -1297,7 +1318,10 @@ class GameViews {
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .padding(8.dp)
-                                            .clickable { showCustomTimeDialog.value = true },
+                                            .clickable(
+                                                interactionSource = remember { MutableInteractionSource() },
+                                                indication = null
+                                            ) { showCustomTimeDialog.value = true },
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
@@ -1326,7 +1350,10 @@ class GameViews {
                                         3 -> "Oboe"
                                         else -> "Disabled"
                                     },
-                                    modifier = Modifier.clickable {
+                                    modifier = Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) {
                                         showAudioEngineOptions.value = !showAudioEngineOptions.value
                                         // 隐藏其他选项
                                         showResScaleOptions.value = false
@@ -1426,7 +1453,10 @@ class GameViews {
                                         5 -> "SmaaUltra"
                                         else -> "None"
                                     },
-                                    modifier = Modifier.clickable {
+                                    modifier = Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) {
                                         showAntiAliasingOptions.value = !showAntiAliasingOptions.value
                                         // 隐藏其他选项
                                         showResScaleOptions.value = false
