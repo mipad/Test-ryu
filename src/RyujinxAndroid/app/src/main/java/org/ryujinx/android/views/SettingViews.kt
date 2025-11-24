@@ -396,7 +396,12 @@ class SettingViews {
                                     enableMacroHLE,
                                     enableMacroJIT
                                 )
-                                settingsViewModel.navController.popBackStack()
+                                // 检查游戏是否正在运行，如果是则返回游戏界面，否则返回首页
+                                if (mainViewModel.activity.isGameRunning) {
+                                    settingsViewModel.navController.navigate("game")
+                                } else {
+                                    settingsViewModel.navController.popBackStack()
+                                }
                             }) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                             }
@@ -2997,7 +3002,12 @@ if (showBackendThreadingDialog.value) {
                         enableMacroHLE,
                         enableMacroJIT
                     )
-                    settingsViewModel.navController.popBackStack()
+                    // 检查游戏是否正在运行，如果是则返回游戏界面，否则返回首页
+                    if (mainViewModel.activity.isGameRunning) {
+                        settingsViewModel.navController.navigate("game")
+                    } else {
+                        settingsViewModel.navController.popBackStack()
+                    }
                 }
             }
         }
