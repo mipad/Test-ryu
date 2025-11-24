@@ -95,6 +95,7 @@ class GameViews {
             val showPerformanceSettings = remember { mutableStateOf(false) }
             val showAdjustControlsDialog = remember { mutableStateOf(false) }
             val showExitConfirmDialog = remember { mutableStateOf(false) }
+            val showSettingsDialog = remember { mutableStateOf(false) } // 新增：设置对话框状态
 
             Box(modifier = Modifier.fillMaxSize()) {
                 if (showStats.value) {
@@ -225,6 +226,7 @@ class GameViews {
                             showPerformanceSettings = showPerformanceSettings,
                             showAdjustControlsDialog = showAdjustControlsDialog,
                             showExitConfirmDialog = showExitConfirmDialog,
+                            showSettingsDialog = showSettingsDialog, // 新增：传递设置对话框状态
                             onDismiss = { showSideMenu.value = false }
                         )
                     }
@@ -267,6 +269,17 @@ class GameViews {
                     ExitConfirmDialog(
                         mainViewModel = mainViewModel,
                         onDismiss = { showExitConfirmDialog.value = false }
+                    )
+                }
+
+                // 设置对话框
+                if (showSettingsDialog.value) {
+                    GameSettingsDialog(
+                        mainViewModel = mainViewModel,
+                        showController = showController,
+                        enableVsync = enableVsync,
+                        enableMotion = enableMotion,
+                        onDismiss = { showSettingsDialog.value = false }
                     )
                 }
 
@@ -318,6 +331,7 @@ class GameViews {
             showPerformanceSettings: androidx.compose.runtime.MutableState<Boolean>,
             showAdjustControlsDialog: androidx.compose.runtime.MutableState<Boolean>,
             showExitConfirmDialog: androidx.compose.runtime.MutableState<Boolean>,
+            showSettingsDialog: androidx.compose.runtime.MutableState<Boolean>, // 新增：设置对话框状态
             onDismiss: () -> Unit
         ) {
             // 获取当前游戏标题 - 使用 getDisplayName()
@@ -378,8 +392,7 @@ class GameViews {
                                     text = "⚙️ Settings",
                                     onClick = {
                                         onDismiss()
-                                        // 直接跳转到设置界面，不关闭游戏
-                                        mainViewModel.navController?.navigate("settings")
+                                        showSettingsDialog.value = true // 打开设置对话框
                                     }
                                 )
                             }
@@ -854,6 +867,219 @@ class GameViews {
                         Row(
                             horizontalArrangement = Arrangement.End,
                             modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Button(
+                                onClick = onDismiss
+                            ) {
+                                Text(text = "Close")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        @Composable
+        fun GameSettingsDialog(
+            mainViewModel: MainViewModel,
+            showController: androidx.compose.runtime.MutableState<Boolean>,
+            enableVsync: androidx.compose.runtime.MutableState<Boolean>,
+            enableMotion: androidx.compose.runtime.MutableState<Boolean>,
+            onDismiss: () -> Unit
+        ) {
+            // 从设置中获取当前值
+            val quickSettings = QuickSettings(mainViewModel.activity)
+            
+            // 可以在游戏运行时动态切换的设置
+            val useVirtualController = remember { mutableStateOf(quickSettings.useVirtualController) }
+            val enableVsyncState = remember { mutableStateOf(quickSettings.enableVsync) }
+            val enableMotionState = remember { mutableStateOf(quickSettings.enableMotion) }
+            val enablePerformanceMode = remember { mutableStateOf(quickSettings.enablePerformanceMode) }
+            val enableShaderCache = remember { mutableStateOf(quickSettings.enableShaderCache) }
+            val enableTextureRecompression = remember { mutableStateOf(quickSettings.enableTextureRecompression) }
+            
+            Dialog(onDismissRequest = onDismiss) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth(0.9f)
+                        .fillMaxHeight(0.8f),
+                    shape = MaterialTheme.shapes.large,
+                    tonalElevation = AlertDialogDefaults.TonalElevation
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp)
+                    ) {
+                        Text(
+                            text = "Game Settings",
+                            style = MaterialTheme.typography.headlineSmall,
+                            modifier = Modifier
+                                .padding(bottom = 16.dp)
+                                .align(Alignment.CenterHorizontally)
+                        )
+                        
+                        // 可滚动的内容区域
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            // 输入设置
+                            Text(
+                                text = "Input",
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                            
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = "Virtual Controller")
+                                Switch(
+                                    checked = useVirtualController.value,
+                                    onCheckedChange = {
+                                        useVirtualController.value = it
+                                        quickSettings.useVirtualController = it
+                                        quickSettings.save()
+                                        showController.value = it
+                                        mainViewModel.controller?.setVisible(it)
+                                    }
+                                )
+                            }
+                            
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = "Enable Motion")
+                                Switch(
+                                    checked = enableMotionState.value,
+                                    onCheckedChange = {
+                                        enableMotionState.value = it
+                                        quickSettings.enableMotion = it
+                                        quickSettings.save()
+                                        enableMotion.value = it
+                                        if (it)
+                                            mainViewModel.motionSensorManager?.register()
+                                        else
+                                            mainViewModel.motionSensorManager?.unregister()
+                                    }
+                                )
+                            }
+                            
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                            
+                            // 图形设置
+                            Text(
+                                text = "Graphics",
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                            
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = "VSync")
+                                Switch(
+                                    checked = enableVsyncState.value,
+                                    onCheckedChange = {
+                                        enableVsyncState.value = it
+                                        quickSettings.enableVsync = it
+                                        quickSettings.save()
+                                        enableVsync.value = it
+                                        RyujinxNative.jnaInstance.graphicsRendererSetVsync(it)
+                                    }
+                                )
+                            }
+                            
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = "Shader Cache")
+                                Switch(
+                                    checked = enableShaderCache.value,
+                                    onCheckedChange = {
+                                        enableShaderCache.value = it
+                                        quickSettings.enableShaderCache = it
+                                        quickSettings.save()
+                                        RyujinxNative.jnaInstance.graphicsRendererSetShaderCache(it)
+                                    }
+                                )
+                            }
+                            
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = "Texture Recompression")
+                                Switch(
+                                    checked = enableTextureRecompression.value,
+                                    onCheckedChange = {
+                                        enableTextureRecompression.value = it
+                                        quickSettings.enableTextureRecompression = it
+                                        quickSettings.save()
+                                        RyujinxNative.jnaInstance.graphicsRendererSetTextureRecompression(it)
+                                    }
+                                )
+                            }
+                            
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                            
+                            // 系统设置
+                            Text(
+                                text = "System",
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                            
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = "Performance Mode")
+                                Switch(
+                                    checked = enablePerformanceMode.value,
+                                    onCheckedChange = {
+                                        enablePerformanceMode.value = it
+                                        quickSettings.enablePerformanceMode = it
+                                        quickSettings.save()
+                                        if (it)
+                                            mainViewModel.performanceManager?.setTurboMode(true)
+                                        else
+                                            mainViewModel.performanceManager?.setTurboMode(false)
+                                    }
+                                )
+                            }
+                        }
+                        
+                        // 底部按钮
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 16.dp),
+                            horizontalArrangement = Arrangement.End
                         ) {
                             Button(
                                 onClick = onDismiss
