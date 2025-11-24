@@ -396,15 +396,13 @@ class SettingViews {
                                     enableMacroHLE,
                                     enableMacroJIT
                                 )
-                                
+                                // 直接返回，不关闭游戏
                                 settingsViewModel.navController.popBackStack()
                             }) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                             }
-                        }
-                    )
-                },
-                content = { contentPadding ->
+                        })
+                }) { contentPadding ->
                 Column(
                     modifier = Modifier
                         .padding(contentPadding)
@@ -1296,7 +1294,7 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                                                 .fillMaxWidth()
                                                                 .padding(8.dp),
                                                             verticalAlignment = Alignment.CenterVertically
-                                                        ) {
+                                                            ) {
                                                             RadioButton(
                                                                 selected = selectedDriver.value == 0 || driverViewModel.selected.isEmpty(),
                                                                 onClick = {
@@ -1643,17 +1641,23 @@ ExpandableView(onCardArrowClick = { }, title = "Post-Processing") {
                 }
                 
                 // 滑动条
-                androidx.compose.material3.Slider(
-                    value = scalingFilterLevel.value.toFloat(),
-                    onValueChange = { newValue ->
-                        scalingFilterLevel.value = newValue.toInt()
-                    },
-                    valueRange = 0f..100f,
-                    steps = 99,
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                )
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    androidx.compose.material3.Slider(
+                        value = scalingFilterLevel.value.toFloat(),
+                        onValueChange = { newValue ->
+                            scalingFilterLevel.value = newValue.toInt()
+                        },
+                        valueRange = 0f..100f,
+                        steps = 99,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         }
     }
@@ -2186,8 +2190,7 @@ AnimatedVisibility(visible = customTimeEnabled.value) {
     }
 }
 
-// 自定义时间设置对话框 - 这里需要实现CustomTimeDialog，但原文件中没有提供，暂时注释掉
-/*
+// 自定义时间设置对话框
 if (showCustomTimeDialog.value) {
     CustomTimeDialog(
         currentYear = customTimeYear.value,
@@ -2208,7 +2211,6 @@ if (showCustomTimeDialog.value) {
         }
     )
 }
-*/
     }
 }
                     
@@ -2996,6 +2998,7 @@ if (showBackendThreadingDialog.value) {
                         enableMacroHLE,
                         enableMacroJIT
                     )
+                    // 直接返回，不关闭游戏
                     settingsViewModel.navController.popBackStack()
                 }
             }
