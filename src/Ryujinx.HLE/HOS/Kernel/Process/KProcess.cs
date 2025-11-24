@@ -294,7 +294,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
                 return result;
             }
 
-            result = Capabilities.InitializeForUser(capabilities, MemoryManager, IsApplication);
+            result = Capabilities.InitializeForUser(capabilities, MemoryManager);
 
             if (result != Result.Success)
             {
