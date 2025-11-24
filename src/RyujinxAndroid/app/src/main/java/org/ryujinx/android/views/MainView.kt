@@ -7,6 +7,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import org.ryujinx.android.MainActivity
 import org.ryujinx.android.viewmodels.MainViewModel
 import org.ryujinx.android.viewmodels.SettingsViewModel
 import org.ryujinx.android.viewmodels.ModViewModel
@@ -19,9 +20,23 @@ class MainView {
             mainViewModel.navController = navController
 
             NavHost(navController = navController, startDestination = "home") {
-                composable("home") { HomeViews.Home(mainViewModel.homeViewModel, navController) }
-                composable("user") { UserViews.Main(mainViewModel) }
-                composable("game") { GameViews.Main() }
+                composable("home") { 
+                    HomeViews.Home(mainViewModel.homeViewModel, navController) 
+                }
+                composable("user") { 
+                    UserViews.Main(mainViewModel) 
+                }
+                composable("game") { 
+                    // 确保游戏继续运行
+                    if (MainActivity.mainViewModel?.activity?.isGameRunning == true) {
+                        GameViews.Main()
+                    } else {
+                        // 如果游戏没有运行，返回首页
+                        navController.navigate("home") {
+                            popUpTo("home") { inclusive = true }
+                        }
+                    }
+                }
                 composable("settings") {
                     SettingViews.Main(
                         SettingsViewModel(
