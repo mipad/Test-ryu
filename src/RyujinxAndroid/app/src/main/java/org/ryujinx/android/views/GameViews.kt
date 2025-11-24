@@ -365,13 +365,34 @@ class GameViews {
                                 .fillMaxWidth()
                                 .padding(horizontal = 8.dp)
                         ) {
-                            // Enable Motion - 添加动画延迟
+                            // 设置选项 - 放在第一个
                             AnimatedVisibility(
                                 visible = true,
                                 enter = slideInHorizontally(
                                     animationSpec = tween(300, delayMillis = 150),
                                     initialOffsetX = { -it / 2 }
                                 ) + fadeIn(animationSpec = tween(300, delayMillis = 150))
+                            ) {
+                                SideMenuItem(
+                                    icon = Icons.Default.Settings,
+                                    text = "⚙️ Settings",
+                                    onClick = {
+                                        onDismiss()
+                                        // 直接跳转到设置界面，不关闭游戏
+                                        mainViewModel.navController?.navigate("settings")
+                                    }
+                                )
+                            }
+
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                            // Enable Motion - 添加动画延迟
+                            AnimatedVisibility(
+                                visible = true,
+                                enter = slideInHorizontally(
+                                    animationSpec = tween(300, delayMillis = 200),
+                                    initialOffsetX = { -it / 2 }
+                                ) + fadeIn(animationSpec = tween(300, delayMillis = 200))
                             ) {
                                 SideMenuItem(
                                     icon = Icons.Default.Settings,
@@ -400,9 +421,9 @@ class GameViews {
                             AnimatedVisibility(
                                 visible = true,
                                 enter = slideInHorizontally(
-                                    animationSpec = tween(300, delayMillis = 200),
+                                    animationSpec = tween(300, delayMillis = 250),
                                     initialOffsetX = { -it / 2 }
-                                ) + fadeIn(animationSpec = tween(300, delayMillis = 200))
+                                ) + fadeIn(animationSpec = tween(300, delayMillis = 250))
                             ) {
                                 SideMenuItem(
                                     icon = null,
@@ -420,9 +441,9 @@ class GameViews {
                             AnimatedVisibility(
                                 visible = true,
                                 enter = slideInHorizontally(
-                                    animationSpec = tween(300, delayMillis = 250),
+                                    animationSpec = tween(300, delayMillis = 300),
                                     initialOffsetX = { -it / 2 }
-                                ) + fadeIn(animationSpec = tween(300, delayMillis = 250))
+                                ) + fadeIn(animationSpec = tween(300, delayMillis = 300))
                             ) {
                                 SideMenuItem(
                                     icon = null,
@@ -445,26 +466,7 @@ class GameViews {
 
                             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-                            // 编辑模式
-                            AnimatedVisibility(
-                                visible = true,
-                                enter = slideInHorizontally(
-                                    animationSpec = tween(300, delayMillis = 300),
-                                    initialOffsetX = { -it / 2 }
-                                ) + fadeIn(animationSpec = tween(300, delayMillis = 300))
-                            ) {
-                                SideMenuItem(
-                                    icon = null,
-                                    text = "✏️ Edit Controls",
-                                    onClick = {
-                                        onDismiss()
-                                        isEditing.value = true
-                                        mainViewModel.controller?.setEditingMode(true)
-                                    }
-                                )
-                            }
-
-                            // 性能设置
+                            // 编辑模式 - 移到调整控件上面
                             AnimatedVisibility(
                                 visible = true,
                                 enter = slideInHorizontally(
@@ -474,10 +476,11 @@ class GameViews {
                             ) {
                                 SideMenuItem(
                                     icon = null,
-                                    text = "📊 Performance information",
+                                    text = "✏️ Edit Controls",
                                     onClick = {
                                         onDismiss()
-                                        showPerformanceSettings.value = true
+                                        isEditing.value = true
+                                        mainViewModel.controller?.setEditingMode(true)
                                     }
                                 )
                             }
@@ -500,15 +503,33 @@ class GameViews {
                                 )
                             }
 
-                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-                            // 退出游戏
+                            // 性能设置
                             AnimatedVisibility(
                                 visible = true,
                                 enter = slideInHorizontally(
                                     animationSpec = tween(300, delayMillis = 450),
                                     initialOffsetX = { -it / 2 }
                                 ) + fadeIn(animationSpec = tween(300, delayMillis = 450))
+                            ) {
+                                SideMenuItem(
+                                    icon = null,
+                                    text = "📊 Performance information",
+                                    onClick = {
+                                        onDismiss()
+                                        showPerformanceSettings.value = true
+                                    }
+                                )
+                            }
+
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                            // 退出游戏
+                            AnimatedVisibility(
+                                visible = true,
+                                enter = slideInHorizontally(
+                                    animationSpec = tween(300, delayMillis = 500),
+                                    initialOffsetX = { -it / 2 }
+                                ) + fadeIn(animationSpec = tween(300, delayMillis = 500))
                             ) {
                                 SideMenuItem(
                                     icon = Icons.Default.ExitToApp,
