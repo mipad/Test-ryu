@@ -58,14 +58,14 @@ void OboeAudioRenderer::Shutdown() {
 void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& builder) {
     builder.setPerformanceMode(oboe::PerformanceMode::LowLatency)
            ->setAudioApi(oboe::AudioApi::AAudio)
-           ->setSharingMode(oboe::SharingMode::Shared)
+           ->setSharingMode(oboe::SharingMode::Exclusive)
            ->setDirection(oboe::Direction::Output)
            ->setSampleRate(m_sample_rate.load())
-           ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::High)
+           ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium)
            ->setFormat(m_oboe_format)
            ->setFormatConversionAllowed(true)
-           ->setUsage(oboe::Usage::Game);
-           //->setFramesPerCallback(240);
+           ->setUsage(oboe::Usage::Game)
+           ->setFramesPerCallback(240);
     
     auto channel_count = m_channel_count.load();
     auto channel_mask = [&]() {
