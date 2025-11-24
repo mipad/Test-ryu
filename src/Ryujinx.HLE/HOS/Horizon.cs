@@ -282,7 +282,7 @@ namespace Ryujinx.HLE.HOS
                 ProcessCreationInfo creationInfo = new("Service", 1, 0, 0x8000000, 1, Flags, 0, 0);
 
                 uint[] defaultCapabilities = {
-                    (((uint)KScheduler.CpuCoresCount - 1) << 24) + (((uint)KScheduler.CpuCoresCount - 1) << 16) + 0x63F7u,
+                    0x030363F7,
                     0x1FFFFFCF,
                     0x207FFFEF,
                     0x47E0060F,
@@ -475,4 +475,3 @@ namespace Ryujinx.HLE.HOS
         }
     }
 }
-
