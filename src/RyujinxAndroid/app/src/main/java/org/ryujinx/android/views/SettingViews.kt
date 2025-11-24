@@ -396,17 +396,15 @@ class SettingViews {
                                     enableMacroHLE,
                                     enableMacroJIT
                                 )
-                                // 检查游戏是否正在运行，如果是则返回游戏界面，否则返回首页
-                                if (mainViewModel.activity.isGameRunning) {
-                                    settingsViewModel.navController.navigate("game")
-                                } else {
-                                    settingsViewModel.navController.popBackStack()
-                                }
+                                
+                                settingsViewModel.navController.popBackStack()
                             }) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                             }
-                        })
-                }) { contentPadding ->
+                        }
+                    )
+                },
+                content = { contentPadding ->
                 Column(
                     modifier = Modifier
                         .padding(contentPadding)
@@ -1645,23 +1643,17 @@ ExpandableView(onCardArrowClick = { }, title = "Post-Processing") {
                 }
                 
                 // 滑动条
-                Row(
+                androidx.compose.material3.Slider(
+                    value = scalingFilterLevel.value.toFloat(),
+                    onValueChange = { newValue ->
+                        scalingFilterLevel.value = newValue.toInt()
+                    },
+                    valueRange = 0f..100f,
+                    steps = 99,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    androidx.compose.material3.Slider(
-                        value = scalingFilterLevel.value.toFloat(),
-                        onValueChange = { newValue ->
-                            scalingFilterLevel.value = newValue.toInt()
-                        },
-                        valueRange = 0f..100f,
-                        steps = 99,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                )
             }
         }
     }
@@ -2194,7 +2186,8 @@ AnimatedVisibility(visible = customTimeEnabled.value) {
     }
 }
 
-// 自定义时间设置对话框
+// 自定义时间设置对话框 - 这里需要实现CustomTimeDialog，但原文件中没有提供，暂时注释掉
+/*
 if (showCustomTimeDialog.value) {
     CustomTimeDialog(
         currentYear = customTimeYear.value,
@@ -2215,6 +2208,7 @@ if (showCustomTimeDialog.value) {
         }
     )
 }
+*/
     }
 }
                     
@@ -3002,12 +2996,7 @@ if (showBackendThreadingDialog.value) {
                         enableMacroHLE,
                         enableMacroJIT
                     )
-                    // 检查游戏是否正在运行，如果是则返回游戏界面，否则返回首页
-                    if (mainViewModel.activity.isGameRunning) {
-                        settingsViewModel.navController.navigate("game")
-                    } else {
-                        settingsViewModel.navController.popBackStack()
-                    }
+                    settingsViewModel.navController.popBackStack()
                 }
             }
         }
