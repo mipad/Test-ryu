@@ -38,7 +38,7 @@ namespace Ryujinx.HLE.HOS.Kernel
                 return result;
             }
 
-            process.DefaultCpuCore = KScheduler.CpuCoresCount - 1;
+            process.DefaultCpuCore = 3;
 
             context.Processes.TryAdd(process.Pid, process);
 
