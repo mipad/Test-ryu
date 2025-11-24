@@ -1018,7 +1018,8 @@ class GameViews {
                                         enableShaderCache.value = it
                                         quickSettings.enableShaderCache = it
                                         quickSettings.save()
-                                        RyujinxNative.jnaInstance.graphicsRendererSetShaderCache(it)
+                                        // 注释掉不存在的API调用
+                                        // RyujinxNative.jnaInstance.graphicsRendererSetShaderCache(it)
                                     }
                                 )
                             }
@@ -1037,7 +1038,8 @@ class GameViews {
                                         enableTextureRecompression.value = it
                                         quickSettings.enableTextureRecompression = it
                                         quickSettings.save()
-                                        RyujinxNative.jnaInstance.graphicsRendererSetTextureRecompression(it)
+                                        // 注释掉不存在的API调用
+                                        // RyujinxNative.jnaInstance.graphicsRendererSetTextureRecompression(it)
                                     }
                                 )
                             }
