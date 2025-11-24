@@ -186,7 +186,7 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 _aliasedStorages ??= new Dictionary<Format, TextureStorage>();
 
-                TextureCreateInfo info = NewCreateInfoWith(ref _info, format, _info.BytesPerPixel);
+                TextureCreateInfo info = NewCreateInfoWith(_info, format, _info.BytesPerPixel);
 
                 storage = new TextureStorage(_gd, _device, info, _allocationAuto);
 
@@ -196,13 +196,13 @@ namespace Ryujinx.Graphics.Vulkan
             return storage;
         }
 
-        public static TextureCreateInfo NewCreateInfoWith(ref TextureCreateInfo info, Format format, int bytesPerPixel)
+        public static TextureCreateInfo NewCreateInfoWith(TextureCreateInfo info, Format format, int bytesPerPixel)
         {
-            return NewCreateInfoWith(ref info, format, bytesPerPixel, info.Width, info.Height);
+            return NewCreateInfoWith(info, format, bytesPerPixel, info.Width, info.Height);
         }
 
         public static TextureCreateInfo NewCreateInfoWith(
-            ref TextureCreateInfo info,
+            TextureCreateInfo info,
             Format format,
             int bytesPerPixel,
             int width,
