@@ -28,21 +28,25 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
     private var progressValue: MutableState<Float>? = null
     private var showLoading: MutableState<Boolean>? = null
     private var game: GameModel? = null
-    private var _isClosed: Boolean = false
+    
+    // 使用 volatile 确保多线程可见性
+    @Volatile private var _isClosed: Boolean = false
+    @Volatile private var _isStarted: Boolean = false
+    @Volatile private var _isInit: Boolean = false
+    @Volatile private var _inputInitialized: Boolean = false
+    
     private var _renderingThreadWatcher: Thread? = null
     private var _height: Int = 0
     private var _width: Int = 0
     private var _updateThread: Thread? = null
     private var _guestThread: Thread? = null
-    private var _isInit: Boolean = false
-    private var _isStarted: Boolean = false
+    
     private val _nativeWindow: NativeWindow
 
     // 前台服务绑定相关变量
     private var emuBound = false
     private var emuBinder: EmulationService.LocalBinder? = null
     private var _startedViaService = false
-    private var _inputInitialized: Boolean = false
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -55,6 +59,9 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
     // 防抖动的重置触发
     private var lastKickAt = 0L
 
+    // 关闭同步锁
+    private val closeLock = Any()
+
     val currentSurface: Long
         get() = _currentWindow
 
@@ -66,7 +73,6 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
         override fun onServiceConnected(name: ComponentName, service: IBinder) {
             emuBinder = service as EmulationService.LocalBinder
             emuBound = true
-            
 
             // 如果启动已准备且没有循环运行 → 现在在服务中启动
             if (_isStarted && !_startedViaService && _guestThread == null) {
@@ -75,7 +81,6 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
         }
 
         override fun onServiceDisconnected(name: ComponentName) {
-            
             emuBound = false
             emuBinder = null
             _startedViaService = false
@@ -87,7 +92,6 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
         _nativeWindow = NativeWindow(this)
         mainViewModel.gameHost = this
     }
-
 
     /**
      * (重新)绑定当前 ANativeWindow 到渲染器
@@ -121,8 +125,6 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
     fun postReattachKicks(rotation: Int?) {
         if (_isClosed) return
         try {
-            // 注意：这里需要根据您的实际实现调整旋转设置方法
-            // RyujinxNative.jnaInstance.setSurfaceRotationByAndroidRotation(rotation ?: 0)
             val w = if (holder.surfaceFrame.width() > 0) holder.surfaceFrame.width() else width
             val h = if (holder.surfaceFrame.height() > 0) holder.surfaceFrame.height() else height
             if (w > 0 && h > 0 &&
@@ -146,14 +148,12 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
     // -------- Surface 生命周期 --------
 
     override fun surfaceCreated(holder: SurfaceHolder) {
-        
         // 提前绑定，确保服务在启动前就绪
         ensureServiceStartedAndBound()
         rebindNativeWindow(force = true)
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-        
         if (_isClosed) return
 
         // 总是重新绑定 - 即使尺寸相同
@@ -172,7 +172,6 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
-        
         // 总是解除绑定（防止任务滑动时的泄漏）
         shutdownBinding()
         // 实际的模拟器关闭通过 close() / 退出游戏处理
@@ -181,7 +180,6 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
     override fun onWindowVisibilityChanged(visibility: Int) {
         super.onWindowVisibilityChanged(visibility)
         if (visibility != android.view.View.VISIBLE) {
-            
             shutdownBinding()
         }
     }
@@ -236,8 +234,6 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
         lastRotation = currentRot
 
         try {
-            // 注意：这里需要根据您的实际实现调整旋转设置方法
-            // RyujinxNative.jnaInstance.setSurfaceRotationByAndroidRotation(currentRot ?: 0)
             try { RyujinxNative.jnaInstance.deviceSetWindowHandle(currentWindowhandle) } catch (_: Throwable) {}
 
             // 只有当渲染器 READY 且输入已初始化时才进行温和的触发
@@ -253,8 +249,6 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
         } catch (_: Throwable) {}
 
         val qs = org.ryujinx.android.viewmodels.QuickSettings(mainViewModel.activity)
-        // 注意：这里需要根据您的实际实现调整全屏拉伸设置
-        // try { RyujinxNative.jnaInstance.graphicsSetFullscreenStretch(qs.stretchToFullscreen) } catch (_: Throwable) {}
 
         // Host 现在被视为"已启动"
         _isStarted = true
@@ -263,14 +257,12 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
         if (emuBound) {
             startRunLoopInService()
         } else {
-            
             mainHandler.postDelayed({
                 if (!_isStarted) return@postDelayed
                 if (emuBound) {
                     startRunLoopInService()
                 } else {
                     // 回退：本地线程（应该很少发生）
-                    
                     _guestThread = thread(start = true, name = "RyujinxGuest") { runGame() }
                 }
             }, 150)
@@ -278,60 +270,105 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
 
         _updateThread = thread(start = true, name = "RyujinxInput/Stats") {
             var c = 0
-            while (_isStarted) {
-                RyujinxNative.jnaInstance.inputUpdate()
-                Thread.sleep(1)
-                if (++c >= 1000) {
-                    if (progressValue?.value == -1f) {
-                        progress?.apply {
-                            this.value = "Loading ${if (mainViewModel.isMiiEditorLaunched) "Mii Editor" else game?.titleName ?: ""}"
+            while (_isStarted && !_isClosed) {
+                try {
+                    RyujinxNative.jnaInstance.inputUpdate()
+                    Thread.sleep(1)
+                    if (++c >= 1000) {
+                        if (progressValue?.value == -1f) {
+                            progress?.apply {
+                                this.value = "Loading ${if (mainViewModel.isMiiEditorLaunched) "Mii Editor" else game?.titleName ?: ""}"
+                            }
                         }
+                        c = 0
+                        mainViewModel.updateStats(
+                            RyujinxNative.jnaInstance.deviceGetGameFifo(),
+                            RyujinxNative.jnaInstance.deviceGetGameFrameRate(),
+                            RyujinxNative.jnaInstance.deviceGetGameFrameTime()
+                        )
                     }
-                    c = 0
-                    mainViewModel.updateStats(
-                        RyujinxNative.jnaInstance.deviceGetGameFifo(),
-                        RyujinxNative.jnaInstance.deviceGetGameFrameRate(),
-                        RyujinxNative.jnaInstance.deviceGetGameFrameTime()
-                    )
+                } catch (e: InterruptedException) {
+                    break
+                } catch (e: Exception) {
+                    if (_isStarted && !_isClosed) {
+                        Log.e("GameHost", "Error in update thread", e)
+                    }
                 }
             }
         }
     }
 
     private fun runGame() {
-        RyujinxNative.jnaInstance.graphicsRendererRunLoop()
-        game?.close()
+        try {
+            RyujinxNative.jnaInstance.graphicsRendererRunLoop()
+        } catch (e: Exception) {
+            Log.e("GameHost", "Error in game thread", e)
+        } finally {
+            game?.close()
+        }
     }
 
+    /**
+     * 安全关闭游戏主机
+     */
     fun close() {
-        
-        _isClosed = true
-        _isInit = false
+        synchronized(closeLock) {
+            if (_isClosed) return
+            _isClosed = true
+        }
+
+        Log.d("GameHost", "Closing GameHost...")
+
+        // 第一步：停止所有标志位
         _isStarted = false
+        _isInit = false
         _inputInitialized = false
 
+        // 第二步：停止 UI 处理器
         RyujinxNative.jnaInstance.uiHandlerSetResponse(false, "")
 
-        // 停止服务中的模拟（如果在那里启动）
+        // 第三步：停止服务中的模拟（如果在那里启动）
         try {
             if (emuBound && _startedViaService) {
                 emuBinder?.stopEmulation {
-                    try { RyujinxNative.jnaInstance.deviceCloseEmulation() } catch (_: Throwable) {}
+                    try { 
+                        RyujinxNative.jnaInstance.deviceSignalEmulationClose()
+                        // 不在这里调用 deviceCloseEmulation，由 MainViewModel 统一处理
+                    } catch (_: Throwable) {}
                 }
             }
         } catch (_: Throwable) { }
 
-        // 回退：停止本地线程
-        try { _updateThread?.join(200) } catch (_: Throwable) {}
-        try { _renderingThreadWatcher?.join(200) } catch (_: Throwable) {}
+        // 第四步：停止所有线程（使用更长的等待时间）
+        try {
+            _updateThread?.interrupt()
+            _updateThread?.join(1000)
+        } catch (_: Throwable) {}
+        
+        try {
+            _renderingThreadWatcher?.interrupt()
+            _renderingThreadWatcher?.join(1000)
+        } catch (_: Throwable) {}
+        
+        try {
+            _guestThread?.interrupt()
+            _guestThread?.join(1000)
+        } catch (_: Throwable) {}
 
-        // 解除绑定
+        // 第五步：解除服务绑定
         shutdownBinding()
 
-        // 显式停止服务（如果仍在运行）
+        // 第六步：停止前台服务
         try {
             mainViewModel.activity.stopService(Intent(mainViewModel.activity, EmulationService::class.java))
         } catch (_: Throwable) { }
+
+        // 第七步：释放原生窗口
+        try {
+            _nativeWindow.release()
+        } catch (_: Throwable) {}
+
+        Log.d("GameHost", "GameHost closed successfully")
     }
 
     // -------- 方向/尺寸调整 --------
@@ -343,7 +380,6 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
     private fun safeSetSize(w: Int, h: Int) {
         if (_isClosed || w <= 0 || h <= 0) return
         try {
-            
             RyujinxNative.jnaInstance.graphicsRendererSetSize(w, h)
             if (_isStarted && _inputInitialized) {
                 RyujinxNative.jnaInstance.inputSetClientSize(w, h)
@@ -366,8 +402,6 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
         val isSideFlip = (old == 1 && rotation == 3) || (old == 3 && rotation == 1)
 
         if (isSideFlip) {
-            // 注意：这里需要根据您的实际实现调整旋转设置方法
-            // try { RyujinxNative.jnaInstance.setSurfaceRotationByAndroidRotation(rotation ?: 0) } catch (_: Throwable) {}
             rebindNativeWindow(force = true)
             val now = android.os.SystemClock.uptimeMillis()
             if (now - lastKickAt >= 300L && _inputInitialized && MainActivity.mainViewModel?.rendererReady == true) {
@@ -444,7 +478,6 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
 
                 // 1 个稳定滴答或最多 12 次尝试
                 if ((stableCount >= 1 || attempts >= 12) && w > 0 && h > 0) {
-                    
                     safeSetSize(w, h)
                     stabilizerActive = false
                     return
@@ -463,6 +496,8 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
 
     /** 由 Activity/Surface-Lifecycle 调用，确保 FGS 安全 */
     fun ensureServiceStartedAndBound() {
+        if (_isClosed) return
+        
         val act = mainViewModel.activity
         val intent = Intent(act, EmulationService::class.java)
         try {
@@ -490,7 +525,6 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
             emuBound = false
             emuBinder = null
             _startedViaService = false
-           
         }
     }
 
@@ -508,7 +542,12 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
                 _startedViaService = false
             }
         }
-        
+    }
+    
+    /**
+     * 检查是否已关闭
+     */
+    fun isClosed(): Boolean {
+        return _isClosed
     }
 }
-
