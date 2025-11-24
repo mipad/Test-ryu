@@ -101,7 +101,7 @@ class GameViews {
             val showPerformanceSettings = remember { mutableStateOf(false) }
             val showAdjustControlsDialog = remember { mutableStateOf(false) }
             val showExitConfirmDialog = remember { mutableStateOf(false) }
-            val showSettingsDialog = remember { mutableStateOf(false) } // 新增：设置对话框状态
+            val showSettingsDialog = remember { mutableStateOf(false) }
 
             Box(modifier = Modifier.fillMaxSize()) {
                 if (showStats.value) {
@@ -205,24 +205,8 @@ class GameViews {
                 if (!showLoading.value) {
                     GameController.Compose(mainViewModel)
 
-                    // 侧边菜单 - 使用动画
-                    AnimatedVisibility(
-                        visible = showSideMenu.value,
-                        enter = slideInHorizontally(
-                            animationSpec = tween(
-                                durationMillis = 400,
-                                easing = FastOutSlowInEasing
-                            ),
-                            initialOffsetX = { -it }
-                        ),
-                        exit = slideOutHorizontally(
-                            animationSpec = tween(
-                                durationMillis = 300,
-                                easing = FastOutSlowInEasing
-                            ),
-                            targetOffsetX = { -it }
-                        )
-                    ) {
+                    // 侧边菜单 - 瞬时显示（移除动画）
+                    if (showSideMenu.value) {
                         SideMenu(
                             mainViewModel = mainViewModel,
                             showController = showController,
@@ -232,7 +216,7 @@ class GameViews {
                             showPerformanceSettings = showPerformanceSettings,
                             showAdjustControlsDialog = showAdjustControlsDialog,
                             showExitConfirmDialog = showExitConfirmDialog,
-                            showSettingsDialog = showSettingsDialog, // 新增：传递设置对话框状态
+                            showSettingsDialog = showSettingsDialog,
                             onDismiss = { showSideMenu.value = false }
                         )
                     }
@@ -334,229 +318,157 @@ class GameViews {
             showPerformanceSettings: androidx.compose.runtime.MutableState<Boolean>,
             showAdjustControlsDialog: androidx.compose.runtime.MutableState<Boolean>,
             showExitConfirmDialog: androidx.compose.runtime.MutableState<Boolean>,
-            showSettingsDialog: androidx.compose.runtime.MutableState<Boolean>, // 新增：设置对话框状态
+            showSettingsDialog: androidx.compose.runtime.MutableState<Boolean>,
             onDismiss: () -> Unit
         ) {
-            // 获取当前游戏标题 - 使用 getDisplayName()
+            // 获取当前游戏标题
             val gameTitle = mainViewModel.gameModel?.getDisplayName() ?: "Unknown Game"
 
-            // 为菜单内容添加淡入动画
-            AnimatedContent(
-                targetState = Unit,
-                transitionSpec = {
-                    fadeIn(animationSpec = tween(300, delayMillis = 100)) with
-                    fadeOut(animationSpec = tween(100))
-                }
+            // 直接渲染菜单，无动画
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(280.dp)
+                    .background(
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                        MaterialTheme.shapes.medium
+                    )
             ) {
-                Box(
+                Column(
                     modifier = Modifier
-                        .fillMaxHeight()
-                        .width(280.dp)
-                        .background(
-                            MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-                            MaterialTheme.shapes.medium
-                        )
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
                 ) {
+                    // 游戏标题
+                    Text(
+                        text = gameTitle,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    )
+
+                    HorizontalDivider()
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // 菜单项 - 直接显示，无动画
                     Column(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp)
                     ) {
-                        // 游戏标题
-                        Text(
-                            text = gameTitle,
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp)
+                        // 设置选项
+                        SideMenuItem(
+                            icon = Icons.Default.Settings,
+                            text = "⚙️ Settings",
+                            onClick = {
+                                onDismiss()
+                                showSettingsDialog.value = true
+                            }
                         )
 
-                        HorizontalDivider()
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // 菜单项
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 8.dp)
-                        ) {
-                            // 设置选项 - 放在第一个
-                            AnimatedVisibility(
-                                visible = true,
-                                enter = slideInHorizontally(
-                                    animationSpec = tween(300, delayMillis = 150),
-                                    initialOffsetX = { -it / 2 }
-                                ) + fadeIn(animationSpec = tween(300, delayMillis = 150))
-                            ) {
-                                SideMenuItem(
-                                    icon = Icons.Default.Settings,
-                                    text = "⚙️ Settings",
-                                    onClick = {
-                                        onDismiss()
-                                        showSettingsDialog.value = true // 打开设置对话框
-                                    }
-                                )
-                            }
-
-                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-                            // Enable Motion - 添加动画延迟
-                            AnimatedVisibility(
-                                visible = true,
-                                enter = slideInHorizontally(
-                                    animationSpec = tween(300, delayMillis = 200),
-                                    initialOffsetX = { -it / 2 }
-                                ) + fadeIn(animationSpec = tween(300, delayMillis = 200))
-                            ) {
-                                SideMenuItem(
-                                    icon = Icons.Default.Settings,
-                                    text = "Enable Motion",
-                                    trailingContent = {
-                                        Switch(
-                                            checked = enableMotion.value,
-                                            onCheckedChange = {
-                                                enableMotion.value = it
-                                                val settings = QuickSettings(mainViewModel.activity)
-                                                settings.enableMotion = enableMotion.value
-                                                settings.save()
-                                                if (enableMotion.value)
-                                                    mainViewModel.motionSensorManager?.register()
-                                                else
-                                                    mainViewModel.motionSensorManager?.unregister()
-                                            },
-                                            modifier = Modifier.size(width = 36.dp, height = 24.dp)
-                                        )
+                        // Enable Motion
+                        SideMenuItem(
+                            icon = Icons.Default.Settings,
+                            text = "Enable Motion",
+                            trailingContent = {
+                                Switch(
+                                    checked = enableMotion.value,
+                                    onCheckedChange = {
+                                        enableMotion.value = it
+                                        val settings = QuickSettings(mainViewModel.activity)
+                                        settings.enableMotion = enableMotion.value
+                                        settings.save()
+                                        if (enableMotion.value)
+                                            mainViewModel.motionSensorManager?.register()
+                                        else
+                                            mainViewModel.motionSensorManager?.unregister()
                                     },
-                                    onClick = { /* 开关已处理 */ }
+                                    modifier = Modifier.size(width = 36.dp, height = 24.dp)
+                                )
+                            },
+                            onClick = { /* 开关已处理 */ }
+                        )
+
+                        // 虚拟手柄开关
+                        SideMenuItem(
+                            icon = null,
+                            text = "🎮 Virtual Controller",
+                            onClick = {
+                                onDismiss()
+                                showController.value = !showController.value
+                                RyujinxNative.jnaInstance.inputReleaseTouchPoint()
+                                mainViewModel.controller?.setVisible(showController.value)
+                            }
+                        )
+
+                        // VSync 开关
+                        SideMenuItem(
+                            icon = null,
+                            text = "🔄 VSync",
+                            trailingContent = {
+                                Text(
+                                    text = if (enableVsync.value) "ON" else "OFF",
+                                    color = if (enableVsync.value) Color.Green else Color.Red
+                                )
+                            },
+                            onClick = {
+                                onDismiss()
+                                enableVsync.value = !enableVsync.value
+                                RyujinxNative.jnaInstance.graphicsRendererSetVsync(
+                                    enableVsync.value
                                 )
                             }
+                        )
 
-                            // 虚拟手柄开关
-                            AnimatedVisibility(
-                                visible = true,
-                                enter = slideInHorizontally(
-                                    animationSpec = tween(300, delayMillis = 250),
-                                    initialOffsetX = { -it / 2 }
-                                ) + fadeIn(animationSpec = tween(300, delayMillis = 250))
-                            ) {
-                                SideMenuItem(
-                                    icon = null,
-                                    text = "🎮 Virtual Controller",
-                                    onClick = {
-                                        onDismiss()
-                                        showController.value = !showController.value
-                                        RyujinxNative.jnaInstance.inputReleaseTouchPoint()
-                                        mainViewModel.controller?.setVisible(showController.value)
-                                    }
-                                )
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                        // 编辑模式
+                        SideMenuItem(
+                            icon = null,
+                            text = "✏️ Edit Controls",
+                            onClick = {
+                                onDismiss()
+                                isEditing.value = true
+                                mainViewModel.controller?.setEditingMode(true)
                             }
+                        )
 
-                            // VSync 开关
-                            AnimatedVisibility(
-                                visible = true,
-                                enter = slideInHorizontally(
-                                    animationSpec = tween(300, delayMillis = 300),
-                                    initialOffsetX = { -it / 2 }
-                                ) + fadeIn(animationSpec = tween(300, delayMillis = 300))
-                            ) {
-                                SideMenuItem(
-                                    icon = null,
-                                    text = "🔄 VSync",
-                                    trailingContent = {
-                                        Text(
-                                            text = if (enableVsync.value) "ON" else "OFF",
-                                            color = if (enableVsync.value) Color.Green else Color.Red
-                                        )
-                                    },
-                                    onClick = {
-                                        onDismiss()
-                                        enableVsync.value = !enableVsync.value
-                                        RyujinxNative.jnaInstance.graphicsRendererSetVsync(
-                                            enableVsync.value
-                                        )
-                                    }
-                                )
+                        // 调整按键
+                        SideMenuItem(
+                            icon = null,
+                            text = "⚙️ Adjust Controls",
+                            onClick = {
+                                onDismiss()
+                                showAdjustControlsDialog.value = true
                             }
+                        )
 
-                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-                            // 编辑模式 - 移到调整控件上面
-                            AnimatedVisibility(
-                                visible = true,
-                                enter = slideInHorizontally(
-                                    animationSpec = tween(300, delayMillis = 350),
-                                    initialOffsetX = { -it / 2 }
-                                ) + fadeIn(animationSpec = tween(300, delayMillis = 350))
-                            ) {
-                                SideMenuItem(
-                                    icon = null,
-                                    text = "✏️ Edit Controls",
-                                    onClick = {
-                                        onDismiss()
-                                        isEditing.value = true
-                                        mainViewModel.controller?.setEditingMode(true)
-                                    }
-                                )
+                        // 性能设置
+                        SideMenuItem(
+                            icon = null,
+                            text = "📊 Performance information",
+                            onClick = {
+                                onDismiss()
+                                showPerformanceSettings.value = true
                             }
+                        )
 
-                            // 调整按键
-                            AnimatedVisibility(
-                                visible = true,
-                                enter = slideInHorizontally(
-                                    animationSpec = tween(300, delayMillis = 400),
-                                    initialOffsetX = { -it / 2 }
-                                ) + fadeIn(animationSpec = tween(300, delayMillis = 400))
-                            ) {
-                                SideMenuItem(
-                                    icon = null,
-                                    text = "⚙️ Adjust Controls",
-                                    onClick = {
-                                        onDismiss()
-                                        showAdjustControlsDialog.value = true
-                                    }
-                                )
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                        // 退出游戏
+                        SideMenuItem(
+                            icon = Icons.Default.ExitToApp,
+                            text = "Exit Game",
+                            onClick = {
+                                onDismiss()
+                                showExitConfirmDialog.value = true
                             }
-
-                            // 性能设置
-                            AnimatedVisibility(
-                                visible = true,
-                                enter = slideInHorizontally(
-                                    animationSpec = tween(300, delayMillis = 450),
-                                    initialOffsetX = { -it / 2 }
-                                ) + fadeIn(animationSpec = tween(300, delayMillis = 450))
-                            ) {
-                                SideMenuItem(
-                                    icon = null,
-                                    text = "📊 Performance information",
-                                    onClick = {
-                                        onDismiss()
-                                        showPerformanceSettings.value = true
-                                    }
-                                )
-                            }
-
-                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-                            // 退出游戏
-                            AnimatedVisibility(
-                                visible = true,
-                                enter = slideInHorizontally(
-                                    animationSpec = tween(300, delayMillis = 500),
-                                    initialOffsetX = { -it / 2 }
-                                ) + fadeIn(animationSpec = tween(300, delayMillis = 500))
-                            ) {
-                                SideMenuItem(
-                                    icon = Icons.Default.ExitToApp,
-                                    text = "Exit Game",
-                                    onClick = {
-                                        onDismiss()
-                                        showExitConfirmDialog.value = true
-                                    }
-                                )
-                            }
-                        }
+                        )
                     }
                 }
             }
@@ -890,17 +802,8 @@ class GameViews {
             // 从QuickSettings获取当前设置
             val quickSettings = QuickSettings(mainViewModel.activity)
             
-            // 分辨率比例
-            val resScale = remember { mutableStateOf(quickSettings.resScale) }
-            
             // 画面比例
             val aspectRatio = remember { mutableStateOf(quickSettings.aspectRatio) }
-            
-            // 各向异性过滤
-            val maxAnisotropy = remember { mutableStateOf(quickSettings.maxAnisotropy) }
-            
-            // Backend Threading
-            val backendThreading = remember { mutableStateOf(quickSettings.backendThreading) }
             
             // 自定义系统时间
             val customTimeEnabled = remember { mutableStateOf(quickSettings.customTimeEnabled) }
@@ -911,9 +814,6 @@ class GameViews {
             val customTimeMinute = remember { mutableStateOf(quickSettings.customTimeMinute) }
             val customTimeSecond = remember { mutableStateOf(quickSettings.customTimeSecond) }
             
-            // 音频引擎
-            val audioEngineType = remember { mutableStateOf(quickSettings.audioEngineType) }
-            
             // 主机模式
             val enableDocked = remember { mutableStateOf(quickSettings.enableDocked) }
             
@@ -921,11 +821,7 @@ class GameViews {
             val antiAliasing = remember { mutableStateOf(quickSettings.antiAliasing) }
             
             // 显示选项的状态
-            val showResScaleOptions = remember { mutableStateOf(false) }
             val showAspectRatioOptions = remember { mutableStateOf(false) }
-            val showAnisotropyOptions = remember { mutableStateOf(false) }
-            val showBackendThreadingOptions = remember { mutableStateOf(false) }
-            val showAudioEngineOptions = remember { mutableStateOf(false) }
             val showAntiAliasingOptions = remember { mutableStateOf(false) }
             val showCustomTimeDialog = remember { mutableStateOf(false) }
 
@@ -955,83 +851,6 @@ class GameViews {
                                 .fillMaxSize()
                                 .verticalScroll(rememberScrollState())
                         ) {
-                            // 分辨率比例
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(text = "Resolution Scale")
-                                Text(
-                                    text = "%.2fx".format(resScale.value),
-                                    modifier = Modifier.clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null
-                                    ) {
-                                        showResScaleOptions.value = !showResScaleOptions.value
-                                        // 隐藏其他选项
-                                        showAspectRatioOptions.value = false
-                                        showAnisotropyOptions.value = false
-                                        showBackendThreadingOptions.value = false
-                                        showAudioEngineOptions.value = false
-                                        showAntiAliasingOptions.value = false
-                                    }
-                                )
-                            }
-                            
-                            // 分辨率比例选项
-                            AnimatedVisibility(visible = showResScaleOptions.value) {
-                                Column(modifier = Modifier.fillMaxWidth()) {
-                                    val resolutionPresets = listOf(0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.85f, 0.9f, 0.95f, 1f, 1.25f, 1.5f, 1.75f, 2f, 3f, 4f)
-                                    
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                                            .horizontalScroll(rememberScrollState()),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        resolutionPresets.forEach { preset ->
-                                            val isSelected = resScale.value == preset
-                                            
-                                            TextButton(
-                                                onClick = {
-                                                    resScale.value = preset
-                                                    showResScaleOptions.value = false
-                                                    quickSettings.resScale = preset
-                                                    quickSettings.save()
-                                                },
-                                                modifier = Modifier
-                                                    .height(36.dp)
-                                                    .then(
-                                                        if (isSelected) {
-                                                            Modifier.border(
-                                                                width = 1.dp,
-                                                                color = MaterialTheme.colorScheme.primary,
-                                                                shape = MaterialTheme.shapes.small
-                                                            )
-                                                        } else {
-                                                            Modifier
-                                                        }
-                                                    ),
-                                                colors = ButtonDefaults.textButtonColors(
-                                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else Color.Transparent,
-                                                    contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer 
-                                                                 else MaterialTheme.colorScheme.onSurface
-                                                )
-                                            ) {
-                                                Text(
-                                                    text = "%.2fx".format(preset),
-                                                    fontSize = 12.sp
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            
                             // 画面比例
                             Row(
                                 modifier = Modifier
@@ -1049,11 +868,6 @@ class GameViews {
                                         indication = null
                                     ) {
                                         showAspectRatioOptions.value = !showAspectRatioOptions.value
-                                        // 隐藏其他选项
-                                        showResScaleOptions.value = false
-                                        showAnisotropyOptions.value = false
-                                        showBackendThreadingOptions.value = false
-                                        showAudioEngineOptions.value = false
                                         showAntiAliasingOptions.value = false
                                     }
                                 )
@@ -1085,8 +899,8 @@ class GameViews {
                                                     ) {
                                                         aspectRatio.value = index
                                                         showAspectRatioOptions.value = false
-                                                        quickSettings.aspectRatio = index
-                                                        quickSettings.save()
+                                                        // 实时应用画面比例设置
+                                                        RyujinxNative.jnaInstance.setAspectRatio(index)
                                                     }
                                                     .then(
                                                         if (isSelected) {
@@ -1119,178 +933,6 @@ class GameViews {
                                 }
                             }
                             
-                            // 各向异性过滤
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(text = "Anisotropic Filtering")
-                                Text(
-                                    text = when (maxAnisotropy.value) {
-                                        0f -> "Off"
-                                        2f -> "2x"
-                                        4f -> "4x"
-                                        8f -> "8x"
-                                        16f -> "16x"
-                                        else -> "Off"
-                                    },
-                                    modifier = Modifier.clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null
-                                    ) {
-                                        showAnisotropyOptions.value = !showAnisotropyOptions.value
-                                        // 隐藏其他选项
-                                        showResScaleOptions.value = false
-                                        showAspectRatioOptions.value = false
-                                        showBackendThreadingOptions.value = false
-                                        showAudioEngineOptions.value = false
-                                        showAntiAliasingOptions.value = false
-                                    }
-                                )
-                            }
-                            
-                            // 各向异性过滤选项
-                            AnimatedVisibility(visible = showAnisotropyOptions.value) {
-                                Column(modifier = Modifier.fillMaxWidth()) {
-                                    val anisotropyOptions = listOf(0f, 2f, 4f, 8f, 16f)
-                                    
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                                            .horizontalScroll(rememberScrollState()),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        anisotropyOptions.forEach { option ->
-                                            val isSelected = maxAnisotropy.value == option
-                                            
-                                            TextButton(
-                                                onClick = {
-                                                    maxAnisotropy.value = option
-                                                    showAnisotropyOptions.value = false
-                                                    quickSettings.maxAnisotropy = option
-                                                    quickSettings.save()
-                                                },
-                                                modifier = Modifier
-                                                    .height(36.dp)
-                                                    .then(
-                                                        if (isSelected) {
-                                                            Modifier.border(
-                                                                width = 1.dp,
-                                                                color = MaterialTheme.colorScheme.primary,
-                                                                shape = MaterialTheme.shapes.small
-                                                            )
-                                                        } else {
-                                                            Modifier
-                                                        }
-                                                    ),
-                                                colors = ButtonDefaults.textButtonColors(
-                                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else Color.Transparent,
-                                                    contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer 
-                                                                 else MaterialTheme.colorScheme.onSurface
-                                                )
-                                            ) {
-                                                Text(
-                                                    text = when (option) {
-                                                        0f -> "Off"
-                                                        2f -> "2x"
-                                                        4f -> "4x"
-                                                        8f -> "8x"
-                                                        16f -> "16x"
-                                                        else -> "Off"
-                                                    },
-                                                    fontSize = 12.sp
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            // Backend Threading
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(text = "Backend Threading")
-                                Text(
-                                    text = when (backendThreading.value) {
-                                        0 -> "Off"
-                                        1 -> "On"
-                                        else -> "Auto"
-                                    },
-                                    modifier = Modifier.clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null
-                                    ) {
-                                        showBackendThreadingOptions.value = !showBackendThreadingOptions.value
-                                        // 隐藏其他选项
-                                        showResScaleOptions.value = false
-                                        showAspectRatioOptions.value = false
-                                        showAnisotropyOptions.value = false
-                                        showAudioEngineOptions.value = false
-                                        showAntiAliasingOptions.value = false
-                                    }
-                                )
-                            }
-                            
-                            // Backend Threading 选项
-                            AnimatedVisibility(visible = showBackendThreadingOptions.value) {
-                                Column(modifier = Modifier.fillMaxWidth()) {
-                                    val backendThreadingOptions = listOf("Auto", "Off", "On")
-                                    
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                                            .horizontalScroll(rememberScrollState()),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        backendThreadingOptions.forEachIndexed { index, option ->
-                                            val isSelected = backendThreading.value == index
-                                            
-                                            TextButton(
-                                                onClick = {
-                                                    backendThreading.value = index
-                                                    showBackendThreadingOptions.value = false
-                                                    quickSettings.backendThreading = index
-                                                    quickSettings.save()
-                                                },
-                                                modifier = Modifier
-                                                    .height(36.dp)
-                                                    .then(
-                                                        if (isSelected) {
-                                                            Modifier.border(
-                                                                width = 1.dp,
-                                                                color = MaterialTheme.colorScheme.primary,
-                                                                shape = MaterialTheme.shapes.small
-                                                            )
-                                                        } else {
-                                                            Modifier
-                                                        }
-                                                    ),
-                                                colors = ButtonDefaults.textButtonColors(
-                                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else Color.Transparent,
-                                                    contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer 
-                                                                 else MaterialTheme.colorScheme.onSurface
-                                                )
-                                            ) {
-                                                Text(
-                                                    text = option,
-                                                    fontSize = 12.sp
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            
                             // 自定义系统时间
                             Row(
                                 modifier = Modifier
@@ -1306,6 +948,20 @@ class GameViews {
                                         customTimeEnabled.value = it
                                         quickSettings.customTimeEnabled = it
                                         quickSettings.save()
+                                        // 实时应用系统时间设置
+                                        if (it) {
+                                            val offset = calculateSystemTimeOffset(
+                                                customTimeYear.value,
+                                                customTimeMonth.value,
+                                                customTimeDay.value,
+                                                customTimeHour.value,
+                                                customTimeMinute.value,
+                                                customTimeSecond.value
+                                            )
+                                            RyujinxNative.setSystemTimeOffset(offset)
+                                        } else {
+                                            RyujinxNative.setSystemTimeOffset(0)
+                                        }
                                     }
                                 )
                             }
@@ -1334,88 +990,6 @@ class GameViews {
                                 }
                             }
                             
-                            // 音频引擎
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(text = "Audio Engine")
-                                Text(
-                                    text = when (audioEngineType.value) {
-                                        1 -> "OpenAL"
-                                        2 -> "SDL2"
-                                        3 -> "Oboe"
-                                        else -> "Disabled"
-                                    },
-                                    modifier = Modifier.clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null
-                                    ) {
-                                        showAudioEngineOptions.value = !showAudioEngineOptions.value
-                                        // 隐藏其他选项
-                                        showResScaleOptions.value = false
-                                        showAspectRatioOptions.value = false
-                                        showAnisotropyOptions.value = false
-                                        showBackendThreadingOptions.value = false
-                                        showAntiAliasingOptions.value = false
-                                    }
-                                )
-                            }
-                            
-                            // 音频引擎选项
-                            AnimatedVisibility(visible = showAudioEngineOptions.value) {
-                                Column(modifier = Modifier.fillMaxWidth()) {
-                                    val audioEngineOptions = listOf("Disabled", "OpenAL", "SDL2", "Oboe")
-                                    
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                                            .horizontalScroll(rememberScrollState()),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        audioEngineOptions.forEachIndexed { index, option ->
-                                            val isSelected = audioEngineType.value == index
-                                            
-                                            TextButton(
-                                                onClick = {
-                                                    audioEngineType.value = index
-                                                    showAudioEngineOptions.value = false
-                                                    quickSettings.audioEngineType = index
-                                                    quickSettings.save()
-                                                },
-                                                modifier = Modifier
-                                                    .height(36.dp)
-                                                    .then(
-                                                        if (isSelected) {
-                                                            Modifier.border(
-                                                                width = 1.dp,
-                                                                color = MaterialTheme.colorScheme.primary,
-                                                                shape = MaterialTheme.shapes.small
-                                                            )
-                                                        } else {
-                                                            Modifier
-                                                        }
-                                                    ),
-                                                colors = ButtonDefaults.textButtonColors(
-                                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else Color.Transparent,
-                                                    contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer 
-                                                                 else MaterialTheme.colorScheme.onSurface
-                                                )
-                                            ) {
-                                                Text(
-                                                    text = option,
-                                                    fontSize = 12.sp
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            
                             // 主机模式
                             Row(
                                 modifier = Modifier
@@ -1431,6 +1005,8 @@ class GameViews {
                                         enableDocked.value = it
                                         quickSettings.enableDocked = it
                                         quickSettings.save()
+                                        // 实时应用主机模式设置
+                                        RyujinxNative.jnaInstance.graphicsRendererSetVsync(!it) // 可能需要重新设置VSync
                                     }
                                 )
                             }
@@ -1458,12 +1034,7 @@ class GameViews {
                                         indication = null
                                     ) {
                                         showAntiAliasingOptions.value = !showAntiAliasingOptions.value
-                                        // 隐藏其他选项
-                                        showResScaleOptions.value = false
                                         showAspectRatioOptions.value = false
-                                        showAnisotropyOptions.value = false
-                                        showBackendThreadingOptions.value = false
-                                        showAudioEngineOptions.value = false
                                     }
                                 )
                             }
@@ -1487,8 +1058,8 @@ class GameViews {
                                                 onClick = {
                                                     antiAliasing.value = index
                                                     showAntiAliasingOptions.value = false
-                                                    quickSettings.antiAliasing = index
-                                                    quickSettings.save()
+                                                    // 实时应用抗锯齿设置
+                                                    RyujinxNative.setAntiAliasing(index)
                                                 },
                                                 modifier = Modifier
                                                     .height(36.dp)
@@ -1535,6 +1106,18 @@ class GameViews {
                     }
                 }
             }
+        }
+
+        // 计算系统时间偏移的辅助函数
+        private fun calculateSystemTimeOffset(
+            year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int
+        ): Long {
+            val targetTime = java.util.Calendar.getInstance().apply {
+                set(year, month - 1, day, hour, minute, second)
+            }.timeInMillis
+            
+            val currentTime = System.currentTimeMillis()
+            return targetTime - currentTime
         }
 
         @Composable
