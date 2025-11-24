@@ -35,15 +35,15 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
             DebuggingFlags &= ~3u;
             KernelReleaseVersion = KProcess.KernelVersionPacked;
 
-            return Parse(capabilities, memoryManager, false);
+            return Parse(capabilities, memoryManager);
         }
 
-        public Result InitializeForUser(ReadOnlySpan<uint> capabilities, KPageTableBase memoryManager, bool isApplication)
+        public Result InitializeForUser(ReadOnlySpan<uint> capabilities, KPageTableBase memoryManager)
         {
-            return Parse(capabilities, memoryManager, isApplication);
+            return Parse(capabilities, memoryManager);
         }
 
-        private Result Parse(ReadOnlySpan<uint> capabilities, KPageTableBase memoryManager, bool isApplication)
+        private Result Parse(ReadOnlySpan<uint> capabilities, KPageTableBase memoryManager)
         {
             int mask0 = 0;
             int mask1 = 0;
@@ -54,7 +54,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
 
                 if (cap.GetCapabilityType() != CapabilityType.MapRange)
                 {
-                    Result result = ParseCapability(cap, ref mask0, ref mask1, memoryManager, isApplication);
+                    Result result = ParseCapability(cap, ref mask0, ref mask1, memoryManager);
 
                     if (result != Result.Success)
                     {
@@ -120,7 +120,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
             return Result.Success;
         }
 
-        private Result ParseCapability(uint cap, ref int mask0, ref int mask1, KPageTableBase memoryManager, bool isApplication)
+        private Result ParseCapability(uint cap, ref int mask0, ref int mask1, KPageTableBase memoryManager)
         {
             CapabilityType code = cap.GetCapabilityType();
 
@@ -175,11 +175,6 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
 
                         AllowedCpuCoresMask = GetMaskFromMinMax(lowestCpuCore, highestCpuCore);
                         AllowedThreadPriosMask = GetMaskFromMinMax(lowestThreadPrio, highestThreadPrio);
-
-                        if (isApplication && lowestCpuCore == 0 && highestCpuCore != 2)
-                            Ryujinx.Common.Logging.Logger.Error?.Print(Ryujinx.Common.Logging.LogClass.Application, $"Application requested cores with index range {lowestCpuCore} to {highestCpuCore}! Report this to @LotP on the Ryujinx/Ryubing discord server (discord.gg/ryujinx)!");
-                        else if (isApplication)
-                            Ryujinx.Common.Logging.Logger.Info?.Print(Ryujinx.Common.Logging.LogClass.Application, $"Application requested cores with index range {lowestCpuCore} to {highestCpuCore}");
 
                         break;
                     }
