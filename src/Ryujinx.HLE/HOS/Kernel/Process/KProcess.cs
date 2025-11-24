@@ -368,7 +368,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
             _imageSize = (ulong)creationInfo.CodePagesCount * KPageTableBase.PageSize;
             
             // 改进: 使用区域大小计算内存容量
-            switch (Flags & ProcessCreationFlags.AddressSpaceMask)
+            //switch (Flags & ProcessCreationFlags.AddressSpaceMask)
 
             // 19.0.0+ sets all regions to same size
             _memoryUsageCapacity = MemoryManager.HeapRegionEnd - MemoryManager.HeapRegionStart;
