@@ -27,7 +27,7 @@ namespace Ryujinx.HLE
         public Hid Hid { get; }
         public TamperMachine TamperMachine { get; }
         public IHostUIHandler UIHandler { get; }
-        public int CpuCoresCount = 4; //Switch 1 has 4 cores
+
         public bool EnableDeviceVsync { get; set; } = true;
 
         public bool IsFrameAvailable => Gpu.Window.IsFrameAvailable;
