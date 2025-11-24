@@ -320,7 +320,7 @@ namespace Ryujinx.Graphics.Vulkan
                 usage |= ImageUsageFlags.ColorAttachmentBit;
             }
 
-            if ((format.IsImageCompatible() && isMsImageStorageSupported) || extendedUsage)
+            if ((format.IsImageCompatible() && (isMsImageStorageSupported || !target.IsMultisample())) || extendedUsage)
             {
                 usage |= ImageUsageFlags.StorageBit;
             }
