@@ -27,15 +27,7 @@ class MainView {
                     UserViews.Main(mainViewModel) 
                 }
                 composable("game") { 
-                    // 确保游戏继续运行
-                    if (MainActivity.mainViewModel?.activity?.isGameRunning == true) {
-                        GameViews.Main()
-                    } else {
-                        // 如果游戏没有运行，返回首页
-                        navController.navigate("home") {
-                            popUpTo("home") { inclusive = true }
-                        }
-                    }
+                    GameViews.Main()
                 }
                 composable("settings") {
                     SettingViews.Main(
