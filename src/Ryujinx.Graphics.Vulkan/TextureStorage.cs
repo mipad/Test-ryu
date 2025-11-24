@@ -40,7 +40,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         private readonly Device _device;
 
-        private TextureCreateInfo _info;
+        private readonly TextureCreateInfo _info;
 
         public TextureCreateInfo Info => _info;
 
@@ -93,7 +93,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             SampleCountFlags sampleCountFlags = ConvertToSampleCountFlags(gd.Capabilities.SupportedSampleCounts, (uint)info.Samples);
 
-            ImageUsageFlags usage = GetImageUsage(info.Format, gd.Capabilities, isMsImageStorageSupported, true);
+            ImageUsageFlags usage = GetImageUsage(info.Format, gd.Capabilities, isMsImageStorageSupported, true, info.Target);
 
             ImageCreateFlags flags = ImageCreateFlags.CreateMutableFormatBit | ImageCreateFlags.CreateExtendedUsageBit;
 
@@ -307,7 +307,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        public static ImageUsageFlags GetImageUsage(Format format, in HardwareCapabilities capabilities, bool isMsImageStorageSupported, bool extendedUsage)
+        public static ImageUsageFlags GetImageUsage(Format format, in HardwareCapabilities capabilities, bool isMsImageStorageSupported, bool extendedUsage, Target target)
         {
             ImageUsageFlags usage = DefaultUsageFlags;
 
