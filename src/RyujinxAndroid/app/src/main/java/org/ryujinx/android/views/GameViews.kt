@@ -799,10 +799,10 @@ class GameViews {
             mainViewModel: MainViewModel,
             onDismiss: () -> Unit
         ) {
-            // 从QuickSettings获取当前设置
-            val quickSettings = QuickSettings(mainViewModel.activity)
+            // 从QuickSettings获取当前设置 - 每次对话框打开时重新获取最新值
+            val quickSettings = remember { QuickSettings(mainViewModel.activity) }
             
-            // 画面比例
+            // 画面比例 - 使用rememberUpdatedState确保值更新
             val aspectRatio = remember { mutableStateOf(quickSettings.aspectRatio) }
             
             // 自定义系统时间
@@ -898,6 +898,9 @@ class GameViews {
                                                         indication = null
                                                     ) {
                                                         aspectRatio.value = index
+                                                        // 保存到QuickSettings
+                                                        quickSettings.aspectRatio = index
+                                                        quickSettings.save()
                                                         showAspectRatioOptions.value = false
                                                         // 实时应用画面比例设置
                                                         RyujinxNative.jnaInstance.setAspectRatio(index)
@@ -1057,6 +1060,9 @@ class GameViews {
                                             TextButton(
                                                 onClick = {
                                                     antiAliasing.value = index
+                                                    // 保存到QuickSettings
+                                                    quickSettings.antiAliasing = index
+                                                    quickSettings.save()
                                                     showAntiAliasingOptions.value = false
                                                     // 实时应用抗锯齿设置
                                                     RyujinxNative.setAntiAliasing(index)
