@@ -15,8 +15,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExitToApp
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -356,7 +354,7 @@ class GameViews {
                     ) {
                         // 暂停/继续游戏
                         SideMenuItem(
-                            icon = if (isPaused.value) Icons.Default.PlayArrow else Icons.Default.Pause,
+                            icon = null, // 不使用图标，使用表情符号
                             text = if (isPaused.value) "▶️ Continue" else "⏸️ Pause",
                             onClick = {
                                 if (isPaused.value) {
