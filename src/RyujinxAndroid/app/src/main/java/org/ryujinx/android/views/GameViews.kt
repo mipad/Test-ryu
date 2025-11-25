@@ -317,166 +317,43 @@ class GameViews {
             // 获取当前游戏标题
             val gameTitle = mainViewModel.gameModel?.getDisplayName() ?: "Unknown Game"
 
-            // 直接渲染菜单，无动画
-            Box(
+            // 使用 Surface 进行独立渲染，解决滚动卡顿问题
+            Surface(
                 modifier = Modifier
                     .fillMaxHeight()
-                    .width(300.dp)
-                    .background(
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.98f),
-                        MaterialTheme.shapes.large
-                    )
-                    .border(
-                        width = 1.dp,
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
-                        shape = MaterialTheme.shapes.large
-                    )
+                    .width(300.dp),
+                color = Color.Transparent
             ) {
-                Column(
+                Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(vertical = 8.dp)
+                        .fillMaxHeight()
+                        .width(300.dp)
+                        .background(
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.98f),
+                            MaterialTheme.shapes.large
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                            shape = MaterialTheme.shapes.large
+                        )
                 ) {
-                    // 游戏标题
-                    Text(
-                        text = gameTitle,
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 16.dp)
-                    )
-
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
-                        thickness = 1.dp
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // 菜单项 - 直接显示，无动画
                     Column(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp)
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(vertical = 8.dp)
                     ) {
-                        // 暂停/继续游戏 - 使用 css-gg 图标
-                        EnhancedSideMenuItem(
-                            icon = CssGgIcons.PlayButton,
-                            text = if (isPaused.value) "Continue Game" else "Pause Game",
-                            backgroundColor = if (isPaused.value) MaterialTheme.colorScheme.primaryContainer 
-                                            else MaterialTheme.colorScheme.secondaryContainer,
-                            onClick = {
-                                if (isPaused.value) {
-                                    // 继续游戏
-                                    RyujinxNative.resumeEmulation()
-                                    isPaused.value = false
-                                } else {
-                                    // 暂停游戏
-                                    RyujinxNative.pauseEmulation()
-                                    isPaused.value = true
-                                }
-                                onDismiss()
-                            }
+                        // 游戏标题
+                        Text(
+                            text = gameTitle,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 16.dp)
                         )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // 虚拟手柄开关 - 使用游戏控制器图标
-                        EnhancedSideMenuItem(
-                            icon = CssGgIcons.Controller,
-                            text = "Virtual Controller",
-                            trailingContent = {
-                                Text(
-                                    text = if (showController.value) "显示" else "隐藏",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = if (showController.value) MaterialTheme.colorScheme.primary 
-                                           else MaterialTheme.colorScheme.outline
-                                )
-                            },
-                            onClick = {
-                                showController.value = !showController.value
-                                RyujinxNative.jnaInstance.inputReleaseTouchPoint()
-                                mainViewModel.controller?.setVisible(showController.value)
-                            }
-                        )
-
-                        // VSync 开关 - 使用同步图标
-                        EnhancedSideMenuItem(
-                            icon = CssGgIcons.Sync,
-                            text = "Vertical Sync",
-                            trailingContent = {
-                                Switch(
-                                    checked = enableVsync.value,
-                                    onCheckedChange = {
-                                        enableVsync.value = it
-                                        RyujinxNative.jnaInstance.graphicsRendererSetVsync(it)
-                                    },
-                                    modifier = Modifier.size(width = 36.dp, height = 24.dp)
-                                )
-                            },
-                            onClick = { /* 开关已处理 */ }
-                        )
-
-                        // Enable Motion - 使用手机图标
-                        EnhancedSideMenuItem(
-                            icon = CssGgIcons.Smartphone,
-                            text = "Motion Controls",
-                            trailingContent = {
-                                Switch(
-                                    checked = enableMotion.value,
-                                    onCheckedChange = {
-                                        enableMotion.value = it
-                                        val settings = QuickSettings(mainViewModel.activity)
-                                        settings.enableMotion = enableMotion.value
-                                        settings.save()
-                                        if (enableMotion.value)
-                                            mainViewModel.motionSensorManager?.register()
-                                        else
-                                            mainViewModel.motionSensorManager?.unregister()
-                                    },
-                                    modifier = Modifier.size(width = 36.dp, height = 24.dp)
-                                )
-                            },
-                            onClick = { /* 开关已处理 */ }
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // 编辑模式 - 使用编辑图标
-                        EnhancedSideMenuItem(
-                            icon = CssGgIcons.Pen,
-                            text = "Edit Controls Layout",
-                            onClick = {
-                                onDismiss()
-                                isEditing.value = true
-                                mainViewModel.controller?.setEditingMode(true)
-                            }
-                        )
-
-                        // 调整按键 - 使用表情符号⚙️
-                        EnhancedSideMenuItem(
-                            icon = null, // 不使用图标
-                            text = "⚙️ Controller Settings",
-                            onClick = {
-                                onDismiss()
-                                showAdjustControlsDialog.value = true
-                            }
-                        )
-
-                        // 性能设置 - 使用图表图标
-                        EnhancedSideMenuItem(
-                            icon = CssGgIcons.Chart,
-                            text = "Performance Stats",
-                            onClick = {
-                                onDismiss()
-                                showPerformanceSettings.value = true
-                            }
-                        )
-
-                        Spacer(modifier = Modifier.height(16.dp))
 
                         HorizontalDivider(
                             color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
@@ -485,17 +362,147 @@ class GameViews {
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // 退出游戏 - 使用退出图标
-                        EnhancedSideMenuItem(
-                            icon = CssGgIcons.LogOut,
-                            text = "Exit Game",
-                            backgroundColor = MaterialTheme.colorScheme.errorContainer,
-                            textColor = MaterialTheme.colorScheme.onErrorContainer,
-                            onClick = {
-                                onDismiss()
-                                showExitConfirmDialog.value = true
-                            }
-                        )
+                        // 菜单项 - 直接显示，无动画
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp)
+                        ) {
+                            // 暂停/继续游戏 - 使用 css-gg 图标
+                            EnhancedSideMenuItem(
+                                icon = CssGgIcons.PlayButton,
+                                text = if (isPaused.value) "Continue Game" else "Pause Game",
+                                backgroundColor = if (isPaused.value) MaterialTheme.colorScheme.primaryContainer 
+                                                else MaterialTheme.colorScheme.secondaryContainer,
+                                onClick = {
+                                    if (isPaused.value) {
+                                        // 继续游戏
+                                        RyujinxNative.resumeEmulation()
+                                        isPaused.value = false
+                                    } else {
+                                        // 暂停游戏
+                                        RyujinxNative.pauseEmulation()
+                                        isPaused.value = true
+                                    }
+                                    onDismiss()
+                                }
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // 虚拟手柄开关 - 使用游戏控制器图标
+                            EnhancedSideMenuItem(
+                                icon = CssGgIcons.Controller,
+                                text = "Virtual Controller",
+                                trailingContent = {
+                                    Text(
+                                        text = if (showController.value) "显示" else "隐藏",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = if (showController.value) MaterialTheme.colorScheme.primary 
+                                               else MaterialTheme.colorScheme.outline
+                                    )
+                                },
+                                onClick = {
+                                    showController.value = !showController.value
+                                    RyujinxNative.jnaInstance.inputReleaseTouchPoint()
+                                    mainViewModel.controller?.setVisible(showController.value)
+                                }
+                            )
+
+                            // VSync 开关 - 使用同步图标
+                            EnhancedSideMenuItem(
+                                icon = CssGgIcons.Sync,
+                                text = "Vertical Sync",
+                                trailingContent = {
+                                    Switch(
+                                        checked = enableVsync.value,
+                                        onCheckedChange = {
+                                            enableVsync.value = it
+                                            RyujinxNative.jnaInstance.graphicsRendererSetVsync(it)
+                                        },
+                                        modifier = Modifier.size(width = 36.dp, height = 24.dp)
+                                    )
+                                },
+                                onClick = { /* 开关已处理 */ }
+                            )
+
+                            // Enable Motion - 使用手机图标
+                            EnhancedSideMenuItem(
+                                icon = CssGgIcons.Smartphone,
+                                text = "Motion Controls",
+                                trailingContent = {
+                                    Switch(
+                                        checked = enableMotion.value,
+                                        onCheckedChange = {
+                                            enableMotion.value = it
+                                            val settings = QuickSettings(mainViewModel.activity)
+                                            settings.enableMotion = enableMotion.value
+                                            settings.save()
+                                            if (enableMotion.value)
+                                                mainViewModel.motionSensorManager?.register()
+                                            else
+                                                mainViewModel.motionSensorManager?.unregister()
+                                        },
+                                        modifier = Modifier.size(width = 36.dp, height = 24.dp)
+                                    )
+                                },
+                                onClick = { /* 开关已处理 */ }
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // 编辑模式 - 使用编辑图标
+                            EnhancedSideMenuItem(
+                                icon = CssGgIcons.Pen,
+                                text = "Edit Controls Layout",
+                                onClick = {
+                                    onDismiss()
+                                    isEditing.value = true
+                                    mainViewModel.controller?.setEditingMode(true)
+                                }
+                            )
+
+                            // 调整按键 - 使用表情符号⚙️
+                            EnhancedSideMenuItem(
+                                icon = null, // 不使用图标
+                                text = "⚙️ Controller Settings",
+                                onClick = {
+                                    onDismiss()
+                                    showAdjustControlsDialog.value = true
+                                }
+                            )
+
+                            // 性能设置 - 使用图表图标
+                            EnhancedSideMenuItem(
+                                icon = CssGgIcons.Chart,
+                                text = "Performance Stats",
+                                onClick = {
+                                    onDismiss()
+                                    showPerformanceSettings.value = true
+                                }
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                                thickness = 1.dp
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // 退出游戏 - 使用退出图标
+                            EnhancedSideMenuItem(
+                                icon = CssGgIcons.LogOut,
+                                text = "Exit Game",
+                                backgroundColor = MaterialTheme.colorScheme.errorContainer,
+                                textColor = MaterialTheme.colorScheme.onErrorContainer,
+                                onClick = {
+                                    onDismiss()
+                                    showExitConfirmDialog.value = true
+                                }
+                            )
+                        }
                     }
                 }
             }
