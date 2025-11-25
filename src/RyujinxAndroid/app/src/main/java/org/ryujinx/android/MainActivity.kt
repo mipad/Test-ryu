@@ -103,6 +103,34 @@ class MainActivity : BaseActivity() {
 
     private external fun initVm()
 
+    // 新增：重置游戏状态方法
+    fun resetGameState() {
+        Log.d("MainActivity", "Resetting game state...")
+        isGameRunning = false
+        autoPaused = false
+        
+        // 停止传感器
+        motionSensorManager.unregister()
+        
+        // 重置控制器
+        physicalControllerManager.disconnect()
+        
+        // 重置渲染状态
+        setPresentEnabled(false, "resetGameState")
+        
+        // 清除模拟器运行标志
+        clearEmuRunningFlag()
+        
+        // 停止服务
+        try { 
+            stopService(Intent(this, EmulationService::class.java)) 
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error stopping service: ${e.message}")
+        }
+        
+        Log.d("MainActivity", "Game state reset completed")
+    }
+
     // 渲染控制方法
     private fun setPresentEnabled(enabled: Boolean, reason: String) {
         wantPresentEnabled = enabled
