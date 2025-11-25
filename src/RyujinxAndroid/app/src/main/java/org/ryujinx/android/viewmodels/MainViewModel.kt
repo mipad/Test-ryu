@@ -127,6 +127,7 @@ class MainViewModel(val activity: MainActivity) {
         loadCustomSurfaceFormatSettings()
         // 加载性能统计显示设置
         loadPerformanceStatsSettings()
+        Log.d("MainViewModel", "MainViewModel initialized")
     }
 
     /**
@@ -460,46 +461,89 @@ class MainViewModel(val activity: MainActivity) {
     }
 
     /**
-     * 安全关闭游戏
+     * 安全关闭游戏 - 完整重置所有状态
      */
     fun closeGame() {
-        Log.d("MainViewModel", "Starting game close process...")
+        Log.d("MainViewModel", "Starting complete game close process...")
         
         // 第一步：停止传感器和控制器
+        Log.d("MainViewModel", "Stopping sensors and controllers...")
         motionSensorManager?.unregister()
         physicalControllerManager?.disconnect()
         motionSensorManager?.setControllerId(-1)
         
         // 第二步：通知原生代码停止模拟
         try {
+            Log.d("MainViewModel", "Signaling emulation close...")
             RyujinxNative.jnaInstance.deviceSignalEmulationClose()
         } catch (e: Exception) {
             Log.e("MainViewModel", "Error signaling emulation close", e)
         }
         
         // 第三步：关闭游戏主机
+        Log.d("MainViewModel", "Closing game host...")
         gameHost?.close()
         
         // 第四步：等待一小段时间确保资源释放
         try {
-            Thread.sleep(100)
+            Log.d("MainViewModel", "Waiting for resource release...")
+            Thread.sleep(150)
         } catch (e: InterruptedException) {
             Log.e("MainViewModel", "Sleep interrupted during close", e)
         }
         
         // 第五步：关闭设备模拟
         try {
+            Log.d("MainViewModel", "Closing device emulation...")
             RyujinxNative.jnaInstance.deviceCloseEmulation()
         } catch (e: Exception) {
             Log.e("MainViewModel", "Error closing emulation", e)
         }
         
-        // 第六步：重置状态
+        // 第六步：完全重置所有状态
+        Log.d("MainViewModel", "Resetting all states...")
+        resetAllStates()
+        
+        // 第七步：重置 Activity 状态
+        Log.d("MainViewModel", "Resetting activity state...")
+        activity.resetGameState()
+        
+        Log.d("MainViewModel", "Complete game close process finished")
+    }
+
+    /**
+     * 完全重置所有状态，确保可以重新启动游戏
+     */
+    private fun resetAllStates() {
+        Log.d("MainViewModel", "Resetting all MainViewModel states...")
+        
+        // 重置核心状态
         rendererReady = false
         gameModel = null
         isMiiEditorLaunched = false
         
-        Log.d("MainViewModel", "Game close process completed")
+        // 重置性能统计状态
+        fifoState = null
+        gameFpsState = null
+        gameTimeState = null
+        usedMemState = null
+        totalMemState = null
+        batteryTemperatureState = null
+        batteryLevelState = null
+        isChargingState = null
+        
+        // 重置进度状态
+        showLoading = null
+        progressValue = null
+        progress = null
+        
+        // 重置游戏主机引用
+        gameHost = null
+        
+        // 强制垃圾回收以释放资源
+        System.gc()
+        
+        Log.d("MainViewModel", "All states reset successfully")
     }
 
     fun refreshFirmwareVersion() {
@@ -507,15 +551,22 @@ class MainViewModel(val activity: MainActivity) {
     }
 
     fun loadGame(game: GameModel): Int {
+        Log.d("MainViewModel", "Starting game load process for: ${game.titleName}")
+        
+        // 首先确保所有状态已重置
+        resetAllStates()
+        
         val descriptor = game.open()
 
-        if (descriptor == 0)
+        if (descriptor == 0) {
+            Log.e("MainViewModel", "Failed to open game descriptor")
             return 0
+        }
 
         val update = game.openUpdate()
 
-        if(update == -2)
-        {
+        if(update == -2) {
+            Log.e("MainViewModel", "Failed to open game update")
             return -2
         }
 
@@ -524,6 +575,7 @@ class MainViewModel(val activity: MainActivity) {
 
         val settings = QuickSettings(activity)
 
+        Log.d("MainViewModel", "Initializing graphics...")
         var success = RyujinxNative.jnaInstance.graphicsInitialize(
             enableShaderCache = settings.enableShaderCache,
             enableTextureRecompression = settings.enableTextureRecompression,
@@ -531,8 +583,10 @@ class MainViewModel(val activity: MainActivity) {
             backendThreading = org.ryujinx.android.BackendThreading.Auto.ordinal
         )
 
-        if (!success)
+        if (!success) {
+            Log.e("MainViewModel", "Graphics initialization failed")
             return 0
+        }
 
         val nativeHelpers = NativeHelpers.instance
         val nativeInterop = NativeGraphicsInterop()
@@ -580,14 +634,17 @@ class MainViewModel(val activity: MainActivity) {
 
         val extensions = nativeInterop.VkRequiredExtensions
 
+        Log.d("MainViewModel", "Initializing graphics renderer...")
         success = RyujinxNative.jnaInstance.graphicsInitializeRenderer(
             extensions!!,
             extensions.size,
             driverHandle
         )
         rendererReady = success
-        if (!success)
+        if (!success) {
+            Log.e("MainViewModel", "Graphics renderer initialization failed")
             return 0
+        }
 
         // 新增：在图形初始化后延迟获取表面格式
         CoroutineScope(Dispatchers.IO).launch {
@@ -595,6 +652,7 @@ class MainViewModel(val activity: MainActivity) {
             refreshSurfaceFormats()
         }
 
+        Log.d("MainViewModel", "Initializing device...")
         val semaphore = Semaphore(1, 0)
         runBlocking {
             semaphore.acquire()
@@ -626,9 +684,12 @@ class MainViewModel(val activity: MainActivity) {
             semaphore.release()
         }
 
-        if (!success)
+        if (!success) {
+            Log.e("MainViewModel", "Device initialization failed")
             return 0
+        }
 
+        Log.d("MainViewModel", "Loading game descriptor...")
         success =
             RyujinxNative.jnaInstance.deviceLoadDescriptor(descriptor, game.type.ordinal, update)
 
@@ -638,17 +699,26 @@ class MainViewModel(val activity: MainActivity) {
                 delay(5000) // 延迟5秒确保游戏完全启动
                 onGameStarted()
             }
+            Log.d("MainViewModel", "Game loaded successfully")
+        } else {
+            Log.e("MainViewModel", "Failed to load game descriptor")
         }
 
         return if (success) 1 else 0
     }
 
     fun loadMiiEditor(): Boolean {
+        Log.d("MainViewModel", "Loading Mii Editor...")
+        
+        // 重置状态
+        resetAllStates()
+        
         gameModel = null
         isMiiEditorLaunched = true
 
         val settings = QuickSettings(activity)
 
+        Log.d("MainViewModel", "Initializing graphics for Mii Editor...")
         var success = RyujinxNative.jnaInstance.graphicsInitialize(
             enableShaderCache = settings.enableShaderCache,
             enableTextureRecompression = settings.enableTextureRecompression,
@@ -656,8 +726,10 @@ class MainViewModel(val activity: MainActivity) {
             backendThreading = org.ryujinx.android.BackendThreading.Auto.ordinal
         )
 
-        if (!success)
+        if (!success) {
+            Log.e("MainViewModel", "Graphics initialization failed for Mii Editor")
             return false
+        }
 
         val nativeHelpers = NativeHelpers.instance
         val nativeInterop = NativeGraphicsInterop()
@@ -705,14 +777,17 @@ class MainViewModel(val activity: MainActivity) {
 
         val extensions = nativeInterop.VkRequiredExtensions
 
+        Log.d("MainViewModel", "Initializing graphics renderer for Mii Editor...")
         success = RyujinxNative.jnaInstance.graphicsInitializeRenderer(
             extensions!!,
             extensions.size,
             driverHandle
         )
         rendererReady = success
-        if (!success)
+        if (!success) {
+            Log.e("MainViewModel", "Graphics renderer initialization failed for Mii Editor")
             return false
+        }
 
         // 新增：在图形初始化后延迟获取表面格式
         CoroutineScope(Dispatchers.IO).launch {
@@ -720,6 +795,7 @@ class MainViewModel(val activity: MainActivity) {
             refreshSurfaceFormats()
         }
 
+        Log.d("MainViewModel", "Initializing device for Mii Editor...")
         val semaphore = Semaphore(1, 0)
         runBlocking {
             semaphore.acquire()
@@ -751,9 +827,12 @@ class MainViewModel(val activity: MainActivity) {
             semaphore.release()
         }
 
-        if (!success)
+        if (!success) {
+            Log.e("MainViewModel", "Device initialization failed for Mii Editor")
             return false
+        }
 
+        Log.d("MainViewModel", "Launching Mii Editor...")
         success = RyujinxNative.jnaInstance.deviceLaunchMiiEditor()
 
         // Mii编辑器启动成功后触发表面格式保存
@@ -762,6 +841,9 @@ class MainViewModel(val activity: MainActivity) {
                 delay(5000) // 延迟5秒确保Mii编辑器完全启动
                 onGameStarted()
             }
+            Log.d("MainViewModel", "Mii Editor launched successfully")
+        } else {
+            Log.e("MainViewModel", "Failed to launch Mii Editor")
         }
 
         return success
