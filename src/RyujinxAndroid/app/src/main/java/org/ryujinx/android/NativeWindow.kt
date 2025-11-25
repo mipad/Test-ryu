@@ -30,7 +30,7 @@ class NativeWindow(val surface: SurfaceView) {
     init {
         nativePointer = nativeHelpers.getNativeWindow(surface.holder.surface)
         swapInterval = maxOf(1, minSwapInterval)
-        Log.d("NativeWindow", "NativeWindow initialized with pointer: $nativePointer")
+        Log.d("NativeWindow", "NativeWindow initialized with pointer: $nativePointer, swapInterval: $swapInterval")
     }
 
     fun requeryWindowHandle(): Long {
