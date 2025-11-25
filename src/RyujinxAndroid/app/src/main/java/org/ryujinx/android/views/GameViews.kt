@@ -658,8 +658,8 @@ class GameViews {
             ) {
                 Card(
                     modifier = Modifier
-                        .fillMaxWidth(0.85f)
-                        .fillMaxHeight(0.8f),
+                        .fillMaxWidth(0.9f)  // 增加宽度
+                        .fillMaxHeight(0.85f), // 增加高度
                     shape = MaterialTheme.shapes.extraLarge,
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -668,83 +668,94 @@ class GameViews {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
+                            .padding(20.dp)  // 减少内边距
                     ) {
                         Text(
                             text = "Performance Stats",
                             style = MaterialTheme.typography.headlineSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier
-                                .padding(24.dp)
+                                .padding(bottom = 16.dp)
                                 .align(Alignment.CenterHorizontally)
                         )
                         
-                        // 可滚动的选项列表
-                        Column(
+                        // 使用两列布局
+                        Row(
                             modifier = Modifier
                                 .weight(1f)
                                 .verticalScroll(rememberScrollState())
-                                .padding(horizontal = 24.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            StatSwitchItem(
-                                text = "FIFO Percentage",
-                                checked = showFifo.value,
-                                onCheckedChange = { 
-                                    showFifo.value = it
-                                    saveSettings()
-                                }
-                            )
+                            // 左列
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(end = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                StatSwitchItem(
+                                    text = "FIFO Percentage",
+                                    checked = showFifo.value,
+                                    onCheckedChange = { 
+                                        showFifo.value = it
+                                        saveSettings()
+                                    }
+                                )
+                                
+                                StatSwitchItem(
+                                    text = "FPS Counter",
+                                    checked = showFps.value,
+                                    onCheckedChange = { 
+                                        showFps.value = it
+                                        saveSettings()
+                                    }
+                                )
+                                
+                                StatSwitchItem(
+                                    text = "Memory Usage",
+                                    checked = showRam.value,
+                                    onCheckedChange = { 
+                                        showRam.value = it
+                                        saveSettings()
+                                    }
+                                )
+                            }
                             
-                            StatSwitchItem(
-                                text = "FPS Counter",
-                                checked = showFps.value,
-                                onCheckedChange = { 
-                                    showFps.value = it
-                                    saveSettings()
-                                }
-                            )
-                            
-                            StatSwitchItem(
-                                text = "Memory Usage",
-                                checked = showRam.value,
-                                onCheckedChange = { 
-                                    showRam.value = it
-                                    saveSettings()
-                                }
-                            )
-                            
-                            StatSwitchItem(
-                                text = "Battery Temperature",
-                                checked = showBatteryTemperature.value,
-                                onCheckedChange = { 
-                                    showBatteryTemperature.value = it
-                                    saveSettings()
-                                }
-                            )
-                            
-                            StatSwitchItem(
-                                text = "Battery Level",
-                                checked = showBatteryLevel.value,
-                                onCheckedChange = { 
-                                    showBatteryLevel.value = it
-                                    saveSettings()
-                                }
-                            )
+                            // 右列
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(start = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                StatSwitchItem(
+                                    text = "Battery Temperature",
+                                    checked = showBatteryTemperature.value,
+                                    onCheckedChange = { 
+                                        showBatteryTemperature.value = it
+                                        saveSettings()
+                                    }
+                                )
+                                
+                                StatSwitchItem(
+                                    text = "Battery Level",
+                                    checked = showBatteryLevel.value,
+                                    onCheckedChange = { 
+                                        showBatteryLevel.value = it
+                                        saveSettings()
+                                    }
+                                )
+                            }
                         }
                         
-                        Spacer(modifier = Modifier.height(20.dp))
-                        
+                        // 移除不必要的间隔
                         HorizontalDivider(
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                            modifier = Modifier.padding(vertical = 12.dp)
                         )
                         
-                        Spacer(modifier = Modifier.height(16.dp))
-                        
-                        // 总开关
+                        // 总开关和关闭按钮紧凑布局
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp),
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -753,29 +764,30 @@ class GameViews {
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Switch(
-                                checked = showStats.value,
-                                onCheckedChange = { 
-                                    showStats.value = it
-                                    saveSettings()
+                            
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Switch(
+                                    checked = showStats.value,
+                                    onCheckedChange = { 
+                                        showStats.value = it
+                                        saveSettings()
+                                    }
+                                )
+                                
+                                Spacer(modifier = Modifier.width(12.dp))
+                                
+                                Button(
+                                    onClick = onDismiss,
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                ) {
+                                    Text(text = "Close")
                                 }
-                            )
-                        }
-                        
-                        Spacer(modifier = Modifier.height(24.dp))
-                        
-                        Button(
-                            onClick = onDismiss,
-                            modifier = Modifier
-                                .align(Alignment.End)
-                                .padding(horizontal = 24.dp)
-                                .padding(bottom = 24.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
-                            )
-                        ) {
-                            Text(text = "Close")
+                            }
                         }
                     }
                 }
