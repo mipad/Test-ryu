@@ -364,7 +364,7 @@ class GameViews {
                     ) {
                         // 暂停/继续游戏 - 使用 css-gg 图标
                         EnhancedSideMenuItem(
-                            icon = CssGgIcons::class.java.getField(if (isPaused.value) "PlayButtonO" else "PlayPauseO").get(null),
+                            icon = CssGgIcons.PlayButton,
                             text = if (isPaused.value) "Continue Game" else "Pause Game",
                             backgroundColor = if (isPaused.value) MaterialTheme.colorScheme.primaryContainer 
                                             else MaterialTheme.colorScheme.secondaryContainer,
@@ -384,9 +384,9 @@ class GameViews {
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // 虚拟手柄开关 - 使用游戏手柄图标
+                        // 虚拟手柄开关 - 使用触摸图标替代游戏手柄
                         EnhancedSideMenuItem(
-                            icon = CssGgIcons.Gamepad,
+                            icon = CssGgIcons.Touchpad,
                             text = "Virtual Controller",
                             trailingContent = {
                                 Text(
@@ -456,9 +456,9 @@ class GameViews {
                             }
                         )
 
-                        // 调整按键 - 使用设置图标
+                        // 调整按键 - 使用齿轮图标替代设置
                         EnhancedSideMenuItem(
-                            icon = CssGgIcons.Settings,
+                            icon = CssGgIcons.Gear,
                             text = "Controller Settings",
                             onClick = {
                                 onDismiss()
@@ -537,18 +537,18 @@ class GameViews {
                                     contentDescription = null,
                                     tint = textColor,
                                     modifier = Modifier
-                                        .size(20.dp)
-                                        .padding(end = 12.dp)
+                                        .size(28.dp) // 增大图标尺寸
+                                        .padding(end = 16.dp) // 增加间距
                                 )
                             }
                             else -> {
-                                Spacer(modifier = Modifier.size(20.dp).padding(end = 12.dp))
+                                Spacer(modifier = Modifier.size(28.dp).padding(end = 16.dp))
                             }
                         }
                         
                         Text(
                             text = text,
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MaterialTheme.typography.bodyLarge, // 使用更大的字体
                             color = textColor,
                             modifier = Modifier.weight(1f)
                         )
@@ -558,7 +558,7 @@ class GameViews {
                         imageVector = Icons.Default.ArrowForward,
                         contentDescription = null,
                         tint = textColor.copy(alpha = 0.7f),
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(20.dp) // 增大箭头图标
                     )
                 }
             }
@@ -655,7 +655,7 @@ class GameViews {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth(0.85f)
-                        .fillMaxHeight(0.8f), // 限制对话框高度为屏幕的80%
+                        .fillMaxHeight(0.8f),
                     shape = MaterialTheme.shapes.extraLarge,
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -664,23 +664,27 @@ class GameViews {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(24.dp)
                     ) {
                         Text(
                             text = "Performance Stats",
                             style = MaterialTheme.typography.headlineSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier
-                                .padding(bottom = 16.dp)
+                                .padding(24.dp)
                                 .align(Alignment.CenterHorizontally)
                         )
                         
-                        // 可滚动的选项列表
+                        // 可滚动的选项列表 - 使用更轻量的滚动实现
                         Column(
                             modifier = Modifier
-                                .weight(1f) // 占据剩余空间
-                                .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                                .weight(1f)
+                                .verticalScroll(
+                                    state = rememberScrollState(),
+                                    flingBehavior = ScrollableDefaults.flingBehavior(), // 使用默认的fling行为
+                                    reverseScrolling = false
+                                )
+                                .padding(horizontal = 24.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp) // 增加间距
                         ) {
                             StatSwitchItem(
                                 text = "FIFO Percentage",
@@ -738,7 +742,9 @@ class GameViews {
                         
                         // 总开关
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -760,7 +766,10 @@ class GameViews {
                         
                         Button(
                             onClick = onDismiss,
-                            modifier = Modifier.align(Alignment.End),
+                            modifier = Modifier
+                                .align(Alignment.End)
+                                .padding(horizontal = 24.dp)
+                                .padding(bottom = 24.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primary,
                                 contentColor = MaterialTheme.colorScheme.onPrimary
@@ -787,7 +796,8 @@ class GameViews {
                 Text(
                     text = text,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
                 )
                 Switch(
                     checked = checked,
