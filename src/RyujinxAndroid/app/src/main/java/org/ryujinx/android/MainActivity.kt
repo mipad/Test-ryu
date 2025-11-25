@@ -5,7 +5,6 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.os.Bundle
 import android.os.Environment
-//import android.util.Log
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.WindowManager
@@ -46,7 +45,6 @@ class MainActivity : BaseActivity() {
     private val ENABLE_PRESENT_DELAY_MS = 400L
     private val REATTACH_DELAY_MS = 300L
     private var wantPresentEnabled = false
-    private val TAG_FG = "FgPresent"
     
     // 僵尸进程检测
     private val PREFS = "emu_core"
@@ -105,7 +103,6 @@ class MainActivity : BaseActivity() {
 
     // 新增：重置游戏状态方法
     fun resetGameState() {
-        Log.d("MainActivity", "Resetting game state...")
         isGameRunning = false
         autoPaused = false
         
@@ -125,10 +122,8 @@ class MainActivity : BaseActivity() {
         try { 
             stopService(Intent(this, EmulationService::class.java)) 
         } catch (e: Exception) {
-            Log.e("MainActivity", "Error stopping service: ${e.message}")
+            // 忽略错误
         }
-        
-        Log.d("MainActivity", "Game state reset completed")
     }
 
     // 渲染控制方法
@@ -136,9 +131,7 @@ class MainActivity : BaseActivity() {
         wantPresentEnabled = enabled
         try {
             RyujinxNative.jnaInstance.graphicsSetPresentEnabled(enabled)
-            //Log.d(TAG_FG, "present=${if (enabled) "ENABLED" else "DISABLED"} ($reason)")
         } catch (_: Throwable) {
-            //Log.d(TAG_FG, "native toggle not available ($reason)")
         }
     }
 
@@ -166,13 +159,6 @@ class MainActivity : BaseActivity() {
             }
 
             try { mainViewModel?.gameHost?.rebindNativeWindow(force = true) } catch (_: Throwable) {}
-
-            // 修复：移除不存在的 reattachWindowIfReady 方法调用
-            // if (!RyujinxNative.jnaInstance.reattachWindowIfReady()) {
-            //     handler.postDelayed(this, REATTACH_DELAY_MS)
-            //     return
-            // }
-            //Log.d(TAG_FG, "window reattached")
         }
     }
 
@@ -292,10 +278,8 @@ class MainActivity : BaseActivity() {
         if (isGameRunning && MainActivity.mainViewModel?.rendererReady == true) {
             try {
                 RyujinxNative.jnaInstance.graphicsSetPresentEnabled(true)
-               // Log.d(TAG_FG, "present=ENABLED (onStart)")
             } catch (_: Throwable) {}
         } else {
-            //Log.d(TAG_FG, "skip enable present (onStart) — rendererReady=${MainActivity.mainViewModel?.rendererReady}")
             setPresentEnabled(false, "cold reset: onStart (no game)")
         }
     }
@@ -306,8 +290,6 @@ class MainActivity : BaseActivity() {
             handler.removeCallbacks(reattachWindowWhenReady)
             handler.removeCallbacks(enablePresentWhenReady)
             setPresentEnabled(false, "onStop")
-            // 修复：移除不存在的 detachWindow 方法调用
-            // try { RyujinxNative.jnaInstance.detachWindow() } catch (_: Throwable) {}
         }
         // 重要：绑定安全解除（防止泄漏）
         try { mainViewModel?.gameHost?.shutdownBinding() } catch (_: Throwable) {}
@@ -319,10 +301,7 @@ class MainActivity : BaseActivity() {
             if (MainActivity.mainViewModel?.rendererReady == true) {
                 try {
                     RyujinxNative.jnaInstance.graphicsSetPresentEnabled(false)
-                   // Log.d(TAG_FG, "present=DISABLED (onTrimMemory:$level)")
                 } catch (_: Throwable) {}
-            } else {
-               // Log.d(TAG_FG, "skip disable present (onTrimMemory) — rendererReady=${MainActivity.mainViewModel?.rendererReady}")
             }
         }
     }
@@ -389,8 +368,6 @@ class MainActivity : BaseActivity() {
             handler.postDelayed(enablePresentWhenReady, 450L)
         } else {
             setPresentEnabled(false, "focus lost")
-            // 修复：移除不存在的 detachWindow 方法调用
-            // try { RyujinxNative.jnaInstance.detachWindow() } catch (_: Throwable) {}
         }
     }
 
@@ -403,8 +380,6 @@ class MainActivity : BaseActivity() {
 
         if (isGameRunning) {
             setPresentEnabled(false, "onPause")
-            // 修复：移除不存在的 detachWindow 方法调用
-            // try { RyujinxNative.jnaInstance.detachWindow() } catch (_: Throwable) {}
             mainViewModel?.performanceManager?.setTurboMode(false)
             motionSensorManager.unregister()
             
@@ -488,21 +463,13 @@ class MainActivity : BaseActivity() {
     private fun clearEmuRunningFlag() = setEmuRunningFlag(false)
 
     private fun hardColdReset(reason: String) {
-       // Log.d(TAG_FG, "Cold graphics reset ($reason)")
         isGameRunning = false
         mainViewModel?.rendererReady = false
         autoPaused = false
 
         try { setPresentEnabled(false, "cold reset: $reason") } catch (_: Throwable) {}
-        // 修复：移除不存在的 detachWindow 方法调用
-        // try { RyujinxNative.jnaInstance.detachWindow() } catch (_: Throwable) {}
 
         try { stopService(Intent(this, EmulationService::class.java)) } catch (_: Throwable) {}
-
-        // 修复：移除不存在的属性访问
-        // try { mainViewModel?.loadGameModel?.value = null } catch (_: Throwable) {}
-        // try { mainViewModel?.bootPath?.value = "" } catch (_: Throwable) {}
-        // try { mainViewModel?.forceNceAndPptc?.value = false } catch (_: Throwable) {}
     }
 
     private fun coldResetIfZombie(phase: String) {
