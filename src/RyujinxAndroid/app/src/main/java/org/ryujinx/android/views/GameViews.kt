@@ -384,9 +384,9 @@ class GameViews {
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // 虚拟手柄开关 - 使用触摸图标替代游戏手柄
+                        // 虚拟手柄开关 - 使用游戏控制器图标
                         EnhancedSideMenuItem(
-                            icon = CssGgIcons.Touchpad,
+                            icon = CssGgIcons.Controller,
                             text = "Virtual Controller",
                             trailingContent = {
                                 Text(
@@ -456,10 +456,10 @@ class GameViews {
                             }
                         )
 
-                        // 调整按键 - 使用齿轮图标替代设置
+                        // 调整按键 - 使用表情符号⚙️
                         EnhancedSideMenuItem(
-                            icon = CssGgIcons.Gear,
-                            text = "Controller Settings",
+                            icon = null, // 不使用图标
+                            text = "⚙️ Controller Settings",
                             onClick = {
                                 onDismiss()
                                 showAdjustControlsDialog.value = true
@@ -674,15 +674,11 @@ class GameViews {
                                 .align(Alignment.CenterHorizontally)
                         )
                         
-                        // 可滚动的选项列表 - 使用更轻量的滚动实现
+                        // 可滚动的选项列表 - 简化滚动实现
                         Column(
                             modifier = Modifier
                                 .weight(1f)
-                                .verticalScroll(
-                                    state = rememberScrollState(),
-                                    flingBehavior = ScrollableDefaults.flingBehavior(), // 使用默认的fling行为
-                                    reverseScrolling = false
-                                )
+                                .verticalScroll(rememberScrollState())
                                 .padding(horizontal = 24.dp),
                             verticalArrangement = Arrangement.spacedBy(16.dp) // 增加间距
                         ) {
