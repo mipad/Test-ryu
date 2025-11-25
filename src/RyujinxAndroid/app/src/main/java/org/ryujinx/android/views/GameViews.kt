@@ -16,14 +16,6 @@ import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.SportsEsports
-import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.PhoneAndroid
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -46,7 +38,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import compose.icons.CssGgIcons
-import compose.icons.cssggicons.ToolbarBottom
+import compose.icons.cssggicons.*
 import org.ryujinx.android.GameController
 import org.ryujinx.android.GameHost
 import org.ryujinx.android.MainActivity
@@ -370,9 +362,9 @@ class GameViews {
                             .fillMaxWidth()
                             .padding(horizontal = 12.dp)
                     ) {
-                        // 暂停/继续游戏
+                        // 暂停/继续游戏 - 使用 css-gg 图标
                         EnhancedSideMenuItem(
-                            icon = if (isPaused.value) Icons.Filled.PlayArrow else Icons.Filled.Pause,
+                            icon = CssGgIcons::class.java.getField(if (isPaused.value) "PlayButtonO" else "PlayPauseO").get(null),
                             text = if (isPaused.value) "Continue Game" else "Pause Game",
                             backgroundColor = if (isPaused.value) MaterialTheme.colorScheme.primaryContainer 
                                             else MaterialTheme.colorScheme.secondaryContainer,
@@ -392,9 +384,9 @@ class GameViews {
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // 虚拟手柄开关
+                        // 虚拟手柄开关 - 使用游戏手柄图标
                         EnhancedSideMenuItem(
-                            icon = Icons.Filled.SportsEsports,
+                            icon = CssGgIcons.Gamepad,
                             text = "Virtual Controller",
                             trailingContent = {
                                 Text(
@@ -411,9 +403,9 @@ class GameViews {
                             }
                         )
 
-                        // VSync 开关
+                        // VSync 开关 - 使用同步图标
                         EnhancedSideMenuItem(
-                            icon = Icons.Filled.Sync,
+                            icon = CssGgIcons.Sync,
                             text = "Vertical Sync",
                             trailingContent = {
                                 Switch(
@@ -428,9 +420,9 @@ class GameViews {
                             onClick = { /* 开关已处理 */ }
                         )
 
-                        // Enable Motion
+                        // Enable Motion - 使用手机图标
                         EnhancedSideMenuItem(
-                            icon = Icons.Filled.PhoneAndroid,
+                            icon = CssGgIcons.Smartphone,
                             text = "Motion Controls",
                             trailingContent = {
                                 Switch(
@@ -453,9 +445,9 @@ class GameViews {
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // 编辑模式
+                        // 编辑模式 - 使用编辑图标
                         EnhancedSideMenuItem(
-                            icon = Icons.Filled.Edit,
+                            icon = CssGgIcons.Pen,
                             text = "Edit Controls Layout",
                             onClick = {
                                 onDismiss()
@@ -464,9 +456,9 @@ class GameViews {
                             }
                         )
 
-                        // 调整按键
+                        // 调整按键 - 使用设置图标
                         EnhancedSideMenuItem(
-                            icon = Icons.Filled.Tune,
+                            icon = CssGgIcons.Settings,
                             text = "Controller Settings",
                             onClick = {
                                 onDismiss()
@@ -474,9 +466,9 @@ class GameViews {
                             }
                         )
 
-                        // 性能设置
+                        // 性能设置 - 使用图表图标
                         EnhancedSideMenuItem(
-                            icon = Icons.Filled.BarChart,
+                            icon = CssGgIcons.Chart,
                             text = "Performance Stats",
                             onClick = {
                                 onDismiss()
@@ -493,9 +485,9 @@ class GameViews {
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // 退出游戏
+                        // 退出游戏 - 使用退出图标
                         EnhancedSideMenuItem(
-                            icon = Icons.Filled.ExitToApp,
+                            icon = CssGgIcons.LogOut,
                             text = "Exit Game",
                             backgroundColor = MaterialTheme.colorScheme.errorContainer,
                             textColor = MaterialTheme.colorScheme.onErrorContainer,
@@ -663,7 +655,7 @@ class GameViews {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth(0.85f)
-                        .fillMaxHeight(0.8f), // 限制对话框高度
+                        .fillMaxHeight(0.8f), // 限制对话框高度为屏幕的80%
                     shape = MaterialTheme.shapes.extraLarge,
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant
