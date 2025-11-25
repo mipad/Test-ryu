@@ -16,6 +16,15 @@ import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Gamepad
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -364,8 +373,8 @@ class GameViews {
                     ) {
                         // 暂停/继续游戏
                         EnhancedSideMenuItem(
-                            icon = null,
-                            text = if (isPaused.value) "▶️ Continue Game" else "⏸️ Pause Game",
+                            icon = if (isPaused.value) Icons.Filled.PlayArrow else Icons.Filled.Pause,
+                            text = if (isPaused.value) "Continue Game" else "Pause Game",
                             backgroundColor = if (isPaused.value) MaterialTheme.colorScheme.primaryContainer 
                                             else MaterialTheme.colorScheme.secondaryContainer,
                             onClick = {
@@ -386,8 +395,8 @@ class GameViews {
 
                         // 虚拟手柄开关
                         EnhancedSideMenuItem(
-                            icon = null,
-                            text = "🎮 Virtual Controller",
+                            icon = Icons.Filled.SportsEsports,
+                            text = "Virtual Controller",
                             trailingContent = {
                                 Text(
                                     text = if (showController.value) "显示" else "隐藏",
@@ -405,8 +414,8 @@ class GameViews {
 
                         // VSync 开关
                         EnhancedSideMenuItem(
-                            icon = null,
-                            text = "🔄 Vertical Sync",
+                            icon = Icons.Filled.Sync,
+                            text = "Vertical Sync",
                             trailingContent = {
                                 Switch(
                                     checked = enableVsync.value,
@@ -422,8 +431,8 @@ class GameViews {
 
                         // Enable Motion
                         EnhancedSideMenuItem(
-                            icon = null,
-                            text = "📱 Motion Controls",
+                            icon = Icons.Filled.PhoneAndroid,
+                            text = "Motion Controls",
                             trailingContent = {
                                 Switch(
                                     checked = enableMotion.value,
@@ -447,8 +456,8 @@ class GameViews {
 
                         // 编辑模式
                         EnhancedSideMenuItem(
-                            icon = null,
-                            text = "✏️ Edit Controls Layout",
+                            icon = Icons.Filled.Edit,
+                            text = "Edit Controls Layout",
                             onClick = {
                                 onDismiss()
                                 isEditing.value = true
@@ -458,8 +467,8 @@ class GameViews {
 
                         // 调整按键
                         EnhancedSideMenuItem(
-                            icon = null,
-                            text = "⚙️ Controller Settings",
+                            icon = Icons.Filled.Tune,
+                            text = "Controller Settings",
                             onClick = {
                                 onDismiss()
                                 showAdjustControlsDialog.value = true
@@ -468,8 +477,8 @@ class GameViews {
 
                         // 性能设置
                         EnhancedSideMenuItem(
-                            icon = null,
-                            text = "📊 Performance Stats",
+                            icon = Icons.Filled.BarChart,
+                            text = "Performance Stats",
                             onClick = {
                                 onDismiss()
                                 showPerformanceSettings.value = true
@@ -487,7 +496,7 @@ class GameViews {
 
                         // 退出游戏
                         EnhancedSideMenuItem(
-                            icon = Icons.Default.ExitToApp,
+                            icon = Icons.Filled.ExitToApp,
                             text = "Exit Game",
                             backgroundColor = MaterialTheme.colorScheme.errorContainer,
                             textColor = MaterialTheme.colorScheme.onErrorContainer,
@@ -541,28 +550,13 @@ class GameViews {
                                         .padding(end = 12.dp)
                                 )
                             }
-                            icon == null && text.contains(Regex("[\\p{So}\\p{Cn}]")) -> {
-                                val emoji = text.takeWhile { it.isEmoji() }
-                                Text(
-                                    text = emoji,
-                                    fontSize = 18.sp,
-                                    modifier = Modifier
-                                        .size(20.dp)
-                                        .padding(end = 12.dp),
-                                    color = textColor
-                                )
-                            }
                             else -> {
                                 Spacer(modifier = Modifier.size(20.dp).padding(end = 12.dp))
                             }
                         }
                         
                         Text(
-                            text = if (icon == null && text.contains(Regex("[\\p{So}\\p{Cn}]"))) {
-                                text.dropWhile { it.isEmoji() }.trim()
-                            } else {
-                                text
-                            },
+                            text = text,
                             style = MaterialTheme.typography.bodyMedium,
                             color = textColor,
                             modifier = Modifier.weight(1f)
@@ -577,16 +571,6 @@ class GameViews {
                     )
                 }
             }
-        }
-
-        // 扩展函数：检查字符是否为表情符号
-        private fun Char.isEmoji(): Boolean {
-            return this in '\uE000'..'\uF8FF' || 
-                   this in '\uD83C'..'\uDBFF' || 
-                   this in '\uDC00'..'\uDFFF' ||
-                   this in '\u2000'..'\u2BFF' ||
-                   this in '\u2600'..'\u26FF' ||
-                   this in '\u2700'..'\u27BF'
         }
 
         @Composable
