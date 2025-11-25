@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class)
+@file:OptIn(ExperimentalMaterial3Api::class)
 
 package org.ryujinx.android.views
 
@@ -89,10 +89,10 @@ class GameViews {
             // 编辑模式状态
             val isEditing = remember { mutableStateOf(false) }
 
-            // 侧边菜单状态 - 使用 remember 但不在条件中直接渲染
+            // 侧边菜单状态
             val showSideMenu = remember { mutableStateOf(false) }
 
-            // 对话框状态 - 使用 remember 但不在条件中直接渲染
+            // 对话框状态
             val showPerformanceSettings = remember { mutableStateOf(false) }
             val showAdjustControlsDialog = remember { mutableStateOf(false) }
             val showExitConfirmDialog = remember { mutableStateOf(false) }
@@ -293,7 +293,7 @@ class GameViews {
                     }
                 }
 
-                // UI Handler - 只在需要时渲染
+                // UI Handler - 只在没有其他对话框时渲染
                 if (!showSideMenu.value && !showPerformanceSettings.value && 
                     !showAdjustControlsDialog.value && !showExitConfirmDialog.value) {
                     mainViewModel.activity.uiHandler.Compose()
