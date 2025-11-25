@@ -3,15 +3,12 @@
 package org.ryujinx.android.views
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExitToApp
@@ -36,7 +33,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.style.TextAlign
 import compose.icons.CssGgIcons
 import compose.icons.cssggicons.*
 import org.ryujinx.android.GameController
@@ -93,10 +89,10 @@ class GameViews {
             // 编辑模式状态
             val isEditing = remember { mutableStateOf(false) }
 
-            // 侧边菜单状态
+            // 侧边菜单状态 - 使用 remember 但不在条件中直接渲染
             val showSideMenu = remember { mutableStateOf(false) }
 
-            // 对话框状态
+            // 对话框状态 - 使用 remember 但不在条件中直接渲染
             val showPerformanceSettings = remember { mutableStateOf(false) }
             val showAdjustControlsDialog = remember { mutableStateOf(false) }
             val showExitConfirmDialog = remember { mutableStateOf(false) }
@@ -206,7 +202,7 @@ class GameViews {
                 if (!showLoading.value) {
                     GameController.Compose(mainViewModel)
 
-                    // 侧边菜单 - 瞬时显示（移除动画）
+                    // 只在需要时渲染侧边菜单
                     if (showSideMenu.value) {
                         SideMenu(
                             mainViewModel = mainViewModel,
@@ -233,7 +229,7 @@ class GameViews {
                     }
                 }
 
-                // 性能设置对话框
+                // 性能设置对话框 - 只在需要时渲染
                 if (showPerformanceSettings.value) {
                     PerformanceSettingsDialog(
                         mainViewModel = mainViewModel,
@@ -247,7 +243,7 @@ class GameViews {
                     )
                 }
 
-                // 调整按键对话框
+                // 调整按键对话框 - 只在需要时渲染
                 if (showAdjustControlsDialog.value) {
                     ControlEditViews.AdjustControlsDialog(
                         mainViewModel = mainViewModel,
@@ -255,7 +251,7 @@ class GameViews {
                     )
                 }
 
-                // 退出确认对话框
+                // 退出确认对话框 - 只在需要时渲染
                 if (showExitConfirmDialog.value) {
                     ExitConfirmDialog(
                         mainViewModel = mainViewModel,
@@ -297,7 +293,11 @@ class GameViews {
                     }
                 }
 
-                mainViewModel.activity.uiHandler.Compose()
+                // UI Handler - 只在需要时渲染
+                if (!showSideMenu.value && !showPerformanceSettings.value && 
+                    !showAdjustControlsDialog.value && !showExitConfirmDialog.value) {
+                    mainViewModel.activity.uiHandler.Compose()
+                }
             }
         }
 
@@ -537,8 +537,8 @@ class GameViews {
                                     contentDescription = null,
                                     tint = textColor,
                                     modifier = Modifier
-                                        .size(28.dp) // 增大图标尺寸
-                                        .padding(end = 16.dp) // 增加间距
+                                        .size(28.dp)
+                                        .padding(end = 16.dp)
                                 )
                             }
                             else -> {
@@ -548,7 +548,7 @@ class GameViews {
                         
                         Text(
                             text = text,
-                            style = MaterialTheme.typography.bodyLarge, // 使用更大的字体
+                            style = MaterialTheme.typography.bodyLarge,
                             color = textColor,
                             modifier = Modifier.weight(1f)
                         )
@@ -558,7 +558,7 @@ class GameViews {
                         imageVector = Icons.Default.ArrowForward,
                         contentDescription = null,
                         tint = textColor.copy(alpha = 0.7f),
-                        modifier = Modifier.size(20.dp) // 增大箭头图标
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
@@ -569,7 +569,9 @@ class GameViews {
             mainViewModel: MainViewModel,
             onDismiss: () -> Unit
         ) {
-            Dialog(onDismissRequest = onDismiss) {
+            Dialog(
+                onDismissRequest = onDismiss
+            ) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth(0.8f)
@@ -651,7 +653,9 @@ class GameViews {
                 mainViewModel.savePerformanceStatsSettings(settings)
             }
 
-            Dialog(onDismissRequest = onDismiss) {
+            Dialog(
+                onDismissRequest = onDismiss
+            ) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth(0.85f)
@@ -674,13 +678,13 @@ class GameViews {
                                 .align(Alignment.CenterHorizontally)
                         )
                         
-                        // 可滚动的选项列表 - 简化滚动实现
+                        // 可滚动的选项列表
                         Column(
                             modifier = Modifier
                                 .weight(1f)
                                 .verticalScroll(rememberScrollState())
                                 .padding(horizontal = 24.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp) // 增加间距
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
                             StatSwitchItem(
                                 text = "FIFO Percentage",
