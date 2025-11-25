@@ -414,16 +414,17 @@ class GameViews {
                                 icon = CssGgIcons.Sync,
                                 text = "Vertical Sync",
                                 trailingContent = {
-                                    Switch(
-                                        checked = enableVsync.value,
-                                        onCheckedChange = {
-                                            enableVsync.value = it
-                                            RyujinxNative.jnaInstance.graphicsRendererSetVsync(it)
-                                        },
-                                        modifier = Modifier.size(width = 36.dp, height = 24.dp)
+                                    Text(
+                                        text = if (enableVsync.value) "On" else "Off",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = if (enableVsync.value) MaterialTheme.colorScheme.primary 
+                                               else MaterialTheme.colorScheme.outline
                                     )
                                 },
-                                onClick = { /* 开关已处理 */ }
+                                onClick = {
+                                    enableVsync.value = !enableVsync.value
+                                    RyujinxNative.jnaInstance.graphicsRendererSetVsync(enableVsync.value)
+                                }
                             )
 
                             // Enable Motion - 使用手机图标
@@ -431,22 +432,23 @@ class GameViews {
                                 icon = CssGgIcons.Smartphone,
                                 text = "Motion Controls",
                                 trailingContent = {
-                                    Switch(
-                                        checked = enableMotion.value,
-                                        onCheckedChange = {
-                                            enableMotion.value = it
-                                            val settings = QuickSettings(mainViewModel.activity)
-                                            settings.enableMotion = enableMotion.value
-                                            settings.save()
-                                            if (enableMotion.value)
-                                                mainViewModel.motionSensorManager?.register()
-                                            else
-                                                mainViewModel.motionSensorManager?.unregister()
-                                        },
-                                        modifier = Modifier.size(width = 36.dp, height = 24.dp)
+                                    Text(
+                                        text = if (enableMotion.value) "On" else "Off",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = if (enableMotion.value) MaterialTheme.colorScheme.primary 
+                                               else MaterialTheme.colorScheme.outline
                                     )
                                 },
-                                onClick = { /* 开关已处理 */ }
+                                onClick = {
+                                    enableMotion.value = !enableMotion.value
+                                    val settings = QuickSettings(mainViewModel.activity)
+                                    settings.enableMotion = enableMotion.value
+                                    settings.save()
+                                    if (enableMotion.value)
+                                        mainViewModel.motionSensorManager?.register()
+                                    else
+                                        mainViewModel.motionSensorManager?.unregister()
+                                }
                             )
 
                             Spacer(modifier = Modifier.height(8.dp))
@@ -465,7 +467,7 @@ class GameViews {
                             // 调整按键 - 使用表情符号⚙️
                             EnhancedSideMenuItem(
                                 icon = null, // 不使用图标
-                                text = "⚙️ Controller Settings",
+                                text = "⚙️Controller Settings",
                                 onClick = {
                                     onDismiss()
                                     showAdjustControlsDialog.value = true
@@ -544,12 +546,13 @@ class GameViews {
                                     contentDescription = null,
                                     tint = textColor,
                                     modifier = Modifier
-                                        .size(28.dp)
-                                        .padding(end = 16.dp)
+                                        .size(40.dp) // 增大图标到40dp
+                                        .padding(end = 12.dp)
                                 )
                             }
                             else -> {
-                                Spacer(modifier = Modifier.size(28.dp).padding(end = 16.dp))
+                                // 对于没有图标的项目（如表情符号），保持间距一致
+                                Spacer(modifier = Modifier.size(40.dp).padding(end = 12.dp))
                             }
                         }
                         
@@ -561,12 +564,8 @@ class GameViews {
                         )
                     }
                     
-                    trailingContent?.invoke() ?: Icon(
-                        imageVector = Icons.Default.ArrowForward,
-                        contentDescription = null,
-                        tint = textColor.copy(alpha = 0.7f),
-                        modifier = Modifier.size(20.dp)
-                    )
+                    // 只显示自定义的尾部内容，不显示默认箭头
+                    trailingContent?.invoke()
                 }
             }
         }
@@ -665,8 +664,8 @@ class GameViews {
             ) {
                 Card(
                     modifier = Modifier
-                        .fillMaxWidth(0.9f)  // 增加宽度
-                        .fillMaxHeight(0.85f), // 增加高度
+                        .fillMaxWidth(0.95f)  // 增加宽度以适应横屏
+                        .fillMaxHeight(0.8f), // 调整高度
                     shape = MaterialTheme.shapes.extraLarge,
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -675,14 +674,14 @@ class GameViews {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(20.dp)  // 减少内边距
+                            .padding(24.dp)
                     ) {
                         Text(
                             text = "Performance Stats",
                             style = MaterialTheme.typography.headlineSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier
-                                .padding(bottom = 16.dp)
+                                .padding(bottom = 20.dp)
                                 .align(Alignment.CenterHorizontally)
                         )
                         
@@ -696,8 +695,8 @@ class GameViews {
                             Column(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .padding(end = 8.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                                    .padding(end = 12.dp),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
                                 StatSwitchItem(
                                     text = "FIFO Percentage",
@@ -731,8 +730,8 @@ class GameViews {
                             Column(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .padding(start = 8.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                                    .padding(start = 12.dp),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
                                 StatSwitchItem(
                                     text = "Battery Temperature",
@@ -754,13 +753,12 @@ class GameViews {
                             }
                         }
                         
-                        // 移除不必要的间隔
                         HorizontalDivider(
                             color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
-                            modifier = Modifier.padding(vertical = 12.dp)
+                            modifier = Modifier.padding(vertical = 16.dp)
                         )
                         
-                        // 总开关和关闭按钮紧凑布局
+                        // 总开关和关闭按钮布局
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -783,7 +781,7 @@ class GameViews {
                                     }
                                 )
                                 
-                                Spacer(modifier = Modifier.width(12.dp))
+                                Spacer(modifier = Modifier.width(16.dp))
                                 
                                 Button(
                                     onClick = onDismiss,
