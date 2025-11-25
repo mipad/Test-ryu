@@ -321,28 +321,38 @@ class GameViews {
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
-                    .width(280.dp)
+                    .width(300.dp)
                     .background(
-                        MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
-                        MaterialTheme.shapes.medium
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.98f),
+                        MaterialTheme.shapes.large
+                    )
+                    .border(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                        shape = MaterialTheme.shapes.large
                     )
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
+                        .padding(vertical = 8.dp)
                 ) {
                     // 游戏标题
                     Text(
                         text = gameTitle,
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp)
+                            .padding(horizontal = 20.dp, vertical = 16.dp)
                     )
 
-                    HorizontalDivider()
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                        thickness = 1.dp
+                    )
 
                     Spacer(modifier = Modifier.height(8.dp))
 
@@ -350,12 +360,14 @@ class GameViews {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 8.dp)
+                            .padding(horizontal = 12.dp)
                     ) {
                         // 暂停/继续游戏
-                        SideMenuItem(
-                            icon = null, // 不使用图标，使用表情符号
-                            text = if (isPaused.value) "▶️ Continue" else "⏸️ Pause",
+                        EnhancedSideMenuItem(
+                            icon = null,
+                            text = if (isPaused.value) "▶️ Continue Game" else "⏸️ Pause Game",
+                            backgroundColor = if (isPaused.value) MaterialTheme.colorScheme.primaryContainer 
+                                            else MaterialTheme.colorScheme.secondaryContainer,
                             onClick = {
                                 if (isPaused.value) {
                                     // 继续游戏
@@ -370,12 +382,48 @@ class GameViews {
                             }
                         )
 
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // 虚拟手柄开关
+                        EnhancedSideMenuItem(
+                            icon = null,
+                            text = "🎮 Virtual Controller",
+                            trailingContent = {
+                                Text(
+                                    text = if (showController.value) "显示" else "隐藏",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (showController.value) MaterialTheme.colorScheme.primary 
+                                           else MaterialTheme.colorScheme.outline
+                                )
+                            },
+                            onClick = {
+                                showController.value = !showController.value
+                                RyujinxNative.jnaInstance.inputReleaseTouchPoint()
+                                mainViewModel.controller?.setVisible(showController.value)
+                            }
+                        )
+
+                        // VSync 开关
+                        EnhancedSideMenuItem(
+                            icon = null,
+                            text = "🔄 Vertical Sync",
+                            trailingContent = {
+                                Switch(
+                                    checked = enableVsync.value,
+                                    onCheckedChange = {
+                                        enableVsync.value = it
+                                        RyujinxNative.jnaInstance.graphicsRendererSetVsync(it)
+                                    },
+                                    modifier = Modifier.size(width = 36.dp, height = 24.dp)
+                                )
+                            },
+                            onClick = { /* 开关已处理 */ }
+                        )
 
                         // Enable Motion
-                        SideMenuItem(
+                        EnhancedSideMenuItem(
                             icon = null,
-                            text = "Enable Motion",
+                            text = "📱 Motion Controls",
                             trailingContent = {
                                 Switch(
                                     checked = enableMotion.value,
@@ -395,43 +443,12 @@ class GameViews {
                             onClick = { /* 开关已处理 */ }
                         )
 
-                        // 虚拟手柄开关
-                        SideMenuItem(
-                            icon = null,
-                            text = "🎮 Virtual Controller",
-                            onClick = {
-                                onDismiss()
-                                showController.value = !showController.value
-                                RyujinxNative.jnaInstance.inputReleaseTouchPoint()
-                                mainViewModel.controller?.setVisible(showController.value)
-                            }
-                        )
-
-                        // VSync 开关
-                        SideMenuItem(
-                            icon = null,
-                            text = "🔄 VSync",
-                            trailingContent = {
-                                Text(
-                                    text = if (enableVsync.value) "ON" else "OFF",
-                                    color = if (enableVsync.value) Color.Green else Color.Red
-                                )
-                            },
-                            onClick = {
-                                onDismiss()
-                                enableVsync.value = !enableVsync.value
-                                RyujinxNative.jnaInstance.graphicsRendererSetVsync(
-                                    enableVsync.value
-                                )
-                            }
-                        )
-
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         // 编辑模式
-                        SideMenuItem(
+                        EnhancedSideMenuItem(
                             icon = null,
-                            text = "✏️ Edit Controls",
+                            text = "✏️ Edit Controls Layout",
                             onClick = {
                                 onDismiss()
                                 isEditing.value = true
@@ -440,9 +457,9 @@ class GameViews {
                         )
 
                         // 调整按键
-                        SideMenuItem(
+                        EnhancedSideMenuItem(
                             icon = null,
-                            text = "⚙️ Adjust Controls",
+                            text = "⚙️ Controller Settings",
                             onClick = {
                                 onDismiss()
                                 showAdjustControlsDialog.value = true
@@ -450,21 +467,30 @@ class GameViews {
                         )
 
                         // 性能设置
-                        SideMenuItem(
+                        EnhancedSideMenuItem(
                             icon = null,
-                            text = "📊 Performance information",
+                            text = "📊 Performance Stats",
                             onClick = {
                                 onDismiss()
                                 showPerformanceSettings.value = true
                             }
                         )
 
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                            thickness = 1.dp
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         // 退出游戏
-                        SideMenuItem(
+                        EnhancedSideMenuItem(
                             icon = Icons.Default.ExitToApp,
                             text = "Exit Game",
+                            backgroundColor = MaterialTheme.colorScheme.errorContainer,
+                            textColor = MaterialTheme.colorScheme.onErrorContainer,
                             onClick = {
                                 onDismiss()
                                 showExitConfirmDialog.value = true
@@ -476,36 +502,42 @@ class GameViews {
         }
 
         @Composable
-        fun SideMenuItem(
+        fun EnhancedSideMenuItem(
             icon: Any?,
             text: String,
+            backgroundColor: Color = Color.Transparent,
+            textColor: Color = MaterialTheme.colorScheme.onSurface,
             trailingContent: @Composable (() -> Unit)? = null,
             onClick: () -> Unit
         ) {
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                color = Color.Transparent,
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                color = backgroundColor,
+                shape = MaterialTheme.shapes.medium,
+                tonalElevation = if (backgroundColor == Color.Transparent) 0.dp else 2.dp,
                 onClick = onClick
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
                     ) {
                         when {
                             icon is androidx.compose.ui.graphics.vector.ImageVector -> {
                                 Icon(
                                     imageVector = icon,
                                     contentDescription = null,
+                                    tint = textColor,
                                     modifier = Modifier
-                                        .size(24.dp)
+                                        .size(20.dp)
                                         .padding(end = 12.dp)
                                 )
                             }
@@ -513,14 +545,15 @@ class GameViews {
                                 val emoji = text.takeWhile { it.isEmoji() }
                                 Text(
                                     text = emoji,
-                                    fontSize = 20.sp,
+                                    fontSize = 18.sp,
                                     modifier = Modifier
-                                        .size(24.dp)
-                                        .padding(end = 12.dp)
+                                        .size(20.dp)
+                                        .padding(end = 12.dp),
+                                    color = textColor
                                 )
                             }
                             else -> {
-                                Spacer(modifier = Modifier.size(24.dp).padding(end = 12.dp))
+                                Spacer(modifier = Modifier.size(20.dp).padding(end = 12.dp))
                             }
                         }
                         
@@ -530,13 +563,16 @@ class GameViews {
                             } else {
                                 text
                             },
-                            style = MaterialTheme.typography.bodyMedium
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = textColor,
+                            modifier = Modifier.weight(1f)
                         )
                     }
                     
                     trailingContent?.invoke() ?: Icon(
                         imageVector = Icons.Default.ArrowForward,
                         contentDescription = null,
+                        tint = textColor.copy(alpha = 0.7f),
                         modifier = Modifier.size(16.dp)
                     )
                 }
@@ -559,36 +595,40 @@ class GameViews {
             onDismiss: () -> Unit
         ) {
             Dialog(onDismissRequest = onDismiss) {
-                Surface(
+                Card(
                     modifier = Modifier
                         .fillMaxWidth(0.8f)
                         .wrapContentHeight(),
-                    shape = MaterialTheme.shapes.large,
-                    tonalElevation = AlertDialogDefaults.TonalElevation
+                    shape = MaterialTheme.shapes.extraLarge,
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
                 ) {
-                    Column {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp)
-                        ) {
-                            Text(
-                                text = "Exit Game?",
-                                style = MaterialTheme.typography.headlineSmall
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(text = "Are you sure you want to exit the game?")
-                            Text(text = "All unsaved data will be lost!")
-                        }
+                    Column(
+                        modifier = Modifier.padding(24.dp)
+                    ) {
+                        Text(
+                            text = "Exit Game?",
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Are you sure you want to exit the game? All unsaved progress will be lost.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                        )
+                        Spacer(modifier = Modifier.height(24.dp))
                         Row(
                             horizontalArrangement = Arrangement.End,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp)
+                            modifier = Modifier.fillMaxWidth()
                         ) {
                             TextButton(
                                 onClick = onDismiss,
-                                modifier = Modifier.padding(end = 8.dp)
+                                modifier = Modifier.padding(end = 12.dp),
+                                colors = ButtonDefaults.textButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             ) {
                                 Text(text = "Cancel")
                             }
@@ -599,7 +639,11 @@ class GameViews {
                                     mainViewModel.activity.setFullScreen(false)
                                     mainViewModel.navController?.popBackStack()
                                     mainViewModel.activity.isGameRunning = false
-                                }
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.error,
+                                    contentColor = MaterialTheme.colorScheme.onError
+                                )
                             ) {
                                 Text(text = "Exit")
                             }
@@ -633,165 +677,143 @@ class GameViews {
             }
 
             Dialog(onDismissRequest = onDismiss) {
-                Surface(
+                Card(
                     modifier = Modifier
-                        .fillMaxWidth(0.8f)
+                        .fillMaxWidth(0.85f)
                         .wrapContentHeight(),
-                    shape = MaterialTheme.shapes.large,
-                    tonalElevation = AlertDialogDefaults.TonalElevation,
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+                    shape = MaterialTheme.shapes.extraLarge,
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
                 ) {
                     Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
+                        modifier = Modifier.padding(24.dp)
                     ) {
                         Text(
-                            text = "Game Stats",
+                            text = "Performance Stats",
                             style = MaterialTheme.typography.headlineSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier
-                                .padding(bottom = 10.dp)
+                                .padding(bottom = 16.dp)
                                 .align(Alignment.CenterHorizontally)
                         )
                         
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                        // 单个统计项开关
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(text = "FIFO")
-                                    Switch(
-                                        checked = showFifo.value,
-                                        onCheckedChange = { 
-                                            showFifo.value = it
-                                            saveSettings()
-                                        },
-                                        modifier = Modifier.size(width = 36.dp, height = 24.dp)
-                                    )
+                            StatSwitchItem(
+                                text = "FIFO Percentage",
+                                checked = showFifo.value,
+                                onCheckedChange = { 
+                                    showFifo.value = it
+                                    saveSettings()
                                 }
-                                
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(text = "FPS")
-                                    Switch(
-                                        checked = showFps.value,
-                                        onCheckedChange = { 
-                                            showFps.value = it
-                                            saveSettings()
-                                        },
-                                        modifier = Modifier.size(width = 36.dp, height = 24.dp)
-                                    )
-                                }
-                                
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(text = "RAM")
-                                    Switch(
-                                        checked = showRam.value,
-                                        onCheckedChange = { 
-                                            showRam.value = it
-                                            saveSettings()
-                                        },
-                                        modifier = Modifier.size(width = 36.dp, height = 24.dp)
-                                    )
-                                }
-                            }
+                            )
                             
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(text = "Battery Temp")
-                                    Switch(
-                                        checked = showBatteryTemperature.value,
-                                        onCheckedChange = { 
-                                            showBatteryTemperature.value = it
-                                            saveSettings()
-                                        },
-                                        modifier = Modifier.size(width = 36.dp, height = 24.dp)
-                                    )
+                            StatSwitchItem(
+                                text = "FPS Counter",
+                                checked = showFps.value,
+                                onCheckedChange = { 
+                                    showFps.value = it
+                                    saveSettings()
                                 }
-                                
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(text = "Level")
-                                    Switch(
-                                        checked = showBatteryLevel.value,
-                                        onCheckedChange = { 
-                                            showBatteryLevel.value = it
-                                            saveSettings()
-                                        },
-                                        modifier = Modifier.size(width = 36.dp, height = 24.dp)
-                                    )
+                            )
+                            
+                            StatSwitchItem(
+                                text = "Memory Usage",
+                                checked = showRam.value,
+                                onCheckedChange = { 
+                                    showRam.value = it
+                                    saveSettings()
                                 }
-                            }
+                            )
+                            
+                            StatSwitchItem(
+                                text = "Battery Temperature",
+                                checked = showBatteryTemperature.value,
+                                onCheckedChange = { 
+                                    showBatteryTemperature.value = it
+                                    saveSettings()
+                                }
+                            )
+                            
+                            StatSwitchItem(
+                                text = "Battery Level",
+                                checked = showBatteryLevel.value,
+                                onCheckedChange = { 
+                                    showBatteryLevel.value = it
+                                    saveSettings()
+                                }
+                            )
                         }
                         
+                        Spacer(modifier = Modifier.height(20.dp))
+                        
                         HorizontalDivider(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 16.dp),
-                            thickness = 1.dp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
                         )
                         
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        // 总开关
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 8.dp),
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "All Stats",
-                                style = MaterialTheme.typography.bodyLarge
+                                text = "Show All Stats",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Switch(
                                 checked = showStats.value,
                                 onCheckedChange = { 
                                     showStats.value = it
                                     saveSettings()
-                                },
-                                modifier = Modifier.size(width = 36.dp, height = 24.dp)
+                                }
                             )
                         }
                         
-                        Spacer(modifier = Modifier.padding(8.dp))
+                        Spacer(modifier = Modifier.height(24.dp))
                         
-                        Row(
-                            horizontalArrangement = Arrangement.End,
-                            modifier = Modifier.fillMaxWidth()
+                        Button(
+                            onClick = onDismiss,
+                            modifier = Modifier.align(Alignment.End),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            )
                         ) {
-                            Button(
-                                onClick = onDismiss
-                            ) {
-                                Text(text = "Close")
-                            }
+                            Text(text = "Close")
                         }
                     }
                 }
+            }
+        }
+
+        @Composable
+        fun StatSwitchItem(
+            text: String,
+            checked: Boolean,
+            onCheckedChange: (Boolean) -> Unit
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Switch(
+                    checked = checked,
+                    onCheckedChange = onCheckedChange,
+                    modifier = Modifier.size(width = 36.dp, height = 24.dp)
+                )
             }
         }
 
@@ -831,8 +853,9 @@ class GameViews {
 
             CompositionLocalProvider(
                 LocalTextStyle provides TextStyle(
-                    fontSize = 10.sp,
-                    color = Color.White
+                    fontSize = 11.sp,
+                    color = Color.White,
+                    fontWeight = FontWeight.Medium
                 )
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
@@ -840,53 +863,28 @@ class GameViews {
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .padding(16.dp)
-                            .background(Color.Transparent)
                     ) {
                         val gameTimeVal = if (!gameTime.value.isInfinite()) gameTime.value else 0.0
                         
                         if (showFifo) {
-                            Box(
-                                modifier = Modifier.align(Alignment.Start)
-                            ) {
-                                Text(
-                                    text = "${String.format("%.1f", fifo.value)}%",
-                                    modifier = Modifier
-                                        .background(
-                                            color = Color.Black.copy(alpha = 0.26f),
-                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
-                                        )
-                                )
-                            }
+                            StatItem(
+                                text = "${String.format("%.1f", fifo.value)}%",
+                                backgroundColor = Color.Black.copy(alpha = 0.4f)
+                            )
                         }
                         
                         if (showFps) {
-                            Box(
-                                modifier = Modifier.align(Alignment.Start)
-                            ) {
-                                Text(
-                                    text = "${String.format("%.1f", gameFps.value)} FPS",
-                                    modifier = Modifier
-                                        .background(
-                                            color = Color.Black.copy(alpha = 0.26f),
-                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
-                                        )
-                                )
-                            }
+                            StatItem(
+                                text = "${String.format("%.1f", gameFps.value)} FPS",
+                                backgroundColor = Color.Black.copy(alpha = 0.4f)
+                            )
                         }
                         
                         if (showRam) {
-                            Box(
-                                modifier = Modifier.align(Alignment.Start)
-                            ) {
-                                Text(
-                                    text = "${totalMem.value}/${usedMem.value} MB",
-                                    modifier = Modifier
-                                        .background(
-                                            color = Color.Black.copy(alpha = 0.26f),
-                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
-                                        )
-                                )
-                            }
+                            StatItem(
+                                text = "${usedMem.value}/${totalMem.value} MB",
+                                backgroundColor = Color.Black.copy(alpha = 0.4f)
+                            )
                         }
                     }
 
@@ -900,50 +898,34 @@ class GameViews {
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             if (showBatteryTemperature && batteryTemperature.value > 0) {
-                                Box(
-                                    modifier = Modifier
-                                        .background(
-                                            color = Color.Black.copy(alpha = 0.26f),
-                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
-                                        )
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = "${String.format("%.1f", batteryTemperature.value)}°C",
-                                        color = when {
-                                            batteryTemperature.value > 40 -> Color.Red
-                                            batteryTemperature.value > 35 -> Color.Yellow
-                                            else -> Color.White
-                                        }
-                                    )
-                                }
+                                StatItem(
+                                    text = "${String.format("%.1f", batteryTemperature.value)}°C",
+                                    backgroundColor = Color.Black.copy(alpha = 0.4f),
+                                    textColor = when {
+                                        batteryTemperature.value > 40 -> Color(0xFFFF6B6B)
+                                        batteryTemperature.value > 35 -> Color(0xFFFFD166)
+                                        else -> Color.White
+                                    }
+                                )
                             }
                             
                             if (showBatteryLevel && batteryLevel.value >= 0) {
                                 if (showBatteryTemperature && batteryTemperature.value > 0) {
                                     Spacer(modifier = Modifier.padding(horizontal = 4.dp))
                                 }
-                                Box(
-                                    modifier = Modifier
-                                        .background(
-                                            color = Color.Black.copy(alpha = 0.26f),
-                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
-                                        )
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = if (isCharging.value) {
-                                            "${batteryLevel.value}% ⚡"
-                                        } else {
-                                            "${batteryLevel.value}%"
-                                        },
-                                        color = when {
-                                            batteryLevel.value < 15 -> Color.Red
-                                            batteryLevel.value < 40 -> Color.Yellow
-                                            else -> Color.White
-                                        }
-                                    )
-                                }
+                                StatItem(
+                                    text = if (isCharging.value) {
+                                        "${batteryLevel.value}% ⚡"
+                                    } else {
+                                        "${batteryLevel.value}%"
+                                    },
+                                    backgroundColor = Color.Black.copy(alpha = 0.4f),
+                                    textColor = when {
+                                        batteryLevel.value < 15 -> Color(0xFFFF6B6B)
+                                        batteryLevel.value < 40 -> Color(0xFFFFD166)
+                                        else -> Color.White
+                                    }
+                                )
                             }
                         }
                     }
@@ -960,6 +942,27 @@ class GameViews {
                 batteryLevel,
                 isCharging
             )
+        }
+
+        @Composable
+        fun StatItem(
+            text: String,
+            backgroundColor: Color,
+            textColor: Color = Color.White
+        ) {
+            Box(
+                modifier = Modifier
+                    .background(
+                        color = backgroundColor,
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+                    )
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = text,
+                    color = textColor
+                )
+            }
         }
     }
 }
