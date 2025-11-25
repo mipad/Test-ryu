@@ -44,14 +44,14 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
     private val _nativeWindow: NativeWindow
 
     // 前台服务绑定相关变量
-    private var emuBound = false
+    @Volatile private var emuBound = false
     private var emuBinder: EmulationService.LocalBinder? = null
-    private var _startedViaService = false
+    @Volatile private var _startedViaService = false
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
     // 稳定器状态
-    private var stabilizerActive = false
+    @Volatile private var stabilizerActive = false
 
     // 最后已知的 Android 旋转 (0,1,2,3)
     private var lastRotation: Int? = null
@@ -73,6 +73,7 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
         override fun onServiceConnected(name: ComponentName, service: IBinder) {
             emuBinder = service as EmulationService.LocalBinder
             emuBound = true
+            Log.d("GameHost", "Emulation service connected")
 
             // 如果启动已准备且没有循环运行 → 现在在服务中启动
             if (_isStarted && !_startedViaService && _guestThread == null) {
@@ -81,6 +82,7 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
         }
 
         override fun onServiceDisconnected(name: ComponentName) {
+            Log.d("GameHost", "Emulation service disconnected")
             emuBound = false
             emuBinder = null
             _startedViaService = false
@@ -91,6 +93,7 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
         holder.addCallback(this)
         _nativeWindow = NativeWindow(this)
         mainViewModel.gameHost = this
+        Log.d("GameHost", "GameHost initialized")
     }
 
     /**
@@ -98,23 +101,35 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
      * 强制获取新的原生指针并传递给 C#
      */
     fun rebindNativeWindow(force: Boolean = false) {
-        if (_isClosed) return
+        if (_isClosed) {
+            Log.d("GameHost", "Cannot rebind, GameHost is closed")
+            return
+        }
         try {
             _currentWindow = _nativeWindow.requeryWindowHandle()
             _nativeWindow.swapInterval = 0
             RyujinxNative.jnaInstance.deviceSetWindowHandle(currentWindowhandle)
+            Log.d("GameHost", "Native window rebound, handle: $currentWindowhandle")
 
             val w = if (holder.surfaceFrame.width() > 0) holder.surfaceFrame.width() else width
             val h = if (holder.surfaceFrame.height() > 0) holder.surfaceFrame.height() else height
             if (w > 0 && h > 0) {
                 if (MainActivity.mainViewModel?.rendererReady == true) {
-                    try { RyujinxNative.jnaInstance.graphicsRendererSetSize(w, h) } catch (_: Throwable) {}
+                    try { 
+                        RyujinxNative.jnaInstance.graphicsRendererSetSize(w, h) 
+                        Log.d("GameHost", "Renderer size set to: ${w}x${h}")
+                    } catch (_: Throwable) {}
                 }
                 if (_inputInitialized) {
-                    try { RyujinxNative.jnaInstance.inputSetClientSize(w, h) } catch (_: Throwable) {}
+                    try { 
+                        RyujinxNative.jnaInstance.inputSetClientSize(w, h) 
+                        Log.d("GameHost", "Input client size set to: ${w}x${h}")
+                    } catch (_: Throwable) {}
                 }
             }
-        } catch (_: Throwable) { }
+        } catch (e: Throwable) { 
+            Log.e("GameHost", "Error rebinding native window", e)
+        }
     }
 
     /**
@@ -134,26 +149,32 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
                 try { 
                     RyujinxNative.jnaInstance.graphicsRendererSetSize(w, h)
                     RyujinxNative.jnaInstance.inputSetClientSize(w, h)
+                    Log.d("GameHost", "Post-reattach kicks applied: ${w}x${h}")
                 } catch (_: Throwable) {}
                 mainHandler.postDelayed({
                     try { 
                         RyujinxNative.jnaInstance.graphicsRendererSetSize(w, h)
                         RyujinxNative.jnaInstance.inputSetClientSize(w, h)
+                        Log.d("GameHost", "Delayed post-reattach kicks applied: ${w}x${h}")
                     } catch (_: Throwable) {}
                 }, 32)
             }
-        } catch (_: Throwable) { }
+        } catch (e: Throwable) { 
+            Log.e("GameHost", "Error in postReattachKicks", e)
+        }
     }
 
     // -------- Surface 生命周期 --------
 
     override fun surfaceCreated(holder: SurfaceHolder) {
+        Log.d("GameHost", "Surface created")
         // 提前绑定，确保服务在启动前就绪
         ensureServiceStartedAndBound()
         rebindNativeWindow(force = true)
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+        Log.d("GameHost", "Surface changed: ${width}x${height}, format: $format")
         if (_isClosed) return
 
         // 总是重新绑定 - 即使尺寸相同
@@ -172,6 +193,7 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
+        Log.d("GameHost", "Surface destroyed")
         // 总是解除绑定（防止任务滑动时的泄漏）
         shutdownBinding()
         // 实际的模拟器关闭通过 close() / 退出游戏处理
@@ -179,6 +201,7 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
 
     override fun onWindowVisibilityChanged(visibility: Int) {
         super.onWindowVisibilityChanged(visibility)
+        Log.d("GameHost", "Window visibility changed: $visibility")
         if (visibility != android.view.View.VISIBLE) {
             shutdownBinding()
         }
@@ -187,6 +210,7 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
     // -------- UI 进度 --------
 
     fun setProgress(info: String, progressVal: Float) {
+        Log.d("GameHost", "Progress update: $info - $progressVal")
         showLoading?.apply {
             progressValue?.apply { this.value = progressVal }
             progress?.apply { this.value = info }
@@ -202,6 +226,7 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
         this.progressValue = progressValue
         this.progress = progress
         showLoading?.apply { value = !isProgressHidden }
+        Log.d("GameHost", "Progress states set")
     }
 
     fun hideProgressIndicator() {
@@ -209,12 +234,18 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
         showLoading?.apply {
             if (value == isProgressHidden) value = !isProgressHidden
         }
+        Log.d("GameHost", "Progress indicator hidden")
     }
 
     // -------- 启动/停止模拟 --------
 
     private fun start(surfaceHolder: SurfaceHolder) {
-        if (_isStarted) return
+        if (_isStarted) {
+            Log.d("GameHost", "GameHost already started, skipping")
+            return
+        }
+
+        Log.d("GameHost", "Starting GameHost...")
 
         // 不立即设置 _isStarted = true → 先准备一切
         rebindNativeWindow(force = true)
@@ -224,17 +255,23 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
         // 初始化输入
         RyujinxNative.jnaInstance.inputInitialize(width, height)
         _inputInitialized = true
+        Log.d("GameHost", "Input initialized: ${width}x${height}")
 
         val id = mainViewModel.physicalControllerManager?.connect()
         mainViewModel.motionSensorManager?.setControllerId(id ?: -1)
+        Log.d("GameHost", "Controller connected, ID: $id")
 
         val currentRot = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             mainViewModel.activity.display?.rotation
         } else null
         lastRotation = currentRot
+        Log.d("GameHost", "Current rotation: $currentRot")
 
         try {
-            try { RyujinxNative.jnaInstance.deviceSetWindowHandle(currentWindowhandle) } catch (_: Throwable) {}
+            try { 
+                RyujinxNative.jnaInstance.deviceSetWindowHandle(currentWindowhandle) 
+                Log.d("GameHost", "Window handle set: $currentWindowhandle")
+            } catch (_: Throwable) {}
 
             // 只有当渲染器 READY 且输入已初始化时才进行温和的触发
             if (width > 0 && height > 0 &&
@@ -244,25 +281,36 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
                 try { 
                     RyujinxNative.jnaInstance.graphicsRendererSetSize(width, height)
                     RyujinxNative.jnaInstance.inputSetClientSize(width, height)
+                    Log.d("GameHost", "Initial size set: ${width}x${height}")
                 } catch (_: Throwable) {}
             }
-        } catch (_: Throwable) {}
+        } catch (e: Throwable) {
+            Log.e("GameHost", "Error in start preparation", e)
+        }
 
         val qs = org.ryujinx.android.viewmodels.QuickSettings(mainViewModel.activity)
 
         // Host 现在被视为"已启动"
         _isStarted = true
+        Log.d("GameHost", "GameHost marked as started")
 
         // 总是优先在服务中启动；如果绑定尚未完成 → 短暂等待，然后回退
         if (emuBound) {
+            Log.d("GameHost", "Starting run loop in service (immediate)")
             startRunLoopInService()
         } else {
+            Log.d("GameHost", "Service not bound, delaying start")
             mainHandler.postDelayed({
-                if (!_isStarted) return@postDelayed
+                if (!_isStarted) {
+                    Log.d("GameHost", "GameHost no longer started, skipping delayed start")
+                    return@postDelayed
+                }
                 if (emuBound) {
+                    Log.d("GameHost", "Starting run loop in service (delayed)")
                     startRunLoopInService()
                 } else {
                     // 回退：本地线程（应该很少发生）
+                    Log.d("GameHost", "Starting run loop in local thread")
                     _guestThread = thread(start = true, name = "RyujinxGuest") { runGame() }
                 }
             }, 150)
@@ -270,6 +318,7 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
 
         _updateThread = thread(start = true, name = "RyujinxInput/Stats") {
             var c = 0
+            Log.d("GameHost", "Update thread started")
             while (_isStarted && !_isClosed) {
                 try {
                     RyujinxNative.jnaInstance.inputUpdate()
@@ -288,6 +337,7 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
                         )
                     }
                 } catch (e: InterruptedException) {
+                    Log.d("GameHost", "Update thread interrupted")
                     break
                 } catch (e: Exception) {
                     if (_isStarted && !_isClosed) {
@@ -295,16 +345,20 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
                     }
                 }
             }
+            Log.d("GameHost", "Update thread finished")
         }
     }
 
     private fun runGame() {
+        Log.d("GameHost", "Game thread started")
         try {
             RyujinxNative.jnaInstance.graphicsRendererRunLoop()
+            Log.d("GameHost", "Game thread finished normally")
         } catch (e: Exception) {
             Log.e("GameHost", "Error in game thread", e)
         } finally {
             game?.close()
+            Log.d("GameHost", "Game resources closed")
         }
     }
 
@@ -313,7 +367,10 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
      */
     fun close() {
         synchronized(closeLock) {
-            if (_isClosed) return
+            if (_isClosed) {
+                Log.d("GameHost", "GameHost already closed, skipping")
+                return
+            }
             _isClosed = true
         }
 
@@ -323,50 +380,82 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
         _isStarted = false
         _isInit = false
         _inputInitialized = false
+        Log.d("GameHost", "Flags reset")
 
         // 第二步：停止 UI 处理器
         RyujinxNative.jnaInstance.uiHandlerSetResponse(false, "")
+        Log.d("GameHost", "UI handler stopped")
 
         // 第三步：停止服务中的模拟（如果在那里启动）
         try {
             if (emuBound && _startedViaService) {
+                Log.d("GameHost", "Stopping emulation in service")
                 emuBinder?.stopEmulation {
                     try { 
                         RyujinxNative.jnaInstance.deviceSignalEmulationClose()
-                        // 不在这里调用 deviceCloseEmulation，由 MainViewModel 统一处理
-                    } catch (_: Throwable) {}
+                        Log.d("GameHost", "Emulation close signaled")
+                    } catch (e: Exception) {
+                        Log.e("GameHost", "Error signaling emulation close", e)
+                    }
                 }
+            } else {
+                Log.d("GameHost", "Not stopping service emulation (not bound or not started via service)")
             }
-        } catch (_: Throwable) { }
+        } catch (e: Exception) {
+            Log.e("GameHost", "Error stopping service emulation", e)
+        }
 
         // 第四步：停止所有线程（使用更长的等待时间）
+        Log.d("GameHost", "Stopping threads...")
         try {
             _updateThread?.interrupt()
             _updateThread?.join(1000)
-        } catch (_: Throwable) {}
+            Log.d("GameHost", "Update thread stopped")
+        } catch (e: Exception) {
+            Log.e("GameHost", "Error stopping update thread", e)
+        }
         
         try {
             _renderingThreadWatcher?.interrupt()
             _renderingThreadWatcher?.join(1000)
-        } catch (_: Throwable) {}
+            Log.d("GameHost", "Rendering thread stopped")
+        } catch (e: Exception) {
+            Log.e("GameHost", "Error stopping rendering thread", e)
+        }
         
         try {
             _guestThread?.interrupt()
             _guestThread?.join(1000)
-        } catch (_: Throwable) {}
+            Log.d("GameHost", "Guest thread stopped")
+        } catch (e: Exception) {
+            Log.e("GameHost", "Error stopping guest thread", e)
+        }
 
         // 第五步：解除服务绑定
         shutdownBinding()
+        Log.d("GameHost", "Service binding shut down")
 
         // 第六步：停止前台服务
         try {
             mainViewModel.activity.stopService(Intent(mainViewModel.activity, EmulationService::class.java))
-        } catch (_: Throwable) { }
+            Log.d("GameHost", "Foreground service stopped")
+        } catch (e: Exception) {
+            Log.e("GameHost", "Error stopping foreground service", e)
+        }
 
-        // 第七步：释放原生窗口
+        // 第七步：释放原生窗口（如果 NativeWindow 有 release 方法）
         try {
-            _nativeWindow.release()
-        } catch (_: Throwable) {}
+            if (::_nativeWindow.isInitialized) {
+                _nativeWindow.release()
+                Log.d("GameHost", "Native window released")
+            }
+        } catch (e: Exception) {
+            Log.e("GameHost", "Error releasing native window", e)
+        }
+
+        // 第八步：重置窗口句柄
+        _currentWindow = -1
+        Log.d("GameHost", "Window handle reset")
 
         Log.d("GameHost", "GameHost closed successfully")
     }
@@ -378,12 +467,16 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
      */
     @Synchronized
     private fun safeSetSize(w: Int, h: Int) {
-        if (_isClosed || w <= 0 || h <= 0) return
+        if (_isClosed || w <= 0 || h <= 0) {
+            Log.d("GameHost", "Cannot set size, closed or invalid dimensions: ${w}x${h}")
+            return
+        }
         try {
             RyujinxNative.jnaInstance.graphicsRendererSetSize(w, h)
             if (_isStarted && _inputInitialized) {
                 RyujinxNative.jnaInstance.inputSetClientSize(w, h)
             }
+            Log.d("GameHost", "Size set safely: ${w}x${h}")
         } catch (t: Throwable) {
             Log.e("GameHost", "safeSetSize failed: ${t.message}", t)
         }
@@ -394,10 +487,14 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
      * 检测 90°↔270° 并强制（防抖动）重新查询/调整大小
      */
     fun onOrientationOrSizeChanged(rotation: Int? = null) {
-        if (_isClosed) return
+        if (_isClosed) {
+            Log.d("GameHost", "Cannot handle orientation change, GameHost is closed")
+            return
+        }
 
         val old = lastRotation
         lastRotation = rotation
+        Log.d("GameHost", "Orientation changed from $old to $rotation")
 
         val isSideFlip = (old == 1 && rotation == 3) || (old == 3 && rotation == 1)
 
@@ -412,6 +509,7 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
                     try { 
                         RyujinxNative.jnaInstance.graphicsRendererSetSize(w, h)
                         RyujinxNative.jnaInstance.inputSetClientSize(w, h)
+                        Log.d("GameHost", "Side flip size adjustment: ${w}x${h}")
                     } catch (_: Throwable) {}
                 }
             }
@@ -425,13 +523,18 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
      * 检查合理性（竖屏/横屏）然后才设置尺寸
      */
     private fun startStabilizedResize(expectedRotation: Int?) {
-        if (_isClosed) return
+        if (_isClosed) {
+            Log.d("GameHost", "Cannot start stabilized resize, GameHost is closed")
+            return
+        }
 
         // 如果已激活则重新启动
         if (stabilizerActive) {
             stabilizerActive = false
+            Log.d("GameHost", "Stabilizer was active, restarting")
         }
         stabilizerActive = true
+        Log.d("GameHost", "Starting stabilized resize")
 
         var attempts = 0
         var stableCount = 0
@@ -442,6 +545,7 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
             override fun run() {
                 if (!_isStarted || _isClosed) {
                     stabilizerActive = false
+                    Log.d("GameHost", "Stabilizer stopped: not started or closed")
                     return
                 }
 
@@ -480,11 +584,14 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
                 if ((stableCount >= 1 || attempts >= 12) && w > 0 && h > 0) {
                     safeSetSize(w, h)
                     stabilizerActive = false
+                    Log.d("GameHost", "Stabilized resize completed: ${w}x${h} after $attempts attempts")
                     return
                 }
 
                 if (stabilizerActive) {
                     mainHandler.postDelayed(this, 16)
+                } else {
+                    Log.d("GameHost", "Stabilizer stopped before completion")
                 }
             }
         }
@@ -496,24 +603,36 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
 
     /** 由 Activity/Surface-Lifecycle 调用，确保 FGS 安全 */
     fun ensureServiceStartedAndBound() {
-        if (_isClosed) return
+        if (_isClosed) {
+            Log.d("GameHost", "Cannot ensure service, GameHost is closed")
+            return
+        }
         
         val act = mainViewModel.activity
         val intent = Intent(act, EmulationService::class.java)
         try {
             if (Build.VERSION.SDK_INT >= 26) {
                 act.startForegroundService(intent)
+                Log.d("GameHost", "Foreground service started")
             } else {
                 @Suppress("DEPRECATION")
                 act.startService(intent)
+                Log.d("GameHost", "Service started")
             }
-        } catch (_: Throwable) { }
+        } catch (e: Exception) {
+            Log.e("GameHost", "Error starting service", e)
+        }
 
         try {
             if (!emuBound) {
                 act.bindService(intent, emuConn, Context.BIND_AUTO_CREATE)
+                Log.d("GameHost", "Service binding initiated")
+            } else {
+                Log.d("GameHost", "Service already bound")
             }
-        } catch (_: Throwable) { }
+        } catch (e: Exception) {
+            Log.e("GameHost", "Error binding service", e)
+        }
     }
 
     /** 由 Activity 在 onPause/onStop/onDestroy 中调用（以及在 surfaceDestroyed/onWindowVisibilityChanged 内部调用） */
@@ -521,25 +640,39 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
         if (emuBound) {
             try {
                 mainViewModel.activity.unbindService(emuConn)
-            } catch (_: Throwable) { }
+                Log.d("GameHost", "Service unbound")
+            } catch (e: Exception) {
+                Log.e("GameHost", "Error unbinding service", e)
+            }
             emuBound = false
             emuBinder = null
             _startedViaService = false
+        } else {
+            Log.d("GameHost", "Service not bound, skipping unbind")
         }
     }
 
     private fun startRunLoopInService() {
-        if (!emuBound) return
-        if (_startedViaService) return
+        if (!emuBound) {
+            Log.d("GameHost", "Cannot start run loop, service not bound")
+            return
+        }
+        if (_startedViaService) {
+            Log.d("GameHost", "Run loop already started via service")
+            return
+        }
         _startedViaService = true
 
+        Log.d("GameHost", "Starting run loop in service")
         emuBinder?.startEmulation {
             try {
                 RyujinxNative.jnaInstance.graphicsRendererRunLoop()
+                Log.d("GameHost", "Run loop in service finished normally")
             } catch (t: Throwable) {
                 Log.e("GameHost", "RunLoop crash in service", t)
             } finally {
                 _startedViaService = false
+                Log.d("GameHost", "Run loop in service marked as finished")
             }
         }
     }
@@ -549,5 +682,12 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
      */
     fun isClosed(): Boolean {
         return _isClosed
+    }
+
+    /**
+     * 检查是否已启动
+     */
+    fun isStarted(): Boolean {
+        return _isStarted
     }
 }
