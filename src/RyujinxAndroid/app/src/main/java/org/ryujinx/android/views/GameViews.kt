@@ -24,7 +24,6 @@ import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.Gamepad
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -664,14 +663,16 @@ class GameViews {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth(0.85f)
-                        .wrapContentHeight(),
+                        .fillMaxHeight(0.8f), // 限制对话框高度
                     shape = MaterialTheme.shapes.extraLarge,
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant
                     )
                 ) {
                     Column(
-                        modifier = Modifier.padding(24.dp)
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp)
                     ) {
                         Text(
                             text = "Performance Stats",
@@ -682,8 +683,11 @@ class GameViews {
                                 .align(Alignment.CenterHorizontally)
                         )
                         
-                        // 单个统计项开关
+                        // 可滚动的选项列表
                         Column(
+                            modifier = Modifier
+                                .weight(1f) // 占据剩余空间
+                                .verticalScroll(rememberScrollState()),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             StatSwitchItem(
