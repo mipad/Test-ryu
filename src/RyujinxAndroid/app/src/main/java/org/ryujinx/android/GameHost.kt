@@ -443,12 +443,10 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
             Log.e("GameHost", "Error stopping foreground service", e)
         }
 
-        // 第七步：释放原生窗口（如果 NativeWindow 有 release 方法）
+        // 第七步：释放原生窗口
         try {
-            if (::_nativeWindow.isInitialized) {
-                _nativeWindow.release()
-                Log.d("GameHost", "Native window released")
-            }
+            _nativeWindow.release()
+            Log.d("GameHost", "Native window released")
         } catch (e: Exception) {
             Log.e("GameHost", "Error releasing native window", e)
         }
