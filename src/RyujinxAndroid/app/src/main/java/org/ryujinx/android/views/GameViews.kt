@@ -464,10 +464,10 @@ class GameViews {
                                 }
                             )
 
-                            // 调整按键 - 使用表情符号⚙️
+                            // 调整按键 - 使用控制器图标
                             EnhancedSideMenuItem(
-                                icon = null, // 不使用图标
-                                text = "⚙️Controller Settings",
+                                icon = CssGgIcons.Controller,
+                                text = "Controller Settings",
                                 onClick = {
                                     onDismiss()
                                     showAdjustControlsDialog.value = true
@@ -546,13 +546,13 @@ class GameViews {
                                     contentDescription = null,
                                     tint = textColor,
                                     modifier = Modifier
-                                        .size(40.dp) // 增大图标到40dp
+                                        .size(36.dp) // 改为36dp
                                         .padding(end = 12.dp)
                                 )
                             }
                             else -> {
-                                // 对于没有图标的项目（如表情符号），保持间距一致
-                                Spacer(modifier = Modifier.size(40.dp).padding(end = 12.dp))
+                                // 对于没有图标的项目，保持间距一致
+                                Spacer(modifier = Modifier.size(36.dp).padding(end = 12.dp))
                             }
                         }
                         
@@ -662,10 +662,12 @@ class GameViews {
             Dialog(
                 onDismissRequest = onDismiss
             ) {
+                // 使用固定边距而不是百分比
                 Card(
                     modifier = Modifier
-                        .fillMaxWidth(0.95f)  // 增加宽度以适应横屏
-                        .fillMaxHeight(0.8f), // 调整高度
+                        .padding(horizontal = 20.dp, vertical = 40.dp) // 固定边距
+                        .fillMaxWidth() // 填充可用宽度
+                        .wrapContentHeight(),
                     shape = MaterialTheme.shapes.extraLarge,
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -673,7 +675,7 @@ class GameViews {
                 ) {
                     Column(
                         modifier = Modifier
-                            .fillMaxSize()
+                            .fillMaxWidth()
                             .padding(24.dp)
                     ) {
                         Text(
@@ -688,7 +690,7 @@ class GameViews {
                         // 使用两列布局
                         Row(
                             modifier = Modifier
-                                .weight(1f)
+                                .fillMaxWidth()
                                 .verticalScroll(rememberScrollState())
                         ) {
                             // 左列
