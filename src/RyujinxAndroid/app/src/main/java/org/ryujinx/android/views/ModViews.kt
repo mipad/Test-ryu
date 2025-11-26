@@ -65,6 +65,7 @@ import org.ryujinx.android.viewmodels.ModType
 import org.ryujinx.android.viewmodels.ModViewModel
 import java.io.File
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.draw.clip
 
 class ModViews {
     companion object {
