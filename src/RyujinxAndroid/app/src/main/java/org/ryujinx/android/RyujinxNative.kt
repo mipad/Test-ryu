@@ -175,6 +175,10 @@ interface RyujinxNativeJna : Library {
     fun devicePauseEmulation()
     fun deviceResumeEmulation()
     fun deviceIsEmulationPaused(): Boolean
+
+    // ==================== 修复：添加缺失的窗口管理方法 ====================
+    fun reattachWindowIfReady(): Boolean
+    fun detachWindow()
 }
 
 class RyujinxNative {
