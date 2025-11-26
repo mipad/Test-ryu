@@ -459,20 +459,13 @@ class MainViewModel(val activity: MainActivity) {
     }
 
     fun closeGame() {
-        // 先停止Native模拟
         RyujinxNative.jnaInstance.deviceSignalEmulationClose()
- 
         gameHost?.close()
-        
-        RyujinxNative.deviceCloseEmulation
-        // 清理其他资源
+        RyujinxNative.jnaInstance.deviceCloseEmulation()
         motionSensorManager?.unregister()
         physicalControllerManager?.disconnect()
         motionSensorManager?.setControllerId(-1)
         rendererReady = false
-        
-        // 更新Activity状态
-        //activity.isGameRunning = false
     }
 
     fun refreshFirmwareVersion() {
@@ -884,4 +877,3 @@ class MainViewModel(val activity: MainActivity) {
         gameHost?.setProgressStates(showLoading, progressValue, progress)
     }
 }
-
