@@ -51,12 +51,12 @@ class ControlEditViews {
                 return
             }
 
-            // 主调整对话框 - 改为左右长矩形
+            // 主调整对话框 - 使用固定dp尺寸
             Dialog(onDismissRequest = onDismiss) {
                 Surface(
                     modifier = Modifier
-                        .fillMaxWidth(0.85f)
-                        .fillMaxHeight(0.7f),
+                        .width(600.dp)  // 固定宽度
+                        .height(500.dp), // 固定高度
                     shape = MaterialTheme.shapes.large,
                     tonalElevation = AlertDialogDefaults.TonalElevation,
                     color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
@@ -169,7 +169,7 @@ class ControlEditViews {
                         // 右侧：操作按钮区域
                         Column(
                             modifier = Modifier
-                                .width(100.dp)
+                                .width(80.dp)
                                 .fillMaxHeight()
                                 .padding(start = 16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -290,12 +290,12 @@ class ControlEditViews {
                 mutableStateOf(mainViewModel.controller?.isControlEnabled(control.id) ?: true)
             }
 
-            // 控件调整对话框 - 改为左右长矩形
+            // 控件调整对话框 - 使用固定dp尺寸
             Dialog(onDismissRequest = onDismiss) {
                 Surface(
                     modifier = Modifier
-                        .fillMaxWidth(0.8f)
-                        .fillMaxHeight(0.6f),
+                        .width(500.dp)  // 固定宽度
+                        .height(400.dp), // 固定高度
                     shape = MaterialTheme.shapes.large,
                     tonalElevation = AlertDialogDefaults.TonalElevation,
                     color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
@@ -468,7 +468,6 @@ class ControlEditViews {
             }
         }
 
-        // 其他对话框保持不变...
         @Composable
         fun CreateCombinationDialog(
             mainViewModel: MainViewModel,
@@ -492,12 +491,12 @@ class ControlEditViews {
                 return
             }
 
-            // 创建组合按键对话框 - 也改为左右长矩形
+            // 创建组合按键对话框 - 使用固定dp尺寸
             Dialog(onDismissRequest = onDismiss) {
                 Surface(
                     modifier = Modifier
-                        .fillMaxWidth(0.8f)
-                        .fillMaxHeight(0.65f),
+                        .width(500.dp)  // 固定宽度
+                        .height(450.dp), // 固定高度
                     shape = MaterialTheme.shapes.large,
                     tonalElevation = AlertDialogDefaults.TonalElevation,
                     color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
@@ -646,7 +645,6 @@ class ControlEditViews {
             }
         }
 
-        // KeySelectionDialog 和其他函数保持不变...
         @Composable
         fun KeySelectionDialog(
             initialSelectedKeys: List<Int>,
@@ -658,8 +656,8 @@ class ControlEditViews {
             Dialog(onDismissRequest = onDismiss) {
                 Surface(
                     modifier = Modifier
-                        .fillMaxWidth(0.8f)
-                        .fillMaxHeight(0.7f),
+                        .width(500.dp)  // 固定宽度
+                        .height(500.dp), // 固定高度
                     shape = MaterialTheme.shapes.large,
                     tonalElevation = AlertDialogDefaults.TonalElevation,
                     color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
@@ -764,7 +762,7 @@ class ControlEditViews {
             }
         }
 
-        // KeySelectionItem 和其他数据类保持不变...
+        // 其他函数保持不变...
         @Composable
         fun KeySelectionItem(
             keyItem: KeyItem,
