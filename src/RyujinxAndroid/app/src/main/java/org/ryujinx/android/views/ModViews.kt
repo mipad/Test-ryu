@@ -160,13 +160,30 @@ class ModViews {
                     )
                 },
                 floatingActionButton = {
-                    FloatingActionButton(
-                        onClick = {
-                            // 启动文件夹选择器，选择整个文件夹
-                            folderPickerLauncher.launch(null)
-                        }
+                    // 修复：用小型正方形包裹+按钮
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .padding(4.dp)
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = "Add Mod")
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(12.dp)),
+                            color = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                            shadowElevation = 6.dp
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    // 启动文件夹选择器，选择整个文件夹
+                                    folderPickerLauncher.launch(null)
+                                },
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = "Add Mod")
+                            }
+                        }
                     }
                 },
                 snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
@@ -533,16 +550,37 @@ class ModViews {
                                     fontWeight = FontWeight.Bold
                                 )
                                 
-                                Button(
-                                    onClick = {
-                                        folderPickerLauncher.launch(null)
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
+                                // 修复：用小型正方形包裹+按钮
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(48.dp)
                                 ) {
-                                    Icon(Icons.Filled.Add, contentDescription = "Add Mod", modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Add Mod")
+                                    Surface(
+                                        modifier = Modifier
+                                            .size(48.dp)
+                                            .align(Alignment.Center)
+                                            .clip(RoundedCornerShape(8.dp)),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                                        shadowElevation = 4.dp
+                                    ) {
+                                        IconButton(
+                                            onClick = {
+                                                folderPickerLauncher.launch(null)
+                                            },
+                                            modifier = Modifier.fillMaxSize()
+                                        ) {
+                                            Icon(Icons.Default.Add, contentDescription = "Add Mod")
+                                        }
+                                    }
                                 }
+                                
+                                Text(
+                                    text = "Add Mod",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                                )
                                 
                                 OutlinedButton(
                                     onClick = {
@@ -553,7 +591,7 @@ class ModViews {
                                     },
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Icon(Icons.Filled.Refresh, contentDescription = "Refresh", modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Default.Refresh, contentDescription = "Refresh", modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("Refresh List")
                                 }
@@ -607,14 +645,27 @@ class ModViews {
                                         Text("Delete All")
                                     }
                                     
-                                    Button(
-                                        onClick = {
-                                            folderPickerLauncher.launch(null)
-                                        }
+                                    // 修复：用小型正方形包裹+按钮
+                                    Box(
+                                        modifier = Modifier.size(48.dp)
                                     ) {
-                                        Icon(Icons.Filled.Add, contentDescription = "Add Mod", modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Add")
+                                        Surface(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .clip(RoundedCornerShape(8.dp)),
+                                            color = MaterialTheme.colorScheme.primary,
+                                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                                            shadowElevation = 4.dp
+                                        ) {
+                                            IconButton(
+                                                onClick = {
+                                                    folderPickerLauncher.launch(null)
+                                                },
+                                                modifier = Modifier.fillMaxSize()
+                                            ) {
+                                                Icon(Icons.Default.Add, contentDescription = "Add Mod")
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -676,7 +727,7 @@ class ModViews {
                                     .fillMaxWidth()
                                     .padding(top = 16.dp)
                             ) {
-                                Icon(Icons.Filled.Refresh, contentDescription = "Refresh", modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.Refresh, contentDescription = "Refresh", modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text("Refresh List")
                             }

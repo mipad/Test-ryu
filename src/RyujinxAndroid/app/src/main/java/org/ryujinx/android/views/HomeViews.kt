@@ -122,6 +122,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 
 class HomeViews {
     companion object {
@@ -1206,10 +1208,12 @@ class HomeViews {
                     sheetState = sheetState,
                     scrimColor = Color.Transparent,
                     content = {
+                        // 修复：添加垂直滚动支持
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(16.dp)
+                                .verticalScroll(rememberScrollState()) // 添加滚动支持
                         ) {
                             // 显示游戏名和版本号
                             selectedModel.value?.let { game ->
