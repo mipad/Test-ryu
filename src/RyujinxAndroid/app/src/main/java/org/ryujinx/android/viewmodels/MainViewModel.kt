@@ -459,9 +459,9 @@ class MainViewModel(val activity: MainActivity) {
     }
 
     fun closeGame() {
-        RyujinxNative.jnaInstance.deviceSignalEmulationClose()
+        RyujinxNative.deviceSignalEmulationClose()
         gameHost?.close()
-        RyujinxNative.jnaInstance.deviceCloseEmulation()
+        RyujinxNative.deviceCloseEmulation()
         motionSensorManager?.unregister()
         physicalControllerManager?.disconnect()
         motionSensorManager?.setControllerId(-1)
