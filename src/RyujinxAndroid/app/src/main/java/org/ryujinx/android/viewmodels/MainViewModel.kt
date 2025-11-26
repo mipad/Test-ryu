@@ -144,9 +144,7 @@ class MainViewModel(val activity: MainActivity) {
      */
     fun refreshSurfaceFormats(): Array<String> {
         return try {
-            android.util.Log.i("Ryujinx", "Refreshing surface formats from native...")
             val formats = RyujinxNative.getAvailableSurfaceFormats()
-            android.util.Log.i("Ryujinx", "Successfully refreshed ${formats.size} surface formats from native")
             
             synchronized(surfaceFormatsLock) {
                 surfaceFormatsCache = formats
@@ -156,7 +154,6 @@ class MainViewModel(val activity: MainActivity) {
             }
             formats
         } catch (e: Exception) {
-            android.util.Log.e("Ryujinx", "Failed to refresh surface formats: ${e.message}")
             // 失败时尝试从缓存或SharedPreferences加载
             loadSurfaceFormatsFromCacheOrPreferences()
         }
@@ -170,11 +167,9 @@ class MainViewModel(val activity: MainActivity) {
             // 如果缓存为空或超过30秒没有更新，则刷新
             if (surfaceFormatsCache == null || 
                 System.currentTimeMillis() - lastSurfaceFormatsUpdate > 30000) {
-                android.util.Log.i("Ryujinx", "Surface formats cache is stale, refreshing...")
                 return refreshSurfaceFormats()
             }
             
-            android.util.Log.i("Ryujinx", "Using cached surface formats: ${surfaceFormatsCache!!.size} formats")
             return surfaceFormatsCache!!
         }
     }
@@ -194,21 +189,18 @@ class MainViewModel(val activity: MainActivity) {
         synchronized(surfaceFormatsLock) {
             // 首先尝试缓存
             surfaceFormatsCache?.let {
-                android.util.Log.i("Ryujinx", "Using memory cache for surface formats")
                 return it
             }
 
             // 然后尝试SharedPreferences
             val prefsFormats = loadSurfaceFormatsFromPreferences()
             if (prefsFormats.isNotEmpty()) {
-                android.util.Log.i("Ryujinx", "Using SharedPreferences cache for surface formats: ${prefsFormats.size} formats")
                 surfaceFormatsCache = prefsFormats
                 lastSurfaceFormatsUpdate = System.currentTimeMillis()
                 return prefsFormats
             }
 
             // 最后返回空数组
-            android.util.Log.w("Ryujinx", "No surface formats available in cache or preferences")
             return emptyArray()
         }
     }
@@ -229,10 +221,7 @@ class MainViewModel(val activity: MainActivity) {
             editor.putString("surface_formats", jsonFormats)
             editor.putLong("surface_formats_timestamp", System.currentTimeMillis())
             editor.apply()
-            
-            android.util.Log.i("Ryujinx", "Saved ${formats.size} surface formats to preferences")
         } catch (e: Exception) {
-            android.util.Log.e("Ryujinx", "Failed to save surface formats: ${e.message}")
         }
     }
 
@@ -246,7 +235,6 @@ class MainViewModel(val activity: MainActivity) {
             
             // 检查缓存是否过期（1小时）
             if (System.currentTimeMillis() - timestamp > 3600000) {
-                android.util.Log.i("Ryujinx", "Surface formats cache expired")
                 return emptyArray()
             }
             
@@ -256,13 +244,11 @@ class MainViewModel(val activity: MainActivity) {
                 val gson = Gson()
                 val type = object : TypeToken<List<String>>() {}.type
                 val formatList: List<String> = gson.fromJson(jsonFormats, type)
-                android.util.Log.i("Ryujinx", "Loaded ${formatList.size} surface formats from preferences")
                 formatList.toTypedArray()
             } else {
                 emptyArray()
             }
         } catch (e: Exception) {
-            android.util.Log.e("Ryujinx", "Failed to load surface formats: ${e.message}")
             emptyArray()
         }
     }
@@ -280,10 +266,8 @@ class MainViewModel(val activity: MainActivity) {
             if (format != -1 && colorSpace != -1 && enabled) {
                 selectedSurfaceFormat = SurfaceFormatInfo(format, colorSpace, "")
                 isCustomFormatEnabled = true
-                android.util.Log.i("Ryujinx", "Loaded custom surface format: format=$format, colorSpace=$colorSpace, enabled=$enabled")
             }
         } catch (e: Exception) {
-            android.util.Log.e("Ryujinx", "Failed to load custom surface format settings: ${e.message}")
         }
     }
 
@@ -300,19 +284,16 @@ class MainViewModel(val activity: MainActivity) {
                 editor.putInt("custom_surface_color_space", colorSpace)
                 editor.putBoolean("custom_surface_format_enabled", true)
                 selectedSurfaceFormat = SurfaceFormatInfo(format, colorSpace, "")
-                android.util.Log.i("Ryujinx", "Saved custom surface format: format=$format, colorSpace=$colorSpace")
             } else {
                 editor.remove("custom_surface_format")
                 editor.remove("custom_surface_color_space")
                 editor.putBoolean("custom_surface_format_enabled", false)
                 selectedSurfaceFormat = null
-                android.util.Log.i("Ryujinx", "Cleared custom surface format")
             }
             
             editor.apply()
             isCustomFormatEnabled = enabled
         } catch (e: Exception) {
-            android.util.Log.e("Ryujinx", "Failed to save custom surface format settings: ${e.message}")
         }
     }
 
@@ -323,9 +304,7 @@ class MainViewModel(val activity: MainActivity) {
         try {
             RyujinxNative.setCustomSurfaceFormat(format, colorSpace)
             saveCustomSurfaceFormatSettings(format, colorSpace, true)
-            android.util.Log.i("Ryujinx", "Custom surface format set: format=$format, colorSpace=$colorSpace")
         } catch (e: Exception) {
-            android.util.Log.e("Ryujinx", "Failed to set custom surface format: ${e.message}")
         }
     }
 
@@ -336,9 +315,7 @@ class MainViewModel(val activity: MainActivity) {
         try {
             RyujinxNative.clearCustomSurfaceFormat()
             saveCustomSurfaceFormatSettings(-1, -1, false)
-            android.util.Log.i("Ryujinx", "Custom surface format cleared")
         } catch (e: Exception) {
-            android.util.Log.e("Ryujinx", "Failed to clear custom surface format: ${e.message}")
         }
     }
 
@@ -349,7 +326,6 @@ class MainViewModel(val activity: MainActivity) {
         return try {
             RyujinxNative.isCustomSurfaceFormatValid()
         } catch (e: Exception) {
-            android.util.Log.e("Ryujinx", "Failed to check custom surface format: ${e.message}")
             false
         }
     }
@@ -361,7 +337,6 @@ class MainViewModel(val activity: MainActivity) {
         return try {
             RyujinxNative.getCurrentSurfaceFormatInfo()
         } catch (e: Exception) {
-            android.util.Log.e("Ryujinx", "Failed to get current surface format: ${e.message}")
             "Unknown"
         }
     }
@@ -393,9 +368,7 @@ class MainViewModel(val activity: MainActivity) {
     fun onGameStarted() {
         try {
             RyujinxNative.onGameStarted()
-            android.util.Log.i("Ryujinx", "Game started, surface formats save triggered")
         } catch (e: Exception) {
-            android.util.Log.e("Ryujinx", "Failed to trigger surface formats save: ${e.message}")
         }
     }
 
@@ -417,9 +390,7 @@ class MainViewModel(val activity: MainActivity) {
                     showFifo = prefs.getBoolean("performance_stats_show_fifo", true)
                 )
             }
-            android.util.Log.i("Ryujinx", "Loaded performance stats settings: $performanceStatsSettings")
         } catch (e: Exception) {
-            android.util.Log.e("Ryujinx", "Failed to load performance stats settings: ${e.message}")
         }
     }
 
@@ -443,9 +414,7 @@ class MainViewModel(val activity: MainActivity) {
             editor.putBoolean("performance_stats_show_fifo", settings.showFifo)
             
             editor.apply()
-            android.util.Log.i("Ryujinx", "Saved performance stats settings: $settings")
         } catch (e: Exception) {
-            android.util.Log.e("Ryujinx", "Failed to save performance stats settings: ${e.message}")
         }
     }
 
@@ -463,33 +432,28 @@ class MainViewModel(val activity: MainActivity) {
         try {
             RyujinxNative.jnaInstance.deviceSignalEmulationClose()
         } catch (e: Exception) {
-            Log.e("MainViewModel", "Error signaling emulation close", e)
         }
         
         // 关闭GameHost（包含服务停止和资源清理）
         try {
             gameHost?.close()
         } catch (e: Exception) {
-            Log.e("MainViewModel", "Error closing game host", e)
         }
         
         // 清理其他资源
         try {
             motionSensorManager?.unregister()
         } catch (e: Exception) {
-            Log.e("MainViewModel", "Error unregistering motion sensor", e)
         }
         
         try {
             physicalControllerManager?.disconnect()
         } catch (e: Exception) {
-            Log.e("MainViewModel", "Error disconnecting physical controller", e)
         }
         
         try {
             motionSensorManager?.setControllerId(-1)
         } catch (e: Exception) {
-            Log.e("MainViewModel", "Error resetting controller ID", e)
         }
         
         rendererReady = false
@@ -501,8 +465,6 @@ class MainViewModel(val activity: MainActivity) {
         gameModel = null
         selected = null
         isMiiEditorLaunched = false
-        
-        Log.i("MainViewModel", "Game closed successfully")
     }
 
     fun refreshFirmwareVersion() {
