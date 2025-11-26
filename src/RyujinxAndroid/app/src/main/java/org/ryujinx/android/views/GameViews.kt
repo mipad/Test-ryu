@@ -580,7 +580,7 @@ class GameViews {
             ) {
                 Card(
                     modifier = Modifier
-                        .fillMaxWidth(0.8f)
+                        .width(400.dp) // 固定宽度
                         .wrapContentHeight(),
                     shape = MaterialTheme.shapes.extraLarge,
                     colors = CardDefaults.cardColors(
@@ -662,12 +662,10 @@ class GameViews {
             Dialog(
                 onDismissRequest = onDismiss
             ) {
-                // 使用固定边距而不是百分比
                 Card(
                     modifier = Modifier
-                        .padding(horizontal = 20.dp, vertical = 40.dp) // 固定边距
-                        .fillMaxWidth() // 填充可用宽度
-                        .wrapContentHeight(),
+                        .width(600.dp) // 固定宽度
+                        .height(500.dp), // 固定高度
                     shape = MaterialTheme.shapes.extraLarge,
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -675,7 +673,7 @@ class GameViews {
                 ) {
                     Column(
                         modifier = Modifier
-                            .fillMaxWidth()
+                            .fillMaxSize()
                             .padding(24.dp)
                     ) {
                         Text(
@@ -690,7 +688,7 @@ class GameViews {
                         // 使用两列布局
                         Row(
                             modifier = Modifier
-                                .fillMaxWidth()
+                                .weight(1f)
                                 .verticalScroll(rememberScrollState())
                         ) {
                             // 左列
