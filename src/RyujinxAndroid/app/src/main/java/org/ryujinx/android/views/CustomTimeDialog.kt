@@ -13,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
@@ -85,7 +87,8 @@ fun CustomTimeDialog(
                         label = "Year:",
                         value = year,
                         onValueChange = { year = it },
-                        range = 2000..2100
+                        range = 2000..2100,
+                        maxDigits = 4
                     )
                     
                     // 月
@@ -93,7 +96,8 @@ fun CustomTimeDialog(
                         label = "Month:",
                         value = month,
                         onValueChange = { month = it },
-                        range = 1..12
+                        range = 1..12,
+                        maxDigits = 2
                     )
                     
                     // 日
@@ -101,7 +105,8 @@ fun CustomTimeDialog(
                         label = "Day:",
                         value = day,
                         onValueChange = { day = it },
-                        range = 1..maxDaysInMonth
+                        range = 1..maxDaysInMonth,
+                        maxDigits = 2
                     )
                     
                     // 时
@@ -109,7 +114,8 @@ fun CustomTimeDialog(
                         label = "Hour:",
                         value = hour,
                         onValueChange = { hour = it },
-                        range = 0..23
+                        range = 0..23,
+                        maxDigits = 2
                     )
                     
                     // 分
@@ -117,7 +123,8 @@ fun CustomTimeDialog(
                         label = "Minute:",
                         value = minute,
                         onValueChange = { minute = it },
-                        range = 0..59
+                        range = 0..59,
+                        maxDigits = 2
                     )
                     
                     // 秒
@@ -125,7 +132,8 @@ fun CustomTimeDialog(
                         label = "Second:",
                         value = second,
                         onValueChange = { second = it },
-                        range = 0..59
+                        range = 0..59,
+                        maxDigits = 2
                     )
                 }
                 
@@ -186,7 +194,8 @@ private fun TimePickerRow(
     label: String,
     value: Int,
     onValueChange: (Int) -> Unit,
-    range: IntRange
+    range: IntRange,
+    maxDigits: Int
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -202,7 +211,8 @@ private fun TimePickerRow(
         NumberPicker(
             value = value,
             onValueChange = onValueChange,
-            range = range
+            range = range,
+            maxDigits = maxDigits
         )
     }
 }
@@ -211,12 +221,23 @@ private fun TimePickerRow(
 fun NumberPicker(
     value: Int,
     onValueChange: (Int) -> Unit,
-    range: IntRange
+    range: IntRange,
+    maxDigits: Int
 ) {
     var textValue by remember(value) { 
         mutableStateOf(TextFieldValue(value.toString()))
     }
+    var hasFocus by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
+    
+    // 当获得焦点时，选择所有文本
+    LaunchedEffect(hasFocus) {
+        if (hasFocus) {
+            textValue = textValue.copy(
+                selection = TextRange(0, textValue.text.length)
+            )
+        }
+    }
     
     Row(
         verticalAlignment = Alignment.CenterVertically
@@ -246,22 +267,35 @@ fun NumberPicker(
         OutlinedTextField(
             value = textValue,
             onValueChange = { newTextValue ->
-                textValue = newTextValue
-                
-                // 如果输入为空，不更新值
-                if (newTextValue.text.isEmpty()) {
-                    return@OutlinedTextField
-                }
-                
-                // 尝试转换为数字
-                val newValue = newTextValue.text.toIntOrNull()
-                if (newValue != null && newValue in range) {
-                    onValueChange(newValue)
+                // 限制输入长度
+                if (newTextValue.text.length <= maxDigits) {
+                    textValue = newTextValue
+                    
+                    // 如果输入为空，不更新值
+                    if (newTextValue.text.isEmpty()) {
+                        return@OutlinedTextField
+                    }
+                    
+                    // 尝试转换为数字
+                    val newValue = newTextValue.text.toIntOrNull()
+                    if (newValue != null && newValue in range) {
+                        onValueChange(newValue)
+                    }
                 }
             },
             modifier = Modifier
                 .width(80.dp)
-                .focusRequester(focusRequester),
+                .focusRequester(focusRequester)
+                .onFocusChanged { focusState ->
+                    hasFocus = focusState.isFocused
+                    if (!focusState.isFocused) {
+                        // 失去焦点时，如果输入无效，恢复原值
+                        val currentText = textValue.text
+                        if (currentText.isEmpty() || currentText.toIntOrNull() !in range) {
+                            textValue = TextFieldValue(value.toString())
+                        }
+                    }
+                },
             singleLine = true,
             textStyle = LocalTextStyle.current.copy(
                 textAlign = TextAlign.Center,
