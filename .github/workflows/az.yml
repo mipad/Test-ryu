@@ -2,9 +2,9 @@ name: Android CI Fixed
 
 on:
   push:
-    branches: [ "arm-4" ]  
+    branches: [ "arm1" ]  
   pull_request:
-    branches: [ "arm-4" ]
+    branches: [ "arm1" ]
 
 jobs:
   build:
@@ -27,7 +27,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: arm-4
+        ref: arm1
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
