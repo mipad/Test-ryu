@@ -1279,7 +1279,7 @@ class HomeViews {
                                     Icon(
                                         Icons.Filled.PlayArrow,
                                         contentDescription = "Run",
-                                        modifier = Modifier.size(36.dp)
+                                        modifier = Modifier.size(28.dp)
                                     )
                                 }
                                 
@@ -1293,7 +1293,7 @@ class HomeViews {
                                         Icon(
                                             Icons.Filled.Menu,
                                             contentDescription = "Menu",
-                                            modifier = Modifier.size(36.dp)
+                                            modifier = Modifier.size(28.dp)
                                         )
                                     }
                                     
