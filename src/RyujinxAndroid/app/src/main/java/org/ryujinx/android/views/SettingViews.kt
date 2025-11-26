@@ -441,6 +441,21 @@ class SettingViews {
                                 }
                             }
 
+        // 新增：更新和DLC文件夹选择按钮
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "Updates/DLC Folder")
+            Button(onClick = {
+                settingsViewModel.openUpdatesFolder()
+            }) {
+                Text(text = "Choose Folder")
+            }
+        }
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
