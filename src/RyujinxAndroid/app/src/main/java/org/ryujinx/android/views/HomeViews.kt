@@ -122,7 +122,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-//import androidx.compose.animation.animateItemPlacement
 
 class HomeViews {
     companion object {
@@ -604,6 +603,9 @@ class HomeViews {
             var showRenameDialog by remember { mutableStateOf(false) }
             var newGameName by remember { mutableStateOf("") }
             val focusRequester = remember { FocusRequester() }
+
+            // 添加Mod管理对话框状态
+            var showModManagementDialog by remember { mutableStateOf(false) }
 
             val nestedScrollConnection = remember {
                 object : NestedScrollConnection {
@@ -1323,25 +1325,12 @@ class HomeViews {
                                      // 导航到金手指界面
                                     navController?.navigate("cheats/$titleId?gamePath=${android.net.Uri.encode(gamePath)}")
                                     })
-                                        // 新增的存档管理菜单项
-                                        DropdownMenuItem(text = {
-                                            Text(text = "Manage Save Data")
-                                        }, onClick = {
-                                            showAppMenu.value = false
-                                            val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
-                                            val gameName = viewModel.mainViewModel?.selected?.getDisplayName() ?: ""
-                                            // 导航到存档管理界面
-                                            navController?.navigate("savedata/$titleId?gameName=${android.net.Uri.encode(gameName)}")
-                                        })
-                                        // 新增的Mod管理菜单项
+                                        // 修改：移除导航到Mod管理，改为显示对话框
                                         DropdownMenuItem(text = {
                                             Text(text = "Manage Mods")
                                         }, onClick = {
                                             showAppMenu.value = false
-                                            val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
-                                            val gameName = viewModel.mainViewModel?.selected?.getDisplayName() ?: ""
-                                            // 导航到Mod管理界面
-                                            navController?.navigate("mods/$titleId?gameName=${android.net.Uri.encode(gameName)}")
+                                            showModManagementDialog = true
                                         })                                      
                                     }
                                 }
@@ -1385,6 +1374,15 @@ class HomeViews {
                     }
                 )
             }
+
+            // 添加Mod管理对话框 - 现在使用ModViews中的组件
+            if (showModManagementDialog) {
+                ModViews.ModManagementDialog(
+                    titleId = selectedModel.value?.titleId ?: "",
+                    gameName = selectedModel.value?.getDisplayName() ?: "",
+                    onDismiss = { showModManagementDialog = false }
+                )
+            }
         }
 
         @Preview
@@ -1393,5 +1391,4 @@ class HomeViews {
             Home(isPreview = true)
         }
     }
-}}}
-
+}
