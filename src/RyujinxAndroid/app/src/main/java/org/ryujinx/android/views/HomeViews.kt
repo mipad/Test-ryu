@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -984,6 +985,7 @@ class HomeViews {
                                                         selectedModel = selectedModel,
                                                         showError = showError
                                                     )
+                                                }
                                             }
                                         }
                                     }
@@ -1470,4 +1472,4 @@ class HomeViews {
             Home(isPreview = true)
         }
     }
-}}}
+}
