@@ -619,7 +619,7 @@ class GameViews {
                                 onClick = {
                                     onDismiss()
                                     mainViewModel.closeGame()
-                                    mainViewModel.activity.setFullScreen(false)
+                                    //mainViewModel.activity.setFullScreen(false)
                                     mainViewModel.navController?.popBackStack()
                                     mainViewModel.activity.isGameRunning = false
                                 },
