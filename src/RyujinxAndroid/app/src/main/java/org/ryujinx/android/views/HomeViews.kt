@@ -1275,19 +1275,12 @@ class HomeViews {
                                         }
                                     }
                                 }) {
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally
-                                    ) {
-                                        Icon(
-                                            Icons.Filled.PlayArrow,
-                                            contentDescription = "Run"
-                                        )
-                                        Text(
-                                            text = "运行",
-                                            fontSize = 12.sp,
-                                            modifier = Modifier.padding(top = 4.dp)
-                                        )
-                                    }
+                                    // 只显示播放图标，不显示文字
+                                    Icon(
+                                        Icons.Filled.PlayArrow,
+                                        contentDescription = "Run",
+                                        modifier = Modifier.size(36.dp)
+                                    )
                                 }
                                 
                                 // 修复：将菜单按钮状态移到此处
@@ -1296,19 +1289,12 @@ class HomeViews {
                                         // 修复：正确切换菜单状态
                                         showAppMenu = !showAppMenu
                                     }) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally
-                                        ) {
-                                            Icon(
-                                                Icons.Filled.Menu,
-                                                contentDescription = "Menu"
-                                            )
-                                            Text(
-                                                text = "菜单",
-                                                fontSize = 12.sp,
-                                                modifier = Modifier.padding(top = 4.dp)
-                                            )
-                                        }
+                                        // 只显示菜单图标，不显示文字
+                                        Icon(
+                                            Icons.Filled.Menu,
+                                            contentDescription = "Menu",
+                                            modifier = Modifier.size(36.dp)
+                                        )
                                     }
                                     
                                     // 修复：简化下拉菜单，移除LazyColumn
