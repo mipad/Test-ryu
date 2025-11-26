@@ -1200,10 +1200,14 @@ class HomeViews {
                 val configuration = LocalConfiguration.current
                 val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
                 
+                // 修复：添加菜单状态变量
+                var showAppMenu by remember { mutableStateOf(false) }
+                
                 ModalBottomSheet(
                     onDismissRequest = {
                         showAppActions.value = false
                         selectedModel.value = null
+                        showAppMenu = false // 关闭底部操作菜单时也关闭子菜单
                     },
                     sheetState = sheetState,
                     scrimColor = Color.Transparent,
@@ -1286,10 +1290,11 @@ class HomeViews {
                                     }
                                 }
                                 
-                                val showAppMenu = remember { mutableStateOf(false) }
+                                // 修复：将菜单按钮状态移到此处
                                 Box {
                                     IconButton(onClick = {
-                                        showAppMenu.value = true
+                                        // 修复：正确切换菜单状态
+                                        showAppMenu = !showAppMenu
                                     }) {
                                         Column(
                                             horizontalAlignment = Alignment.CenterHorizontally
@@ -1306,120 +1311,96 @@ class HomeViews {
                                         }
                                     }
                                     
-                                    // 下拉菜单需要单独处理横屏模式下的位置
+                                    // 修复：简化下拉菜单，移除LazyColumn
                                     DropdownMenu(
-                                        expanded = showAppMenu.value,
-                                        onDismissRequest = { showAppMenu.value = false },
+                                        expanded = showAppMenu,
+                                        onDismissRequest = { showAppMenu = false },
                                         modifier = if (isLandscape) {
                                             Modifier.heightIn(max = configuration.screenHeightDp.dp * 0.6f)
                                         } else {
                                             Modifier
                                         }
                                     ) {
-                                        // 确保下拉菜单在横屏下也可滚动
-                                        LazyColumn(
-                                            modifier = if (isLandscape) {
-                                                Modifier.heightIn(max = 200.dp)
-                                            } else {
-                                                Modifier
-                                            }
-                                        ) {
-                                            item {
-                                                DropdownMenuItem(
-                                                    text = { Text("重命名游戏") },
-                                                    onClick = {
-                                                        showAppMenu.value = false
-                                                        selectedModel.value?.let { game ->
-                                                            newGameName = game.getDisplayName()
-                                                            showRenameDialog = true
-                                                        }
+                                        // 修复：使用简单的Column而不是LazyColumn
+                                        Column {
+                                            DropdownMenuItem(
+                                                text = { Text("重命名游戏") },
+                                                onClick = {
+                                                    showAppMenu = false
+                                                    selectedModel.value?.let { game ->
+                                                        newGameName = game.getDisplayName()
+                                                        showRenameDialog = true
                                                     }
-                                                )
-                                            }
-                                            item {
-                                                DropdownMenuItem(
-                                                    text = { Text("清除 PPTC 缓存") },
-                                                    onClick = {
-                                                        showAppMenu.value = false
-                                                        viewModel.mainViewModel?.clearPptcCache(
-                                                            viewModel.mainViewModel?.selected?.titleId ?: ""
-                                                        )
-                                                    }
-                                                )
-                                            }
-                                            item {
-                                                DropdownMenuItem(
-                                                    text = { Text("清除着色器缓存") },
-                                                    onClick = {
-                                                        showAppMenu.value = false
-                                                        viewModel.mainViewModel?.purgeShaderCache(
-                                                            viewModel.mainViewModel?.selected?.titleId ?: ""
-                                                        )
-                                                    }
-                                                )
-                                            }
-                                            item {
-                                                DropdownMenuItem(
-                                                    text = { Text("删除所有缓存") },
-                                                    onClick = {
-                                                        showAppMenu.value = false
-                                                        viewModel.mainViewModel?.deleteCache(
-                                                            viewModel.mainViewModel?.selected?.titleId ?: ""
-                                                        )
-                                                    }
-                                                )
-                                            }
-                                            item {
-                                                DropdownMenuItem(
-                                                    text = { Text("管理更新") },
-                                                    onClick = {
-                                                        showAppMenu.value = false
-                                                        openTitleUpdateDialog.value = true
-                                                    }
-                                                )
-                                            }
-                                            item {
-                                                DropdownMenuItem(
-                                                    text = { Text("管理 DLC") },
-                                                    onClick = {
-                                                        showAppMenu.value = false
-                                                        openDlcDialog.value = true
-                                                    }
-                                                )
-                                            }
-                                            item {
-                                                DropdownMenuItem(
-                                                    text = { Text("管理金手指") },
-                                                    onClick = {
-                                                        showAppMenu.value = false
-                                                        val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
-                                                        val gamePath = viewModel.mainViewModel?.selected?.path ?: ""
-                                                        navController?.navigate("cheats/$titleId?gamePath=${android.net.Uri.encode(gamePath)}")
-                                                    }
-                                                )
-                                            }
-                                            item {
-                                                DropdownMenuItem(
-                                                    text = { Text("管理存档数据") },
-                                                    onClick = {
-                                                        showAppMenu.value = false
-                                                        val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
-                                                        val gameName = viewModel.mainViewModel?.selected?.getDisplayName() ?: ""
-                                                        navController?.navigate("savedata/$titleId?gameName=${android.net.Uri.encode(gameName)}")
-                                                    }
-                                                )
-                                            }
-                                            item {
-                                                DropdownMenuItem(
-                                                    text = { Text("管理 Mods") },
-                                                    onClick = {
-                                                        showAppMenu.value = false
-                                                        val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
-                                                        val gameName = viewModel.mainViewModel?.selected?.getDisplayName() ?: ""
-                                                        navController?.navigate("mods/$titleId?gameName=${android.net.Uri.encode(gameName)}")
-                                                    }
-                                                )
-                                            }
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("清除 PPTC 缓存") },
+                                                onClick = {
+                                                    showAppMenu = false
+                                                    viewModel.mainViewModel?.clearPptcCache(
+                                                        viewModel.mainViewModel?.selected?.titleId ?: ""
+                                                    )
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("清除着色器缓存") },
+                                                onClick = {
+                                                    showAppMenu = false
+                                                    viewModel.mainViewModel?.purgeShaderCache(
+                                                        viewModel.mainViewModel?.selected?.titleId ?: ""
+                                                    )
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("删除所有缓存") },
+                                                onClick = {
+                                                    showAppMenu = false
+                                                    viewModel.mainViewModel?.deleteCache(
+                                                        viewModel.mainViewModel?.selected?.titleId ?: ""
+                                                    )
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("管理更新") },
+                                                onClick = {
+                                                    showAppMenu = false
+                                                    openTitleUpdateDialog.value = true
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("管理 DLC") },
+                                                onClick = {
+                                                    showAppMenu = false
+                                                    openDlcDialog.value = true
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("管理金手指") },
+                                                onClick = {
+                                                    showAppMenu = false
+                                                    val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
+                                                    val gamePath = viewModel.mainViewModel?.selected?.path ?: ""
+                                                    navController?.navigate("cheats/$titleId?gamePath=${android.net.Uri.encode(gamePath)}")
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("管理存档数据") },
+                                                onClick = {
+                                                    showAppMenu = false
+                                                    val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
+                                                    val gameName = viewModel.mainViewModel?.selected?.getDisplayName() ?: ""
+                                                    navController?.navigate("savedata/$titleId?gameName=${android.net.Uri.encode(gameName)}")
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("管理 Mods") },
+                                                onClick = {
+                                                    showAppMenu = false
+                                                    val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
+                                                    val gameName = viewModel.mainViewModel?.selected?.getDisplayName() ?: ""
+                                                    navController?.navigate("mods/$titleId?gameName=${android.net.Uri.encode(gameName)}")
+                                                }
+                                            )
                                         }
                                     }
                                 }
