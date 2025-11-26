@@ -11,7 +11,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -210,14 +213,22 @@ fun NumberPicker(
     onValueChange: (Int) -> Unit,
     range: IntRange
 ) {
+    var textValue by remember(value) { 
+        mutableStateOf(TextFieldValue(value.toString()))
+    }
+    val focusRequester = remember { FocusRequester() }
+    
     Row(
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(
             onClick = {
-                if (value > range.first) {
-                    onValueChange(value - 1)
+                val newValue = if (value <= range.first) {
+                    range.last
+                } else {
+                    value - 1
                 }
+                onValueChange(newValue)
             },
             modifier = Modifier.size(36.dp),
             colors = IconButtonDefaults.iconButtonColors(
@@ -233,14 +244,24 @@ fun NumberPicker(
         
         // 使用OutlinedTextField，调整宽度确保数字显示完整
         OutlinedTextField(
-            value = value.toString(),
-            onValueChange = { 
-                val newValue = it.toIntOrNull()
+            value = textValue,
+            onValueChange = { newTextValue ->
+                textValue = newTextValue
+                
+                // 如果输入为空，不更新值
+                if (newTextValue.text.isEmpty()) {
+                    return@OutlinedTextField
+                }
+                
+                // 尝试转换为数字
+                val newValue = newTextValue.text.toIntOrNull()
                 if (newValue != null && newValue in range) {
                     onValueChange(newValue)
                 }
             },
-            modifier = Modifier.width(80.dp),
+            modifier = Modifier
+                .width(80.dp)
+                .focusRequester(focusRequester),
             singleLine = true,
             textStyle = LocalTextStyle.current.copy(
                 textAlign = TextAlign.Center,
@@ -255,9 +276,12 @@ fun NumberPicker(
         
         IconButton(
             onClick = {
-                if (value < range.last) {
-                    onValueChange(value + 1)
+                val newValue = if (value >= range.last) {
+                    range.first
+                } else {
+                    value + 1
                 }
+                onValueChange(newValue)
             },
             modifier = Modifier.size(36.dp),
             colors = IconButtonDefaults.iconButtonColors(
