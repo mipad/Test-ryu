@@ -166,7 +166,7 @@ class HomeViewModel(
                                 container.dlc_nca_list.add(
                                     DlcContainer(
                                         true,
-                                        RyujinxNative.deviceGetDlcTitleId(containerPath, content).toLong(16),
+                                        RyujinxNative.jnaInstance.deviceGetDlcTitleId(containerPath, content).toLong(16),
                                         content
                                     )
                                 )
