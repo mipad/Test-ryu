@@ -460,21 +460,18 @@ class MainActivity : BaseActivity() {
     private fun clearEmuRunningFlag() = setEmuRunningFlag(false)
 
     private fun hardColdReset(reason: String) {
-       // Log.d(TAG_FG, "Cold graphics reset ($reason)")
         isGameRunning = false
         mainViewModel?.rendererReady = false
         autoPaused = false
 
         try { setPresentEnabled(false, "cold reset: $reason") } catch (_: Throwable) {}
-        // 修复：移除不存在的 detachWindow 方法调用
-        // try { RyujinxNative.jnaInstance.detachWindow() } catch (_: Throwable) {}
 
         try { stopService(Intent(this, EmulationService::class.java)) } catch (_: Throwable) {}
 
-        // 修复：移除不存在的属性访问
-        // try { mainViewModel?.loadGameModel?.value = null } catch (_: Throwable) {}
-        // try { mainViewModel?.bootPath?.value = "" } catch (_: Throwable) {}
-        // try { mainViewModel?.forceNceAndPptc?.value = false } catch (_: Throwable) {}
+        // 添加缺失的状态重置
+        try { mainViewModel?.gameModel = null } catch (_: Throwable) {}
+        try { mainViewModel?.selected = null } catch (_: Throwable) {}
+        try { mainViewModel?.isMiiEditorLaunched = false } catch (_: Throwable) {}
     }
 
     private fun coldResetIfZombie(phase: String) {
