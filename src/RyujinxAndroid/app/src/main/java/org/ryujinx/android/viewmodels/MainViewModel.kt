@@ -460,22 +460,49 @@ class MainViewModel(val activity: MainActivity) {
 
     fun closeGame() {
         // 先停止Native模拟
-        RyujinxNative.jnaInstance.deviceSignalEmulationClose()
+        try {
+            RyujinxNative.jnaInstance.deviceSignalEmulationClose()
+        } catch (e: Exception) {
+            Log.e("MainViewModel", "Error signaling emulation close", e)
+        }
         
         // 关闭GameHost（包含服务停止和资源清理）
-        gameHost?.close()
-        
-        // 不要在closeGame中重复调用deviceCloseEmulation()
-        // 因为gameHost.close()中已经调用了
+        try {
+            gameHost?.close()
+        } catch (e: Exception) {
+            Log.e("MainViewModel", "Error closing game host", e)
+        }
         
         // 清理其他资源
-        motionSensorManager?.unregister()
-        physicalControllerManager?.disconnect()
-        motionSensorManager?.setControllerId(-1)
+        try {
+            motionSensorManager?.unregister()
+        } catch (e: Exception) {
+            Log.e("MainViewModel", "Error unregistering motion sensor", e)
+        }
+        
+        try {
+            physicalControllerManager?.disconnect()
+        } catch (e: Exception) {
+            Log.e("MainViewModel", "Error disconnecting physical controller", e)
+        }
+        
+        try {
+            motionSensorManager?.setControllerId(-1)
+        } catch (e: Exception) {
+            Log.e("MainViewModel", "Error resetting controller ID", e)
+        }
+        
         rendererReady = false
         
         // 更新Activity状态
         activity.isGameRunning = false
+        
+        // 重置内部状态
+        gameModel = null
+        selected = null
+        isMiiEditorLaunched = false
+        
+        Log.i("MainViewModel", "Game closed successfully")
     }
 
     fun refreshFirmwareVersion() {
