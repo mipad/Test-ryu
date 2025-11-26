@@ -123,7 +123,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-//import androidx.compose.animation.animateItemPlacement
 
 class HomeViews {
     companion object {
@@ -1427,7 +1426,7 @@ class HomeViews {
                             }
                         }
                     }
-                )
+                }
             }
 
             // 添加重命名对话框
