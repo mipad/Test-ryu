@@ -316,7 +316,7 @@ class GameHost(context: Context?, private val mainViewModel: MainViewModel) : Su
         try {
             if (emuBound && _startedViaService) {
                 emuBinder?.stopEmulation {
-                    try { RyujinxNative.jnaInstance.deviceCloseEmulation() } catch (_: Throwable) {}
+                    try { RyujinxNative.deviceCloseEmulation() } catch (_: Throwable) {}
                 }
             }
         } catch (_: Throwable) { }
