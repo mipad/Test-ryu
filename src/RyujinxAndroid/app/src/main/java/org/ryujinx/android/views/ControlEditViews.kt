@@ -1,3 +1,4 @@
+
 package org.ryujinx.android.views
 
 import androidx.compose.foundation.layout.*
@@ -72,17 +73,13 @@ class ControlEditViews {
                                 .weight(1f)
                                 .fillMaxHeight()
                         ) {
-                            // 标题和按钮行
+                            // 顶部按钮行 - 去掉标题，全部重置在左，确定在右
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "按键设置",
-                                    style = MaterialTheme.typography.headlineSmall
-                                )
-                                
+                                // 左侧：全部重置按钮
                                 TextButton(
                                     onClick = {
                                         // 重置所有单独设置
@@ -111,6 +108,13 @@ class ControlEditViews {
                                     }
                                 ) {
                                     Text(text = "全部重置")
+                                }
+                                
+                                // 右侧：确定按钮
+                                TextButton(
+                                    onClick = onDismiss
+                                ) {
+                                    Text(text = "确定")
                                 }
                             }
 
@@ -163,40 +167,6 @@ class ControlEditViews {
                                         )
                                     }
                                 }
-                            }
-                        }
-
-                        // 右侧：操作按钮区域
-                        Column(
-                            modifier = Modifier
-                                .width(80.dp)
-                                .fillMaxHeight()
-                                .padding(start = 16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            // 顶部留空
-                            Spacer(modifier = Modifier.height(40.dp))
-                            
-                            // 中间操作按钮
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                // 可以在这里添加其他操作按钮
-                            }
-                            
-                            // 底部确定按钮
-                            Button(
-                                onClick = onDismiss,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(bottom = 16.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = Color.White
-                                )
-                            ) {
-                                Text(text = "确定")
                             }
                         }
                     }
@@ -311,33 +281,13 @@ class ControlEditViews {
                                 .weight(1f)
                                 .fillMaxHeight()
                         ) {
-                            // 标题和重置按钮
+                            // 顶部按钮行 - 重置在左，确定在右
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = control.emoji,
-                                        fontSize = 22.sp,
-                                        modifier = Modifier.padding(end = 12.dp)
-                                    )
-                                    Column {
-                                        Text(
-                                            text = control.name,
-                                            style = MaterialTheme.typography.titleMedium
-                                        )
-                                        Text(
-                                            text = control.description,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                        )
-                                    }
-                                }
-                                
+                                // 左侧：重置或删除按钮
                                 if (control.type == ControlType.COMBINATION) {
                                     TextButton(
                                         onClick = {
@@ -364,9 +314,39 @@ class ControlEditViews {
                                         Text(text = "重置")
                                     }
                                 }
+
+                                // 右侧：确定按钮
+                                TextButton(
+                                    onClick = onDismiss
+                                ) {
+                                    Text(text = "确定")
+                                }
                             }
 
-                            Spacer(modifier = Modifier.height(20.dp))
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // 控件信息
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(bottom = 16.dp)
+                            ) {
+                                Text(
+                                    text = control.emoji,
+                                    fontSize = 22.sp,
+                                    modifier = Modifier.padding(end = 12.dp)
+                                )
+                                Column {
+                                    Text(
+                                        text = control.name,
+                                        style = MaterialTheme.typography.titleMedium
+                                    )
+                                    Text(
+                                        text = control.description,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                    )
+                                }
+                            }
 
                             // 大小设置
                             Text(
@@ -436,33 +416,6 @@ class ControlEditViews {
                                 )
                             }
                         }
-
-                        // 右侧：操作按钮
-                        Column(
-                            modifier = Modifier
-                                .width(80.dp)
-                                .fillMaxHeight()
-                                .padding(start = 16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            // 顶部留空
-                            Spacer(modifier = Modifier.height(40.dp))
-                            
-                            // 底部确定按钮
-                            Button(
-                                onClick = onDismiss,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(bottom = 16.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = Color.White
-                                )
-                            ) {
-                                Text(text = "确定")
-                            }
-                        }
                     }
                 }
             }
@@ -501,128 +454,23 @@ class ControlEditViews {
                     tonalElevation = AlertDialogDefaults.TonalElevation,
                     color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(16.dp)
                     ) {
-                        // 左侧：内容区域
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
+                        // 顶部按钮行 - 取消在左，创建在右
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // 标题
-                            Text(
-                                text = "创建组合按键",
-                                style = MaterialTheme.typography.headlineSmall,
-                                modifier = Modifier.padding(bottom = 16.dp)
-                            )
-
-                            // 组合按键名称输入
-                            Text(
-                                text = "组合按键名称",
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
-                            OutlinedTextField(
-                                value = combinationName.value,
-                                onValueChange = { combinationName.value = it },
-                                placeholder = { Text("输入组合按键名称") },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(bottom = 16.dp)
-                            )
-
-                            // 选择的按键显示
-                            Text(
-                                text = "选择的按键 (${selectedKeys.value.size}/4)",
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
-                            
-                            if (selectedKeys.value.isEmpty()) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .weight(1f)
-                                        .background(
-                                            Color.LightGray.copy(alpha = 0.1f),
-                                            MaterialTheme.shapes.small
-                                        )
-                                        .padding(16.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "暂无选择的按键",
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                                    )
-                                }
-                            } else {
-                                LazyColumn(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .weight(1f)
-                                ) {
-                                    itemsIndexed(selectedKeys.value) { index, keyCode ->
-                                        val keyName = getKeyName(keyCode)
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(vertical = 8.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(text = "${index + 1}. $keyName")
-                                            IconButton(
-                                                onClick = {
-                                                    val newList = selectedKeys.value.toMutableList()
-                                                    newList.removeAt(index)
-                                                    selectedKeys.value = newList
-                                                },
-                                                modifier = Modifier.size(24.dp)
-                                            ) {
-                                                Text(text = "❌", fontSize = 12.sp)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            // 添加按键按钮
-                            Button(
-                                onClick = { 
-                                    if (selectedKeys.value.size < 4) {
-                                        showKeySelection.value = true 
-                                    }
-                                },
-                                enabled = selectedKeys.value.size < 4,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp)
-                            ) {
-                                Text(text = "➕ 添加按键")
-                            }
-                        }
-
-                        // 右侧：操作按钮
-                        Column(
-                            modifier = Modifier
-                                .width(100.dp)
-                                .fillMaxHeight()
-                                .padding(start = 16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            // 取消按钮在顶部
                             TextButton(
-                                onClick = onDismiss,
-                                modifier = Modifier.fillMaxWidth()
+                                onClick = onDismiss
                             ) {
                                 Text(text = "取消")
                             }
                             
-                            // 创建按钮在底部
                             Button(
                                 onClick = {
                                     if (combinationName.value.isNotBlank() && selectedKeys.value.isNotEmpty()) {
@@ -634,11 +482,106 @@ class ControlEditViews {
                                         onDismiss()
                                     }
                                 },
-                                enabled = combinationName.value.isNotBlank() && selectedKeys.value.isNotEmpty(),
-                                modifier = Modifier.fillMaxWidth()
+                                enabled = combinationName.value.isNotBlank() && selectedKeys.value.isNotEmpty()
                             ) {
                                 Text(text = "创建")
                             }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // 标题
+                        Text(
+                            text = "创建组合按键",
+                            style = MaterialTheme.typography.headlineSmall,
+                            modifier = Modifier
+                                .padding(bottom = 16.dp)
+                                .align(Alignment.CenterHorizontally)
+                        )
+
+                        // 组合按键名称输入
+                        Text(
+                            text = "组合按键名称",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        OutlinedTextField(
+                            value = combinationName.value,
+                            onValueChange = { combinationName.value = it },
+                            placeholder = { Text("输入组合按键名称") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 16.dp)
+                        )
+
+                        // 选择的按键显示
+                        Text(
+                            text = "选择的按键 (${selectedKeys.value.size}/4)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        
+                        if (selectedKeys.value.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                                    .background(
+                                        Color.LightGray.copy(alpha = 0.1f),
+                                        MaterialTheme.shapes.small
+                                    )
+                                    .padding(16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "暂无选择的按键",
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                )
+                            }
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                            ) {
+                                itemsIndexed(selectedKeys.value) { index, keyCode ->
+                                    val keyName = getKeyName(keyCode)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(text = "${index + 1}. $keyName")
+                                        IconButton(
+                                            onClick = {
+                                                val newList = selectedKeys.value.toMutableList()
+                                                newList.removeAt(index)
+                                                selectedKeys.value = newList
+                                            },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Text(text = "❌", fontSize = 12.sp)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 添加按键按钮
+                        Button(
+                            onClick = { 
+                                if (selectedKeys.value.size < 4) {
+                                    showKeySelection.value = true 
+                                }
+                            },
+                            enabled = selectedKeys.value.size < 4,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Text(text = "➕ 添加按键")
                         }
                     }
                 }
@@ -662,93 +605,28 @@ class ControlEditViews {
                     tonalElevation = AlertDialogDefaults.TonalElevation,
                     color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(16.dp)
                     ) {
-                        // 左侧：按键列表
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
+                        // 顶部按钮行 - 取消在左，确定在右
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // 标题
-                            Text(
-                                text = "选择按键 (${tempSelectedKeys.value.size}/4)",
-                                style = MaterialTheme.typography.titleMedium,
-                                modifier = Modifier.padding(bottom = 16.dp)
-                            )
-
-                            // 按键列表
-                            LazyColumn(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .weight(1f)
-                            ) {
-                                itemsIndexed(getAvailableKeys()) { index, keyItem ->
-                                    val isSelected = tempSelectedKeys.value.contains(keyItem.keyCode)
-                                    KeySelectionItem(
-                                        keyItem = keyItem,
-                                        isSelected = isSelected,
-                                        onClick = {
-                                            val currentList = tempSelectedKeys.value.toMutableList()
-                                            if (isSelected) {
-                                                currentList.remove(keyItem.keyCode)
-                                            } else {
-                                                if (currentList.size < 4) {
-                                                    currentList.add(keyItem.keyCode)
-                                                }
-                                            }
-                                            tempSelectedKeys.value = currentList
-                                        },
-                                        enabled = tempSelectedKeys.value.size < 4 || isSelected
-                                    )
-                                    
-                                    if (index < getAvailableKeys().size - 1) {
-                                        HorizontalDivider(
-                                            thickness = 0.5.dp,
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-                                        )
-                                    }
-                                }
-                            }
-
-                            // 底部说明
-                            Text(
-                                text = "最多可选择4个按键",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 8.dp)
-                            )
-                        }
-
-                        // 右侧：操作按钮
-                        Column(
-                            modifier = Modifier
-                                .width(100.dp)
-                                .fillMaxHeight()
-                                .padding(start = 16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            // 取消按钮
                             TextButton(
-                                onClick = onDismiss,
-                                modifier = Modifier.fillMaxWidth()
+                                onClick = onDismiss
                             ) {
                                 Text(text = "取消")
                             }
                             
-                            // 确定按钮
                             Button(
                                 onClick = {
                                     onKeysSelected(tempSelectedKeys.value.toList())
                                 },
                                 enabled = tempSelectedKeys.value.isNotEmpty(),
-                                modifier = Modifier.fillMaxWidth(),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.primary,
                                     contentColor = Color.White
@@ -757,6 +635,60 @@ class ControlEditViews {
                                 Text(text = "确定")
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // 标题
+                        Text(
+                            text = "选择按键 (${tempSelectedKeys.value.size}/4)",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(bottom = 16.dp)
+                        )
+
+                        // 按键列表
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                        ) {
+                            itemsIndexed(getAvailableKeys()) { index, keyItem ->
+                                val isSelected = tempSelectedKeys.value.contains(keyItem.keyCode)
+                                KeySelectionItem(
+                                    keyItem = keyItem,
+                                    isSelected = isSelected,
+                                    onClick = {
+                                        val currentList = tempSelectedKeys.value.toMutableList()
+                                        if (isSelected) {
+                                            currentList.remove(keyItem.keyCode)
+                                        } else {
+                                            if (currentList.size < 4) {
+                                                currentList.add(keyItem.keyCode)
+                                            }
+                                        }
+                                        tempSelectedKeys.value = currentList
+                                    },
+                                    enabled = tempSelectedKeys.value.size < 4 || isSelected
+                                )
+                                
+                                if (index < getAvailableKeys().size - 1) {
+                                    HorizontalDivider(
+                                        thickness = 0.5.dp,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                                    )
+                                }
+                            }
+                        }
+
+                        // 底部说明
+                        Text(
+                            text = "最多可选择4个按键",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                                .align(Alignment.CenterHorizontally)
+                        )
                     }
                 }
             }
