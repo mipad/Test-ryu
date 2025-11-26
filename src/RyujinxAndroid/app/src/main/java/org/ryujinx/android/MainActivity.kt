@@ -474,7 +474,7 @@ class MainActivity : BaseActivity() {
         // 修复：取消注释状态重置代码
         try { mainViewModel?.loadGameModel?.value = null } catch (_: Throwable) {}
         try { mainViewModel?.bootPath?.value = "" } catch (_: Throwable) {}
-        try { mainViewModel?.forceNceAndPptc?.value = false } catch (_: Throwable) {}
+       // try { mainViewModel?.forceNceAndPptc?.value = false } catch (_: Throwable) {}
     }
 
     private fun coldResetIfZombie(phase: String) {
