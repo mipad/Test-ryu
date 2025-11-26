@@ -976,7 +976,7 @@ class HomeViews {
                                                 )
                                                     .contains(query))
                                             ) {
-                                                Box(modifier = Modifier.animateItem()) {
+                                                Box(modifier = Modifier) {
                                                     ListGameItem(
                                                         gameModel = it,
                                                         viewModel = viewModel,
