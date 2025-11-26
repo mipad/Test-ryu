@@ -1,7 +1,9 @@
 package org.ryujinx.android.views
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
@@ -9,8 +11,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -34,138 +36,171 @@ fun CustomTimeDialog(
     var minute by remember { mutableStateOf(currentMinute) }
     var second by remember { mutableStateOf(currentSecond) }
     
+    // 根据年月计算最大天数
+    val maxDaysInMonth = remember(year, month) {
+        getMaxDaysInMonth(year, month)
+    }
+    
+    // 确保当前天数不超过最大天数
+    if (day > maxDaysInMonth) {
+        day = maxDaysInMonth
+    }
+    
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             modifier = Modifier
-                .width(340.dp)
-                .wrapContentHeight(),
-            shape = RoundedCornerShape(8.dp),
-            color = MaterialTheme.colorScheme.surface
+                .width(360.dp)
+                .heightIn(max = 560.dp),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 8.dp
         ) {
             Column(
-                modifier = Modifier.padding(16.dp)
+                modifier = Modifier
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState())
             ) {
                 // 标题
                 Text(
                     text = "Set Custom Time",
-                    fontSize = 20.sp,
+                    fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 16.dp)
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 20.dp),
+                    textAlign = TextAlign.Center
                 )
                 
                 // 时间设置表单
                 Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     // 年
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Year:", modifier = Modifier.weight(1f))
-                        NumberPicker(
-                            value = year,
-                            onValueChange = { year = it },
-                            range = 2000..2100
-                        )
-                    }
+                    TimePickerRow(
+                        label = "Year:",
+                        value = year,
+                        onValueChange = { year = it },
+                        range = 2000..2100
+                    )
                     
                     // 月
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Month:", modifier = Modifier.weight(1f))
-                        NumberPicker(
-                            value = month,
-                            onValueChange = { month = it },
-                            range = 1..12
-                        )
-                    }
+                    TimePickerRow(
+                        label = "Month:",
+                        value = month,
+                        onValueChange = { month = it },
+                        range = 1..12
+                    )
                     
                     // 日
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Day:", modifier = Modifier.weight(1f))
-                        NumberPicker(
-                            value = day,
-                            onValueChange = { day = it },
-                            range = 1..31
-                        )
-                    }
+                    TimePickerRow(
+                        label = "Day:",
+                        value = day,
+                        onValueChange = { day = it },
+                        range = 1..maxDaysInMonth
+                    )
                     
                     // 时
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Hour:", modifier = Modifier.weight(1f))
-                        NumberPicker(
-                            value = hour,
-                            onValueChange = { hour = it },
-                            range = 0..23
-                        )
-                    }
+                    TimePickerRow(
+                        label = "Hour:",
+                        value = hour,
+                        onValueChange = { hour = it },
+                        range = 0..23
+                    )
                     
                     // 分
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Minute:", modifier = Modifier.weight(1f))
-                        NumberPicker(
-                            value = minute,
-                            onValueChange = { minute = it },
-                            range = 0..59
-                        )
-                    }
+                    TimePickerRow(
+                        label = "Minute:",
+                        value = minute,
+                        onValueChange = { minute = it },
+                        range = 0..59
+                    )
                     
                     // 秒
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Second:", modifier = Modifier.weight(1f))
-                        NumberPicker(
-                            value = second,
-                            onValueChange = { second = it },
-                            range = 0..59
-                        )
-                    }
+                    TimePickerRow(
+                        label = "Second:",
+                        value = second,
+                        onValueChange = { second = it },
+                        range = 0..59
+                    )
                 }
                 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(20.dp))
                 
                 // 显示设置的时间
-                Text(
-                    text = "Set time: ${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')} ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}:${second.toString().padStart(2, '0')}",
-                    fontWeight = FontWeight.Bold
-                )
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')} ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}:${second.toString().padStart(2, '0')}",
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        textAlign = TextAlign.Center
+                    )
+                }
                 
                 // 按钮行
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 16.dp),
+                        .padding(top = 20.dp),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("Cancel")
+                    TextButton(
+                        onClick = onDismiss,
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        )
+                    ) {
+                        Text("Cancel", fontWeight = FontWeight.Medium)
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
                     Button(
                         onClick = {
                             onTimeSet(year, month, day, hour, minute, second)
-                        }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        )
                     ) {
-                        Text("Set")
+                        Text("Set", fontWeight = FontWeight.Medium)
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun TimePickerRow(
+    label: String,
+    value: Int,
+    onValueChange: (Int) -> Unit,
+    range: IntRange
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.weight(1f),
+            fontWeight = FontWeight.Medium,
+            fontSize = 16.sp,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        NumberPicker(
+            value = value,
+            onValueChange = onValueChange,
+            range = range
+        )
     }
 }
 
@@ -184,7 +219,10 @@ fun NumberPicker(
                     onValueChange(value - 1)
                 }
             },
-            modifier = Modifier.size(32.dp)
+            modifier = Modifier.size(36.dp),
+            colors = IconButtonDefaults.iconButtonColors(
+                contentColor = MaterialTheme.colorScheme.primary
+            )
         ) {
             Icon(
                 imageVector = Icons.Filled.ArrowDropDown,
@@ -193,7 +231,7 @@ fun NumberPicker(
             )
         }
         
-        // 使用OutlinedTextField替代Text，允许用户直接输入
+        // 使用OutlinedTextField，调整宽度确保数字显示完整
         OutlinedTextField(
             value = value.toString(),
             onValueChange = { 
@@ -202,8 +240,17 @@ fun NumberPicker(
                     onValueChange(newValue)
                 }
             },
-            modifier = Modifier.width(60.dp),
-            singleLine = true
+            modifier = Modifier.width(80.dp),
+            singleLine = true,
+            textStyle = LocalTextStyle.current.copy(
+                textAlign = TextAlign.Center,
+                fontSize = 16.sp
+            ),
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = MaterialTheme.colorScheme.surface,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                disabledContainerColor = MaterialTheme.colorScheme.surface,
+            )
         )
         
         IconButton(
@@ -212,7 +259,10 @@ fun NumberPicker(
                     onValueChange(value + 1)
                 }
             },
-            modifier = Modifier.size(32.dp)
+            modifier = Modifier.size(36.dp),
+            colors = IconButtonDefaults.iconButtonColors(
+                contentColor = MaterialTheme.colorScheme.primary
+            )
         ) {
             Icon(
                 imageVector = Icons.Filled.ArrowDropDown,
@@ -221,4 +271,14 @@ fun NumberPicker(
             )
         }
     }
+}
+
+/**
+ * 根据年份和月份获取该月的最大天数
+ */
+private fun getMaxDaysInMonth(year: Int, month: Int): Int {
+    val calendar = Calendar.getInstance()
+    calendar.set(Calendar.YEAR, year)
+    calendar.set(Calendar.MONTH, month - 1) // Calendar月份从0开始
+    return calendar.getActualMaximum(Calendar.DAY_OF_MONTH)
 }
