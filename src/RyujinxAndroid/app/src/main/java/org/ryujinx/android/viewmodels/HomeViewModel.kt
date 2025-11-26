@@ -15,6 +15,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import org.ryujinx.android.MainActivity
+import org.ryujinx.android.RyujinxNative
+import java.io.File
 import java.util.Locale
 import kotlin.concurrent.thread
 
@@ -90,10 +92,126 @@ class HomeViewModel(
                             }
                         }
                 }
+
+                // Auto-load DLCs and Title Updates from configured directories (if any)
+                try {
+                    autoloadContent()
+                } catch (_: Throwable) { }
             } finally {
                 isLoading.value = false
                 GlobalScope.launch(Dispatchers.Main){
                     filter("")
+                }
+            }
+        }
+    }
+
+    // Helper function to compare update versions from filenames
+    // Returns true if newPath represents a newer version than currentPath
+    private fun shouldSelectNewerUpdate(currentPath: String, newPath: String): Boolean {
+        // Extract version numbers from filenames using regex pattern [vXXXXXX]
+        val versionPattern = Regex("\\[v(\\d+)]")
+
+        val currentVersion = versionPattern.find(currentPath.lowercase(Locale.getDefault()))?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        val newVersion = versionPattern.find(newPath.lowercase(Locale.getDefault()))?.groupValues?.get(1)?.toIntOrNull() ?: 0
+
+        return newVersion > currentVersion
+    }
+
+    // Scans configured directory for NSPs containing DLCs/Updates and associates them to known titles.
+    private fun autoloadContent() {
+        val prefs = sharedPref ?: return
+
+        val updatesFolder = prefs.getString("updatesFolder", "") ?: ""
+
+        if (updatesFolder.isEmpty()) return
+
+        // Build a map of titleId -> helpers
+        val gamesByTitle = loadedCache.mapNotNull { g ->
+            val tid = g.titleId
+            if (!tid.isNullOrBlank()) tid.lowercase(Locale.getDefault()) to tid else null
+        }.toMap()
+
+        var updatesAdded = 0
+        var dlcAdded = 0
+
+        val base = File(updatesFolder)
+        if (!base.exists() || !base.isDirectory) return
+
+        base.walkTopDown().forEach fileLoop@{ f ->
+            if (!f.isFile) return@fileLoop
+            val name = f.name.lowercase(Locale.getDefault())
+            if (!name.endsWith(".nsp")) return@fileLoop
+
+            // Extract title ID from filename
+            val tidPattern = Regex("\\[([0-9a-fA-F]{16})]")
+            val tidMatch = tidPattern.find(name) ?: return@fileLoop
+            val fileTid = tidMatch.groupValues[1].lowercase(Locale.getDefault())
+
+            // Try to find DLC content for all games
+            var isDlc = false
+            try {
+                for ((_, tidOrig) in gamesByTitle) {
+                    val contents = RyujinxNative.deviceGetDlcContentList(f.absolutePath, tidOrig.toLong(16))
+
+                    if (contents.isNotEmpty()) {
+                        isDlc = true
+                        val containerPath = f.absolutePath
+                        val vm = DlcViewModel(tidOrig)
+                        val already = vm.data?.any { it.path == containerPath } == true
+
+                        if (!already) {
+                            val container = DlcContainerList(containerPath)
+                            for (content in contents) {
+                                container.dlc_nca_list.add(
+                                    DlcContainer(
+                                        true,
+                                        RyujinxNative.deviceGetDlcTitleId(containerPath, content).toLong(16),
+                                        content
+                                    )
+                                )
+                            }
+                            vm.data?.add(container)
+                            vm.saveChanges()
+                            dlcAdded++
+                        }
+                        break
+                    }
+                }
+            } catch (_: Throwable) { }
+
+            if (isDlc) return@fileLoop
+
+            // Treat as Title Update - convert update ID to base ID
+            // Update title IDs end in 800, base game IDs end in 000
+            val baseTid = if (fileTid.endsWith("800")) {
+                fileTid.substring(0, fileTid.length - 3) + "000"
+            } else {
+                fileTid
+            }
+
+            val originalTid = gamesByTitle[baseTid]
+            if (originalTid != null) {
+                val vm = TitleUpdateViewModel(originalTid)
+                val path = f.absolutePath
+                val exists = (vm.data?.paths?.contains(path) == true)
+
+                if (!exists) {
+                    // Add the new update path
+                    vm.data?.paths?.add(path)
+
+                    // Auto-select this update if it's newer than the currently selected one
+                    // or if no update is currently selected
+                    val currentSelected = vm.data?.selected ?: ""
+                    val shouldSelect = currentSelected.isEmpty() ||
+                        shouldSelectNewerUpdate(currentSelected, path)
+
+                    if (shouldSelect) {
+                        vm.data?.selected = path
+                    }
+
+                    vm.saveChanges()
+                    updatesAdded++
                 }
             }
         }
