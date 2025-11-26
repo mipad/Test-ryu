@@ -10,6 +10,7 @@ import androidx.navigation.navArgument
 import org.ryujinx.android.MainActivity
 import org.ryujinx.android.viewmodels.MainViewModel
 import org.ryujinx.android.viewmodels.SettingsViewModel
+import org.ryujinx.android.viewmodels.ModViewModel
 
 class MainView {
     companion object {
@@ -76,7 +77,28 @@ class MainView {
                     val gameName = backStackEntry.arguments?.getString("gameName") ?: ""
                     SaveDataViews(navController, titleId, gameName)
                 }
-                // 注意：Mod管理已改为对话框方式，移除了导航路由
+                // 添加Mod管理界面导航，包含 titleId 和 gameName 参数
+                composable(
+                    "mods/{titleId}?gameName={gameName}",
+                    arguments = listOf(
+                        navArgument("titleId") { type = NavType.StringType },
+                        navArgument("gameName") { 
+                            type = NavType.StringType
+                            defaultValue = ""
+                            nullable = true
+                        }
+                    )
+                ) { backStackEntry ->
+                    val titleId = backStackEntry.arguments?.getString("titleId") ?: ""
+                    val gameName = backStackEntry.arguments?.getString("gameName") ?: ""
+                    val modViewModel = ModViewModel()
+                    ModViews.ModManagementScreen(
+                        viewModel = modViewModel,
+                        navController = navController,
+                        titleId = titleId,
+                        gameName = gameName
+                    )
+                }
             }
         }
     }
