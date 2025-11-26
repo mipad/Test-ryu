@@ -321,13 +321,13 @@ class GameViews {
             Surface(
                 modifier = Modifier
                     .fillMaxHeight()
-                    .width(300.dp),
+                    .width(280.dp), // 稍微减小宽度
                 color = Color.Transparent
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxHeight()
-                        .width(300.dp)
+                        .width(280.dp)
                         .background(
                             MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.98f),
                             MaterialTheme.shapes.large
@@ -342,17 +342,17 @@ class GameViews {
                         modifier = Modifier
                             .fillMaxSize()
                             .verticalScroll(rememberScrollState())
-                            .padding(vertical = 8.dp)
+                            .padding(vertical = 6.dp) // 减小垂直内边距
                     ) {
-                        // 游戏标题
+                        // 游戏标题 - 减小字体和边距
                         Text(
                             text = gameTitle,
-                            style = MaterialTheme.typography.headlineSmall,
+                            style = MaterialTheme.typography.titleMedium, // 使用更小的字体
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 20.dp, vertical = 16.dp)
+                                .padding(horizontal = 16.dp, vertical = 12.dp) // 减小边距
                         )
 
                         HorizontalDivider(
@@ -360,13 +360,13 @@ class GameViews {
                             thickness = 1.dp
                         )
 
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(6.dp)) // 减小间距
 
                         // 菜单项 - 直接显示，无动画
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 12.dp)
+                                .padding(horizontal = 8.dp) // 减小水平内边距
                         ) {
                             // 暂停/继续游戏 - 使用 css-gg 图标
                             EnhancedSideMenuItem(
@@ -388,7 +388,7 @@ class GameViews {
                                 }
                             )
 
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(4.dp)) // 减小间距
 
                             // 虚拟手柄开关 - 使用游戏控制器图标
                             EnhancedSideMenuItem(
@@ -397,7 +397,7 @@ class GameViews {
                                 trailingContent = {
                                     Text(
                                         text = if (showController.value) "显示" else "隐藏",
-                                        style = MaterialTheme.typography.labelMedium,
+                                        style = MaterialTheme.typography.labelSmall, // 使用更小的字体
                                         color = if (showController.value) MaterialTheme.colorScheme.primary 
                                                else MaterialTheme.colorScheme.outline
                                     )
@@ -416,7 +416,7 @@ class GameViews {
                                 trailingContent = {
                                     Text(
                                         text = if (enableVsync.value) "On" else "Off",
-                                        style = MaterialTheme.typography.labelMedium,
+                                        style = MaterialTheme.typography.labelSmall, // 使用更小的字体
                                         color = if (enableVsync.value) MaterialTheme.colorScheme.primary 
                                                else MaterialTheme.colorScheme.outline
                                     )
@@ -434,7 +434,7 @@ class GameViews {
                                 trailingContent = {
                                     Text(
                                         text = if (enableMotion.value) "On" else "Off",
-                                        style = MaterialTheme.typography.labelMedium,
+                                        style = MaterialTheme.typography.labelSmall, // 使用更小的字体
                                         color = if (enableMotion.value) MaterialTheme.colorScheme.primary 
                                                else MaterialTheme.colorScheme.outline
                                     )
@@ -451,7 +451,7 @@ class GameViews {
                                 }
                             )
 
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(4.dp)) // 减小间距
 
                             // 编辑模式 - 使用编辑图标
                             EnhancedSideMenuItem(
@@ -484,14 +484,14 @@ class GameViews {
                                 }
                             )
 
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(12.dp)) // 减小间距
 
                             HorizontalDivider(
                                 color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
                                 thickness = 1.dp
                             )
 
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(6.dp)) // 减小间距
 
                             // 退出游戏 - 使用退出图标
                             EnhancedSideMenuItem(
@@ -522,7 +522,7 @@ class GameViews {
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .padding(horizontal = 6.dp, vertical = 2.dp), // 减小内边距
                 color = backgroundColor,
                 shape = MaterialTheme.shapes.medium,
                 tonalElevation = if (backgroundColor == Color.Transparent) 0.dp else 2.dp,
@@ -531,7 +531,7 @@ class GameViews {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                        .padding(horizontal = 12.dp, vertical = 10.dp), // 减小内边距
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -546,19 +546,19 @@ class GameViews {
                                     contentDescription = null,
                                     tint = textColor,
                                     modifier = Modifier
-                                        .size(36.dp) // 改为36dp
-                                        .padding(end = 12.dp)
+                                        .size(32.dp) // 减小图标尺寸
+                                        .padding(end = 10.dp) // 减小图标和文字间距
                                 )
                             }
                             else -> {
                                 // 对于没有图标的项目，保持间距一致
-                                Spacer(modifier = Modifier.size(36.dp).padding(end = 12.dp))
+                                Spacer(modifier = Modifier.size(32.dp).padding(end = 10.dp))
                             }
                         }
                         
                         Text(
                             text = text,
-                            style = MaterialTheme.typography.bodyLarge,
+                            style = MaterialTheme.typography.bodyMedium, // 使用更小的字体
                             color = textColor,
                             modifier = Modifier.weight(1f)
                         )
