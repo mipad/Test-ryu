@@ -459,13 +459,23 @@ class MainViewModel(val activity: MainActivity) {
     }
 
     fun closeGame() {
+        // 先停止Native模拟
         RyujinxNative.jnaInstance.deviceSignalEmulationClose()
+        
+        // 关闭GameHost（包含服务停止和资源清理）
         gameHost?.close()
-        RyujinxNative.jnaInstance.deviceCloseEmulation()
+        
+        // 不要在closeGame中重复调用deviceCloseEmulation()
+        // 因为gameHost.close()中已经调用了
+        
+        // 清理其他资源
         motionSensorManager?.unregister()
         physicalControllerManager?.disconnect()
         motionSensorManager?.setControllerId(-1)
         rendererReady = false
+        
+        // 更新Activity状态
+        activity.isGameRunning = false
     }
 
     fun refreshFirmwareVersion() {
