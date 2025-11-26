@@ -1,4 +1,3 @@
-
 package org.ryujinx.android.views
 
 import androidx.compose.foundation.layout.*
@@ -444,7 +443,7 @@ class ControlEditViews {
                 return
             }
 
-            // 创建组合按键对话框 - 使用固定dp尺寸
+            // 创建组合按键对话框 - 使用固定dp尺寸，去掉标题，布局更紧凑
             Dialog(onDismissRequest = onDismiss) {
                 Surface(
                     modifier = Modifier
@@ -488,30 +487,16 @@ class ControlEditViews {
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(8.dp)) // 减少间距，更紧凑
 
-                        // 标题
-                        Text(
-                            text = "创建组合按键",
-                            style = MaterialTheme.typography.headlineSmall,
-                            modifier = Modifier
-                                .padding(bottom = 16.dp)
-                                .align(Alignment.CenterHorizontally)
-                        )
-
-                        // 组合按键名称输入
-                        Text(
-                            text = "组合按键名称",
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
+                        // 组合按键名称输入 - 去掉标题，直接显示输入框
                         OutlinedTextField(
                             value = combinationName.value,
                             onValueChange = { combinationName.value = it },
                             placeholder = { Text("输入组合按键名称") },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(bottom = 16.dp)
+                                .padding(bottom = 12.dp) // 减少底部间距
                         )
 
                         // 选择的按键显示
@@ -549,7 +534,7 @@ class ControlEditViews {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(vertical = 8.dp),
+                                            .padding(vertical = 6.dp), // 减少垂直间距
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
@@ -560,9 +545,9 @@ class ControlEditViews {
                                                 newList.removeAt(index)
                                                 selectedKeys.value = newList
                                             },
-                                            modifier = Modifier.size(24.dp)
+                                            modifier = Modifier.size(20.dp) // 减小图标大小
                                         ) {
-                                            Text(text = "❌", fontSize = 12.sp)
+                                            Text(text = "❌", fontSize = 10.sp) // 减小字体大小
                                         }
                                     }
                                 }
@@ -579,7 +564,7 @@ class ControlEditViews {
                             enabled = selectedKeys.value.size < 4,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 8.dp)
+                                .padding(vertical = 6.dp) // 减少垂直间距
                         ) {
                             Text(text = "➕ 添加按键")
                         }
@@ -694,7 +679,6 @@ class ControlEditViews {
             }
         }
 
-        // 其他函数保持不变...
         @Composable
         fun KeySelectionItem(
             keyItem: KeyItem,
@@ -734,7 +718,7 @@ class ControlEditViews {
             }
         }
 
-        // 控件数据类保持不变...
+        // 控件数据类
         data class ControlItem(
             val id: Int,
             val name: String,
