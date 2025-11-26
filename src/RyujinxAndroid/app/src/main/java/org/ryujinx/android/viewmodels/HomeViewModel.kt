@@ -152,7 +152,7 @@ class HomeViewModel(
             var isDlc = false
             try {
                 for ((_, tidOrig) in gamesByTitle) {
-                    val contents = RyujinxNative.deviceGetDlcContentList(f.absolutePath, tidOrig.toLong(16))
+                    val contents = RyujinxNative.jnaInstance.deviceGetDlcContentList(f.absolutePath, tidOrig.toLong(16))
 
                     if (contents.isNotEmpty()) {
                         isDlc = true
