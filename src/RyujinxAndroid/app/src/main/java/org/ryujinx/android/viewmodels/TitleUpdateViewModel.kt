@@ -8,6 +8,7 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.text.toLowerCase
 import androidx.core.net.toUri
+import androidx.documentfile.provider.DocumentFile
 import com.anggrayudi.storage.SimpleStorageHelper
 import com.anggrayudi.storage.file.extension
 import com.google.gson.Gson
@@ -27,38 +28,25 @@ class TitleUpdateViewModel(val titleId: String) {
     }
 
     fun remove(index: Int) {
-        if (index <= 0) {
-            return
-        }
+        if (index <= 0) return
 
-        val updatesData = data
-        if (updatesData != null && updatesData.paths.isNotEmpty() && index - 1 < updatesData.paths.size) {
-            val str = updatesData.paths.removeAt(index - 1)
-
-            currentPaths = ArrayList(updatesData.paths)
-
-            pathsState?.clear()
-            pathsState?.addAll(updatesData.paths)
-
-            // 仅对URI格式释放权限
-            if (str.startsWith("content://")) {
-                str.toUri().let { uri ->
-                    try {
-                        storageHelper.storage.context.contentResolver.releasePersistableUriPermission(
-                            uri,
-                            Intent.FLAG_GRANT_READ_URI_PERMISSION
-                        )
-                    } catch (_: SecurityException) {
-                    }
+        data?.paths?.apply {
+            val path = removeAt(index - 1)
+            
+            // 如果是URI格式，释放权限
+            if (path.startsWith("content://")) {
+                Uri.parse(path)?.apply {
+                    storageHelper.storage.context.contentResolver.releasePersistableUriPermission(
+                        this,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
                 }
             }
-
+            
+            pathsState?.clear()
+            pathsState?.addAll(this)
+            currentPaths = this
             saveChanges()
-
-            canClose?.let {
-                it.value = false
-                it.value = true
-            }
         }
     }
 
@@ -71,13 +59,17 @@ class TitleUpdateViewModel(val titleId: String) {
                 if (requestCode == UpdateRequestCode) {
                     val file = files.firstOrNull()
                     file?.apply {
-                        if (file.extension == "nsp" || file.extension == "xci") {
+                        if (file.extension == "nsp") {
                             storageHelper.storage.context.contentResolver.takePersistableUriPermission(
                                 file.uri,
                                 Intent.FLAG_GRANT_READ_URI_PERMISSION
                             )
-
-                            processUpdateFile(file.uri, storageHelper.storage.context)
+                            
+                            // 将URI转换为文件路径
+                            val filePath = convertUriToFilePath(file.uri, storageHelper.storage.context)
+                            if (filePath != null && !currentPaths.contains(filePath)) {
+                                currentPaths.add(filePath)
+                            }
                         }
                     }
 
@@ -89,168 +81,83 @@ class TitleUpdateViewModel(val titleId: String) {
         storageHelper.openFilePicker(UpdateRequestCode)
     }
 
-    // 新增方法：处理选中的多个文件
-    fun addSelectedFiles(uris: List<Uri>, context: android.content.Context) {
-        if (uris.isNotEmpty()) {
-            for (uri in uris) {
-                processUpdateFile(uri, context)
-            }
-            refreshPaths()
-            saveChanges()
-        }
-    }
-
-    private fun processUpdateFile(uri: Uri, context: android.content.Context) {
-        try {
-            // 获取文件扩展名
-            val mimeType = context.contentResolver.getType(uri)
-            val fileName = getFileNameFromUri(context, uri)
-            val fileExtension = fileName?.substringAfterLast('.', "")?.lowercase()
-
-            if (fileExtension == "nsp" || fileExtension == "xci") {
-                // 获取持久化权限
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-
-                var filePath: String? = null
-                var path = uri.pathSegments.joinToString("/")
-
-                if (path.startsWith("document/")) {
-                    val relativePath = Uri.decode(path.substring("document/".length))
-
-                    if (relativePath.startsWith("root/")) {
-                        val rootRelativePath = relativePath.substring("root/".length)
-                        filePath = findExistingFilePath(rootRelativePath, context)
-                    } else if (relativePath.startsWith("primary:")) {
-                        val rootRelativePath = relativePath.substring("primary:".length)
-                        filePath = findExistingFilePath(rootRelativePath, context)
-                    }
-                }
-
-                // 如果无法通过路径解析，尝试使用文件名
-                if (filePath == null) {
-                    filePath = getFilePathFromUri(context, uri)
-                }
-
-                // 如果还是无法获取文件路径，使用URI字符串作为后备
-                val finalPath = filePath ?: uri.toString()
-                if (finalPath.isNotEmpty()) {
-                    val isDuplicate = currentPaths.contains(finalPath) || data?.paths?.contains(finalPath) == true
-
-                    if (!isDuplicate) {
-                        currentPaths.add(finalPath)
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    // 辅助函数：查找存在的文件路径
-    private fun findExistingFilePath(relativePath: String, context: android.content.Context): String? {
-        val baseDirectories = listOf(
-            context.filesDir,
-            context.getExternalFilesDir(null),
-            Environment.getExternalStorageDirectory()
-        )
-
-        for (baseDir in baseDirectories) {
-            val potentialFile = File(baseDir, relativePath)
-            if (potentialFile.exists()) {
-                return potentialFile.absolutePath
-            }
-        }
-        return null
-    }
-
-    private fun getFileNameFromUri(context: android.content.Context, uri: Uri): String? {
+    private fun convertUriToFilePath(uri: Uri, context: android.content.Context): String? {
         return try {
-            var result: String? = null
+            // 如果是文件URI，直接返回路径
+            if (uri.scheme == "file") {
+                return uri.path
+            }
+            
+            // 如果是content URI，尝试解析
             if (uri.scheme == "content") {
-                val cursor = context.contentResolver.query(uri, null, null, null, null)
-                cursor?.use {
-                    if (it.moveToFirst()) {
-                        val displayNameIndex = it.getColumnIndex("_display_name")
-                        if (displayNameIndex != -1) {
-                            result = it.getString(displayNameIndex)
+                val pathSegments = uri.pathSegments
+                if (pathSegments.isNotEmpty() && pathSegments[0] == "document") {
+                    val relativePath = Uri.decode(uri.lastPathSegment ?: "")
+                    
+                    // 尝试在常见目录中查找文件
+                    val baseDirs = arrayOf(
+                        Environment.getExternalStorageDirectory(),
+                        context.getExternalFilesDir(null),
+                        context.filesDir
+                    )
+                    
+                    for (baseDir in baseDirs) {
+                        if (baseDir != null) {
+                            val potentialFile = File(baseDir, relativePath)
+                            if (potentialFile.exists()) {
+                                return potentialFile.absolutePath
+                            }
+                            
+                            // 尝试在baseDir的子目录中查找
+                            baseDir.listFiles()?.forEach { dir ->
+                                val fileInDir = File(dir, relativePath)
+                                if (fileInDir.exists()) {
+                                    return fileInDir.absolutePath
+                                }
+                            }
                         }
                     }
                 }
-            }
-            if (result == null) {
-                result = uri.path?.let { path ->
-                    path.substringAfterLast('/')
-                }
-            }
-            result
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
-    }
-
-    private fun getFilePathFromUri(context: android.content.Context, uri: Uri): String? {
-        return try {
-            var filePath: String? = null
-            if (uri.scheme == "file") {
-                filePath = uri.path
-            } else if (uri.scheme == "content") {
-                // 尝试从content URI获取实际文件路径
+                
+                // 如果无法找到文件，使用查询方式获取真实路径
                 val cursor = context.contentResolver.query(uri, arrayOf("_data"), null, null, null)
                 cursor?.use {
                     if (it.moveToFirst()) {
                         val columnIndex = it.getColumnIndex("_data")
                         if (columnIndex != -1) {
-                            filePath = it.getString(columnIndex)
+                            val filePath = it.getString(columnIndex)
+                            if (filePath != null && File(filePath).exists()) {
+                                return filePath
+                            }
                         }
                     }
                 }
             }
-            filePath
+            
+            // 如果所有方法都失败，返回null
+            null
         } catch (e: Exception) {
             e.printStackTrace()
             null
         }
-    }
-
-    fun save(index: Int, openDialog: MutableState<Boolean>) {
-        data?.apply {
-            this.selected = ""
-            if (paths.isNotEmpty() && index > 0) {
-                val ind = index - 1
-                this.selected = paths[ind]
-            }
-
-            saveChanges()
-            openDialog.value = false
-        }
-    }
-
-    fun setPaths(paths: SnapshotStateList<String>, canClose: MutableState<Boolean>) {
-        pathsState = paths
-        this.canClose = canClose
-        refreshPaths()
     }
 
     private fun refreshPaths() {
         data?.apply {
             val existingPaths = mutableListOf<String>()
             currentPaths.forEach { path ->
-                // 检查路径是否存在
-                val exists = if (path.startsWith("content://")) {
-                    // URI路径 - 使用DocumentFile检查
-                    val uri = Uri.parse(path)
-                    val file = com.anggrayudi.storage.file.DocumentFileCompat.fromUri(storageHelper.storage.context, uri)
-                    file?.exists() == true
-                } else {
-                    // 文件系统路径 - 使用File检查
+                // 检查文件是否存在
+                val fileExists = if (path.startsWith("/")) {
+                    // 文件路径
                     File(path).exists()
+                } else {
+                    // URI路径
+                    val uri = Uri.parse(path)
+                    val file = DocumentFile.fromSingleUri(storageHelper.storage.context, uri)
+                    file?.exists() == true
                 }
                 
-                if (exists) {
+                if (fileExists) {
                     existingPaths.add(path)
                 }
             }
@@ -268,12 +175,68 @@ class TitleUpdateViewModel(val titleId: String) {
         }
     }
 
+    fun save(
+        index: Int,
+        openDialog: MutableState<Boolean>
+    ) {
+        data?.apply {
+            this.selected = ""
+            if (paths.isNotEmpty() && index > 0) {
+                val ind = kotlin.math.max(index - 1, paths.count() - 1)
+                this.selected = paths[ind]
+            }
+            
+            saveChanges()
+            openDialog.value = false
+        }
+    }
+
+    fun setPaths(paths: SnapshotStateList<String>, canClose: MutableState<Boolean>) {
+        pathsState = paths
+        this.canClose = canClose
+        data?.apply {
+            pathsState?.clear()
+            pathsState?.addAll(this.paths)
+        }
+    }
+    
     fun saveChanges() {
         val metadata = data ?: TitleUpdateMetadata()
         val gson = Gson()
-
+        
         File(basePath).mkdirs()
-
+        
+        // 确保只保存存在的文件路径
+        val savedUpdates = mutableListOf<String>()
+        currentPaths.forEach { path ->
+            val fileExists = if (path.startsWith("/")) {
+                File(path).exists()
+            } else {
+                val uri = Uri.parse(path)
+                val file = DocumentFile.fromSingleUri(storageHelper.storage.context, uri)
+                file?.exists() == true
+            }
+            
+            if (fileExists) {
+                savedUpdates.add(path)
+            }
+        }
+        metadata.paths = savedUpdates
+        
+        if (metadata.selected.isNotEmpty()) {
+            val selectedExists = if (metadata.selected.startsWith("/")) {
+                File(metadata.selected).exists()
+            } else {
+                val uri = Uri.parse(metadata.selected)
+                val file = DocumentFile.fromSingleUri(storageHelper.storage.context, uri)
+                file?.exists() == true
+            }
+            
+            if (!selectedExists) {
+                metadata.selected = ""
+            }
+        }
+        
         val json = gson.toJson(metadata)
         File("$basePath/$updateJsonName").writeText(json)
     }
@@ -289,8 +252,31 @@ class TitleUpdateViewModel(val titleId: String) {
         if (File(jsonPath).exists()) {
             val gson = Gson()
             data = gson.fromJson(File(jsonPath).readText(), TitleUpdateMetadata::class.java)
+            
+            // 将旧数据中的URI转换为文件路径
+            data?.paths?.let { paths ->
+                val convertedPaths = mutableListOf<String>()
+                paths.forEach { path ->
+                    if (path.startsWith("content://")) {
+                        // 尝试将URI转换为文件路径
+                        val filePath = convertUriToFilePath(Uri.parse(path), storageHelper.storage.context)
+                        if (filePath != null) {
+                            convertedPaths.add(filePath)
+                        } else {
+                            // 如果无法转换，保留原始URI
+                            convertedPaths.add(path)
+                        }
+                    } else {
+                        convertedPaths.add(path)
+                    }
+                }
+                data?.paths = convertedPaths
+                currentPaths = convertedPaths
+            }
+        } else {
+            currentPaths = data?.paths ?: mutableListOf()
         }
-        currentPaths = data?.paths ?: mutableListOf()
+        
         storageHelper = MainActivity.StorageHelper!!
         refreshPaths()
 
