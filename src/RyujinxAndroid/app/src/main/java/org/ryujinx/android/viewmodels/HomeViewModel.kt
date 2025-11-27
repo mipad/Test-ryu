@@ -19,6 +19,7 @@ import org.ryujinx.android.RyujinxNative
 import java.io.File
 import java.util.Locale
 import kotlin.concurrent.thread
+import android.net.Uri
 
 class HomeViewModel(
     val activity: MainActivity? = null,
@@ -118,6 +119,45 @@ class HomeViewModel(
         return newVersion > currentVersion
     }
 
+    /**
+     * 将文件路径转换为URI路径
+     */
+    private fun convertFilePathToUri(filePath: String): String? {
+        return try {
+            // 方法1: 尝试通过DocumentFile获取content URI
+            val documentFile = DocumentFileCompat.fromFullPath(
+                activity!!,
+                filePath,
+                com.anggrayudi.storage.file.DocumentFileType.FILE,
+                requiresWriteAccess = false
+            )
+            
+            if (documentFile != null && documentFile.exists()) {
+                val uri = documentFile.uri
+                // 获取持久化读取权限
+                try {
+                    activity.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                    android.util.Log.d("Ryujinx", "Acquired permission for auto-update: ${File(filePath).name} -> ${uri}")
+                    uri.toString()
+                } catch (e: SecurityException) {
+                    android.util.Log.e("Ryujinx", "Failed to get permission for auto-update: ${File(filePath).name}", e)
+                    null
+                }
+            } else {
+                // 方法2: 使用file URI作为回退
+                val fileUri = Uri.fromFile(File(filePath)).toString()
+                android.util.Log.d("Ryujinx", "Using file URI for auto-update: ${File(filePath).name} -> ${fileUri}")
+                fileUri
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("Ryujinx", "Error converting file path to URI: ${filePath}", e)
+            null
+        }
+    }
+
     // Scans configured directory for NSPs containing DLCs/Updates and associates them to known titles.
     private fun autoloadContent() {
         val prefs = sharedPref ?: return
@@ -193,27 +233,56 @@ class HomeViewModel(
             val originalTid = gamesByTitle[baseTid]
             if (originalTid != null) {
                 val vm = TitleUpdateViewModel(originalTid)
-                val path = f.absolutePath // 直接使用文件绝对路径
-                val exists = (vm.data?.paths?.contains(path) == true)
+                
+                // 修复：将文件路径转换为URI路径（与手动安装保持一致）
+                val fileUri = convertFilePathToUri(f.absolutePath)
+                if (fileUri == null) {
+                    android.util.Log.e("Ryujinx", "Failed to convert file path to URI: ${f.absolutePath}")
+                    return@fileLoop
+                }
+                
+                // 检查是否已存在
+                val exists = vm.data?.paths?.any { existingPath ->
+                    // 规范化路径比较
+                    normalizeUpdatePath(existingPath) == normalizeUpdatePath(fileUri)
+                } == true
 
                 if (!exists) {
                     // Add the new update path
-                    vm.data?.paths?.add(path)
+                    vm.data?.paths?.add(fileUri)
 
-                    // Auto-select this update if it's newer than the currently selected one
-                    // or if no update is currently selected
-                    val currentSelected = vm.data?.selected ?: ""
-                    val shouldSelect = currentSelected.isEmpty() ||
-                        shouldSelectNewerUpdate(currentSelected, path)
-
-                    if (shouldSelect) {
-                        vm.data?.selected = path
-                    }
-
+                    // 强制选择新添加的更新文件
+                    vm.data?.selected = fileUri
+                    
                     vm.saveChanges()
                     updatesAdded++
+                    android.util.Log.d("Ryujinx", "Auto-added and selected update: ${f.name} for title $originalTid -> $fileUri")
+                } else {
+                    android.util.Log.d("Ryujinx", "Update already exists: ${f.name} for title $originalTid")
                 }
+            } else {
+                android.util.Log.d("Ryujinx", "No matching game found for update: ${f.name} with base TID: $baseTid")
+                android.util.Log.d("Ryujinx", "Available TIDs: ${gamesByTitle.keys}")
             }
+        }
+        
+        // 记录自动更新结果
+        android.util.Log.d("Ryujinx", "Auto-load completed: $updatesAdded updates added, $dlcAdded DLCs added")
+    }
+
+    /**
+     * 规范化更新路径以便比较
+     */
+    private fun normalizeUpdatePath(path: String): String {
+        return if (path.startsWith("content://")) {
+            path
+        } else if (path.startsWith("file://")) {
+            // 提取文件路径部分进行比较
+            val file = File(Uri.parse(path).path ?: path)
+            file.absolutePath
+        } else {
+            // 普通文件路径
+            File(path).absolutePath
         }
     }
 }

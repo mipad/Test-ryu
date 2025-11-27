@@ -2,7 +2,6 @@ package org.ryujinx.android.viewmodels
 
 import android.content.Intent
 import android.net.Uri
-import android.os.Environment
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.text.intl.Locale
@@ -14,7 +13,6 @@ import com.anggrayudi.storage.file.extension
 import com.google.gson.Gson
 import org.ryujinx.android.MainActivity
 import java.io.File
-import kotlin.math.max
 
 class TitleUpdateViewModel(val titleId: String) {
     private var canClose: MutableState<Boolean>? = null
@@ -28,144 +26,138 @@ class TitleUpdateViewModel(val titleId: String) {
         const val UpdateRequestCode = 1002
     }
 
-    fun remove(index: Int) {
-        if (index <= 0)
-            return
+    /**
+     * 获取文件的显示名称
+     */
+    private fun getDisplayName(path: String): String {
+        return try {
+            if (path.startsWith("content://")) {
+                val documentFile = DocumentFile.fromSingleUri(storageHelper.storage.context, path.toUri())
+                documentFile?.name ?: "Unknown"
+            } else if (path.startsWith("file://")) {
+                File(path.toUri().path ?: "").name ?: "Unknown"
+            } else {
+                File(path).name
+            }
+        } catch (e: Exception) {
+            "Unknown"
+        }
+    }
 
-        data?.paths?.apply {
-            val str = removeAt(index - 1)
-            // 只有URI路径才需要释放权限
-            if (str.startsWith("content://")) {
-                Uri.parse(str)?.apply {
+    fun remove(index: Int) {
+        if (index <= 0) {
+            return
+        }
+
+        val updatesData = data
+        if (updatesData != null && updatesData.paths.isNotEmpty() && index - 1 < updatesData.paths.size) {
+            val removedPath = updatesData.paths.removeAt(index - 1)
+            currentPaths.remove(removedPath)
+
+            // 如果删除的是选中的路径，清空选中状态
+            if (updatesData.selected == removedPath) {
+                updatesData.selected = ""
+            }
+
+            pathsState?.clear()
+            pathsState?.addAll(updatesData.paths)
+
+            // 尝试释放URI权限
+            try {
+                if (removedPath.startsWith("content://")) {
                     storageHelper.storage.context.contentResolver.releasePersistableUriPermission(
-                        this,
+                        removedPath.toUri(),
                         Intent.FLAG_GRANT_READ_URI_PERMISSION
                     )
                 }
+            } catch (e: SecurityException) {
+                // 忽略权限释放失败
             }
-            pathsState?.clear()
-            pathsState?.addAll(this)
-            currentPaths = this
+
+            saveChanges()
+            canClose?.value = true
         }
     }
 
     fun add() {
-        val callBack = storageHelper.onFileSelected
+        val originalCallback = storageHelper.onFileSelected
 
         storageHelper.onFileSelected = { requestCode, files ->
-            run {
-                storageHelper.onFileSelected = callBack
-                if (requestCode == UpdateRequestCode) {
-                    val file = files.firstOrNull()
-                    file?.apply {
-                        if (file.extension == "nsp" || file.extension == "xci") {
+            storageHelper.onFileSelected = originalCallback
+            
+            if (requestCode == UpdateRequestCode) {
+                files.firstOrNull()?.let { file ->
+                    if (file.extension == "nsp" || file.extension == "xci") {
+                        // 获取URI字符串表示
+                        val uriString = file.uri.toString()
+                        
+                        // 检查是否已存在
+                        val isDuplicate = currentPaths.any { path ->
+                            path.equals(uriString, ignoreCase = true)
+                        }
+                        
+                        if (!isDuplicate) {
                             // 获取持久化读取权限
-                            storageHelper.storage.context.contentResolver.takePersistableUriPermission(
-                                file.uri,
-                                Intent.FLAG_GRANT_READ_URI_PERMISSION
-                            )
-
-                            // 将URI转换为文件绝对路径（与自动安装保持一致）
-                            val filePath = convertUriToFilePath(file.uri)
-                            
-                            if (filePath.isNotEmpty()) {
-                                val isDuplicate = currentPaths.contains(filePath) || data?.paths?.contains(filePath) == true
-
-                                if (!isDuplicate) {
-                                    currentPaths.add(filePath)
-                                }
+                            try {
+                                storageHelper.storage.context.contentResolver.takePersistableUriPermission(
+                                    file.uri,
+                                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                )
+                                
+                                currentPaths.add(uriString)
+                                refreshPaths()
+                                saveChanges()
+                                android.util.Log.d("Ryujinx", "Manually added update: ${file.name}")
+                            } catch (e: SecurityException) {
+                                android.util.Log.e("Ryujinx", "Failed to get permission for update: ${file.name}", e)
                             }
                         }
                     }
-
-                    refreshPaths()
-                    saveChanges()
                 }
             }
         }
+        
         storageHelper.openFilePicker(UpdateRequestCode)
     }
 
-    /**
-     * 将URI转换为文件绝对路径
-     */
-    private fun convertUriToFilePath(uri: Uri): String {
-        return try {
-            var path = uri.pathSegments.joinToString("/")
-
-            if (path.startsWith("document/")) {
-                val relativePath = Uri.decode(path.substring("document/".length))
-
-                if (relativePath.startsWith("root/")) {
-                    val rootRelativePath = relativePath.substring("root/".length)
-
-                    val baseDirectories = listOf(
-                        storageHelper.storage.context.filesDir,
-                        storageHelper.storage.context.getExternalFilesDir(null),
-                        Environment.getExternalStorageDirectory()
-                    )
-
-                    for (baseDir in baseDirectories) {
-                        val potentialFile = File(baseDir, rootRelativePath)
-                        if (potentialFile.exists()) {
-                            return potentialFile.absolutePath
-                        }
+    private fun refreshPaths() {
+        data?.let { metadata ->
+            // 过滤掉不存在的文件
+            val validPaths = currentPaths.filter { path ->
+                try {
+                    if (path.startsWith("content://")) {
+                        val documentFile = DocumentFile.fromSingleUri(storageHelper.storage.context, path.toUri())
+                        documentFile?.exists() == true
+                    } else if (path.startsWith("file://")) {
+                        File(path.toUri().path ?: "").exists()
+                    } else {
+                        File(path).exists()
                     }
-                } else if (relativePath.startsWith("primary:")) {
-                    val rootRelativePath = relativePath.substring("primary:".length)
-
-                    val baseDirectories = listOf(
-                        storageHelper.storage.context.filesDir,
-                        storageHelper.storage.context.getExternalFilesDir(null),
-                        Environment.getExternalStorageDirectory()
-                    )
-
-                    for (baseDir in baseDirectories) {
-                        val potentialFile = File(baseDir, rootRelativePath)
-                        if (potentialFile.exists()) {
-                            return potentialFile.absolutePath
-                        }
-                    }
+                } catch (e: Exception) {
+                    false
                 }
             }
             
-            // 如果无法转换，回退到URI字符串
-            uri.toString()
-        } catch (e: Exception) {
-            // 转换失败，使用URI字符串
-            uri.toString()
-        }
-    }
-
-    private fun refreshPaths() {
-        data?.apply {
-            val existingPaths = mutableListOf<String>()
-            currentPaths.forEach {
-                // 检查文件是否存在（对于文件路径）
-                if (it.startsWith("/")) {
-                    val file = File(it)
-                    if (file.exists()) {
-                        existingPaths.add(it)
-                    }
-                } else {
-                    // 对于URI路径，检查DocumentFile是否存在
-                    val uri = Uri.parse(it)
-                    val file = DocumentFile.fromSingleUri(storageHelper.storage.context, uri)
-                    if (file?.exists() == true) {
-                        existingPaths.add(it)
-                    }
-                }
+            // 更新当前路径列表
+            currentPaths.clear()
+            currentPaths.addAll(validPaths)
+            
+            // 更新metadata
+            metadata.paths.clear()
+            metadata.paths.addAll(validPaths)
+            
+            // 如果选中的路径不存在，清空选中状态
+            if (metadata.selected.isEmpty() || !validPaths.contains(metadata.selected)) {
+                // 自动选择第一个可用路径
+                metadata.selected = validPaths.firstOrNull() ?: ""
             }
-
-            if (!existingPaths.contains(selected)) {
-                selected = ""
-            }
+            
+            // 更新UI状态
             pathsState?.clear()
-            pathsState?.addAll(existingPaths)
-            paths = existingPaths
-            canClose?.apply {
-                value = true
-            }
+            pathsState?.addAll(validPaths)
+            
+            android.util.Log.d("Ryujinx", "Refresh paths for $titleId: ${validPaths.size} paths, selected: ${getDisplayName(metadata.selected)}")
+            canClose?.value = true
         }
     }
 
@@ -173,13 +165,15 @@ class TitleUpdateViewModel(val titleId: String) {
         index: Int,
         openDialog: MutableState<Boolean>
     ) {
-        data?.apply {
-            this.selected = ""
-            if (paths.isNotEmpty() && index > 0) {
-                val ind = max(index - 1, paths.count() - 1)
-                this.selected = paths[ind]
+        data?.let { metadata ->
+            if (metadata.paths.isNotEmpty() && index > 0) {
+                val actualIndex = (index - 1).coerceAtMost(metadata.paths.size - 1)
+                metadata.selected = metadata.paths[actualIndex]
+                android.util.Log.d("Ryujinx", "User selected update: ${getDisplayName(metadata.selected)}")
+            } else {
+                metadata.selected = ""
             }
-
+            
             saveChanges()
             openDialog.value = false
         }
@@ -188,40 +182,44 @@ class TitleUpdateViewModel(val titleId: String) {
     fun setPaths(paths: SnapshotStateList<String>, canClose: MutableState<Boolean>) {
         pathsState = paths
         this.canClose = canClose
-        data?.apply {
-            pathsState?.clear()
-            pathsState?.addAll(this.paths)
-        }
+        refreshPaths()
     }
 
     fun saveChanges() {
-        val metadata = data ?: TitleUpdateMetadata()
-        val gson = Gson()
-
-        File(basePath).mkdirs()
-
-        val json = gson.toJson(metadata)
-        File("$basePath/$updateJsonName").writeText(json)
+        data?.let { metadata ->
+            val gson = Gson()
+            File(basePath).mkdirs()
+            
+            val json = gson.toJson(metadata)
+            File("$basePath/$updateJsonName").writeText(json)
+            
+            android.util.Log.d("Ryujinx", "Saved updates for $titleId: ${metadata.paths.size} paths, selected: ${getDisplayName(metadata.selected)}")
+        }
     }
 
     var data: TitleUpdateMetadata? = null
     private var jsonPath: String
 
     init {
-        basePath = MainActivity.AppPath + "/games/" + titleId.toLowerCase(Locale.current)
+        basePath = "${MainActivity.AppPath}/games/${titleId.toLowerCase(Locale.current)}"
         jsonPath = "${basePath}/${updateJsonName}"
 
-        data = TitleUpdateMetadata()
-        if (File(jsonPath).exists()) {
-            val gson = Gson()
-            data = gson.fromJson(File(jsonPath).readText(), TitleUpdateMetadata::class.java)
-
+        // 加载现有数据
+        data = if (File(jsonPath).exists()) {
+            try {
+                val gson = Gson()
+                gson.fromJson(File(jsonPath).readText(), TitleUpdateMetadata::class.java)
+            } catch (e: Exception) {
+                TitleUpdateMetadata()
+            }
+        } else {
+            TitleUpdateMetadata()
         }
-        currentPaths = data?.paths ?: mutableListOf()
+        
+        currentPaths = data?.paths?.toMutableList() ?: mutableListOf()
         storageHelper = MainActivity.StorageHelper!!
+        
         refreshPaths()
-
-        File("$basePath/update").deleteRecursively()
     }
 }
 
