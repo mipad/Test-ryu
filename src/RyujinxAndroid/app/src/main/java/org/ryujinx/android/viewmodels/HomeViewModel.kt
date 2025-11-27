@@ -1,6 +1,8 @@
 package org.ryujinx.android.viewmodels
 
+import android.content.Intent
 import android.content.SharedPreferences
+import android.net.Uri
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
@@ -19,7 +21,6 @@ import org.ryujinx.android.RyujinxNative
 import java.io.File
 import java.util.Locale
 import kotlin.concurrent.thread
-import android.net.Uri
 
 class HomeViewModel(
     val activity: MainActivity? = null,
