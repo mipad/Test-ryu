@@ -1,8 +1,6 @@
 package org.ryujinx.android.viewmodels
 
-import android.content.Intent
 import android.content.SharedPreferences
-import android.net.Uri
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
@@ -154,7 +152,7 @@ class HomeViewModel(
             var isDlc = false
             try {
                 for ((_, tidOrig) in gamesByTitle) {
-                    val contents = RyujinxNative.jnaInstance.deviceGetDlcContentList(f.absolutePath, tidOrig.toLong(16))
+                    val contents = RyujinxNative.deviceGetDlcContentList(f.absolutePath, tidOrig.toLong(16))
 
                     if (contents.isNotEmpty()) {
                         isDlc = true
@@ -168,7 +166,7 @@ class HomeViewModel(
                                 container.dlc_nca_list.add(
                                     DlcContainer(
                                         true,
-                                        RyujinxNative.jnaInstance.deviceGetDlcTitleId(containerPath, content).toLong(16),
+                                        RyujinxNative.deviceGetDlcTitleId(containerPath, content).toLong(16),
                                         content
                                     )
                                 )
@@ -195,99 +193,27 @@ class HomeViewModel(
             val originalTid = gamesByTitle[baseTid]
             if (originalTid != null) {
                 val vm = TitleUpdateViewModel(originalTid)
-                
-                // 第一步：先使用文件路径安装
-                val filePath = f.absolutePath
-                val exists = (vm.data?.paths?.contains(filePath) == true)
+                val path = f.absolutePath
+                val exists = (vm.data?.paths?.contains(path) == true)
 
                 if (!exists) {
                     // Add the new update path
-                    vm.data?.paths?.add(filePath)
+                    vm.data?.paths?.add(path)
 
                     // Auto-select this update if it's newer than the currently selected one
                     // or if no update is currently selected
                     val currentSelected = vm.data?.selected ?: ""
                     val shouldSelect = currentSelected.isEmpty() ||
-                        shouldSelectNewerUpdate(currentSelected, filePath)
+                        shouldSelectNewerUpdate(currentSelected, path)
 
                     if (shouldSelect) {
-                        vm.data?.selected = filePath
+                        vm.data?.selected = path
                     }
 
                     vm.saveChanges()
                     updatesAdded++
-                    android.util.Log.d("Ryujinx", "Auto-added update using file path: ${f.name} for title $originalTid -> $filePath")
-                    
-                    // 第二步：转换为URI路径（在后台进行，不影响当前操作）
-                    convertToUriAndUpdate(originalTid, filePath)
-                } else {
-                    android.util.Log.d("Ryujinx", "Update already exists: ${f.name} for title $originalTid")
                 }
-            } else {
-                android.util.Log.d("Ryujinx", "No matching game found for update: ${f.name} with base TID: $baseTid")
-                android.util.Log.d("Ryujinx", "Available TIDs: ${gamesByTitle.keys}")
             }
         }
-        
-        // 记录自动更新结果
-        android.util.Log.d("Ryujinx", "Auto-load completed: $updatesAdded updates added, $dlcAdded DLCs added")
-    }
-
-    /**
-     * 在后台将文件路径转换为URI路径并更新
-     */
-    private fun convertToUriAndUpdate(titleId: String, filePath: String) {
-        thread {
-            try {
-                // 尝试获取content URI
-                val documentFile = DocumentFileCompat.fromFullPath(
-                    activity!!,
-                    filePath,
-                    com.anggrayudi.storage.file.DocumentFileType.FILE,
-                    requiresWriteAccess = false
-                )
-                
-                if (documentFile != null && documentFile.exists()) {
-                    val uri = documentFile.uri
-                    // 获取持久化读取权限
-                    try {
-                        activity.contentResolver.takePersistableUriPermission(
-                            uri,
-                            Intent.FLAG_GRANT_READ_URI_PERMISSION
-                        )
-                        
-                        // 更新为URI路径
-                        val vm = TitleUpdateViewModel(titleId)
-                        val uriString = uri.toString()
-                        
-                        // 替换文件路径为URI路径
-                        val updated = vm.data?.paths?.replaceAll { path ->
-                            if (path == filePath) uriString else path
-                        }
-                        
-                        // 如果选中的是此文件，也更新选中路径
-                        if (vm.data?.selected == filePath) {
-                            vm.data?.selected = uriString
-                        }
-                        
-                        vm.saveChanges()
-                        android.util.Log.d("Ryujinx", "Successfully converted to URI: $filePath -> $uriString")
-                    } catch (e: SecurityException) {
-                        android.util.Log.e("Ryujinx", "Failed to get permission for: $filePath", e)
-                    }
-                } else {
-                    android.util.Log.w("Ryujinx", "Cannot convert to content URI, keeping file path: $filePath")
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("Ryujinx", "Error converting file path to URI: $filePath", e)
-            }
-        }
-    }
-}
-
-// 扩展函数：替换列表中的元素
-private fun <T> MutableList<T>.replaceAll(transform: (T) -> T) {
-    for (i in indices) {
-        this[i] = transform(this[i])
     }
 }
