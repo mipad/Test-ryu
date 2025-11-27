@@ -119,25 +119,22 @@ namespace Ryujinx.HLE.HOS.Services.Am.AppletAE.AllSystemAppletProxiesService.Lib
         }
 
         [CommandCmif(90)]
-        // StartEx(ulong[4])
-        public ResultCode StartEx(ServiceCtx context)
+        // Unknown90(ulong[4])
+        public ResultCode Unknown90(ServiceCtx context)
         {
             // NOTE: This call is performed on SDK 20+ when applet is called.
-            //       Since we don't support most applets for now, it would be fine to stub it.
-            //
-            //       This method takes an array of 4 unsigned longs and performs a calculation.
-            //       If that calculation fails, then this method runs Start().
+            //       Since we don't support most applets for now, it's fine to stub it.
             //       Throw if values are not 0 to learn more about what this function does.
 
             if (context.RequestData.ReadUInt64() != 0 || context.RequestData.ReadUInt64() != 0 ||
                 context.RequestData.ReadUInt64() != 0 || context.RequestData.ReadUInt64() != 0)
             {
-                throw new ServiceNotImplementedException(this, context, $"{GetType().FullName}: StartEx");
+                throw new ArgumentException("Invalid data: values are not 0");
             }
-
-            return (ResultCode)_applet.Start(_normalSession.GetConsumer(), _interactiveSession.GetConsumer());
+            
+            Logger.Stub?.PrintStub(LogClass.ServiceAm);
+            return ResultCode.Success;
         }
-
 
         [CommandCmif(100)]
         // PushInData(object<nn::am::service::IStorage>)
@@ -280,4 +277,3 @@ namespace Ryujinx.HLE.HOS.Services.Am.AppletAE.AllSystemAppletProxiesService.Lib
         }
     }
 }
-
