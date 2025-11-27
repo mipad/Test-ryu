@@ -200,47 +200,29 @@ class HomeViewModel(
                     val vm = TitleUpdateViewModel(originalTid)
                     val path = f.absolutePath
                     
-                    // 使用新的方法添加路径，确保路径格式正确
-                    val added = addAutoUpdatePathToViewModel(vm, path)
+                    // 使用文件路径而不是URI
+                    val exists = vm.data?.paths?.any { it == path } == true
                     
-                    if (added) {
-                        // Auto-select this update if it's newer than the currently selected one
-                        // or if no update is currently selected
+                    if (!exists) {
+                        // 添加新的更新路径
+                        vm.data?.paths?.add(path)
+                        
+                        // 自动选择此更新（如果比当前选择的更新或没有选择任何更新）
                         val currentSelected = vm.data?.selected ?: ""
                         val shouldSelect = currentSelected.isEmpty() ||
                             shouldSelectNewerUpdate(currentSelected, path)
-
+                        
                         if (shouldSelect) {
                             vm.data?.selected = path
-                            vm.saveChanges()
                         }
+                        
+                        vm.saveChanges()
                         updatesAdded++
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
             }
-        }
-    }
-    
-    // 新增：专门处理自动加载更新路径的方法
-    private fun addAutoUpdatePathToViewModel(vm: TitleUpdateViewModel, path: String): Boolean {
-        return try {
-            // 确保路径存在
-            val file = File(path)
-            if (!file.exists()) return false
-            
-            // 检查是否已存在
-            val exists = vm.data?.paths?.contains(path) == true
-            if (exists) return false
-            
-            // 添加路径
-            vm.data?.paths?.add(path)
-            vm.saveChanges()
-            true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            false
         }
     }
 }

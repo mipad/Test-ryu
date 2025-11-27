@@ -8,13 +8,11 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.text.toLowerCase
 import androidx.core.net.toUri
-import androidx.documentfile.provider.DocumentFile
 import com.anggrayudi.storage.SimpleStorageHelper
 import com.anggrayudi.storage.file.extension
 import com.google.gson.Gson
 import org.ryujinx.android.MainActivity
 import java.io.File
-import kotlin.math.max
 
 class TitleUpdateViewModel(val titleId: String) {
     private var canClose: MutableState<Boolean>? = null
@@ -42,7 +40,7 @@ class TitleUpdateViewModel(val titleId: String) {
             pathsState?.clear()
             pathsState?.addAll(updatesData.paths)
 
-            // 尝试释放URI权限（如果是URI格式）
+            // 仅对URI格式释放权限
             if (str.startsWith("content://")) {
                 str.toUri().let { uri ->
                     try {
@@ -80,56 +78,30 @@ class TitleUpdateViewModel(val titleId: String) {
                             )
 
                             val uri = file.uri
-
                             var filePath: String? = null
 
-                            var path = uri.pathSegments.joinToString("/")
-
+                            // 将URI转换为文件路径
+                            val path = uri.pathSegments.joinToString("/")
+                            
                             if (path.startsWith("document/")) {
                                 val relativePath = Uri.decode(path.substring("document/".length))
 
                                 if (relativePath.startsWith("root/")) {
                                     val rootRelativePath = relativePath.substring("root/".length)
-
-                                    val baseDirectories = listOf(
-                                        storageHelper.storage.context.filesDir,
-                                        storageHelper.storage.context.getExternalFilesDir(null),
-                                        Environment.getExternalStorageDirectory()
-                                    )
-
-                                    for (baseDir in baseDirectories) {
-                                        val potentialFile = File(baseDir, rootRelativePath)
-                                        if (potentialFile.exists()) {
-                                            filePath = potentialFile.absolutePath
-                                            break
-                                        }
-                                    }
-                                }
-                                else if(relativePath.startsWith("primary:")) {
+                                    filePath = findExistingFilePath(rootRelativePath)
+                                } else if (relativePath.startsWith("primary:")) {
                                     val rootRelativePath = relativePath.substring("primary:".length)
-
-                                    val baseDirectories = listOf(
-                                        storageHelper.storage.context.filesDir,
-                                        storageHelper.storage.context.getExternalFilesDir(null),
-                                        Environment.getExternalStorageDirectory()
-                                    )
-
-                                    for (baseDir in baseDirectories) {
-                                        val potentialFile = File(baseDir, rootRelativePath)
-                                        if (potentialFile.exists()) {
-                                            filePath = potentialFile.absolutePath
-                                            break
-                                        }
-                                    }
+                                    filePath = findExistingFilePath(rootRelativePath)
                                 }
                             }
 
-                            path = filePath ?: uri.toString()
-                            if (path.isNotEmpty()) {
-                                val isDuplicate = currentPaths.contains(path) || data?.paths?.contains(path) == true
+                            // 使用文件路径或回退到URI字符串
+                            val finalPath = filePath ?: uri.toString()
+                            if (finalPath.isNotEmpty()) {
+                                val isDuplicate = currentPaths.contains(finalPath) || data?.paths?.contains(finalPath) == true
 
                                 if (!isDuplicate) {
-                                    currentPaths.add(path)
+                                    currentPaths.add(finalPath)
                                 }
                             }
                         }
@@ -143,62 +115,28 @@ class TitleUpdateViewModel(val titleId: String) {
         storageHelper.openFilePicker(UpdateRequestCode)
     }
 
-    // 新增：从自动加载添加路径的方法
-    fun addAutoUpdatePath(path: String): Boolean {
-        if (path.isNotEmpty()) {
-            val isDuplicate = currentPaths.contains(path) || data?.paths?.contains(path) == true
-            
-            if (!isDuplicate) {
-                currentPaths.add(path)
-                refreshPaths()
-                saveChanges()
-                return true
+    // 辅助函数：查找存在的文件路径
+    private fun findExistingFilePath(relativePath: String): String? {
+        val baseDirectories = listOf(
+            storageHelper.storage.context.filesDir,
+            storageHelper.storage.context.getExternalFilesDir(null),
+            Environment.getExternalStorageDirectory()
+        )
+
+        for (baseDir in baseDirectories) {
+            val potentialFile = File(baseDir, relativePath)
+            if (potentialFile.exists()) {
+                return potentialFile.absolutePath
             }
         }
-        return false
+        return null
     }
 
-    private fun refreshPaths() {
-        data?.apply {
-            val existingPaths = mutableListOf<String>()
-            currentPaths.forEach { path ->
-                // 检查文件是否存在
-                val fileExists = if (path.startsWith("content://")) {
-                    // URI路径
-                    val uri = Uri.parse(path)
-                    val file = DocumentFile.fromSingleUri(storageHelper.storage.context, uri)
-                    file?.exists() == true
-                } else {
-                    // 文件系统路径
-                    File(path).exists()
-                }
-                
-                if (fileExists) {
-                    existingPaths.add(path)
-                }
-            }
-
-            if (!existingPaths.contains(selected)) {
-                selected = ""
-            }
-            pathsState?.clear()
-            pathsState?.addAll(existingPaths)
-            paths = existingPaths
-            currentPaths = existingPaths
-            canClose?.apply {
-                value = true
-            }
-        }
-    }
-
-    fun save(
-        index: Int,
-        openDialog: MutableState<Boolean>
-    ) {
+    fun save(index: Int, openDialog: MutableState<Boolean>) {
         data?.apply {
             this.selected = ""
             if (paths.isNotEmpty() && index > 0) {
-                val ind = max(index - 1, paths.count() - 1)
+                val ind = index - 1
                 this.selected = paths[ind]
             }
 
@@ -211,6 +149,38 @@ class TitleUpdateViewModel(val titleId: String) {
         pathsState = paths
         this.canClose = canClose
         refreshPaths()
+    }
+
+    private fun refreshPaths() {
+        data?.apply {
+            val existingPaths = mutableListOf<String>()
+            currentPaths.forEach {
+                // 检查路径是否存在
+                val exists = if (it.startsWith("content://")) {
+                    // URI路径 - 使用DocumentFile检查
+                    val uri = Uri.parse(it)
+                    val file = com.anggrayudi.storage.file.DocumentFileCompat.fromUri(storageHelper.storage.context, uri)
+                    file?.exists() == true
+                } else {
+                    // 文件系统路径 - 使用File检查
+                    File(it).exists()
+                }
+                
+                if (exists) {
+                    existingPaths.add(it)
+                }
+            }
+
+            if (!existingPaths.contains(selected)) {
+                selected = ""
+            }
+            pathsState?.clear()
+            pathsState?.addAll(existingPaths)
+            paths = existingPaths
+            canClose?.apply {
+                value = true
+            }
+        }
     }
 
     fun saveChanges() {
@@ -234,7 +204,6 @@ class TitleUpdateViewModel(val titleId: String) {
         if (File(jsonPath).exists()) {
             val gson = Gson()
             data = gson.fromJson(File(jsonPath).readText(), TitleUpdateMetadata::class.java)
-
         }
         currentPaths = data?.paths ?: mutableListOf()
         storageHelper = MainActivity.StorageHelper!!
