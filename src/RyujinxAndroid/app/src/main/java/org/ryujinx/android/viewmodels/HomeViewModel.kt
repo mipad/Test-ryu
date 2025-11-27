@@ -1,6 +1,7 @@
 package org.ryujinx.android.viewmodels
 
 import android.content.SharedPreferences
+import android.net.Uri
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
@@ -17,6 +18,8 @@ import kotlinx.coroutines.launch
 import org.ryujinx.android.MainActivity
 import org.ryujinx.android.RyujinxNative
 import java.io.File
+import java.io.InputStream
+import java.io.OutputStream
 import java.util.Locale
 import kotlin.concurrent.thread
 
@@ -200,29 +203,86 @@ class HomeViewModel(
                     val vm = TitleUpdateViewModel(originalTid)
                     val path = f.absolutePath
                     
-                    // 使用文件路径而不是URI
-                    val exists = vm.data?.paths?.any { it == path } == true
-                    
+                    // 检查是否已存在相同的文件（通过文件名比较）
+                    val fileName = f.name
+                    val exists = vm.data?.paths?.any { 
+                        it.endsWith(fileName) || getFileNameFromUri(it) == fileName
+                    } == true
+
                     if (!exists) {
-                        // 添加新的更新路径
-                        vm.data?.paths?.add(path)
-                        
-                        // 自动选择此更新（如果比当前选择的更新或没有选择任何更新）
-                        val currentSelected = vm.data?.selected ?: ""
-                        val shouldSelect = currentSelected.isEmpty() ||
-                            shouldSelectNewerUpdate(currentSelected, path)
-                        
-                        if (shouldSelect) {
-                            vm.data?.selected = path
+                        // 将文件复制到应用的可访问位置，并使用URI格式
+                        val copiedFileUri = copyToAppDirectory(f, originalTid)
+                        if (copiedFileUri != null) {
+                            vm.currentPaths.add(copiedFileUri.toString())
+                            vm.refreshPaths()
+                            
+                            // Auto-select this update if it's newer than the currently selected one
+                            // or if no update is currently selected
+                            val currentSelected = vm.data?.selected ?: ""
+                            val shouldSelect = currentSelected.isEmpty() ||
+                                shouldSelectNewerUpdate(currentSelected, copiedFileUri.toString())
+
+                            if (shouldSelect) {
+                                vm.data?.selected = copiedFileUri.toString()
+                            }
+                            
+                            vm.saveChanges()
+                            updatesAdded++
                         }
-                        
-                        vm.saveChanges()
-                        updatesAdded++
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
             }
+        }
+    }
+
+    // 辅助方法：从URI字符串中获取文件名
+    private fun getFileNameFromUri(uriString: String): String? {
+        return try {
+            if (uriString.startsWith("content://")) {
+                val uri = Uri.parse(uriString)
+                val cursor = activity?.contentResolver?.query(uri, null, null, null, null)
+                cursor?.use {
+                    if (it.moveToFirst()) {
+                        val displayNameIndex = it.getColumnIndex("_display_name")
+                        if (displayNameIndex != -1) {
+                            return it.getString(displayNameIndex)
+                        }
+                    }
+                }
+                // 如果查询失败，则从URI路径中提取
+                uri.lastPathSegment
+            } else {
+                File(uriString).name
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    // 添加辅助方法：将文件复制到应用目录
+    private fun copyToAppDirectory(sourceFile: File, titleId: String): Uri? {
+        return try {
+            val context = activity ?: return null
+            val appDir = File(context.filesDir, "updates/$titleId")
+            appDir.mkdirs()
+            
+            val destFile = File(appDir, sourceFile.name)
+            
+            // 复制文件
+            sourceFile.inputStream().use { input ->
+                destFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            
+            // 返回文件URI
+            Uri.fromFile(destFile)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
         }
     }
 }
