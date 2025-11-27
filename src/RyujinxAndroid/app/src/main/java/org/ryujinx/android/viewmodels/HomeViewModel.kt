@@ -1,5 +1,6 @@
 package org.ryujinx.android.viewmodels
 
+import android.content.Intent
 import android.content.SharedPreferences
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
@@ -119,6 +120,43 @@ class HomeViewModel(
         return newVersion > currentVersion
     }
 
+    /**
+     * 为自动发现的更新文件获取持久化URI权限（模拟手动安装过程）
+     */
+    private fun acquireUriPermissionForFile(file: File): String? {
+        return try {
+            // 方法1: 尝试通过DocumentFile获取content URI
+            val documentFile = DocumentFileCompat.fromFullPath(
+                activity!!,
+                file.absolutePath,
+                com.anggrayudi.storage.file.DocumentFileType.FILE,
+                requiresWriteAccess = false
+            )
+            
+            if (documentFile != null && documentFile.exists()) {
+                val uri = documentFile.uri
+                // 获取持久化读取权限
+                activity.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+                android.util.Log.d("Ryujinx", "Acquired permission for: ${file.name} -> ${uri}")
+                uri.toString()
+            } else {
+                // 方法2: 回退到file URI
+                val fileUri = Uri.fromFile(file).toString()
+                android.util.Log.d("Ryujinx", "Using file URI for: ${file.name} -> ${fileUri}")
+                fileUri
+            }
+        } catch (e: SecurityException) {
+            android.util.Log.e("Ryujinx", "Security exception for ${file.name}: ${e.message}")
+            null
+        } catch (e: Exception) {
+            android.util.Log.e("Ryujinx", "Error getting URI for ${file.name}: ${e.message}")
+            null
+        }
+    }
+
     // Scans configured directory for NSPs containing DLCs/Updates and associates them to known titles.
     private fun autoloadContent() {
         val prefs = sharedPref ?: return
@@ -195,45 +233,55 @@ class HomeViewModel(
             if (originalTid != null) {
                 val vm = TitleUpdateViewModel(originalTid)
                 
-                // 修复：将文件路径转换为 URI 路径，与手动安装保持一致
-                val fileUri = Uri.fromFile(f).toString()
+                // 修复：为自动发现的文件获取持久化URI权限
+                val fileUri = acquireUriPermissionForFile(f)
+                if (fileUri == null) {
+                    android.util.Log.e("Ryujinx", "Failed to acquire URI permission for: ${f.name}")
+                    return@fileLoop
+                }
                 
-                // 修复：检查路径是否存在时使用统一格式
-                val exists = vm.data?.paths?.any { path ->
-                    val normalizedPath = if (path.startsWith("content://")) {
-                        path
-                    } else if (path.startsWith("file://")) {
-                        path
-                    } else {
-                        Uri.fromFile(File(path)).toString()
-                    }
-                    normalizedPath == fileUri
+                // 检查是否已存在（使用规范化URI比较）
+                val exists = vm.data?.paths?.any { existingPath ->
+                    // 规范化路径比较
+                    normalizeUpdatePath(existingPath) == normalizeUpdatePath(fileUri)
                 } == true
 
                 if (!exists) {
                     // Add the new update path
                     vm.data?.paths?.add(fileUri)
 
-                    // 修复：强制选择新添加的更新文件
-                    val shouldSelect = true // 总是选择新发现的更新文件
-
-                    if (shouldSelect) {
-                        vm.data?.selected = fileUri
-                        android.util.Log.d("Ryujinx", "Auto-selected update: ${f.name} for title $originalTid")
-                    }
-
+                    // 强制选择新添加的更新文件
+                    vm.data?.selected = fileUri
+                    
                     vm.saveChanges()
                     updatesAdded++
-                    android.util.Log.d("Ryujinx", "Auto-added update: ${f.name} for title $originalTid")
+                    android.util.Log.d("Ryujinx", "Auto-added and selected update: ${f.name} for title $originalTid -> $fileUri")
                 } else {
                     android.util.Log.d("Ryujinx", "Update already exists: ${f.name} for title $originalTid")
                 }
             } else {
                 android.util.Log.d("Ryujinx", "No matching game found for update: ${f.name} with base TID: $baseTid")
+                android.util.Log.d("Ryujinx", "Available TIDs: ${gamesByTitle.keys}")
             }
         }
         
         // 记录自动更新结果
         android.util.Log.d("Ryujinx", "Auto-load completed: $updatesAdded updates added, $dlcAdded DLCs added")
+    }
+
+    /**
+     * 规范化更新路径以便比较
+     */
+    private fun normalizeUpdatePath(path: String): String {
+        return if (path.startsWith("content://")) {
+            path
+        } else if (path.startsWith("file://")) {
+            // 提取文件路径部分进行比较
+            val file = File(Uri.parse(path).path ?: path)
+            file.absolutePath
+        } else {
+            // 普通文件路径
+            File(path).absolutePath
+        }
     }
 }
