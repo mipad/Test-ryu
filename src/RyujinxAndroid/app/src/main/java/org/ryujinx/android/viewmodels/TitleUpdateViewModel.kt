@@ -245,6 +245,9 @@ class TitleUpdateViewModel(val titleId: String) {
     private var jsonPath: String
 
     init {
+        // 先初始化 storageHelper
+        storageHelper = MainActivity.StorageHelper!!
+        
         basePath = MainActivity.AppPath + "/games/" + titleId.toLowerCase(Locale.current)
         jsonPath = "${basePath}/${updateJsonName}"
 
@@ -277,7 +280,6 @@ class TitleUpdateViewModel(val titleId: String) {
             currentPaths = data?.paths ?: mutableListOf()
         }
         
-        storageHelper = MainActivity.StorageHelper!!
         refreshPaths()
 
         File("$basePath/update").deleteRecursively()
