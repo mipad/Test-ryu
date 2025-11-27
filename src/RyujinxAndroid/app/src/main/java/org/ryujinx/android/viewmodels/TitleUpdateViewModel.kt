@@ -2,7 +2,6 @@ package org.ryujinx.android.viewmodels
 
 import android.content.Intent
 import android.net.Uri
-import android.os.Environment
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.text.intl.Locale
@@ -14,7 +13,6 @@ import com.anggrayudi.storage.file.extension
 import com.google.gson.Gson
 import org.ryujinx.android.MainActivity
 import java.io.File
-import kotlin.math.max
 
 class TitleUpdateViewModel(val titleId: String) {
     private var canClose: MutableState<Boolean>? = null
@@ -35,127 +33,105 @@ class TitleUpdateViewModel(val titleId: String) {
 
         val updatesData = data
         if (updatesData != null && updatesData.paths.isNotEmpty() && index - 1 < updatesData.paths.size) {
-            val str = updatesData.paths.removeAt(index - 1)
+            val removedPath = updatesData.paths.removeAt(index - 1)
+            currentPaths.remove(removedPath)
 
-            currentPaths = ArrayList(updatesData.paths)
+            // 如果删除的是选中的路径，清空选中状态
+            if (updatesData.selected == removedPath) {
+                updatesData.selected = ""
+            }
 
             pathsState?.clear()
             pathsState?.addAll(updatesData.paths)
 
-            str.toUri().let { uri ->
-                try {
-                    storageHelper.storage.context.contentResolver.releasePersistableUriPermission(
-                        uri,
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION
-                    )
-                } catch (_: SecurityException) {
-                }
+            // 尝试释放URI权限
+            try {
+                storageHelper.storage.context.contentResolver.releasePersistableUriPermission(
+                    removedPath.toUri(),
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: SecurityException) {
+                // 忽略权限释放失败
             }
 
             saveChanges()
 
-            canClose?.let {
-                it.value = false
-                it.value = true
-            }
+            canClose?.value = true
         }
     }
 
     fun add() {
-        val callBack = storageHelper.onFileSelected
+        val originalCallback = storageHelper.onFileSelected
 
         storageHelper.onFileSelected = { requestCode, files ->
-            run {
-                storageHelper.onFileSelected = callBack
-                if (requestCode == UpdateRequestCode) {
-                    val file = files.firstOrNull()
-                    file?.apply {
-                        if (file.extension == "nsp" || file.extension == "xci") {
-                            storageHelper.storage.context.contentResolver.takePersistableUriPermission(
-                                file.uri,
-                                Intent.FLAG_GRANT_READ_URI_PERMISSION
-                            )
-
-                            val uri = file.uri
-
-                            var filePath: String? = null
-
-                            var path = uri.pathSegments.joinToString("/")
-
-                            if (path.startsWith("document/")) {
-                                val relativePath = Uri.decode(path.substring("document/".length))
-
-                                if (relativePath.startsWith("root/")) {
-                                    val rootRelativePath = relativePath.substring("root/".length)
-
-                                    val baseDirectories = listOf(
-                                        storageHelper.storage.context.filesDir,
-                                        storageHelper.storage.context.getExternalFilesDir(null),
-                                        Environment.getExternalStorageDirectory()
-                                    )
-
-                                    for (baseDir in baseDirectories) {
-                                        val potentialFile = File(baseDir, rootRelativePath)
-                                        if (potentialFile.exists()) {
-                                            filePath = potentialFile.absolutePath
-                                            break
-                                        }
-                                    }
-                                }
-                                else if(relativePath.startsWith("primary:")) {
-                                    val rootRelativePath = relativePath.substring("primary:".length)
-
-                                    val baseDirectories = listOf(
-                                        storageHelper.storage.context.filesDir,
-                                        storageHelper.storage.context.getExternalFilesDir(null),
-                                        Environment.getExternalStorageDirectory()
-                                    )
-
-                                    for (baseDir in baseDirectories) {
-                                        val potentialFile = File(baseDir, rootRelativePath)
-                                        if (potentialFile.exists()) {
-                                            filePath = potentialFile.absolutePath
-                                            break
-                                        }
-                                    }
-                                }
-                            }
-
-                            path = filePath ?: uri.toString()
-                            if (path.isNotEmpty()) {
-                                val isDuplicate = currentPaths.contains(path) || data?.paths?.contains(path) == true
-
-                                if (!isDuplicate) {
-                                    currentPaths.add(path)
-                                }
+            storageHelper.onFileSelected = originalCallback
+            
+            if (requestCode == UpdateRequestCode) {
+                files.firstOrNull()?.let { file ->
+                    if (file.extension == "nsp" || file.extension == "xci") {
+                        // 获取URI字符串表示
+                        val uriString = file.uri.toString()
+                        
+                        // 检查是否已存在
+                        val isDuplicate = currentPaths.any { path ->
+                            path.equals(uriString, ignoreCase = true)
+                        }
+                        
+                        if (!isDuplicate) {
+                            // 获取持久化读取权限
+                            try {
+                                storageHelper.storage.context.contentResolver.takePersistableUriPermission(
+                                    file.uri,
+                                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                )
+                                
+                                currentPaths.add(uriString)
+                                refreshPaths()
+                                saveChanges()
+                            } catch (e: SecurityException) {
+                                // 处理权限获取失败
+                                e.printStackTrace()
                             }
                         }
                     }
-
-                    refreshPaths()
-                    saveChanges()
                 }
             }
         }
+        
         storageHelper.openFilePicker(UpdateRequestCode)
     }
 
     private fun refreshPaths() {
-        data?.apply {
-            val existingPaths = mutableListOf<String>()
-            currentPaths.forEach {
-                existingPaths.add(it)
+        data?.let { metadata ->
+            // 过滤掉不存在的文件
+            val validPaths = currentPaths.filter { path ->
+                try {
+                    val uri = path.toUri()
+                    val documentFile = DocumentFile.fromSingleUri(storageHelper.storage.context, uri)
+                    documentFile?.exists() == true
+                } catch (e: Exception) {
+                    false
+                }
             }
-
-            if (!existingPaths.contains(selected)) {
-                selected = ""
+            
+            // 更新当前路径列表
+            currentPaths.clear()
+            currentPaths.addAll(validPaths)
+            
+            // 更新metadata
+            metadata.paths.clear()
+            metadata.paths.addAll(validPaths)
+            
+            // 如果选中的路径不存在，清空选中状态
+            if (metadata.selected.isNotEmpty() && !validPaths.contains(metadata.selected)) {
+                metadata.selected = ""
             }
+            
+            // 更新UI状态
             pathsState?.clear()
-            pathsState?.addAll(existingPaths)
-            paths = existingPaths
-            canClose?.apply {
-                value = true
-            }
+            pathsState?.addAll(validPaths)
+            
+            canClose?.value = true
         }
     }
 
@@ -163,13 +139,24 @@ class TitleUpdateViewModel(val titleId: String) {
         index: Int,
         openDialog: MutableState<Boolean>
     ) {
-        data?.apply {
-            this.selected = ""
-            if (paths.isNotEmpty() && index > 0) {
-                val ind = max(index - 1, paths.count() - 1)
-                this.selected = paths[ind]
+        data?.let { metadata ->
+            metadata.selected = ""
+            if (metadata.paths.isNotEmpty() && index > 0) {
+                val actualIndex = (index - 1).coerceAtMost(metadata.paths.size - 1)
+                val selectedPath = metadata.paths[actualIndex]
+                
+                // 验证选中的路径是否仍然有效
+                try {
+                    val uri = selectedPath.toUri()
+                    val documentFile = DocumentFile.fromSingleUri(storageHelper.storage.context, uri)
+                    if (documentFile?.exists() == true) {
+                        metadata.selected = selectedPath
+                    }
+                } catch (e: Exception) {
+                    // 路径无效，保持为空
+                }
             }
-
+            
             saveChanges()
             openDialog.value = false
         }
@@ -182,33 +169,46 @@ class TitleUpdateViewModel(val titleId: String) {
     }
 
     fun saveChanges() {
-        val metadata = data ?: TitleUpdateMetadata()
-        val gson = Gson()
-
-        File(basePath).mkdirs()
-
-        val json = gson.toJson(metadata)
-        File("$basePath/$updateJsonName").writeText(json)
+        data?.let { metadata ->
+            val gson = Gson()
+            File(basePath).mkdirs()
+            
+            val json = gson.toJson(metadata)
+            File("$basePath/$updateJsonName").writeText(json)
+        }
     }
 
     var data: TitleUpdateMetadata? = null
     private var jsonPath: String
 
     init {
-        basePath = MainActivity.AppPath + "/games/" + titleId.toLowerCase(Locale.current)
-        jsonPath = "${basePath}/${updateJsonName}"
+        basePath = "${MainActivity.AppPath}/games/${titleId.toLowerCase(Locale.current)}"
+        jsonPath = "$basePath/$updateJsonName"
 
-        data = TitleUpdateMetadata()
-        if (File(jsonPath).exists()) {
-            val gson = Gson()
-            data = gson.fromJson(File(jsonPath).readText(), TitleUpdateMetadata::class.java)
-
+        // 加载现有数据
+        data = if (File(jsonPath).exists()) {
+            try {
+                val gson = Gson()
+                gson.fromJson(File(jsonPath).readText(), TitleUpdateMetadata::class.java)
+            } catch (e: Exception) {
+                TitleUpdateMetadata()
+            }
+        } else {
+            TitleUpdateMetadata()
         }
-        currentPaths = data?.paths ?: mutableListOf()
+        
+        currentPaths = data?.paths?.toMutableList() ?: mutableListOf()
         storageHelper = MainActivity.StorageHelper!!
+        
+        // 初始刷新和验证
         refreshPaths()
-
-        File("$basePath/update").deleteRecursively()
+        
+        // 清理旧的更新目录
+        try {
+            File("$basePath/update").deleteRecursively()
+        } catch (e: Exception) {
+            // 忽略删除失败
+        }
     }
 }
 
