@@ -96,7 +96,9 @@ class HomeViewModel(
                 // Auto-load DLCs and Title Updates from configured directories (if any)
                 try {
                     autoloadContent()
-                } catch (_: Throwable) { }
+                } catch (e: Throwable) {
+                    e.printStackTrace()
+                }
             } finally {
                 isLoading.value = false
                 GlobalScope.launch(Dispatchers.Main){
@@ -178,7 +180,9 @@ class HomeViewModel(
                         break
                     }
                 }
-            } catch (_: Throwable) { }
+            } catch (e: Throwable) {
+                e.printStackTrace()
+            }
 
             if (isDlc) return@fileLoop
 
@@ -192,28 +196,51 @@ class HomeViewModel(
 
             val originalTid = gamesByTitle[baseTid]
             if (originalTid != null) {
-                val vm = TitleUpdateViewModel(originalTid)
-                val path = f.absolutePath
-                val exists = (vm.data?.paths?.contains(path) == true)
+                try {
+                    val vm = TitleUpdateViewModel(originalTid)
+                    val path = f.absolutePath
+                    
+                    // 使用新的方法添加路径，确保路径格式正确
+                    val added = addAutoUpdatePathToViewModel(vm, path)
+                    
+                    if (added) {
+                        // Auto-select this update if it's newer than the currently selected one
+                        // or if no update is currently selected
+                        val currentSelected = vm.data?.selected ?: ""
+                        val shouldSelect = currentSelected.isEmpty() ||
+                            shouldSelectNewerUpdate(currentSelected, path)
 
-                if (!exists) {
-                    // Add the new update path
-                    vm.data?.paths?.add(path)
-
-                    // Auto-select this update if it's newer than the currently selected one
-                    // or if no update is currently selected
-                    val currentSelected = vm.data?.selected ?: ""
-                    val shouldSelect = currentSelected.isEmpty() ||
-                        shouldSelectNewerUpdate(currentSelected, path)
-
-                    if (shouldSelect) {
-                        vm.data?.selected = path
+                        if (shouldSelect) {
+                            vm.data?.selected = path
+                            vm.saveChanges()
+                        }
+                        updatesAdded++
                     }
-
-                    vm.saveChanges()
-                    updatesAdded++
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
             }
+        }
+    }
+    
+    // 新增：专门处理自动加载更新路径的方法
+    private fun addAutoUpdatePathToViewModel(vm: TitleUpdateViewModel, path: String): Boolean {
+        return try {
+            // 确保路径存在
+            val file = File(path)
+            if (!file.exists()) return false
+            
+            // 检查是否已存在
+            val exists = vm.data?.paths?.contains(path) == true
+            if (exists) return false
+            
+            // 添加路径
+            vm.data?.paths?.add(path)
+            vm.saveChanges()
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
         }
     }
 }
