@@ -12,13 +12,14 @@ import com.anggrayudi.storage.file.extension
 import com.google.gson.Gson
 import org.ryujinx.android.MainActivity
 import java.io.File
+import kotlin.math.max
 
 class TitleUpdateViewModel(val titleId: String) {
     private var canClose: MutableState<Boolean>? = null
     private var basePath: String
     private var updateJsonName = "updates.json"
     private var storageHelper: SimpleStorageHelper
-    private var currentPaths: MutableList<String> = mutableListOf()
+    var currentPaths: MutableList<String> = mutableListOf() // 改为public
     private var pathsState: SnapshotStateList<String>? = null
 
     companion object {
@@ -69,7 +70,7 @@ class TitleUpdateViewModel(val titleId: String) {
         storageHelper.openFilePicker(UpdateRequestCode)
     }
 
-    private fun refreshPaths() {
+    fun refreshPaths() { // 改为public
         data?.apply {
             val existingPaths = mutableListOf<String>()
             currentPaths.forEach {
@@ -99,7 +100,7 @@ class TitleUpdateViewModel(val titleId: String) {
         data?.apply {
             this.selected = ""
             if (paths.isNotEmpty() && index > 0) {
-                val ind = kotlin.math.max(index - 1, paths.count() - 1)
+                val ind = max(index - 1, paths.count() - 1)
                 this.selected = paths[ind]
             }
             saveChanges()
