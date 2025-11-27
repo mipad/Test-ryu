@@ -26,6 +26,23 @@ class TitleUpdateViewModel(val titleId: String) {
         const val UpdateRequestCode = 1002
     }
 
+    /**
+     * 确保路径格式统一为 URI 格式
+     */
+    private fun ensureUriPath(path: String): String {
+        return if (path.startsWith("content://") || path.startsWith("file://")) {
+            path // 已经是 URI 路径
+        } else {
+            // 文件路径转换为 URI 路径
+            val file = File(path)
+            if (file.exists()) {
+                Uri.fromFile(file).toString()
+            } else {
+                path // 回退到原始路径
+            }
+        }
+    }
+
     fun remove(index: Int) {
         if (index <= 0) {
             return
@@ -103,12 +120,12 @@ class TitleUpdateViewModel(val titleId: String) {
 
     private fun refreshPaths() {
         data?.let { metadata ->
-            // 过滤掉不存在的文件
-            val validPaths = currentPaths.filter { path ->
+            // 过滤掉不存在的文件并统一路径格式
+            val validPaths = currentPaths.map { ensureUriPath(it) }.filter { path ->
                 try {
                     val uri = path.toUri()
                     val documentFile = DocumentFile.fromSingleUri(storageHelper.storage.context, uri)
-                    documentFile?.exists() == true
+                    documentFile?.exists() == true || File(uri.path ?: "").exists()
                 } catch (e: Exception) {
                     false
                 }
@@ -149,7 +166,7 @@ class TitleUpdateViewModel(val titleId: String) {
                 try {
                     val uri = selectedPath.toUri()
                     val documentFile = DocumentFile.fromSingleUri(storageHelper.storage.context, uri)
-                    if (documentFile?.exists() == true) {
+                    if (documentFile?.exists() == true || File(uri.path ?: "").exists()) {
                         metadata.selected = selectedPath
                     }
                 } catch (e: Exception) {
@@ -175,43 +192,6 @@ class TitleUpdateViewModel(val titleId: String) {
             
             val json = gson.toJson(metadata)
             File("$basePath/$updateJsonName").writeText(json)
-            
-            // 确保更新目录存在（修复自动更新消失的问题）
-            ensureUpdateDirectory()
-        }
-    }
-
-    /**
-     * 确保更新目录存在，用于自动更新功能
-     */
-    private fun ensureUpdateDirectory() {
-        try {
-            val updateDir = File("$basePath/update")
-            if (!updateDir.exists()) {
-                updateDir.mkdirs()
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    /**
-     * 清理临时文件但不删除更新目录
-     */
-    private fun cleanupTempFiles() {
-        try {
-            // 只清理临时文件，不删除整个更新目录
-            val updateDir = File("$basePath/update")
-            if (updateDir.exists()) {
-                // 只删除临时文件，保留目录结构
-                updateDir.listFiles()?.forEach { file ->
-                    if (file.name.startsWith("temp_") || file.name.endsWith(".tmp")) {
-                        file.delete()
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            // 忽略清理失败
         }
     }
 
@@ -239,12 +219,6 @@ class TitleUpdateViewModel(val titleId: String) {
         
         // 初始刷新和验证
         refreshPaths()
-        
-        // 确保更新目录存在（修复自动更新消失的关键）
-        ensureUpdateDirectory()
-        
-        // 只清理临时文件，不删除整个更新目录
-        cleanupTempFiles()
     }
 }
 
