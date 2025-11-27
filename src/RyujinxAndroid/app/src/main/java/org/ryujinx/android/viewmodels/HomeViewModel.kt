@@ -19,6 +19,7 @@ import org.ryujinx.android.RyujinxNative
 import java.io.File
 import java.util.Locale
 import kotlin.concurrent.thread
+import android.net.Uri
 
 class HomeViewModel(
     val activity: MainActivity? = null,
@@ -193,21 +194,23 @@ class HomeViewModel(
             val originalTid = gamesByTitle[baseTid]
             if (originalTid != null) {
                 val vm = TitleUpdateViewModel(originalTid)
-                val path = f.absolutePath
-                val exists = (vm.data?.paths?.contains(path) == true)
+                
+                // 修复：将文件路径转换为 URI 路径，与手动安装保持一致
+                val fileUri = Uri.fromFile(f).toString()
+                val exists = (vm.data?.paths?.contains(fileUri) == true)
 
                 if (!exists) {
                     // Add the new update path
-                    vm.data?.paths?.add(path)
+                    vm.data?.paths?.add(fileUri)
 
                     // Auto-select this update if it's newer than the currently selected one
                     // or if no update is currently selected
                     val currentSelected = vm.data?.selected ?: ""
                     val shouldSelect = currentSelected.isEmpty() ||
-                        shouldSelectNewerUpdate(currentSelected, path)
+                        shouldSelectNewerUpdate(currentSelected, f.absolutePath)
 
                     if (shouldSelect) {
-                        vm.data?.selected = path
+                        vm.data?.selected = fileUri
                     }
 
                     vm.saveChanges()
