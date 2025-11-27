@@ -197,26 +197,43 @@ class HomeViewModel(
                 
                 // 修复：将文件路径转换为 URI 路径，与手动安装保持一致
                 val fileUri = Uri.fromFile(f).toString()
-                val exists = (vm.data?.paths?.contains(fileUri) == true)
+                
+                // 修复：检查路径是否存在时使用统一格式
+                val exists = vm.data?.paths?.any { path ->
+                    val normalizedPath = if (path.startsWith("content://")) {
+                        path
+                    } else if (path.startsWith("file://")) {
+                        path
+                    } else {
+                        Uri.fromFile(File(path)).toString()
+                    }
+                    normalizedPath == fileUri
+                } == true
 
                 if (!exists) {
                     // Add the new update path
                     vm.data?.paths?.add(fileUri)
 
-                    // Auto-select this update if it's newer than the currently selected one
-                    // or if no update is currently selected
-                    val currentSelected = vm.data?.selected ?: ""
-                    val shouldSelect = currentSelected.isEmpty() ||
-                        shouldSelectNewerUpdate(currentSelected, f.absolutePath)
+                    // 修复：强制选择新添加的更新文件
+                    val shouldSelect = true // 总是选择新发现的更新文件
 
                     if (shouldSelect) {
                         vm.data?.selected = fileUri
+                        android.util.Log.d("Ryujinx", "Auto-selected update: ${f.name} for title $originalTid")
                     }
 
                     vm.saveChanges()
                     updatesAdded++
+                    android.util.Log.d("Ryujinx", "Auto-added update: ${f.name} for title $originalTid")
+                } else {
+                    android.util.Log.d("Ryujinx", "Update already exists: ${f.name} for title $originalTid")
                 }
+            } else {
+                android.util.Log.d("Ryujinx", "No matching game found for update: ${f.name} with base TID: $baseTid")
             }
         }
+        
+        // 记录自动更新结果
+        android.util.Log.d("Ryujinx", "Auto-load completed: $updatesAdded updates added, $dlcAdded DLCs added")
     }
 }

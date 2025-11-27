@@ -34,12 +34,24 @@ class TitleUpdateViewModel(val titleId: String) {
             path // 已经是 URI 路径
         } else {
             // 文件路径转换为 URI 路径
-            val file = File(path)
-            if (file.exists()) {
-                Uri.fromFile(file).toString()
+            Uri.fromFile(File(path)).toString()
+        }
+    }
+
+    /**
+     * 获取文件的显示名称
+     */
+    private fun getDisplayName(path: String): String {
+        return try {
+            if (path.startsWith("content://")) {
+                val documentFile = DocumentFile.fromSingleUri(storageHelper.storage.context, path.toUri())
+                documentFile?.name ?: File(path.toUri().path ?: "").name ?: "Unknown"
             } else {
-                path // 回退到原始路径
+                val file = File(path.toUri().path ?: path)
+                file.name
             }
+        } catch (e: Exception) {
+            "Unknown"
         }
     }
 
@@ -105,9 +117,10 @@ class TitleUpdateViewModel(val titleId: String) {
                                 currentPaths.add(uriString)
                                 refreshPaths()
                                 saveChanges()
+                                android.util.Log.d("Ryujinx", "Manually added update: ${file.name}")
                             } catch (e: SecurityException) {
                                 // 处理权限获取失败
-                                e.printStackTrace()
+                                android.util.Log.e("Ryujinx", "Failed to get permission for update: ${file.name}", e)
                             }
                         }
                     }
@@ -123,9 +136,13 @@ class TitleUpdateViewModel(val titleId: String) {
             // 过滤掉不存在的文件并统一路径格式
             val validPaths = currentPaths.map { ensureUriPath(it) }.filter { path ->
                 try {
-                    val uri = path.toUri()
-                    val documentFile = DocumentFile.fromSingleUri(storageHelper.storage.context, uri)
-                    documentFile?.exists() == true || File(uri.path ?: "").exists()
+                    if (path.startsWith("content://")) {
+                        val documentFile = DocumentFile.fromSingleUri(storageHelper.storage.context, path.toUri())
+                        documentFile?.exists() == true
+                    } else {
+                        val file = File(path.toUri().path ?: path)
+                        file.exists()
+                    }
                 } catch (e: Exception) {
                     false
                 }
@@ -142,11 +159,21 @@ class TitleUpdateViewModel(val titleId: String) {
             // 如果选中的路径不存在，清空选中状态
             if (metadata.selected.isNotEmpty() && !validPaths.contains(metadata.selected)) {
                 metadata.selected = ""
+                android.util.Log.d("Ryujinx", "Cleared invalid selected update")
+            }
+            
+            // 如果没有选中项但有可用路径，自动选择第一个
+            if (metadata.selected.isEmpty() && validPaths.isNotEmpty()) {
+                metadata.selected = validPaths.first()
+                android.util.Log.d("Ryujinx", "Auto-selected first update: ${getDisplayName(metadata.selected)}")
             }
             
             // 更新UI状态
             pathsState?.clear()
             pathsState?.addAll(validPaths)
+            
+            // 记录当前状态
+            android.util.Log.d("Ryujinx", "Refresh paths: ${validPaths.size} valid paths, selected: ${getDisplayName(metadata.selected)}")
             
             canClose?.value = true
         }
@@ -165,12 +192,19 @@ class TitleUpdateViewModel(val titleId: String) {
                 // 验证选中的路径是否仍然有效
                 try {
                     val uri = selectedPath.toUri()
-                    val documentFile = DocumentFile.fromSingleUri(storageHelper.storage.context, uri)
-                    if (documentFile?.exists() == true || File(uri.path ?: "").exists()) {
+                    val isValid = if (selectedPath.startsWith("content://")) {
+                        val documentFile = DocumentFile.fromSingleUri(storageHelper.storage.context, uri)
+                        documentFile?.exists() == true
+                    } else {
+                        File(uri.path ?: selectedPath).exists()
+                    }
+                    
+                    if (isValid) {
                         metadata.selected = selectedPath
+                        android.util.Log.d("Ryujinx", "Saved selected update: ${getDisplayName(selectedPath)}")
                     }
                 } catch (e: Exception) {
-                    // 路径无效，保持为空
+                    android.util.Log.e("Ryujinx", "Error validating selected path", e)
                 }
             }
             
@@ -192,6 +226,8 @@ class TitleUpdateViewModel(val titleId: String) {
             
             val json = gson.toJson(metadata)
             File("$basePath/$updateJsonName").writeText(json)
+            
+            android.util.Log.d("Ryujinx", "Saved updates for $titleId: ${metadata.paths.size} paths, selected: ${getDisplayName(metadata.selected)}")
         }
     }
 
@@ -200,14 +236,17 @@ class TitleUpdateViewModel(val titleId: String) {
 
     init {
         basePath = "${MainActivity.AppPath}/games/${titleId.toLowerCase(Locale.current)}"
-        jsonPath = "$basePath/$updateJsonName"
+        jsonPath = "${basePath}/${updateJsonName}"
 
         // 加载现有数据
         data = if (File(jsonPath).exists()) {
             try {
                 val gson = Gson()
-                gson.fromJson(File(jsonPath).readText(), TitleUpdateMetadata::class.java)
+                val loadedData = gson.fromJson(File(jsonPath).readText(), TitleUpdateMetadata::class.java)
+                android.util.Log.d("Ryujinx", "Loaded updates for $titleId: ${loadedData.paths.size} paths")
+                loadedData
             } catch (e: Exception) {
+                android.util.Log.e("Ryujinx", "Error loading updates for $titleId", e)
                 TitleUpdateMetadata()
             }
         } else {
@@ -219,6 +258,8 @@ class TitleUpdateViewModel(val titleId: String) {
         
         // 初始刷新和验证
         refreshPaths()
+        
+        android.util.Log.d("Ryujinx", "Initialized TitleUpdateViewModel for $titleId with ${currentPaths.size} paths")
     }
 }
 
