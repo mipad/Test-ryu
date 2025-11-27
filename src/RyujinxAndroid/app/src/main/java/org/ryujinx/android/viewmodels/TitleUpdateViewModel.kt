@@ -175,6 +175,43 @@ class TitleUpdateViewModel(val titleId: String) {
             
             val json = gson.toJson(metadata)
             File("$basePath/$updateJsonName").writeText(json)
+            
+            // 确保更新目录存在（修复自动更新消失的问题）
+            ensureUpdateDirectory()
+        }
+    }
+
+    /**
+     * 确保更新目录存在，用于自动更新功能
+     */
+    private fun ensureUpdateDirectory() {
+        try {
+            val updateDir = File("$basePath/update")
+            if (!updateDir.exists()) {
+                updateDir.mkdirs()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /**
+     * 清理临时文件但不删除更新目录
+     */
+    private fun cleanupTempFiles() {
+        try {
+            // 只清理临时文件，不删除整个更新目录
+            val updateDir = File("$basePath/update")
+            if (updateDir.exists()) {
+                // 只删除临时文件，保留目录结构
+                updateDir.listFiles()?.forEach { file ->
+                    if (file.name.startsWith("temp_") || file.name.endsWith(".tmp")) {
+                        file.delete()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // 忽略清理失败
         }
     }
 
@@ -203,12 +240,11 @@ class TitleUpdateViewModel(val titleId: String) {
         // 初始刷新和验证
         refreshPaths()
         
-        // 清理旧的更新目录
-        try {
-            File("$basePath/update").deleteRecursively()
-        } catch (e: Exception) {
-            // 忽略删除失败
-        }
+        // 确保更新目录存在（修复自动更新消失的关键）
+        ensureUpdateDirectory()
+        
+        // 只清理临时文件，不删除整个更新目录
+        cleanupTempFiles()
     }
 }
 
