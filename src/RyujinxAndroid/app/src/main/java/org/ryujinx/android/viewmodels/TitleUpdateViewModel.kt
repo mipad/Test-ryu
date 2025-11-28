@@ -96,6 +96,42 @@ class TitleUpdateViewModel(val titleId: String) {
         }
     }
 
+    // 新增：处理URI列表的方法（用于自动加载转换后的URI）
+    fun addSelectedFiles(uris: List<Uri>) {
+        if (uris.isNotEmpty()) {
+            var addedCount = 0
+            for (uri in uris) {
+                try {
+                    val file = DocumentFile.fromSingleUri(storageHelper.storage.context, uri)
+                    file?.apply {
+                        if (isUpdateFile(this)) {
+                            // 获取持久化权限
+                            storageHelper.storage.context.contentResolver.takePersistableUriPermission(
+                                uri,
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION
+                            )
+                            
+                            val uriString = uri.toString()
+                            val isDuplicate = currentPaths.any { it == uriString }
+
+                            if (!isDuplicate) {
+                                currentPaths.add(uriString)
+                                addedCount++
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+            
+            if (addedCount > 0) {
+                refreshPaths()
+                saveChanges()
+            }
+        }
+    }
+
     // 检查是否为更新文件（支持File对象）
     private fun isUpdateFile(file: File): Boolean {
         val extension = file.extension?.lowercase(Locale.getDefault()) ?: ""
