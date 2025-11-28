@@ -126,7 +126,7 @@ class HomeViewModel(
         if (updatesFolderPath.isEmpty()) return
 
         try {
-            // 使用 DocumentFile 方式打开文件夹，而不是 File 方式
+            // 使用 DocumentFile 方式打开文件夹
             val updatesFolder = DocumentFileCompat.fromFullPath(
                 activity!!,
                 updatesFolderPath,
@@ -144,9 +144,6 @@ class HomeViewModel(
                 if (!tid.isNullOrBlank()) tid.lowercase(Locale.getDefault()) to tid else null
             }.toMap()
 
-            var updatesAdded = 0
-            var dlcAdded = 0
-
             // 使用 DocumentFile 的搜索功能扫描文件
             scanDocumentFolderForContent(updatesFolder, gamesByTitle)
 
@@ -155,7 +152,7 @@ class HomeViewModel(
         }
     }
 
-    // 新增：使用 DocumentFile 递归扫描文件夹
+    // 使用 DocumentFile 递归扫描文件夹
     private fun scanDocumentFolderForContent(folder: DocumentFile, gamesByTitle: Map<String, String>) {
         try {
             val files = folder.listFiles()
@@ -173,7 +170,7 @@ class HomeViewModel(
         }
     }
 
-    // 新增：处理单个内容文件（DLC 或更新）
+    // 处理单个内容文件（DLC 或更新）
     private fun processContentFile(file: DocumentFile, gamesByTitle: Map<String, String>) {
         try {
             val name = file.name?.lowercase(Locale.getDefault()) ?: return
@@ -183,8 +180,8 @@ class HomeViewModel(
             val tidMatch = tidPattern.find(name) ?: return
             val fileTid = tidMatch.groupValues[1].lowercase(Locale.getDefault())
 
-            // 获取文件的实际路径（用于 Native 调用）
-            val filePath = file.getAbsolutePath(activity!!)
+            // 使用 getAbsolutePath 方法获取文件路径
+            val filePath = com.anggrayudi.storage.file.getAbsolutePath(activity!!, file.uri)
             if (filePath.isEmpty()) return
 
             // Try to find DLC content for all games
