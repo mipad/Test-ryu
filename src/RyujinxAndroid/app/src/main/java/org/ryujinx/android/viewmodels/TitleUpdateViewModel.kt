@@ -41,6 +41,7 @@ class TitleUpdateViewModel(val titleId: String) {
             pathsState?.clear()
             pathsState?.addAll(this)
             currentPaths = this
+            saveChanges()
         }
     }
 
@@ -59,18 +60,25 @@ class TitleUpdateViewModel(val titleId: String) {
         storageHelper.openFilePicker(UpdateRequestCode)
     }
 
-    // 新增：多文件选择方法（与DLC保持一致）
+    // 新增：多文件选择方法（使用URI路径）
     fun addSelectedFiles(uris: List<Uri>) {
         if (uris.isNotEmpty()) {
             for (uri in uris) {
                 val file = DocumentFile.fromSingleUri(storageHelper.storage.context, uri)
                 file?.apply {
-                    if (extension == "nsp") {
+                    if (extension == "nsp" || extension == "xci") {
                         storageHelper.storage.context.contentResolver.takePersistableUriPermission(
                             uri,
                             Intent.FLAG_GRANT_READ_URI_PERMISSION
                         )
-                        currentPaths.add(uri.toString())
+                        
+                        // 使用URI字符串而不是文件路径
+                        val uriString = uri.toString()
+                        val isDuplicate = currentPaths.any { it == uriString }
+
+                        if (!isDuplicate) {
+                            currentPaths.add(uriString)
+                        }
                     }
                 }
             }
@@ -98,7 +106,7 @@ class TitleUpdateViewModel(val titleId: String) {
     private fun processFolder(folder: DocumentFile) {
         try {
             // 递归扫描文件夹中的所有文件
-            scanFolderForNspFiles(folder)
+            scanFolderForUpdateFiles(folder)
             refreshPaths()
             saveChanges()
         } catch (e: Exception) {
@@ -106,8 +114,8 @@ class TitleUpdateViewModel(val titleId: String) {
         }
     }
 
-    // 新增：递归扫描NSP文件
-    private fun scanFolderForNspFiles(folder: DocumentFile) {
+    // 新增：递归扫描更新文件
+    private fun scanFolderForUpdateFiles(folder: DocumentFile) {
         if (!folder.exists() || !folder.isDirectory) {
             return
         }
@@ -117,19 +125,20 @@ class TitleUpdateViewModel(val titleId: String) {
         for (file in files) {
             if (file.isDirectory) {
                 // 递归扫描子文件夹
-                scanFolderForNspFiles(file)
-            } else if (file.isFile && file.extension == "nsp") {
-                // 处理NSP文件
+                scanFolderForUpdateFiles(file)
+            } else if (file.isFile && (file.extension == "nsp" || file.extension == "xci")) {
+                // 处理更新文件
                 val uri = file.uri
                 storageHelper.storage.context.contentResolver.takePersistableUriPermission(
                     uri,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
                 
-                // 检查是否已存在相同的文件
-                val isDuplicate = currentPaths.any { it == uri.toString() }
+                // 使用URI字符串
+                val uriString = uri.toString()
+                val isDuplicate = currentPaths.any { it == uriString }
                 if (!isDuplicate) {
-                    currentPaths.add(uri.toString())
+                    currentPaths.add(uriString)
                 }
             }
         }
@@ -158,8 +167,8 @@ class TitleUpdateViewModel(val titleId: String) {
         }
     }
 
-    // 新增：保存更改的方法
-     fun saveChanges() {
+    // 保存更改的方法
+    fun saveChanges() {
         data?.apply {
             val gson = Gson()
             File(basePath).mkdirs()
@@ -218,8 +227,7 @@ class TitleUpdateViewModel(val titleId: String) {
     private var jsonPath: String
 
     init {
-        // 修复：使用 java.util.Locale 而不是 androidx.compose.ui.text.intl.Locale
-        // 修复：使用 lowercase() 而不是 toLowerCase()
+        // 修复：使用正确的Locale和lowercase方法
         basePath = MainActivity.AppPath + "/games/" + titleId.lowercase(Locale.getDefault())
         jsonPath = "${basePath}/${updateJsonName}"
 
