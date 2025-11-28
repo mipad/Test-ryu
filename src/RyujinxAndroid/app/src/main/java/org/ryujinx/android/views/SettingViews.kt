@@ -1003,7 +1003,7 @@ class SettingViews {
 AnimatedVisibility(visible = showResScaleOptions.value) {
     Column(modifier = Modifier.fillMaxWidth()) {
         // 预设按钮组
-        val resolutionPresets = listOf(0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.85f, 0.9f, 0.95f, 1f, 1.25f, 1.5f, 1.75f, 2f, 3f, 4f)
+        val resolutionPresets = listOf(0.35f, 0.45f, 0.55f, 0.65f, 0.75f, 0.8f, 0.85f, 0.9f, 0.95f, 1f, 1.25f, 1.5f, 1.75f, 2f, 3f, 4f)
         
         Row(
             modifier = Modifier
@@ -1171,7 +1171,7 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                             // 各向异性过滤选项
                             AnimatedVisibility(visible = showAnisotropyOptions.value) {
                                 Column(modifier = Modifier.fillMaxWidth()) {
-                                    val anisotropyOptions = listOf(0f, 2f, 4f, 8f, 16f)
+                                    val anisotropyOptions = listOf(-1f, 0f, 2f, 4f, 8f, 16f, 32f)
                                     
                                     Row(
                                         modifier = Modifier
@@ -3132,3 +3132,4 @@ if (showBackendThreadingDialog.value) {
         }
     }
 }
+
