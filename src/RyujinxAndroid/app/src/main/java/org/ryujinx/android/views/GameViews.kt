@@ -100,6 +100,9 @@ class GameViews {
             // 暂停状态
             val isPaused = remember { mutableStateOf(false) }
 
+            // 获取当前游戏标题
+            val gameTitle = mainViewModel.gameModel?.getDisplayName() ?: "Unknown Game"
+
             Box(modifier = Modifier.fillMaxSize()) {
                 if (showStats.value) {
                     GameStats(
@@ -202,8 +205,35 @@ class GameViews {
                 if (!showLoading.value) {
                     GameController.Compose(mainViewModel)
 
-                    // 只在需要时渲染侧边菜单
+                    // 只在需要时渲染侧边菜单和顶部标题
                     if (showSideMenu.value) {
+                        // 顶部中央游戏标题
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .wrapContentHeight()
+                                .align(Alignment.TopCenter)
+                                .padding(top = 16.dp)
+                        ) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
+                                shape = MaterialTheme.shapes.medium,
+                                modifier = Modifier
+                                    .wrapContentWidth()
+                                    .wrapContentHeight()
+                            ) {
+                                Text(
+                                    text = gameTitle,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier
+                                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                                )
+                            }
+                        }
+
+                        // 侧边菜单
                         SideMenu(
                             mainViewModel = mainViewModel,
                             showController = showController,
@@ -314,9 +344,6 @@ class GameViews {
             showExitConfirmDialog: androidx.compose.runtime.MutableState<Boolean>,
             onDismiss: () -> Unit
         ) {
-            // 获取当前游戏标题
-            val gameTitle = mainViewModel.gameModel?.getDisplayName() ?: "Unknown Game"
-
             // 使用 Surface 进行独立渲染，解决滚动卡顿问题
             Surface(
                 modifier = Modifier
@@ -343,22 +370,6 @@ class GameViews {
                             .fillMaxSize()
                             .padding(vertical = 0.dp)
                     ) {
-                        // 游戏标题 - 更小的字体和边距
-                        Text(
-                            text = gameTitle,
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 8.dp)
-                        )
-
-                        HorizontalDivider(
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
-                            thickness = 1.dp
-                        )
-
                         // 菜单项 - 紧凑布局
                         Column(
                             modifier = Modifier
