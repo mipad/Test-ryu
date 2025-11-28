@@ -177,9 +177,7 @@ class HomeViews {
                                     selected = null
                                 }
                                 selectedModel.value = null
-                            } else if (gameModel.titleId.isNullOrEmpty() || 
-                                      gameModel.titleId != "0000000000000000" || 
-                                      gameModel.type == FileType.Nro) {
+                            } else if (gameModel.titleId.isNullOrEmpty() || gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro) {
                                 thread {
                                     showLoading.value = true
                                     val success =
@@ -283,9 +281,7 @@ class HomeViews {
                                     selected = null
                                 }
                                 selectedModel.value = null
-                            } else if (gameModel.titleId.isNullOrEmpty() || 
-                                      gameModel.titleId != "0000000000000000" || 
-                                      gameModel.type == FileType.Nro) {
+                            } else if (gameModel.titleId.isNullOrEmpty() || gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro) {
                                 thread {
                                     showLoading.value = true
                                     val success =
@@ -454,9 +450,7 @@ class HomeViews {
                                         selected = null
                                     }
                                     selectedModel.value = null
-                                } else if (gameModel.titleId.isNullOrEmpty() || 
-                                          gameModel.titleId != "0000000000000000" || 
-                                          gameModel.type == FileType.Nro) {
+                                } else if (gameModel.titleId.isNullOrEmpty() || gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro) {
                                     thread {
                                         showLoading.value = true
                                         val success =
