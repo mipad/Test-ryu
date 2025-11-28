@@ -122,41 +122,80 @@ class HomeViewModel(
     private fun autoloadContent() {
         val prefs = sharedPref ?: return
 
-        val updatesFolder = prefs.getString("updatesFolder", "") ?: ""
+        val updatesFolderPath = prefs.getString("updatesFolder", "") ?: ""
+        if (updatesFolderPath.isEmpty()) return
 
-        if (updatesFolder.isEmpty()) return
+        try {
+            // 使用 DocumentFile 方式打开文件夹，而不是 File 方式
+            val updatesFolder = DocumentFileCompat.fromFullPath(
+                activity!!,
+                updatesFolderPath,
+                documentType = DocumentFileType.FOLDER,
+                requiresWriteAccess = false
+            )
 
-        // Build a map of titleId -> helpers
-        val gamesByTitle = loadedCache.mapNotNull { g ->
-            val tid = g.titleId
-            if (!tid.isNullOrBlank()) tid.lowercase(Locale.getDefault()) to tid else null
-        }.toMap()
+            if (updatesFolder == null || !updatesFolder.exists() || !updatesFolder.isDirectory) {
+                return
+            }
 
-        var updatesAdded = 0
-        var dlcAdded = 0
+            // Build a map of titleId -> helpers
+            val gamesByTitle = loadedCache.mapNotNull { g ->
+                val tid = g.titleId
+                if (!tid.isNullOrBlank()) tid.lowercase(Locale.getDefault()) to tid else null
+            }.toMap()
 
-        val base = File(updatesFolder)
-        if (!base.exists() || !base.isDirectory) return
+            var updatesAdded = 0
+            var dlcAdded = 0
 
-        base.walkTopDown().forEach fileLoop@{ f ->
-            if (!f.isFile) return@fileLoop
-            val name = f.name.lowercase(Locale.getDefault())
-            if (!name.endsWith(".nsp")) return@fileLoop
+            // 使用 DocumentFile 的搜索功能扫描文件
+            scanDocumentFolderForContent(updatesFolder, gamesByTitle)
 
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    // 新增：使用 DocumentFile 递归扫描文件夹
+    private fun scanDocumentFolderForContent(folder: DocumentFile, gamesByTitle: Map<String, String>) {
+        try {
+            val files = folder.listFiles()
+            for (file in files) {
+                if (file.isDirectory) {
+                    // 递归扫描子文件夹
+                    scanDocumentFolderForContent(file, gamesByTitle)
+                } else if (file.isFile && file.extension == "nsp") {
+                    // 处理 NSP 文件
+                    processContentFile(file, gamesByTitle)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    // 新增：处理单个内容文件（DLC 或更新）
+    private fun processContentFile(file: DocumentFile, gamesByTitle: Map<String, String>) {
+        try {
+            val name = file.name?.lowercase(Locale.getDefault()) ?: return
+            
             // Extract title ID from filename
             val tidPattern = Regex("\\[([0-9a-fA-F]{16})]")
-            val tidMatch = tidPattern.find(name) ?: return@fileLoop
+            val tidMatch = tidPattern.find(name) ?: return
             val fileTid = tidMatch.groupValues[1].lowercase(Locale.getDefault())
+
+            // 获取文件的实际路径（用于 Native 调用）
+            val filePath = file.getAbsolutePath(activity!!)
+            if (filePath.isEmpty()) return
 
             // Try to find DLC content for all games
             var isDlc = false
             try {
                 for ((_, tidOrig) in gamesByTitle) {
-                    val contents = RyujinxNative.jnaInstance.deviceGetDlcContentList(f.absolutePath, tidOrig.toLong(16))
+                    val contents = RyujinxNative.jnaInstance.deviceGetDlcContentList(filePath, tidOrig.toLong(16))
 
                     if (contents.isNotEmpty()) {
                         isDlc = true
-                        val containerPath = f.absolutePath
+                        val containerPath = filePath
                         val vm = DlcViewModel(tidOrig)
                         val already = vm.data?.any { it.path == containerPath } == true
 
@@ -173,17 +212,15 @@ class HomeViewModel(
                             }
                             vm.data?.add(container)
                             vm.saveChanges()
-                            dlcAdded++
                         }
                         break
                     }
                 }
             } catch (_: Throwable) { }
 
-            if (isDlc) return@fileLoop
+            if (isDlc) return
 
             // Treat as Title Update - convert update ID to base ID
-            // Update title IDs end in 800, base game IDs end in 000
             val baseTid = if (fileTid.endsWith("800")) {
                 fileTid.substring(0, fileTid.length - 3) + "000"
             } else {
@@ -193,7 +230,7 @@ class HomeViewModel(
             val originalTid = gamesByTitle[baseTid]
             if (originalTid != null) {
                 val vm = TitleUpdateViewModel(originalTid)
-                val path = f.absolutePath
+                val path = filePath
                 val exists = (vm.data?.paths?.contains(path) == true)
 
                 if (!exists) {
@@ -201,7 +238,6 @@ class HomeViewModel(
                     vm.data?.paths?.add(path)
 
                     // Auto-select this update if it's newer than the currently selected one
-                    // or if no update is currently selected
                     val currentSelected = vm.data?.selected ?: ""
                     val shouldSelect = currentSelected.isEmpty() ||
                         shouldSelectNewerUpdate(currentSelected, path)
@@ -211,9 +247,10 @@ class HomeViewModel(
                     }
 
                     vm.saveChanges()
-                    updatesAdded++
                 }
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 }
