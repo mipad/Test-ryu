@@ -213,6 +213,9 @@ class TitleUpdateViewModel(val titleId: String) {
         
         // 更新data引用
         data = metadata
+        
+        // 添加调试日志
+        android.util.Log.d("Ryujinx", "TitleUpdateViewModel: Saved ${savedUpdates.size} updates to JSON for title $titleId")
     }
 
     fun save(

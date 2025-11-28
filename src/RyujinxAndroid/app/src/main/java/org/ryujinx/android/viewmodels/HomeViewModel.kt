@@ -195,50 +195,24 @@ class HomeViewModel(
             if (originalTid != null) {
                 val vm = TitleUpdateViewModel(originalTid)
                 
-                // 关键修复：将文件路径转换为 content URI
-                val uri = convertFilePathToContentUri(f.absolutePath)
+                // 使用文件绝对路径
+                val filePath = f.absolutePath
                 
-                if (uri != null) {
-                    // 检查是否已存在（基于 URI 字符串比较）
-                    val uriString = uri.toString()
-                    val exists = vm.data?.paths?.any { it == uriString } == true
+                // 检查是否已存在（基于文件路径比较）
+                val exists = vm.data?.paths?.any { it == filePath } == true
 
-                    if (!exists) {
-                        // 使用 URI 路径添加方法
-                        vm.addSelectedFiles(listOf(uri))
-                        updatesAdded++
-                    }
-                } else {
-                    // 如果无法转换为 content URI，回退到文件路径
-                    val filePath = f.absolutePath
-                    val exists = vm.data?.paths?.any { it == filePath } == true
+                if (!exists) {
+                    // 使用文件路径添加方法
+                    vm.addFilePaths(listOf(filePath))
+                    updatesAdded++
                     
-                    if (!exists) {
-                        vm.addFilePaths(listOf(filePath))
-                        updatesAdded++
-                    }
+                    // 添加调试日志
+                    android.util.Log.d("Ryujinx", "Auto-load: Added update file $filePath for title $originalTid")
                 }
             }
         }
         
         // 输出调试信息
         android.util.Log.d("Ryujinx", "Auto-load completed: $dlcAdded DLCs added, $updatesAdded updates added")
-    }
-
-    // 将文件路径转换为 content URI
-    private fun convertFilePathToContentUri(filePath: String): Uri? {
-        return try {
-            if (activity == null) return null
-            
-            val file = File(filePath)
-            if (!file.exists()) return null
-            
-            // 尝试通过 DocumentFile 获取 content URI
-            val documentFile = DocumentFileCompat.fromFullPath(activity, filePath, DocumentFileType.FILE)
-            documentFile?.uri
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
     }
 }
