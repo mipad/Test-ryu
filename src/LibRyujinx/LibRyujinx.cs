@@ -1491,6 +1491,8 @@ public static int GetScalingFilterLevel()
                 return false;
             }
 
+            // ==================== 修改的关键部分：支持文件URI格式 ====================
+
             (Nca? patch, Nca? control) GetGameUpdateData(VirtualFileSystem fileSystem, string? titleId, int programIndex, out string? updatePath)
             {
                 updatePath = null;
@@ -1505,15 +1507,45 @@ public static int GetScalingFilterLevel()
 
                     if (File.Exists(titleUpdateMetadataPath))
                     {
-                        updatePath = JsonHelper.DeserializeFromFile(titleUpdateMetadataPath, _titleSerializerContext.TitleUpdateMetadata).Selected;
+                        var metadata = JsonHelper.DeserializeFromFile(titleUpdateMetadataPath, _titleSerializerContext.TitleUpdateMetadata);
+                        updatePath = metadata.Selected;
 
-                        if (File.Exists(updatePath))
+                        if (!string.IsNullOrEmpty(updatePath))
                         {
-                            FileStream file = new(updatePath, FileMode.Open, FileAccess.Read);
-                            PartitionFileSystem nsp = new();
-                            nsp.Initialize(file.AsStorage()).ThrowIfFailure();
+                            // 处理文件URI格式
+                            string actualPath = updatePath;
+                            if (updatePath.StartsWith("file://"))
+                            {
+                                try
+                                {
+                                    actualPath = new Uri(updatePath).LocalPath;
+                                }
+                                catch (Exception ex)
+                                {
+                                    Logger.Error?.Print(LogClass.Application, $"Error parsing file URI {updatePath}: {ex.Message}");
+                                    return (null, null);
+                                }
+                            }
+                            
+                            if (File.Exists(actualPath))
+                            {
+                                try
+                                {
+                                    using FileStream file = new FileStream(actualPath, FileMode.Open, FileAccess.Read);
+                                    PartitionFileSystem nsp = new();
+                                    nsp.Initialize(file.AsStorage()).ThrowIfFailure();
 
-                            return GetGameUpdateDataFromPartition(fileSystem, nsp, titleIdBase.ToString("x16"), programIndex);
+                                    return GetGameUpdateDataFromPartition(fileSystem, nsp, titleIdBase.ToString("x16"), programIndex);
+                                }
+                                catch (Exception ex)
+                                {
+                                    Logger.Error?.Print(LogClass.Application, $"Error loading update from file URI {updatePath}: {ex.Message}");
+                                }
+                            }
+                            else
+                            {
+                                Logger.Warning?.Print(LogClass.Application, $"Update file does not exist: {updatePath} (resolved to: {actualPath})");
+                            }
                         }
                     }
                 }
