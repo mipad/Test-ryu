@@ -415,45 +415,6 @@ class MainViewModel(val activity: MainActivity) {
     }
 
     /**
-     * 打开路径（支持双路径）
-     */
-    private fun openPath(path: String): Int {
-        return if (isUriPath(path)) {
-            // URI 路径 - 使用现有逻辑
-            RyujinxNative.jnaInstance.deviceOpenFileDescriptor(path)
-        } else {
-            // 文件系统路径 - 转换为 file:// URI
-            val file = File(path)
-            if (file.exists()) {
-                val uri = android.net.Uri.fromFile(file)
-                RyujinxNative.jnaInstance.deviceOpenFileDescriptor(uri.toString())
-            } else {
-                android.util.Log.e("Ryujinx", "File not found: $path")
-                0
-            }
-        }
-    }
-
-    /**
-     * 检查路径是否存在（支持双路径）
-     */
-    private fun isPathExists(path: String): Boolean {
-        return if (isUriPath(path)) {
-            // URI 路径检查
-            try {
-                val uri = android.net.Uri.parse(path)
-                val documentFile = androidx.documentfile.provider.DocumentFile.fromSingleUri(activity, uri)
-                documentFile?.exists() ?: false
-            } catch (e: Exception) {
-                false
-            }
-        } else {
-            // 文件系统路径检查
-            File(path).exists()
-        }
-    }
-
-    /**
      * 从路径获取文件名（支持双路径）
      */
     private fun getFileNameFromPath(path: String): String {
@@ -546,16 +507,14 @@ class MainViewModel(val activity: MainActivity) {
     }
 
     fun loadGame(game: GameModel): Int {
-        // 使用新的双路径支持方法打开主游戏文件
-        val descriptor = openPath(game.path)
+        // 使用现有的游戏打开方法（保持原有逻辑）
+        val descriptor = game.open()
 
         if (descriptor == 0)
             return 0
 
-        // 使用新的双路径支持方法打开更新文件
-        val update = game.updatePath?.let { updatePath ->
-            openPath(updatePath)
-        } ?: 0
+        // 使用现有的更新打开方法（保持原有逻辑）
+        val update = game.openUpdate()
 
         if(update == -2)
         {
