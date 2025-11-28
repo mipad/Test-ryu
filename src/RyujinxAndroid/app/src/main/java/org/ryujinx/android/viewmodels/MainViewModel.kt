@@ -479,8 +479,8 @@ class MainViewModel(val activity: MainActivity) {
         if (descriptor == 0)
             return 0
 
-        // 使用 Kenjinx 方式的更新打开方法
-        val update = openUpdateWithFileSupport(game.titleId)
+        // 使用现有的更新打开方法（保持原有逻辑）
+        val update = game.openUpdate()
 
         if(update == -2)
         {
@@ -609,73 +609,6 @@ class MainViewModel(val activity: MainActivity) {
         }
 
         return if (success) 1 else 0
-    }
-
-    /**
-     * 按照 Kenjinx 方式打开更新文件，支持文件路径
-     */
-    private fun openUpdateWithFileSupport(titleId: String?): Int {
-        if (titleId.isNullOrEmpty()) {
-            return -1
-        }
-
-        try {
-            val vm = TitleUpdateViewModel(titleId)
-            val selectedUpdate = vm.data?.selected
-
-            if (selectedUpdate.isNullOrEmpty()) {
-                return -1
-            }
-
-            // 检查路径类型并分别处理
-            return if (selectedUpdate.startsWith("content://")) {
-                // URI 路径 - 使用原有方式
-                openUriUpdate(selectedUpdate)
-            } else {
-                // 文件系统路径 - 使用 Kenjinx 方式
-                openFileSystemUpdate(selectedUpdate)
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("Ryujinx", "Failed to open update: ${e.message}")
-            return -2
-        }
-    }
-
-    /**
-     * 打开 URI 路径的更新文件
-     */
-    private fun openUriUpdate(uriString: String): Int {
-        return try {
-            val uri = android.net.Uri.parse(uriString)
-            val file = androidx.documentfile.provider.DocumentFile.fromSingleUri(activity, uri)
-            if (file?.exists() == true) {
-                val updateDescriptor = activity.contentResolver.openFileDescriptor(file.uri, "rw")
-                updateDescriptor?.fd ?: -1
-            } else {
-                -1
-            }
-        } catch (e: Exception) {
-            -2
-        }
-    }
-
-    /**
-     * 打开文件系统路径的更新文件
-     */
-    private fun openFileSystemUpdate(filePath: String): Int {
-        return try {
-            val file = File(filePath)
-            if (file.exists()) {
-                // 使用 ParcelFileDescriptor 打开文件
-                val updateDescriptor = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_WRITE)
-                updateDescriptor.fd
-            } else {
-                -1
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("Ryujinx", "Failed to open file system update: $filePath, error: ${e.message}")
-            -2
-        }
     }
 
     fun loadMiiEditor(): Boolean {
