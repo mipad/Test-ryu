@@ -1,215 +1,227 @@
-package org.ryujinx.android.views
+package org.ryujinx.android.viewmodels
 
+import android.content.Intent
 import android.net.Uri
-import android.content.res.Configuration
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.documentfile.provider.DocumentFile
+import com.anggrayudi.storage.SimpleStorageHelper
+import com.anggrayudi.storage.file.extension
+import com.google.gson.Gson
 import org.ryujinx.android.MainActivity
-import org.ryujinx.android.viewmodels.TitleUpdateViewModel
 import java.io.File
+import java.util.Locale
+import kotlin.math.max
 
-class TitleUpdateViews {
+class TitleUpdateViewModel(val titleId: String) {
+    private var canClose: MutableState<Boolean>? = null
+    private var basePath: String
+    private var updateJsonName = "updates.json"
+    private var storageHelper: SimpleStorageHelper
+    private var currentPaths: MutableList<String> = mutableListOf()
+    private var pathsState: SnapshotStateList<String>? = null
+
     companion object {
-        @Composable
-        fun Main(
-            titleId: String,
-            name: String,
-            openDialog: MutableState<Boolean>,
-            canClose: MutableState<Boolean>
-        ) {
-            val viewModel = TitleUpdateViewModel(titleId)
-            val configuration = LocalConfiguration.current
-            val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        const val UpdateRequestCode = 1002
+    }
+
+    fun remove(index: Int) {
+        if (index <= 0)
+            return
+
+        data?.paths?.apply {
+            val str = removeAt(index - 1)
+            Uri.parse(str)?.apply {
+                storageHelper.storage.context.contentResolver.releasePersistableUriPermission(
+                    this,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+            pathsState?.clear()
+            pathsState?.addAll(this)
+            currentPaths = this
+            saveChanges() // 添加保存更改
+        }
+    }
+
+    fun add() {
+        val callBack = storageHelper.onFileSelected
+
+        storageHelper.onFileSelected = { requestCode, files ->
+            run {
+                storageHelper.onFileSelected = callBack
+                if (requestCode == UpdateRequestCode) {
+                    val file = files.firstOrNull()
+                    file?.apply {
+                        if (file.extension == "nsp") {
+                            storageHelper.storage.context.contentResolver.takePersistableUriPermission(
+                                file.uri,
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION
+                            )
+                            currentPaths.add(file.uri.toString())
+                        }
+                    }
+
+                    refreshPaths()
+                    saveChanges() // 添加保存更改
+                }
+            }
+        }
+        storageHelper.openFilePicker(UpdateRequestCode)
+    }
+
+    // 新增：处理文件路径的方法（用于autoloadContent）
+    fun addFilePaths(filePaths: List<String>) {
+        if (filePaths.isNotEmpty()) {
+            var addedCount = 0
+            for (filePath in filePaths) {
+                try {
+                    val file = File(filePath)
+                    if (file.exists() && file.isFile && isUpdateFile(file)) {
+                        val isDuplicate = currentPaths.any { it == filePath }
+                        if (!isDuplicate) {
+                            currentPaths.add(filePath)
+                            addedCount++
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
             
-            // 根据屏幕方向调整高度
-            val contentHeight = if (isLandscape) 200.dp else 280.dp
-
-            val selectedIndex = remember { mutableIntStateOf(0) }
-            viewModel.data?.apply {
-                selectedIndex.intValue = paths.indexOf(this.selected) + 1
-            }
-
-            Column(modifier = Modifier.padding(16.dp)) {
-                // 操作按钮行
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    // 左侧操作按钮
-                    Row {
-                        IconButton(
-                            onClick = {
-                                viewModel.remove(selectedIndex.intValue)
-                            }
-                        ) {
-                            Icon(Icons.Filled.Delete, contentDescription = "Remove")
-                        }
-                        IconButton(
-                            onClick = {
-                                viewModel.add()
-                            }
-                        ) {
-                            Icon(Icons.Filled.Add, contentDescription = "Add")
-                        }
-                    }
-                    
-                    // 右侧保存按钮 - 使用文字按钮
-                    TextButton(
-                        onClick = {
-                            canClose.value = true
-                            viewModel.save(selectedIndex.intValue, openDialog)
-                        }
-                    ) {
-                        Text("Save")
-                    }
-                }
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                Column {
-                    Text(
-                        text = "Updates for $name", 
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    
-                    Surface(
-                        modifier = Modifier
-                            .padding(8.dp)
-                            .height(contentHeight),
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        shape = MaterialTheme.shapes.medium
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .verticalScroll(rememberScrollState())
-                                .padding(8.dp)
-                        ) {
-                            // None 选项
-                            Row(
-                                modifier = Modifier.padding(vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                RadioButton(
-                                    selected = (selectedIndex.intValue == 0),
-                                    onClick = { selectedIndex.intValue = 0 }
-                                )
-                                Text(
-                                    text = "None",
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(start = 8.dp)
-                                )
-                            }
-
-                            // 文件列表
-                            val paths = remember { mutableStateListOf<String>() }
-                            viewModel.setPaths(paths, canClose)
-                            
-                            paths.forEachIndexed { index, path ->
-                                val itemIndex = index + 1
-                                val fileName = getFileNameFromPath(path)
-                                
-                                if (fileName != null) {
-                                    Row(
-                                        modifier = Modifier.padding(vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        RadioButton(
-                                            selected = (selectedIndex.intValue == itemIndex),
-                                            onClick = { selectedIndex.intValue = itemIndex }
-                                        )
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(start = 8.dp)
-                                        ) {
-                                            Text(
-                                                text = fileName,
-                                                style = MaterialTheme.typography.bodyMedium
-                                            )
-                                            Text(
-                                                text = getPathType(path),
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-                        }
-                    }
-                }
-            }
-        }
-        
-        /**
-         * 从路径获取文件名 - 支持 URI 和文件路径
-         */
-        private fun getFileNameFromPath(path: String): String? {
-            return try {
-                if (path.startsWith("content://")) {
-                    // URI 路径
-                    val uri = Uri.parse(path)
-                    val documentFile = DocumentFile.fromSingleUri(MainActivity.mainViewModel!!.activity, uri)
-                    documentFile?.name ?: "Unknown File"
-                } else {
-                    // 文件系统路径
-                    val file = File(path)
-                    if (file.exists()) {
-                        file.name
-                    } else {
-                        // 尝试从路径中提取文件名
-                        path.substringAfterLast('/').takeIf { it.isNotEmpty() } ?: "Invalid Path"
-                    }
-                }
-            } catch (e: Exception) {
-                "Error: ${e.message}"
-            }
-        }
-        
-        /**
-         * 获取路径类型显示
-         */
-        private fun getPathType(path: String): String {
-            return if (path.startsWith("content://")) {
-                "URI Path"
-            } else {
-                "File Path"
-            }
-        }
-        
-        /**
-         * 检查文件是否存在 - 支持两种路径格式
-         */
-        private fun isFileExists(path: String): Boolean {
-            return try {
-                if (path.startsWith("content://")) {
-                    val uri = Uri.parse(path)
-                    val documentFile = DocumentFile.fromSingleUri(MainActivity.mainViewModel!!.activity, uri)
-                    documentFile?.exists() ?: false
-                } else {
-                    File(path).exists()
-                }
-            } catch (e: Exception) {
-                false
+            if (addedCount > 0) {
+                refreshPaths()
+                saveChanges() // 添加保存更改
             }
         }
     }
+
+    // 检查是否为更新文件（支持File对象）
+    private fun isUpdateFile(file: File): Boolean {
+        val extension = file.extension?.lowercase(Locale.getDefault()) ?: ""
+        return (extension == "nsp" || extension == "xci") && file.exists() && file.canRead()
+    }
+
+    // 检查是否为更新文件（支持DocumentFile对象）
+    private fun isUpdateFile(file: DocumentFile): Boolean {
+        val extension = file.extension?.lowercase(Locale.getDefault()) ?: ""
+        return (extension == "nsp" || extension == "xci") && file.exists() && file.canRead()
+    }
+
+    private fun refreshPaths() {
+        data?.apply {
+            val existingPaths = mutableListOf<String>()
+            currentPaths.forEach {
+                // 检查路径类型
+                if (it.startsWith("content://") || it.startsWith("file://")) {
+                    // URI 路径
+                    val uri = Uri.parse(it)
+                    val file = DocumentFile.fromSingleUri(storageHelper.storage.context, uri)
+                    if (file?.exists() == true) {
+                        existingPaths.add(it)
+                    }
+                } else {
+                    // 文件路径
+                    val file = File(it)
+                    if (file.exists() && file.isFile) {
+                        existingPaths.add(it)
+                    }
+                }
+            }
+
+            if (!existingPaths.contains(selected)) {
+                selected = ""
+            }
+            pathsState?.clear()
+            pathsState?.addAll(existingPaths)
+            paths = existingPaths
+            currentPaths = existingPaths // 更新当前路径
+            canClose?.apply {
+                value = true
+            }
+        }
+    }
+
+    // 新增：保存更改的方法
+    fun saveChanges() {
+        val metadata = data ?: TitleUpdateMetadata()
+        val gson = Gson()
+        File(basePath).mkdirs()
+
+        val savedUpdates = mutableListOf<String>()
+        currentPaths.forEach {
+            // 检查路径类型
+            if (it.startsWith("content://") || it.startsWith("file://")) {
+                // URI 路径
+                val uri = Uri.parse(it)
+                val file = DocumentFile.fromSingleUri(storageHelper.storage.context, uri)
+                if (file?.exists() == true) {
+                    savedUpdates.add(it)
+                }
+            } else {
+                // 文件路径
+                val file = File(it)
+                if (file.exists() && file.isFile) {
+                    savedUpdates.add(it)
+                }
+            }
+        }
+        metadata.paths = savedUpdates
+
+        if (metadata.selected.isNotEmpty() && !currentPaths.contains(metadata.selected)) {
+            metadata.selected = ""
+        }
+
+        val json = gson.toJson(metadata)
+        File("$basePath/$updateJsonName").writeText(json)
+        
+        // 更新data引用
+        data = metadata
+    }
+
+    fun save(
+        index: Int,
+        openDialog: MutableState<Boolean>
+    ) {
+        data?.apply {
+            this.selected = ""
+            if (paths.isNotEmpty() && index > 0) {
+                val ind = max(index - 1, paths.count() - 1)
+                this.selected = paths[ind]
+            }
+            saveChanges() // 使用统一的保存方法
+            openDialog.value = false
+        }
+    }
+
+    fun setPaths(paths: SnapshotStateList<String>, canClose: MutableState<Boolean>) {
+        pathsState = paths
+        this.canClose = canClose
+        refreshPaths()
+    }
+
+    var data: TitleUpdateMetadata? = null
+    private var jsonPath: String
+
+    init {
+        // 修复：使用 lowercase() 替代已弃用的 toLowerCase()
+        basePath = MainActivity.AppPath + "/games/" + titleId.lowercase(Locale.getDefault())
+        jsonPath = "${basePath}/${updateJsonName}"
+
+        data = TitleUpdateMetadata()
+        if (File(jsonPath).exists()) {
+            val gson = Gson()
+            data = gson.fromJson(File(jsonPath).readText(), TitleUpdateMetadata::class.java)
+        }
+        currentPaths = data?.paths ?: mutableListOf()
+        storageHelper = MainActivity.StorageHelper!!
+        refreshPaths()
+
+        File("$basePath/update").deleteRecursively()
+    }
 }
+
+data class TitleUpdateMetadata(
+    var selected: String = "",
+    var paths: MutableList<String> = mutableListOf()
+)
