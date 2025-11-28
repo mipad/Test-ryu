@@ -4,13 +4,13 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.snapshots.SnapshotStateList
-import androidx.compose.ui.text.intl.Locale
 import androidx.documentfile.provider.DocumentFile
 import com.anggrayudi.storage.SimpleStorageHelper
 import com.anggrayudi.storage.file.extension
 import com.google.gson.Gson
 import org.ryujinx.android.MainActivity
 import java.io.File
+import java.util.Locale
 import kotlin.math.max
 
 class TitleUpdateViewModel(val titleId: String) {
@@ -159,7 +159,7 @@ class TitleUpdateViewModel(val titleId: String) {
     }
 
     // 新增：保存更改的方法
-    fun saveChanges() {
+     fun saveChanges() {
         data?.apply {
             val gson = Gson()
             File(basePath).mkdirs()
@@ -218,7 +218,9 @@ class TitleUpdateViewModel(val titleId: String) {
     private var jsonPath: String
 
     init {
-        basePath = MainActivity.AppPath + "/games/" + titleId.toLowerCase(Locale.current)
+        // 修复：使用 java.util.Locale 而不是 androidx.compose.ui.text.intl.Locale
+        // 修复：使用 lowercase() 而不是 toLowerCase()
+        basePath = MainActivity.AppPath + "/games/" + titleId.lowercase(Locale.getDefault())
         jsonPath = "${basePath}/${updateJsonName}"
 
         data = TitleUpdateMetadata()
