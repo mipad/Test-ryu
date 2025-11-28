@@ -458,6 +458,44 @@ class MainViewModel(val activity: MainActivity) {
         }
     }
 
+    // 新增：路径类型检测方法
+    private fun isUriPath(path: String): Boolean {
+        return path.startsWith("content://") || path.startsWith("file://")
+    }
+    
+    private fun isFileSystemPath(path: String): Boolean {
+        return !isUriPath(path) && File(path).exists()
+    }
+    
+    // 新增：双路径打开方法
+    private fun openPath(path: String): Int {
+        return if (isUriPath(path)) {
+            // 使用现有的 URI 打开方法
+            RyujinxNative.jnaInstance.deviceOpenFileDescriptor(path)
+        } else {
+            // 新增：文件系统路径打开方法
+            openFileSystemPath(path)
+        }
+    }
+    
+    // 新增：文件系统路径打开方法
+    private fun openFileSystemPath(filePath: String): Int {
+        return try {
+            val file = File(filePath)
+            if (file.exists()) {
+                // 将文件路径转换为 file:// URI 格式，保持与现有 Native 代码兼容
+                val uri = "file://$filePath"
+                RyujinxNative.jnaInstance.deviceOpenFileDescriptor(uri)
+            } else {
+                android.util.Log.e("Ryujinx", "File not found: $filePath")
+                0
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("Ryujinx", "Failed to open file path: $filePath, error: ${e.message}")
+            0
+        }
+    }
+
     fun closeGame() {
         RyujinxNative.deviceSignalEmulationClose()
         gameHost?.close()
@@ -473,12 +511,16 @@ class MainViewModel(val activity: MainActivity) {
     }
 
     fun loadGame(game: GameModel): Int {
-        val descriptor = game.open()
+        // 修改：使用新的双路径打开方法
+        val descriptor = openPath(game.path)
 
         if (descriptor == 0)
             return 0
 
-        val update = game.openUpdate()
+        // 修改：使用新的双路径打开方法处理更新
+        val update = game.updatePath?.let { updatePath ->
+            openPath(updatePath)
+        } ?: 0
 
         if(update == -2)
         {
