@@ -13,6 +13,8 @@ import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -350,13 +352,13 @@ class GameViews {
                         modifier = Modifier.weight(1f)
                     )
 
-                    // 暂停/继续按钮 - 使用 CSS.GG 图标
+                    // 暂停/继续按钮 - 使用 Material Icons
                     IconButton(
                         onClick = onPauseToggle,
                         modifier = Modifier.size(36.dp)
                     ) {
                         Icon(
-                            imageVector = if (isPaused.value) CssGgIcons.PlayButton else CssGgIcons.PlayPause,
+                            imageVector = if (isPaused.value) Icons.Filled.PlayArrow else Icons.Filled.Pause,
                             contentDescription = if (isPaused.value) "Continue" else "Pause",
                             tint = MaterialTheme.colorScheme.primary
                         )
