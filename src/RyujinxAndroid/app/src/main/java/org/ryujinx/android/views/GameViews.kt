@@ -350,13 +350,13 @@ class GameViews {
                         modifier = Modifier.weight(1f)
                     )
 
-                    // 暂停/继续按钮
+                    // 暂停/继续按钮 - 使用 CSS.GG 图标
                     IconButton(
                         onClick = onPauseToggle,
                         modifier = Modifier.size(36.dp)
                     ) {
                         Icon(
-                            imageVector = if (isPaused.value) CssGgIcons.PlayButton else CssGgIcons.Pause,
+                            imageVector = if (isPaused.value) CssGgIcons.PlayButton else CssGgIcons.PlayPause,
                             contentDescription = if (isPaused.value) "Continue" else "Pause",
                             tint = MaterialTheme.colorScheme.primary
                         )
