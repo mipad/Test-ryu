@@ -183,7 +183,7 @@ class GameViews {
                     }) {
                 }
 
-                // 点击外部关闭侧边菜单
+                // 点击外部关闭侧边菜单和顶部菜单
                 if (showSideMenu.value) {
                     Surface(
                         color = Color.Transparent,
@@ -205,33 +205,22 @@ class GameViews {
                 if (!showLoading.value) {
                     GameController.Compose(mainViewModel)
 
-                    // 只在需要时渲染侧边菜单和顶部标题
+                    // 只在需要时渲染侧边菜单和顶部菜单
                     if (showSideMenu.value) {
-                        // 顶部中央游戏标题
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .wrapContentHeight()
-                                .align(Alignment.TopCenter)
-                                .padding(top = 16.dp)
-                        ) {
-                            Surface(
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
-                                shape = MaterialTheme.shapes.medium,
-                                modifier = Modifier
-                                    .wrapContentWidth()
-                                    .wrapContentHeight()
-                            ) {
-                                Text(
-                                    text = gameTitle,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier
-                                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                                )
+                        // 顶部菜单
+                        TopMenu(
+                            gameTitle = gameTitle,
+                            isPaused = isPaused,
+                            onPauseToggle = {
+                                if (isPaused.value) {
+                                    RyujinxNative.resumeEmulation()
+                                    isPaused.value = false
+                                } else {
+                                    RyujinxNative.pauseEmulation()
+                                    isPaused.value = true
+                                }
                             }
-                        }
+                        )
 
                         // 侧边菜单
                         SideMenu(
@@ -248,12 +237,12 @@ class GameViews {
                         )
                     }
 
-                    // 返回键处理 - 打开侧边菜单
+                    // 返回键处理 - 打开侧边菜单和顶部菜单
                     BackHandler(enabled = !showSideMenu.value) {
                         showSideMenu.value = true
                     }
 
-                    // 返回键处理 - 关闭侧边菜单
+                    // 返回键处理 - 关闭侧边菜单和顶部菜单
                     BackHandler(enabled = showSideMenu.value) {
                         showSideMenu.value = false
                     }
@@ -332,6 +321,51 @@ class GameViews {
         }
 
         @Composable
+        fun TopMenu(
+            gameTitle: String,
+            isPaused: androidx.compose.runtime.MutableState<Boolean>,
+            onPauseToggle: () -> Unit
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .wrapContentHeight(),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
+                tonalElevation = 4.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 游戏标题
+                    Text(
+                        text = gameTitle,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    // 暂停/继续按钮
+                    IconButton(
+                        onClick = onPauseToggle,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isPaused.value) CssGgIcons.PlayButton else CssGgIcons.Pause,
+                            contentDescription = if (isPaused.value) "Continue" else "Pause",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+        }
+
+        @Composable
         fun SideMenu(
             mainViewModel: MainViewModel,
             showController: androidx.compose.runtime.MutableState<Boolean>,
@@ -376,24 +410,6 @@ class GameViews {
                                 .fillMaxWidth()
                                 .padding(horizontal = 4.dp)
                         ) {
-                            // 暂停/继续游戏
-                            CompactSideMenuItem(
-                                icon = CssGgIcons.PlayButton,
-                                text = if (isPaused.value) "Continue" else "Pause",
-                                backgroundColor = if (isPaused.value) MaterialTheme.colorScheme.primaryContainer 
-                                                else MaterialTheme.colorScheme.secondaryContainer,
-                                onClick = {
-                                    if (isPaused.value) {
-                                        RyujinxNative.resumeEmulation()
-                                        isPaused.value = false
-                                    } else {
-                                        RyujinxNative.pauseEmulation()
-                                        isPaused.value = true
-                                    }
-                                    onDismiss()
-                                }
-                            )
-
                             // 虚拟手柄开关
                             CompactSideMenuItem(
                                 icon = CssGgIcons.Controller,
