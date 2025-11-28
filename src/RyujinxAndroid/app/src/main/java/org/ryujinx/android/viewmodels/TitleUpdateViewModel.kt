@@ -4,15 +4,13 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.snapshots.SnapshotStateList
-import androidx.compose.ui.text.intl.Locale
-import androidx.compose.ui.text.toLowerCase
 import androidx.documentfile.provider.DocumentFile
 import com.anggrayudi.storage.SimpleStorageHelper
 import com.anggrayudi.storage.file.extension
 import com.google.gson.Gson
 import org.ryujinx.android.MainActivity
 import java.io.File
-import java.util.Locale as JavaLocale
+import java.util.Locale
 import kotlin.math.max
 
 class TitleUpdateViewModel(val titleId: String) {
@@ -100,13 +98,13 @@ class TitleUpdateViewModel(val titleId: String) {
 
     // 检查是否为更新文件（支持File对象）
     private fun isUpdateFile(file: File): Boolean {
-        val extension = file.extension.toLowerCase(JavaLocale.getDefault())
+        val extension = file.extension?.lowercase(Locale.getDefault()) ?: ""
         return (extension == "nsp" || extension == "xci") && file.exists() && file.canRead()
     }
 
     // 检查是否为更新文件（支持DocumentFile对象）
     private fun isUpdateFile(file: DocumentFile): Boolean {
-        val extension = file.extension?.toLowerCase(JavaLocale.getDefault())
+        val extension = file.extension?.lowercase(Locale.getDefault()) ?: ""
         return (extension == "nsp" || extension == "xci") && file.exists() && file.canRead()
     }
 
@@ -206,7 +204,8 @@ class TitleUpdateViewModel(val titleId: String) {
     private var jsonPath: String
 
     init {
-        basePath = MainActivity.AppPath + "/games/" + titleId.toLowerCase(Locale.current)
+        // 修复：使用 lowercase() 替代已弃用的 toLowerCase()
+        basePath = MainActivity.AppPath + "/games/" + titleId.lowercase(Locale.getDefault())
         jsonPath = "${basePath}/${updateJsonName}"
 
         data = TitleUpdateMetadata()
