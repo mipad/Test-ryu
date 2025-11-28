@@ -195,15 +195,15 @@ class HomeViewModel(
             if (originalTid != null) {
                 val vm = TitleUpdateViewModel(originalTid)
                 
-                // 关键修改：使用URI路径而不是文件路径
-                val path = f.toURI().toString()
+                // 关键修复：使用文件绝对路径而不是URI
+                val filePath = f.absolutePath
                 
-                // 检查是否已存在（基于URI字符串比较）
-                val exists = vm.data?.paths?.any { it == path } == true
+                // 检查是否已存在（基于文件路径比较）
+                val exists = vm.data?.paths?.any { it == filePath } == true
 
                 if (!exists) {
-                    // 使用新的方法添加文件，确保路径格式一致
-                    vm.addSelectedFiles(listOf(Uri.fromFile(f)))
+                    // 使用新的文件路径添加方法
+                    vm.addFilePaths(listOf(filePath))
                     updatesAdded++
                 }
             }
