@@ -13,8 +13,6 @@ import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -338,27 +336,32 @@ class GameViews {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // 游戏标题
+                    // 左侧占位，宽度与侧边栏相同
+                    Spacer(modifier = Modifier.width(240.dp))
+                    
+                    // 游戏标题 - 居中显示
                     Text(
                         text = gameTitle,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
                         maxLines = 1,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .wrapContentWidth(Alignment.CenterHorizontally)
                     )
-
-                    // 暂停/继续按钮 - 使用 Material Icons
+                    
+                    // 暂停/继续按钮
                     IconButton(
                         onClick = onPauseToggle,
                         modifier = Modifier.size(36.dp)
                     ) {
                         Icon(
-                            imageVector = if (isPaused.value) Icons.Filled.PlayArrow else Icons.Filled.Pause,
+                            imageVector = if (isPaused.value) CssGgIcons.PlayButton else CssGgIcons.PlayPause,
                             contentDescription = if (isPaused.value) "Continue" else "Pause",
                             tint = MaterialTheme.colorScheme.primary
                         )
