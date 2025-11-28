@@ -203,7 +203,7 @@ class HomeViewModel(
 
                 if (!exists) {
                     // 使用新的方法添加文件，确保路径格式一致
-                    vm.addSelectedFiles(listOf(f.toURI()))
+                    vm.addSelectedFiles(listOf(Uri.fromFile(f)))
                     updatesAdded++
                 }
             }
