@@ -219,7 +219,7 @@ class TitleUpdateViewModel(val titleId: String) {
     }
 
     // 保存更改的方法
-    private fun saveChanges() {
+     fun saveChanges() {
         val metadata = data ?: TitleUpdateMetadata()
         val gson = Gson()
         File(basePath).mkdirs()
