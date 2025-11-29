@@ -6,17 +6,11 @@ cmake_minimum_required(VERSION 3.22.1)
 # Declares and names the project.
 project("ryujinxjni")
 
-# 在项目开始时强制设置链接器
-set(CMAKE_SHARED_LINKER_FLAGS "-fuse-ld=lld")
-set(CMAKE_EXE_LINKER_FLAGS "-fuse-ld=lld")
-set(CMAKE_MODULE_LINKER_FLAGS "-fuse-ld=lld")
-
 # 设置构建类型
 set(CMAKE_BUILD_TYPE Release)
 
-# 启用 LTO
-set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
-set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
+# 注意：不在全局启用 LTO，只在特定目标启用
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION FALSE)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
@@ -32,43 +26,7 @@ FetchContent_Declare(
     GIT_TAG        deec5f75ee1a8ccbe32c8780b1d17284fc87b0f1
 )
 
-# 在配置 adrenotools 之前设置全局变量
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -flto=thin")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -flto=thin")
-
 FetchContent_MakeAvailable(adrenotools)
-
-# ========== 关键修复：为 adrenotools 目标强制设置正确的链接器 ==========
-# 这些目标需要明确的链接器设置来覆盖内部硬编码的 gold 链接器
-if(TARGET hook_impl)
-    target_link_options(hook_impl PRIVATE -fuse-ld=lld)
-    get_target_property(hook_impl_flags hook_impl LINK_FLAGS)
-    if(hook_impl_flags)
-        string(REPLACE "-fuse-ld=gold" "-fuse-ld=lld" hook_impl_flags "${hook_impl_flags}")
-        set_target_properties(hook_impl PROPERTIES LINK_FLAGS "${hook_impl_flags}")
-    endif()
-endif()
-
-if(TARGET main_hook)
-    target_link_options(main_hook PRIVATE -fuse-ld=lld)
-endif()
-
-if(TARGET file_redirect_hook)
-    target_link_options(file_redirect_hook PRIVATE -fuse-ld=lld)
-endif()
-
-if(TARGET gsl_alloc_hook)
-    target_link_options(gsl_alloc_hook PRIVATE -fuse-ld=lld)
-endif()
-
-if(TARGET linkernsbypass)
-    target_link_options(linkernsbypass PRIVATE -fuse-ld=lld)
-endif()
-
-if(TARGET adrenotools)
-    target_link_options(adrenotools PRIVATE -fuse-ld=lld)
-endif()
-# ========== 修复结束 ==========
 
 # 为 adrenotools 相关目标添加 PAGE_SIZE 定义
 if(TARGET adrenotools)
@@ -102,7 +60,7 @@ set(ALSOFT_CPUEXT_NEON ON CACHE BOOL "Enable NEON optimizations")
 
 FetchContent_MakeAvailable(openal)
 
-# 创建主库
+# 创建主库 - 这是我们要启用 LTO 的主要目标
 add_library(
     ryujinxjni
     SHARED
@@ -116,6 +74,7 @@ target_compile_definitions(ryujinxjni PRIVATE
     RYUJINX_AUDIO_OPTIMIZE=1
 )
 
+# ========== 关键部分：只在主目标启用 LTO ==========
 # 为主目标添加编译选项（启用 LTO）
 target_compile_options(ryujinxjni PRIVATE
     -std=c++20
@@ -157,6 +116,14 @@ target_link_options(ryujinxjni PRIVATE
     -fuse-ld=lld
 )
 
+# ========== 可选：为其他性能关键目标启用 LTO ==========
+# 如果 oboe 和 OpenAL 也需要 LTO，可以单独为它们启用
+# target_compile_options(oboe PRIVATE -flto=thin)
+# target_link_options(oboe PRIVATE -flto=thin -fuse-ld=lld)
+
+# target_compile_options(OpenAL PRIVATE -flto=thin)
+# target_link_options(OpenAL PRIVATE -flto=thin -fuse-ld=lld)
+
 # 设置 JNI 库输出路径
 set(JNI_PATH ../jniLibs/${CMAKE_ANDROID_ARCH_ABI})
 cmake_path(ABSOLUTE_PATH JNI_PATH NORMALIZE)
@@ -177,4 +144,4 @@ set_target_properties(OpenAL PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
 )
 
-message(STATUS "LTO enabled with lld linker - Configuration completed")
+message(STATUS "LTO enabled only for main target - Configuration completed")
