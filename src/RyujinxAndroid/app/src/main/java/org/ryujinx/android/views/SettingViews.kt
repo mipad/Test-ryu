@@ -207,7 +207,7 @@ class SettingViews {
             val skipMemoryBarriers = remember { mutableStateOf(false) } // 新增状态变量
             val regionCode = remember { mutableStateOf(RegionCode.USA.ordinal) } // 新增状态变量：区域代码
             val systemLanguage = remember { mutableStateOf(SystemLanguage.AmericanEnglish.ordinal) } // 新增状态变量：系统语言
-            val audioEngineType = remember { mutableStateOf(1) } // 0=禁用，1=OpenAL, 2=SDL2, 3=Oboe
+            val audioEngineType = remember { mutableStateOf(3) } // 修改：默认使用Oboe (3)，0=禁用，1=OpenAL, 3=Oboe
             val scalingFilter = remember { mutableStateOf(0) } // 0=Bilinear, 1=Nearest, 2=FSR
             val scalingFilterLevel = remember { mutableStateOf(25) } // 默认25%
             val antiAliasing = remember { mutableStateOf(0) } // 0=None, 1=Fxaa, 2=SmaaLow, 3=SmaaMedium, 4=SmaaHigh, 5=SmaaUltra
@@ -1677,12 +1677,91 @@ class SettingViews {
                                 title = "Audio Engine",
                                 value = when (audioEngineType.value) {
                                     1 -> "OpenAL"
-                                    2 -> "SDL2"
                                     3 -> "Oboe"
                                     else -> "Disabled"
                                 },
                                 onClick = { showAudioEngineDialog.value = true }
                             )
+                        }
+                    }
+                    
+                    // 音频引擎选择对话框 - 移除SDL2选项
+                    if (showAudioEngineDialog.value) {
+                        BasicAlertDialog(
+                            onDismissRequest = { showAudioEngineDialog.value = false }
+                        ) {
+                            Surface(
+                                modifier = Modifier
+                                    .wrapContentWidth()
+                                    .heightIn(max = 400.dp),
+                                shape = MaterialTheme.shapes.large,
+                                tonalElevation = AlertDialogDefaults.TonalElevation
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp)
+                                ) {
+                                    Text(
+                                        text = "Select Audio Engine",
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        modifier = Modifier.padding(bottom = 16.dp)
+                                    )
+                                    
+                                    LazyColumn(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(max = 250.dp)
+                                    ) {
+                                        // OpenAL选项
+                                        item {
+                                            ModernDialogOption(
+                                                text = "OpenAL",
+                                                isSelected = audioEngineType.value == 1,
+                                                onClick = {
+                                                    audioEngineType.value = 1
+                                                    showAudioEngineDialog.value = false
+                                                }
+                                            )
+                                        }
+                                        
+                                        // Oboe选项
+                                        item {
+                                            ModernDialogOption(
+                                                text = "Oboe",
+                                                isSelected = audioEngineType.value == 3,
+                                                onClick = {
+                                                    audioEngineType.value = 3
+                                                    showAudioEngineDialog.value = false
+                                                }
+                                            )
+                                        }
+                                        
+                                        // 禁用音频选项
+                                        item {
+                                            ModernDialogOption(
+                                                text = "Disabled",
+                                                isSelected = audioEngineType.value == 0,
+                                                onClick = {
+                                                    audioEngineType.value = 0
+                                                    showAudioEngineDialog.value = false
+                                                }
+                                            )
+                                        }
+                                    }
+                                    
+                                    // 添加取消按钮
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 16.dp),
+                                        horizontalArrangement = Arrangement.End
+                                    ) {
+                                        ModernOutlinedButton(
+                                            text = "Cancel",
+                                            onClick = { showAudioEngineDialog.value = false }
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                     
@@ -2243,98 +2322,6 @@ class SettingViews {
                                     ModernOutlinedButton(
                                         text = "Cancel",
                                         onClick = { showMemoryManagerDialog.value = false }
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // 音频引擎选择对话框 - 现代化改进
-                if (showAudioEngineDialog.value) {
-                    BasicAlertDialog(
-                        onDismissRequest = { showAudioEngineDialog.value = false }
-                    ) {
-                        Surface(
-                            modifier = Modifier
-                                .wrapContentWidth()
-                                .heightIn(max = 400.dp),
-                            shape = MaterialTheme.shapes.large,
-                            tonalElevation = AlertDialogDefaults.TonalElevation
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp)
-                            ) {
-                                Text(
-                                    text = "Select Audio Engine",
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    modifier = Modifier.padding(bottom = 16.dp)
-                                )
-                                
-                                LazyColumn(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .heightIn(max = 250.dp)
-                                ) {
-                                    // OpenAL选项
-                                    item {
-                                        ModernDialogOption(
-                                            text = "OpenAL",
-                                            isSelected = audioEngineType.value == 1,
-                                            onClick = {
-                                                audioEngineType.value = 1
-                                                showAudioEngineDialog.value = false
-                                            }
-                                        )
-                                    }
-                                    
-                                    // SDL2选项
-                                    item {
-                                        ModernDialogOption(
-                                            text = "SDL2",
-                                            isSelected = audioEngineType.value == 2,
-                                            onClick = {
-                                                audioEngineType.value = 2
-                                                showAudioEngineDialog.value = false
-                                            }
-                                        )
-                                    }
-                                    
-                                    // Oboe选项
-                                    item {
-                                        ModernDialogOption(
-                                            text = "Oboe",
-                                            isSelected = audioEngineType.value == 3,
-                                            onClick = {
-                                                audioEngineType.value = 3
-                                                showAudioEngineDialog.value = false
-                                            }
-                                        )
-                                    }
-                                    
-                                    // 禁用音频选项
-                                    item {
-                                        ModernDialogOption(
-                                            text = "Disabled",
-                                            isSelected = audioEngineType.value == 0,
-                                            onClick = {
-                                                audioEngineType.value = 0
-                                                showAudioEngineDialog.value = false
-                                            }
-                                        )
-                                    }
-                                }
-                                
-                                // 添加取消按钮
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 16.dp),
-                                    horizontalArrangement = Arrangement.End
-                                ) {
-                                    ModernOutlinedButton(
-                                        text = "Cancel",
-                                        onClick = { showAudioEngineDialog.value = false }
                                     )
                                 }
                             }
