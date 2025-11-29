@@ -66,7 +66,8 @@ data class PerformanceStatsSettings(
     val showRam: Boolean = true,
     val showBatteryTemperature: Boolean = false,
     val showBatteryLevel: Boolean = false,
-    val showFifo: Boolean = true
+    val showFifo: Boolean = true,
+    val showBackground: Boolean = true
 )
 
 @SuppressLint("WrongConstant")
@@ -877,3 +878,4 @@ class MainViewModel(val activity: MainActivity) {
         gameHost?.setProgressStates(showLoading, progressValue, progress)
     }
 }
+
