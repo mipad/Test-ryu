@@ -133,11 +133,6 @@ class SettingViews {
         const val EXPANSTION_TRANSITION_DURATION = 450
         const val IMPORT_CODE = 12341
 
-        // 深黑色背景颜色
-        private val DarkBlackBackground = Color(0xFF121212)
-        private val DarkBlackSurface = Color(0xFF1E1E1E)
-        private val DarkBlackSurfaceVariant = Color(0xFF252525)
-
         @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
         @Composable
         fun Main(settingsViewModel: SettingsViewModel, mainViewModel: MainViewModel) {
@@ -437,8 +432,7 @@ class SettingViews {
                     modifier = Modifier
                         .padding(contentPadding)
                         .verticalScroll(rememberScrollState())
-                        .fillMaxSize()
-                        .background(if (isSystemInDarkTheme()) DarkBlackBackground else MaterialTheme.colorScheme.background)
+                        .background(MaterialTheme.colorScheme.background)
                 ) {
                     ExpandableView(onCardArrowClick = { }, title = "App") {
                         Column(modifier = Modifier.fillMaxWidth()) {
@@ -2438,27 +2432,36 @@ class SettingViews {
                 if (mutableExpanded.value) 0f else 180f
             }
 
-            // 修改：去掉卡片阴影和圆角，使用矩形形状，去掉外边距
-            Surface(
-                color = if (isSystemInDarkTheme()) DarkBlackSurface else MaterialTheme.colorScheme.surface,
+            Card(
+                shape = MaterialTheme.shapes.large,
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                ),
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(
+                        horizontal = 16.dp,
+                        vertical = 8.dp
+                    )
             ) {
                 Column {
-                    // 修改：标题栏也使用矩形形状，去掉阴影
-                    Surface(
-                        color = if (isSystemInDarkTheme()) DarkBlackSurfaceVariant else MaterialTheme.colorScheme.surfaceVariant,
-                        modifier = Modifier
-                            .fillMaxWidth()
+                    Card(
+                        onClick = {
+                            mutableExpanded.value = !mutableExpanded.value
+                            onCardArrowClick()
+                        },
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 12.dp)
-                                .clickable {
-                                    mutableExpanded.value = !mutableExpanded.value
-                                    onCardArrowClick()
-                                },
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -2494,8 +2497,7 @@ class SettingViews {
                 modifier = Modifier.padding(8.dp),
                 textAlign = TextAlign.Center,
                 fontWeight = FontWeight.SemiBold,
-                style = MaterialTheme.typography.titleMedium,
-                color = if (isSystemInDarkTheme()) Color.White else MaterialTheme.colorScheme.onSurface
+                style = MaterialTheme.typography.titleMedium
             )
         }
 
@@ -2529,11 +2531,7 @@ class SettingViews {
                 enter = enterTransition,
                 exit = exitTransition
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(if (isSystemInDarkTheme()) DarkBlackSurface else MaterialTheme.colorScheme.surface)
-                ) {
+                Column(modifier = Modifier.padding(8.dp)) {
                     content()
                 }
             }
@@ -2560,14 +2558,13 @@ class SettingViews {
                     Text(
                         text = text,
                         style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                        color = if (isSystemInDarkTheme()) Color.White else MaterialTheme.colorScheme.onSurface
+                        fontWeight = FontWeight.Medium
                     )
                     if (description != null) {
                         Text(
                             text = description,
                             fontSize = 12.sp,
-                            color = if (isSystemInDarkTheme()) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                             modifier = Modifier.padding(top = 2.dp)
                         )
                     }
@@ -2602,8 +2599,7 @@ class SettingViews {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                    color = if (isSystemInDarkTheme()) Color.White else MaterialTheme.colorScheme.onSurface
+                    fontWeight = FontWeight.Medium
                 )
                 Row(
                     verticalAlignment = Alignment.CenterVertically
@@ -2641,8 +2637,7 @@ class SettingViews {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                    color = if (isSystemInDarkTheme()) Color.White else MaterialTheme.colorScheme.onSurface
+                    fontWeight = FontWeight.Medium
                 )
                 ModernOutlinedButton(
                     text = actionText,
@@ -2666,12 +2661,11 @@ class SettingViews {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                    color = if (isSystemInDarkTheme()) Color.White else MaterialTheme.colorScheme.onSurface
+                    fontWeight = FontWeight.Medium
                 )
                 Text(
                     text = value,
-                    color = if (isSystemInDarkTheme()) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
             }
         }
@@ -2686,12 +2680,12 @@ class SettingViews {
                 onClick = onClick,
                 modifier = modifier,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isSystemInDarkTheme()) DarkBlackSurface else MaterialTheme.colorScheme.surface,
+                    containerColor = MaterialTheme.colorScheme.surface,
                     contentColor = MaterialTheme.colorScheme.primary
                 ),
                 border = androidx.compose.foundation.BorderStroke(
                     1.dp,
-                    if (isSystemInDarkTheme()) Color.White.copy(alpha = 0.3f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                    MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
                 ),
                 elevation = ButtonDefaults.buttonElevation(
                     defaultElevation = 2.dp,
@@ -2722,7 +2716,7 @@ class SettingViews {
                                 MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
                             )
                         } else {
-                            Modifier.background(if (isSystemInDarkTheme()) DarkBlackSurfaceVariant else MaterialTheme.colorScheme.surfaceVariant)
+                            Modifier.background(MaterialTheme.colorScheme.surfaceVariant)
                         }
                     )
                     .then(
@@ -2743,7 +2737,7 @@ class SettingViews {
                     fontSize = 12.sp,
                     textAlign = TextAlign.Center,
                     color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer 
-                           else if (isSystemInDarkTheme()) Color.White else MaterialTheme.colorScheme.onSurface,
+                           else MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                 )
             }
@@ -2769,18 +2763,9 @@ class SettingViews {
                 Text(
                     text = text,
                     modifier = Modifier.padding(start = 16.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (isSystemInDarkTheme()) Color.White else MaterialTheme.colorScheme.onSurface
+                    style = MaterialTheme.typography.bodyMedium
                 )
             }
-        }
-
-        // 检查是否为深色主题的辅助函数
-        @Composable
-        fun isSystemInDarkTheme(): Boolean {
-            return MaterialTheme.colorScheme.primary == Color.White || 
-                   MaterialTheme.colorScheme.surface == Color.Black ||
-                   MaterialTheme.colorScheme.background == Color.Black
         }
     }
 }
