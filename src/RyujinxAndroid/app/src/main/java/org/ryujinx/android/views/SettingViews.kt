@@ -128,68 +128,6 @@ data class SurfaceFormatInfo(
     }
 }
 
-@Composable
-fun CustomTimeDialog(
-    currentYear: Int,
-    currentMonth: Int,
-    currentDay: Int,
-    currentHour: Int,
-    currentMinute: Int,
-    currentSecond: Int,
-    onDismiss: () -> Unit,
-    onTimeSet: (Int, Int, Int, Int, Int, Int) -> Unit
-) {
-    BasicAlertDialog(
-        onDismissRequest = onDismiss
-    ) {
-        Surface(
-            modifier = Modifier
-                .wrapContentWidth()
-                .wrapContentHeight(),
-            shape = MaterialTheme.shapes.large,
-            tonalElevation = AlertDialogDefaults.TonalElevation
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp)
-            ) {
-                Text(
-                    text = "Set Custom Time",
-                    style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-                
-                // 这里应该实现时间选择器组件
-                // 由于时间限制，这里使用简单文本提示
-                Text(
-                    text = "Custom time picker implementation required",
-                    modifier = Modifier.padding(vertical = 16.dp)
-                )
-                
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    TextButton(
-                        onClick = onDismiss
-                    ) {
-                        Text("Cancel")
-                    }
-                    TextButton(
-                        onClick = {
-                            // 使用当前值
-                            onTimeSet(currentYear, currentMonth, currentDay, currentHour, currentMinute, currentSecond)
-                        }
-                    ) {
-                        Text("Set")
-                    }
-                }
-            }
-        }
-    }
-}
-
 class SettingViews {
     companion object {
         const val EXPANSTION_TRANSITION_DURATION = 450
@@ -1888,6 +1826,7 @@ class SettingViews {
 
                             // 自定义时间设置对话框
                             if (showCustomTimeDialog.value) {
+                                // 使用现有的CustomTimeDialog函数，确保没有重复定义
                                 CustomTimeDialog(
                                     currentYear = customTimeYear.value,
                                     currentMonth = customTimeMonth.value,
@@ -1896,7 +1835,7 @@ class SettingViews {
                                     currentMinute = customTimeMinute.value,
                                     currentSecond = customTimeSecond.value,
                                     onDismiss = { showCustomTimeDialog.value = false },
-                                    onTimeSet = { year, month, day, hour, minute, second ->
+                                    onTimeSet = { year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int ->
                                         customTimeYear.value = year
                                         customTimeMonth.value = month
                                         customTimeDay.value = day
