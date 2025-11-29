@@ -85,6 +85,7 @@ class GameViews {
             val showBatteryTemperature = remember { mutableStateOf(initialStatsSettings.showBatteryTemperature) }
             val showBatteryLevel = remember { mutableStateOf(initialStatsSettings.showBatteryLevel) }
             val showFifo = remember { mutableStateOf(initialStatsSettings.showFifo) }
+            val showBackground = remember { mutableStateOf(initialStatsSettings.showBackground) }
 
             // 编辑模式状态
             val isEditing = remember { mutableStateOf(false) }
@@ -108,7 +109,8 @@ class GameViews {
                         showRam = showRam.value,
                         showBatteryTemperature = showBatteryTemperature.value,
                         showBatteryLevel = showBatteryLevel.value,
-                        showFifo = showFifo.value
+                        showFifo = showFifo.value,
+                        showBackground = showBackground.value
                     )
                 }
 
@@ -239,6 +241,7 @@ class GameViews {
                         showBatteryTemperature = showBatteryTemperature,
                         showBatteryLevel = showBatteryLevel,
                         showFifo = showFifo,
+                        showBackground = showBackground,
                         onDismiss = { showPerformanceSettings.value = false }
                     )
                 }
@@ -645,6 +648,7 @@ class GameViews {
             showBatteryTemperature: androidx.compose.runtime.MutableState<Boolean>,
             showBatteryLevel: androidx.compose.runtime.MutableState<Boolean>,
             showFifo: androidx.compose.runtime.MutableState<Boolean>,
+            showBackground: androidx.compose.runtime.MutableState<Boolean>,
             onDismiss: () -> Unit
         ) {
             fun saveSettings() {
@@ -654,7 +658,8 @@ class GameViews {
                     showRam = showRam.value,
                     showBatteryTemperature = showBatteryTemperature.value,
                     showBatteryLevel = showBatteryLevel.value,
-                    showFifo = showFifo.value
+                    showFifo = showFifo.value,
+                    showBackground = showBackground.value
                 )
                 mainViewModel.savePerformanceStatsSettings(settings)
             }
@@ -750,6 +755,15 @@ class GameViews {
                                         saveSettings()
                                     }
                                 )
+
+                                StatSwitchItem(
+                                    text = "Show Background",
+                                    checked = showBackground.value,
+                                    onCheckedChange = { 
+                                        showBackground.value = it
+                                        saveSettings()
+                                    }
+                                )
                             }
                         }
                         
@@ -780,18 +794,6 @@ class GameViews {
                                         saveSettings()
                                     }
                                 )
-                                
-                                Spacer(modifier = Modifier.width(16.dp))
-                                
-                                Button(
-                                    onClick = onDismiss,
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.primary,
-                                        contentColor = MaterialTheme.colorScheme.onPrimary
-                                    )
-                                ) {
-                                    Text(text = "Close")
-                                }
                             }
                         }
                     }
@@ -831,7 +833,8 @@ class GameViews {
             showRam: Boolean,
             showBatteryTemperature: Boolean,
             showBatteryLevel: Boolean,
-            showFifo: Boolean
+            showFifo: Boolean,
+            showBackground: Boolean
         ) {
             val fifo = remember {
                 mutableDoubleStateOf(0.0)
@@ -876,21 +879,21 @@ class GameViews {
                         if (showFifo) {
                             StatItem(
                                 text = "${String.format("%.1f", fifo.value)}%",
-                                backgroundColor = Color.Black.copy(alpha = 0.4f)
+                                showBackground = showBackground
                             )
                         }
                         
                         if (showFps) {
                             StatItem(
                                 text = "${String.format("%.1f", gameFps.value)} FPS",
-                                backgroundColor = Color.Black.copy(alpha = 0.4f)
+                                showBackground = showBackground
                             )
                         }
                         
                         if (showRam) {
                             StatItem(
-                                text = "${usedMem.value}/${totalMem.value} MB",
-                                backgroundColor = Color.Black.copy(alpha = 0.4f)
+                                text = "${totalMem.value}/${usedMem.value} MB", // 调换位置：总内存/使用内存
+                                showBackground = showBackground
                             )
                         }
                     }
@@ -907,7 +910,7 @@ class GameViews {
                             if (showBatteryTemperature && batteryTemperature.value > 0) {
                                 StatItem(
                                     text = "${String.format("%.1f", batteryTemperature.value)}°C",
-                                    backgroundColor = Color.Black.copy(alpha = 0.4f),
+                                    showBackground = showBackground,
                                     textColor = when {
                                         batteryTemperature.value > 40 -> Color(0xFFFF6B6B)
                                         batteryTemperature.value > 35 -> Color(0xFFFFD166)
@@ -926,7 +929,7 @@ class GameViews {
                                     } else {
                                         "${batteryLevel.value}%"
                                     },
-                                    backgroundColor = Color.Black.copy(alpha = 0.4f),
+                                    showBackground = showBackground,
                                     textColor = when {
                                         batteryLevel.value < 15 -> Color(0xFFFF6B6B)
                                         batteryLevel.value < 40 -> Color(0xFFFFD166)
@@ -954,13 +957,13 @@ class GameViews {
         @Composable
         fun StatItem(
             text: String,
-            backgroundColor: Color,
+            showBackground: Boolean,
             textColor: Color = Color.White
         ) {
             Box(
                 modifier = Modifier
                     .background(
-                        color = backgroundColor,
+                        color = if (showBackground) Color.Black.copy(alpha = 0.4f) else Color.Transparent,
                         shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
                     )
                     .padding(horizontal = 8.dp, vertical = 4.dp)
