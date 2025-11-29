@@ -31,16 +31,23 @@ class TitleUpdateViewModel(val titleId: String) {
 
         data?.paths?.apply {
             val str = removeAt(index - 1)
-            Uri.parse(str)?.apply {
-                storageHelper.storage.context.contentResolver.releasePersistableUriPermission(
-                    this,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
+            // 检查是否是URI格式
+            if (str.startsWith("content://") || str.startsWith("file://")) {
+                Uri.parse(str)?.apply {
+                    try {
+                        storageHelper.storage.context.contentResolver.releasePersistableUriPermission(
+                            this,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        )
+                    } catch (e: SecurityException) {
+                        e.printStackTrace()
+                    }
+                }
             }
             pathsState?.clear()
             pathsState?.addAll(this)
             currentPaths = this
-            saveChanges() // 添加保存更改
+            saveChanges()
         }
     }
 
@@ -63,60 +70,29 @@ class TitleUpdateViewModel(val titleId: String) {
                     }
 
                     refreshPaths()
-                    saveChanges() // 添加保存更改
+                    saveChanges()
                 }
             }
         }
         storageHelper.openFilePicker(UpdateRequestCode)
     }
 
-    // 新增：处理文件路径的方法（用于autoloadContent）
-    fun addFilePaths(filePaths: List<String>) {
-        if (filePaths.isNotEmpty()) {
+    // 新增：处理文件URI的方法（用于autoloadContent）
+    fun addFileUris(fileUris: List<String>) {
+        if (fileUris.isNotEmpty()) {
             var addedCount = 0
-            for (filePath in filePaths) {
+            for (fileUri in fileUris) {
                 try {
-                    val file = File(filePath)
-                    if (file.exists() && file.isFile && isUpdateFile(file)) {
-                        val isDuplicate = currentPaths.any { it == filePath }
-                        if (!isDuplicate) {
-                            currentPaths.add(filePath)
-                            addedCount++
-                        }
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
-            
-            if (addedCount > 0) {
-                refreshPaths()
-                saveChanges() // 添加保存更改
-            }
-        }
-    }
-
-    // 新增：处理URI列表的方法（用于自动加载转换后的URI）
-    fun addSelectedFiles(uris: List<Uri>) {
-        if (uris.isNotEmpty()) {
-            var addedCount = 0
-            for (uri in uris) {
-                try {
-                    val file = DocumentFile.fromSingleUri(storageHelper.storage.context, uri)
-                    file?.apply {
-                        if (isUpdateFile(this)) {
-                            // 获取持久化权限
-                            storageHelper.storage.context.contentResolver.takePersistableUriPermission(
-                                uri,
-                                Intent.FLAG_GRANT_READ_URI_PERMISSION
-                            )
-                            
-                            val uriString = uri.toString()
-                            val isDuplicate = currentPaths.any { it == uriString }
-
+                    // 对于文件URI，我们可以检查对应的文件是否存在
+                    if (fileUri.startsWith("file://")) {
+                        val filePath = fileUri.removePrefix("file://")
+                        val file = File(filePath)
+                        if (file.exists() && file.isFile && isUpdateFile(file)) {
+                            val isDuplicate = currentPaths.any { it == fileUri }
                             if (!isDuplicate) {
-                                currentPaths.add(uriString)
+                                currentPaths.add(fileUri)
                                 addedCount++
+                                android.util.Log.d("Ryujinx", "TitleUpdateViewModel: added file URI $fileUri")
                             }
                         }
                     }
@@ -152,15 +128,29 @@ class TitleUpdateViewModel(val titleId: String) {
                 if (it.startsWith("content://") || it.startsWith("file://")) {
                     // URI 路径
                     val uri = Uri.parse(it)
-                    val file = DocumentFile.fromSingleUri(storageHelper.storage.context, uri)
-                    if (file?.exists() == true) {
-                        existingPaths.add(it)
+                    if (it.startsWith("file://")) {
+                        // 对于文件URI，直接检查文件是否存在
+                        val filePath = uri.path
+                        if (filePath != null) {
+                            val file = File(filePath)
+                            if (file.exists() && file.isFile) {
+                                existingPaths.add(it)
+                            }
+                        }
+                    } else {
+                        // 对于content URI，使用DocumentFile检查
+                        val file = DocumentFile.fromSingleUri(storageHelper.storage.context, uri)
+                        if (file?.exists() == true) {
+                            existingPaths.add(it)
+                        }
                     }
                 } else {
-                    // 文件路径
+                    // 文件路径（旧格式，保持兼容）
                     val file = File(it)
                     if (file.exists() && file.isFile) {
-                        existingPaths.add(it)
+                        // 将旧的文件路径转换为文件URI格式
+                        val fileUri = "file://$it"
+                        existingPaths.add(fileUri)
                     }
                 }
             }
@@ -178,7 +168,7 @@ class TitleUpdateViewModel(val titleId: String) {
         }
     }
 
-    // 新增：保存更改的方法
+    // 保存更改的方法
     fun saveChanges() {
         val metadata = data ?: TitleUpdateMetadata()
         val gson = Gson()
@@ -190,15 +180,28 @@ class TitleUpdateViewModel(val titleId: String) {
             if (it.startsWith("content://") || it.startsWith("file://")) {
                 // URI 路径
                 val uri = Uri.parse(it)
-                val file = DocumentFile.fromSingleUri(storageHelper.storage.context, uri)
-                if (file?.exists() == true) {
-                    savedUpdates.add(it)
+                if (it.startsWith("file://")) {
+                    // 对于文件URI，直接检查文件是否存在
+                    val filePath = uri.path
+                    if (filePath != null) {
+                        val file = File(filePath)
+                        if (file.exists() && file.isFile) {
+                            savedUpdates.add(it)
+                        }
+                    }
+                } else {
+                    // 对于content URI，使用DocumentFile检查
+                    val file = DocumentFile.fromSingleUri(storageHelper.storage.context, uri)
+                    if (file?.exists() == true) {
+                        savedUpdates.add(it)
+                    }
                 }
             } else {
-                // 文件路径
+                // 文件路径（旧格式，转换为URI格式）
                 val file = File(it)
                 if (file.exists() && file.isFile) {
-                    savedUpdates.add(it)
+                    val fileUri = "file://$it"
+                    savedUpdates.add(fileUri)
                 }
             }
         }
@@ -214,8 +217,8 @@ class TitleUpdateViewModel(val titleId: String) {
         // 更新data引用
         data = metadata
         
-        // 添加调试日志
-        android.util.Log.d("Ryujinx", "TitleUpdateViewModel: Saved ${savedUpdates.size} updates to JSON for title $titleId")
+        android.util.Log.d("Ryujinx", "TitleUpdateViewModel: saved ${savedUpdates.size} updates to JSON for title $titleId")
+        android.util.Log.d("Ryujinx", "JSON content: $json")
     }
 
     fun save(
@@ -228,7 +231,7 @@ class TitleUpdateViewModel(val titleId: String) {
                 val ind = max(index - 1, paths.count() - 1)
                 this.selected = paths[ind]
             }
-            saveChanges() // 使用统一的保存方法
+            saveChanges()
             openDialog.value = false
         }
     }
@@ -243,7 +246,6 @@ class TitleUpdateViewModel(val titleId: String) {
     private var jsonPath: String
 
     init {
-        // 修复：使用 lowercase() 替代已弃用的 toLowerCase()
         basePath = MainActivity.AppPath + "/games/" + titleId.lowercase(Locale.getDefault())
         jsonPath = "${basePath}/${updateJsonName}"
 

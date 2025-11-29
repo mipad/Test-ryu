@@ -120,99 +120,98 @@ class HomeViewModel(
     }
 
     // Scans configured directory for NSPs containing DLCs/Updates and associates them to known titles.
-    private fun autoloadContent() {
-        val prefs = sharedPref ?: return
+private fun autoloadContent() {
+    val prefs = sharedPref ?: return
 
-        val updatesFolder = prefs.getString("updatesFolder", "") ?: ""
+    val updatesFolder = prefs.getString("updatesFolder", "") ?: ""
 
-        if (updatesFolder.isEmpty()) return
+    if (updatesFolder.isEmpty()) return
 
-        // Build a map of titleId -> helpers
-        val gamesByTitle = loadedCache.mapNotNull { g ->
-            val tid = g.titleId
-            if (!tid.isNullOrBlank()) tid.lowercase(Locale.getDefault()) to tid else null
-        }.toMap()
+    // Build a map of titleId -> helpers
+    val gamesByTitle = loadedCache.mapNotNull { g ->
+        val tid = g.titleId
+        if (!tid.isNullOrBlank()) tid.lowercase(Locale.getDefault()) to tid else null
+    }.toMap()
 
-        var updatesAdded = 0
-        var dlcAdded = 0
+    var updatesAdded = 0
+    var dlcAdded = 0
 
-        val base = File(updatesFolder)
-        if (!base.exists() || !base.isDirectory) return
+    val base = File(updatesFolder)
+    if (!base.exists() || !base.isDirectory) return
 
-        base.walkTopDown().forEach fileLoop@{ f ->
-            if (!f.isFile) return@fileLoop
-            val name = f.name.lowercase(Locale.getDefault())
-            if (!name.endsWith(".nsp")) return@fileLoop
+    base.walkTopDown().forEach fileLoop@{ f ->
+        if (!f.isFile) return@fileLoop
+        val name = f.name.lowercase(Locale.getDefault())
+        if (!name.endsWith(".nsp")) return@fileLoop
 
-            // Extract title ID from filename
-            val tidPattern = Regex("\\[([0-9a-fA-F]{16})]")
-            val tidMatch = tidPattern.find(name) ?: return@fileLoop
-            val fileTid = tidMatch.groupValues[1].lowercase(Locale.getDefault())
+        // Extract title ID from filename
+        val tidPattern = Regex("\\[([0-9a-fA-F]{16})]")
+        val tidMatch = tidPattern.find(name) ?: return@fileLoop
+        val fileTid = tidMatch.groupValues[1].lowercase(Locale.getDefault())
 
-            // Try to find DLC content for all games
-            var isDlc = false
-            try {
-                for ((_, tidOrig) in gamesByTitle) {
-                    val contents = RyujinxNative.jnaInstance.deviceGetDlcContentList(f.absolutePath, tidOrig.toLong(16))
+        // Try to find DLC content for all games
+        var isDlc = false
+        try {
+            for ((_, tidOrig) in gamesByTitle) {
+                val contents = RyujinxNative.jnaInstance.deviceGetDlcContentList(f.absolutePath, tidOrig.toLong(16))
 
-                    if (contents.isNotEmpty()) {
-                        isDlc = true
-                        val containerPath = f.absolutePath
-                        val vm = DlcViewModel(tidOrig)
-                        val already = vm.data?.any { it.path == containerPath } == true
+                if (contents.isNotEmpty()) {
+                    isDlc = true
+                    val containerPath = f.absolutePath
+                    val vm = DlcViewModel(tidOrig)
+                    val already = vm.data?.any { it.path == containerPath } == true
 
-                        if (!already) {
-                            val container = DlcContainerList(containerPath)
-                            for (content in contents) {
-                                container.dlc_nca_list.add(
-                                    DlcContainer(
-                                        true,
-                                        RyujinxNative.jnaInstance.deviceGetDlcTitleId(containerPath, content).toLong(16),
-                                        content
-                                    )
+                    if (!already) {
+                        val container = DlcContainerList(containerPath)
+                        for (content in contents) {
+                            container.dlc_nca_list.add(
+                                DlcContainer(
+                                    true,
+                                    RyujinxNative.jnaInstance.deviceGetDlcTitleId(containerPath, content).toLong(16),
+                                    content
                                 )
-                            }
-                            vm.data?.add(container)
-                            vm.saveChanges()
-                            dlcAdded++
+                            )
                         }
-                        break
+                        vm.data?.add(container)
+                        vm.saveChanges()
+                        dlcAdded++
                     }
+                    break
                 }
-            } catch (_: Throwable) { }
-
-            if (isDlc) return@fileLoop
-
-            // Treat as Title Update - convert update ID to base ID
-            // Update title IDs end in 800, base game IDs end in 000
-            val baseTid = if (fileTid.endsWith("800")) {
-                fileTid.substring(0, fileTid.length - 3) + "000"
-            } else {
-                fileTid
             }
+        } catch (_: Throwable) { }
 
-            val originalTid = gamesByTitle[baseTid]
-            if (originalTid != null) {
-                val vm = TitleUpdateViewModel(originalTid)
-                
-                // 使用文件绝对路径
-                val filePath = f.absolutePath
-                
-                // 检查是否已存在（基于文件路径比较）
-                val exists = vm.data?.paths?.any { it == filePath } == true
+        if (isDlc) return@fileLoop
 
-                if (!exists) {
-                    // 使用文件路径添加方法
-                    vm.addFilePaths(listOf(filePath))
-                    updatesAdded++
-                    
-                    // 添加调试日志
-                    android.util.Log.d("Ryujinx", "Auto-load: Added update file $filePath for title $originalTid")
-                }
+        // Treat as Title Update - convert update ID to base ID
+        // Update title IDs end in 800, base game IDs end in 000
+        val baseTid = if (fileTid.endsWith("800")) {
+            fileTid.substring(0, fileTid.length - 3) + "000"
+        } else {
+            fileTid
+        }
+
+        val originalTid = gamesByTitle[baseTid]
+        if (originalTid != null) {
+            val vm = TitleUpdateViewModel(originalTid)
+            
+            // 关键修改：使用文件URI格式
+            val fileUri = "file://${f.absolutePath}"
+            
+            // 检查是否已存在（基于URI字符串比较）
+            val exists = vm.data?.paths?.any { it == fileUri } == true
+
+            if (!exists) {
+                // 使用文件URI路径添加方法
+                vm.addFileUris(listOf(fileUri))
+                updatesAdded++
+                
+                android.util.Log.d("Ryujinx", "Auto-load: added update file URI $fileUri for title $originalTid")
             }
         }
-        
-        // 输出调试信息
-        android.util.Log.d("Ryujinx", "Auto-load completed: $dlcAdded DLCs added, $updatesAdded updates added")
     }
+    
+    // 输出调试信息
+    android.util.Log.d("Ryujinx", "Auto-load completed: $dlcAdded DLCs added, $updatesAdded updates added")
+}
 }
