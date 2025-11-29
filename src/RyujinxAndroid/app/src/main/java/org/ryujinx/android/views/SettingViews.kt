@@ -1002,7 +1002,6 @@ class SettingViews {
                                     4f -> "4x"
                                     8f -> "8x"
                                     16f -> "16x"
-                                    32f -> "32x"
                                     else -> "off"
                                 },
                                 onClick = { 
@@ -1017,7 +1016,7 @@ class SettingViews {
                             // 各向异性过滤选项
                             AnimatedVisibility(visible = showAnisotropyOptions.value) {
                                 Column(modifier = Modifier.fillMaxWidth()) {
-                                    val anisotropyOptions = listOf(0f, 2f, 4f, 8f, 16f)
+                                    val anisotropyOptions = listOf(-1f, 0f, 2f, 4f, 8f, 16f)
                                     
                                     Row(
                                         modifier = Modifier
@@ -1037,8 +1036,7 @@ class SettingViews {
                                                     4f -> "4x"
                                                     8f -> "8x"
                                                     16f -> "16x"
-                                                    32f -> "32x"
-                                                    else -> "Off"
+                                                    else -> "off"
                                                 },
                                                 isSelected = isSelected,
                                                 onClick = {
