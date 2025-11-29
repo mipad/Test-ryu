@@ -1,8 +1,5 @@
 include(FetchContent)
 
-# For more information about using CMake with Android Studio, read the
-# documentation: https://d.android.com/studio/projects/add-native-code.html
-
 # Sets the minimum version of CMake required to build the native library.
 cmake_minimum_required(VERSION 3.22.1)
 
@@ -12,14 +9,12 @@ project("ryujinxjni")
 # 设置构建类型
 set(CMAKE_BUILD_TYPE Release)
 
-# 其他选项
-set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
-set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded)
-set(SKIA_USE_SYSTEM_EXPAT OFF)
-set(SKIA_ENABLE_PARAGRAPH ON)
+# 使用 lld 链接器而不是 gold
+set(ANDROID_LD lld)
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
+# 其他选项 - 使用更稳定的 LTO 配置
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
 
 # 设置 Android 特定选项
 set(ANDROID_STL c++_shared)
@@ -43,21 +38,12 @@ if(TARGET linkernsbypass)
     target_compile_definitions(linkernsbypass PRIVATE PAGE_SIZE=4096)
 endif()
 
-# 为 adrenotools 的子目录目标也添加定义
-get_target_property(adrenotools_sources adrenotools SOURCES)
-if(adrenotools_sources)
-    target_compile_definitions(adrenotools PRIVATE PAGE_SIZE=4096)
-endif()
-
 # 使用 FetchContent 获取 Oboe 源码
 FetchContent_Declare(
     oboe
     GIT_REPOSITORY https://github.com/google/oboe.git
-    GIT_TAG        1.10.0  # 使用与 Gradle 依赖相同的版本
+    GIT_TAG        1.10.0
 )
-
-# 设置 Oboe 构建选项，禁用格式转换以减少代码大小
-# (OBOE_DISABLE_CONVERSION ON CACHE BOOL "Disable format conversion in Oboe")
 
 FetchContent_MakeAvailable(oboe)
 
@@ -65,15 +51,12 @@ FetchContent_MakeAvailable(oboe)
 FetchContent_Declare(
     openal
     GIT_REPOSITORY https://github.com/kcat/openal-soft.git
-    GIT_TAG        1.24.3  # 使用稳定版本
+    GIT_TAG        1.24.3
 )
 
-# 设置 OpenAL 构建选项 - 优化以减少杂音和延迟
 set(ALSOFT_REQUIRE_OPENSL ON CACHE BOOL "Enable OpenSL backend")
 set(ALSOFT_BACKEND_OPENSL ON CACHE BOOL "Enable OpenSL backend")
 set(ALSOFT_TESTS OFF CACHE BOOL "Disable tests")
-
-# 添加优化选项以减少杂音和延迟
 set(ALSOFT_CPUEXT_NEON ON CACHE BOOL "Enable NEON optimizations")
 
 FetchContent_MakeAvailable(openal)
@@ -90,23 +73,21 @@ add_library(
 # 添加编译定义以优化音频处理
 target_compile_definitions(ryujinxjni PRIVATE
     RYUJINX_AUDIO_OPTIMIZE=1
-    # 如果需要，可以添加更多音频优化标志
 )
 
-# 为音频渲染器文件单独启用激进优化
-# 注意：如果某些游戏出现杂音，可以回退到 "-O3" 或 "-O3 -ffast-math"
-set_source_files_properties(oboe_audio_renderer.cpp PROPERTIES
-    COMPILE_FLAGS "-Ofast"
-)
-
-# 为主目标添加编译选项（其他文件保持 -O3，不包含 -ffast-math）
+# 为主目标添加编译选项 - 使用更稳定的 LTO 配置
 target_compile_options(ryujinxjni PRIVATE
     -std=c++20
-    -flto
-    -Ofast
+    -flto=thin
+    -O3
     -DNDEBUG
-    #-ffast-math
-    #-Ofast
+    -march=armv8-a
+    -funroll-loops
+)
+
+# 为音频渲染器文件单独启用优化（不使用 Ofast）
+set_source_files_properties(oboe_audio_renderer.cpp PROPERTIES
+    COMPILE_FLAGS "-O3 -ffast-math"
 )
 
 # 查找系统库
@@ -117,7 +98,7 @@ find_library(android-lib android)
 # 添加 Oboe 包含目录
 include_directories(${oboe_SOURCE_DIR}/include)
 
-# 链接库
+# 链接库 - 添加明确的链接器标志
 target_link_libraries(
     ryujinxjni
     ${log-lib}
@@ -127,6 +108,12 @@ target_link_libraries(
     adrenotools
     oboe
     OpenAL
+)
+
+# 设置链接器选项
+target_link_options(ryujinxjni PRIVATE
+    -flto=thin
+    -fuse-ld=lld
 )
 
 # 设置 JNI 库输出路径
