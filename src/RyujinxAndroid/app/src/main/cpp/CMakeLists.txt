@@ -104,7 +104,8 @@ target_compile_options(ryujinxjni PRIVATE
     -flto
     -Ofast
     -DNDEBUG
-    -march=native
+    -p:IlcInstructionSet=arm64 
+    -p:EnableArm64AdvSimd=true
     -fPIE
     -G Ninga
     #-ffast-math
