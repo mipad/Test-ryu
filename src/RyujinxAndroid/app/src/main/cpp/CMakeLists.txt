@@ -105,7 +105,6 @@ target_compile_options(ryujinxjni PRIVATE
     -Ofast
     -DNDEBUG
     -fPIE
-    -G Ninga
     #-ffast-math
     #-Ofast
 )
