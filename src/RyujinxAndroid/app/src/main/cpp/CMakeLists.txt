@@ -6,15 +6,22 @@ cmake_minimum_required(VERSION 3.22.1)
 # Declares and names the project.
 project("ryujinxjni")
 
+# 强制全局使用 lld 链接器
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fuse-ld=lld")
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fuse-ld=lld")
+set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -fuse-ld=lld")
+
 # 设置构建类型
 set(CMAKE_BUILD_TYPE Release)
 
-# 使用 lld 链接器而不是 gold
-set(ANDROID_LD lld)
-
-# 其他选项 - 使用更稳定的 LTO 配置
+# 其他选项
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
-set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
+set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded)
+set(SKIA_USE_SYSTEM_EXPAT OFF)
+set(SKIA_ENABLE_PARAGRAPH ON)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
 # 设置 Android 特定选项
 set(ANDROID_STL c++_shared)
@@ -27,15 +34,35 @@ FetchContent_Declare(
     GIT_TAG        deec5f75ee1a8ccbe32c8780b1d17284fc87b0f1
 )
 
+# 在 MakeAvailable 之前设置变量，确保子项目继承
+set(ANDROID_LD lld CACHE INTERNAL "")
+
 FetchContent_MakeAvailable(adrenotools)
 
-# 为 adrenotools 相关目标添加 PAGE_SIZE 定义
+# 为 adrenotools 相关目标强制设置链接器
 if(TARGET adrenotools)
     target_compile_definitions(adrenotools PRIVATE PAGE_SIZE=4096)
+    target_link_options(adrenotools PRIVATE -fuse-ld=lld)
 endif()
 
 if(TARGET linkernsbypass)
     target_compile_definitions(linkernsbypass PRIVATE PAGE_SIZE=4096)
+endif()
+
+if(TARGET hook_impl)
+    target_link_options(hook_impl PRIVATE -fuse-ld=lld)
+endif()
+
+if(TARGET main_hook)
+    target_link_options(main_hook PRIVATE -fuse-ld=lld)
+endif()
+
+if(TARGET file_redirect_hook)
+    target_link_options(file_redirect_hook PRIVATE -fuse-ld=lld)
+endif()
+
+if(TARGET gsl_alloc_hook)
+    target_link_options(gsl_alloc_hook PRIVATE -fuse-ld=lld)
 endif()
 
 # 使用 FetchContent 获取 Oboe 源码
@@ -75,7 +102,7 @@ target_compile_definitions(ryujinxjni PRIVATE
     RYUJINX_AUDIO_OPTIMIZE=1
 )
 
-# 为主目标添加编译选项 - 使用更稳定的 LTO 配置
+# 为主目标添加编译选项
 target_compile_options(ryujinxjni PRIVATE
     -std=c++20
     -flto=thin
@@ -85,7 +112,7 @@ target_compile_options(ryujinxjni PRIVATE
     -funroll-loops
 )
 
-# 为音频渲染器文件单独启用优化（不使用 Ofast）
+# 为音频渲染器文件单独启用优化
 set_source_files_properties(oboe_audio_renderer.cpp PROPERTIES
     COMPILE_FLAGS "-O3 -ffast-math"
 )
@@ -98,7 +125,7 @@ find_library(android-lib android)
 # 添加 Oboe 包含目录
 include_directories(${oboe_SOURCE_DIR}/include)
 
-# 链接库 - 添加明确的链接器标志
+# 链接库
 target_link_libraries(
     ryujinxjni
     ${log-lib}
