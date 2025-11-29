@@ -59,7 +59,7 @@ data class SurfaceFormatInfo(
     }
 }
 
-// 新增：性能统计显示设置数据类
+// 更新：性能统计显示设置数据类，添加 showBackground 字段
 data class PerformanceStatsSettings(
     val showStats: Boolean = true,
     val showFps: Boolean = true,
@@ -67,7 +67,7 @@ data class PerformanceStatsSettings(
     val showBatteryTemperature: Boolean = false,
     val showBatteryLevel: Boolean = false,
     val showFifo: Boolean = true,
-    val showBackground: Boolean = true
+    val showBackground: Boolean = true  // 添加 showBackground 字段，默认为 true
 )
 
 @SuppressLint("WrongConstant")
@@ -415,7 +415,8 @@ class MainViewModel(val activity: MainActivity) {
                     showRam = prefs.getBoolean("performance_stats_show_ram", true),
                     showBatteryTemperature = prefs.getBoolean("performance_stats_show_battery_temp", false),
                     showBatteryLevel = prefs.getBoolean("performance_stats_show_battery_level", false),
-                    showFifo = prefs.getBoolean("performance_stats_show_fifo", true)
+                    showFifo = prefs.getBoolean("performance_stats_show_fifo", true),
+                    showBackground = prefs.getBoolean("performance_stats_show_background", true)  // 添加这一行
                 )
             }
             android.util.Log.i("Ryujinx", "Loaded performance stats settings: $performanceStatsSettings")
@@ -442,6 +443,7 @@ class MainViewModel(val activity: MainActivity) {
             editor.putBoolean("performance_stats_show_battery_temp", settings.showBatteryTemperature)
             editor.putBoolean("performance_stats_show_battery_level", settings.showBatteryLevel)
             editor.putBoolean("performance_stats_show_fifo", settings.showFifo)
+            editor.putBoolean("performance_stats_show_background", settings.showBackground)  // 添加这一行
             
             editor.apply()
             android.util.Log.i("Ryujinx", "Saved performance stats settings: $settings")
@@ -878,4 +880,3 @@ class MainViewModel(val activity: MainActivity) {
         gameHost?.setProgressStates(showLoading, progressValue, progress)
     }
 }
-
