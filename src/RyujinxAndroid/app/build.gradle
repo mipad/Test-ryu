@@ -28,7 +28,7 @@ android {
 
         externalNativeBuild {
             cmake {
-                cppFlags "-std=c++20", "-Ofast", "-DNDEBUG", "-DENABLE_HIGH_PERF=1", "-march=armv8-a", "-funroll-loops", "-flto", "-p:Optimize=true -p:IlcInstructionSet=arm64" 
+                cppFlags "-std=c++20", "-Ofast", "-DNDEBUG", "-DENABLE_HIGH_PERF=1", "-march=armv8-a", "-funroll-loops", "-flto"
                 arguments "-DCMAKE_BUILD_TYPE=Release", "-DANDROID_ARM_NEON=TRUE"
                 arguments "-DANDROID_STL=c++_shared"
             }
