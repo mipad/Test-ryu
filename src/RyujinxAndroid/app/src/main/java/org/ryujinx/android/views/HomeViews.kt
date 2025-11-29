@@ -215,7 +215,7 @@ class HomeViews {
                                 modifier = if (isSelected) {
                                     Modifier
                                         .padding(end = 8.dp)
-                                        .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                                        .border(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), CircleShape)
                                 } else {
                                     Modifier.padding(end = 8.dp)
                                 }
@@ -319,7 +319,7 @@ class HomeViews {
                                 Modifier
                                     .fillMaxWidth()
                                     .aspectRatio(1f)
-                                    .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
+                                    .border(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
                             } else {
                                 Modifier
                                     .fillMaxWidth()
@@ -373,7 +373,7 @@ class HomeViews {
                                 Modifier
                                     .fillMaxWidth()
                                     .aspectRatio(1f)
-                                    .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
+                                    .border(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
                             } else {
                                 Modifier
                                     .fillMaxWidth()
@@ -484,7 +484,7 @@ class HomeViews {
                                 if (isSelected) {
                                     Modifier.border(
                                         2.dp,
-                                        MaterialTheme.colorScheme.primary,
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
                                         RoundedCornerShape(12.dp)
                                     )
                                 } else {
@@ -1439,4 +1439,3 @@ class HomeViews {
         }
     }
 }}}
-
