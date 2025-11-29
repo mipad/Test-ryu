@@ -55,10 +55,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.Extension
-import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.BasicAlertDialog
@@ -82,8 +78,6 @@ import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
@@ -139,6 +133,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.background
 
 class HomeViews {
     companion object {
@@ -248,7 +243,7 @@ class HomeViews {
                             ) {
                                 if (gameModel.icon?.isNotEmpty() == true) {
                                     val pic = decoder.decode(gameModel.icon)
-                                    val size =
+                                    val sizeValue =
                                         ListImageSize / Resources.getSystem().displayMetrics.density
                                     Image(
                                         bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
@@ -256,21 +251,21 @@ class HomeViews {
                                         contentDescription = gameModel.getDisplayName() + " icon",
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier
-                                            .width(size.roundToInt().dp)
-                                            .height(size.roundToInt().dp)
+                                            .width(sizeValue.roundToInt().dp)
+                                            .height(sizeValue.roundToInt().dp)
                                             .clip(RoundedCornerShape(12.dp))
                                     )
                                 } else if (gameModel.type == FileType.Nro)
                                     NROIcon(
                                         modifier = Modifier
-                                            .width(size.roundToInt().dp)
-                                            .height(size.roundToInt().dp)
+                                            .width(sizeValue.roundToInt().dp)
+                                            .height(sizeValue.roundToInt().dp)
                                             .padding(8.dp)
                                     )
                                 else NotAvailableIcon(
                                     modifier = Modifier
-                                        .width(size.roundToInt().dp)
-                                        .height(size.roundToInt().dp)
+                                        .width(sizeValue.roundToInt().dp)
+                                        .height(sizeValue.roundToInt().dp)
                                         .padding(16.dp)
                                 )
                             }
@@ -653,12 +648,7 @@ class HomeViews {
                                 .height(40.dp)
                                 .align(Alignment.BottomCenter)
                                 .background(
-                                    brush = Brush.verticalGradient(
-                                        colors = listOf(
-                                            Color.Transparent,
-                                            MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.9f)
-                                        )
-                                    )
+                                    Color.Transparent
                                 )
                         ) {
                             Text(
@@ -886,8 +876,7 @@ class HomeViews {
                                     }
                                 },
                                 colors = SearchBarDefaults.colors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                                    inputFieldColor = MaterialTheme.colorScheme.surface
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainer
                                 )
                             ) {}
                         }
@@ -977,8 +966,7 @@ class HomeViews {
                                         }
                                     },
                                     colors = SearchBarDefaults.colors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                                        inputFieldColor = MaterialTheme.colorScheme.surface
+                                        containerColor = MaterialTheme.colorScheme.surfaceContainer
                                     )
                                 ) {}
                             }
@@ -1676,7 +1664,7 @@ class HomeViews {
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
                                                     Icon(
-                                                        Icons.Filled.Storage,
+                                                        Icons.Filled.Build,
                                                         contentDescription = "Purge Shaders",
                                                         modifier = Modifier.size(20.dp),
                                                         tint = MaterialTheme.colorScheme.onSurface
@@ -1740,7 +1728,7 @@ class HomeViews {
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
                                                     Icon(
-                                                        Icons.Filled.Extension,
+                                                        Icons.Filled.Build,
                                                         contentDescription = "Manage DLC",
                                                         modifier = Modifier.size(20.dp),
                                                         tint = MaterialTheme.colorScheme.onSurface
@@ -1760,7 +1748,7 @@ class HomeViews {
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
                                                     Icon(
-                                                        Icons.Filled.Code,
+                                                        Icons.Filled.Build,
                                                         contentDescription = "Manage Cheats",
                                                         modifier = Modifier.size(20.dp),
                                                         tint = MaterialTheme.colorScheme.onSurface
@@ -1782,7 +1770,7 @@ class HomeViews {
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
                                                     Icon(
-                                                        Icons.Filled.Save,
+                                                        Icons.Filled.Build,
                                                         contentDescription = "Manage Save Data",
                                                         modifier = Modifier.size(20.dp),
                                                         tint = MaterialTheme.colorScheme.onSurface
@@ -1804,7 +1792,7 @@ class HomeViews {
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
                                                     Icon(
-                                                        Icons.Filled.Extension,
+                                                        Icons.Filled.Build,
                                                         contentDescription = "Manage Mods",
                                                         modifier = Modifier.size(20.dp),
                                                         tint = MaterialTheme.colorScheme.onSurface
