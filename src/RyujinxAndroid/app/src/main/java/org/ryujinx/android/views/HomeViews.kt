@@ -175,6 +175,9 @@ class HomeViews {
             val isSelected = selectedModel.value == gameModel
 
             val decoder = Base64.getDecoder()
+            // 修复：正确定义 sizeValue 变量
+            val sizeValue = ListImageSize / Resources.getSystem().displayMetrics.density
+            
             ElevatedCard(
                 elevation = CardDefaults.elevatedCardElevation(defaultElevation = 4.dp),
                 shape = MaterialTheme.shapes.medium,
@@ -243,8 +246,6 @@ class HomeViews {
                             ) {
                                 if (gameModel.icon?.isNotEmpty() == true) {
                                     val pic = decoder.decode(gameModel.icon)
-                                    val sizeValue =
-                                        ListImageSize / Resources.getSystem().displayMetrics.density
                                     Image(
                                         bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
                                             .asImageBitmap(),
