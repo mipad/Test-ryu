@@ -9,7 +9,7 @@ project("ryujinxjni")
 # 设置构建类型
 set(CMAKE_BUILD_TYPE Release)
 
-# 不在全局启用 LTO，只在特定目标启用
+# 注意：不在全局启用 LTO，只在特定目标启用
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION FALSE)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -46,19 +46,6 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(oboe)
 
-# ========== 为 Oboe 启用 LTO ==========
-if(TARGET oboe)
-    target_compile_options(oboe PRIVATE 
-        -flto=thin
-        -O3
-    )
-    target_link_options(oboe PRIVATE 
-        -flto=thin
-        -fuse-ld=lld
-    )
-    message(STATUS "LTO enabled for Oboe")
-endif()
-
 # 使用 FetchContent 获取标准 OpenAL Soft
 FetchContent_Declare(
     openal
@@ -73,20 +60,7 @@ set(ALSOFT_CPUEXT_NEON ON CACHE BOOL "Enable NEON optimizations")
 
 FetchContent_MakeAvailable(openal)
 
-# ========== 为 OpenAL 启用 LTO ==========
-if(TARGET OpenAL)
-    target_compile_options(OpenAL PRIVATE 
-        -flto=thin
-        -O3
-    )
-    target_link_options(OpenAL PRIVATE 
-        -flto=thin
-        -fuse-ld=lld
-    )
-    message(STATUS "LTO enabled for OpenAL")
-endif()
-
-# 创建主库
+# 创建主库 - 这是我们要启用 LTO 的主要目标
 add_library(
     ryujinxjni
     SHARED
@@ -100,7 +74,8 @@ target_compile_definitions(ryujinxjni PRIVATE
     RYUJINX_AUDIO_OPTIMIZE=1
 )
 
-# ========== 为主目标启用 LTO ==========
+# ========== 关键部分：只在主目标启用 LTO ==========
+# 为主目标添加编译选项（启用 LTO）
 target_compile_options(ryujinxjni PRIVATE
     -std=c++20
     -flto=thin
@@ -141,6 +116,14 @@ target_link_options(ryujinxjni PRIVATE
     -fuse-ld=lld
 )
 
+# ========== 可选：为其他性能关键目标启用 LTO ==========
+# 如果 oboe 和 OpenAL 也需要 LTO，可以单独为它们启用
+# target_compile_options(oboe PRIVATE -flto=thin)
+# target_link_options(oboe PRIVATE -flto=thin -fuse-ld=lld)
+
+# target_compile_options(OpenAL PRIVATE -flto=thin)
+# target_link_options(OpenAL PRIVATE -flto=thin -fuse-ld=lld)
+
 # 设置 JNI 库输出路径
 set(JNI_PATH ../jniLibs/${CMAKE_ANDROID_ARCH_ABI})
 cmake_path(ABSOLUTE_PATH JNI_PATH NORMALIZE)
@@ -154,19 +137,6 @@ if (NOT (EXISTS ${LIBCRYPTO_JNI_PATH} AND EXISTS ${LIBSSL_JNI_PATH}))
     add_dependencies(ryujinxjni openssl)
 endif ()
 
-# ========== 为 OpenSSL 启用 LTO（如果从源码构建） ==========
-if(TARGET openssl)
-    target_compile_options(openssl PRIVATE 
-        -flto=thin
-        -O3
-    )
-    target_link_options(openssl PRIVATE 
-        -flto=thin
-        -fuse-ld=lld
-    )
-    message(STATUS "LTO enabled for OpenSSL")
-endif()
-
 # 设置 OpenAL 输出目录
 set_target_properties(OpenAL PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
@@ -174,4 +144,4 @@ set_target_properties(OpenAL PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
 )
 
-message(STATUS "LTO enabled for main target, Oboe, OpenAL and OpenSSL - Configuration completed")
+message(STATUS "LTO enabled only for main target - Configuration completed")
