@@ -46,6 +46,22 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(oboe)
 
+# 为 oboe 启用 LTO 优化
+if(TARGET oboe)
+    target_compile_options(oboe PRIVATE
+        -flto
+        -O3
+    )
+    target_link_options(oboe PRIVATE
+        -flto
+    )
+    # 设置 interprocedural optimization 属性
+    set_target_properties(oboe PROPERTIES
+        INTERPROCEDURAL_OPTIMIZATION TRUE
+    )
+    message(STATUS "LTO enabled for oboe library")
+endif()
+
 # 使用 FetchContent 获取标准 OpenAL Soft
 FetchContent_Declare(
     openal
@@ -117,10 +133,7 @@ target_link_options(ryujinxjni PRIVATE
 )
 
 # ========== 可选：为其他性能关键目标启用 LTO ==========
-# 如果 oboe 和 OpenAL 也需要 LTO，可以单独为它们启用
-# target_compile_options(oboe PRIVATE -flto=thin)
-# target_link_options(oboe PRIVATE -flto=thin -fuse-ld=lld)
-
+# 如果 OpenAL 也需要 LTO，可以单独为它启用
 # target_compile_options(OpenAL PRIVATE -flto=thin)
 # target_link_options(OpenAL PRIVATE -flto=thin -fuse-ld=lld)
 
@@ -144,4 +157,4 @@ set_target_properties(OpenAL PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
 )
 
-message(STATUS "LTO enabled only for main target - Configuration completed")
+message(STATUS "LTO enabled for main target and oboe - Configuration completed")
