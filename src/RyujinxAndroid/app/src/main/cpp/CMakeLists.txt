@@ -78,7 +78,7 @@ target_compile_definitions(ryujinxjni PRIVATE
 # 为主目标添加编译选项（启用 LTO）
 target_compile_options(ryujinxjni PRIVATE
     -std=c++20
-    -flto=thin
+    -flto
     -O3
     -DNDEBUG
     -march=armv8-a
@@ -112,7 +112,7 @@ target_link_libraries(
 
 # 为主目标设置链接器选项（启用 LTO）
 target_link_options(ryujinxjni PRIVATE
-    -flto=thin
+    -flto
     -fuse-ld=lld
 )
 
