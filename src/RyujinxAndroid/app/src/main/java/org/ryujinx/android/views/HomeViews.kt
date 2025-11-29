@@ -9,8 +9,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.basicMarquee
@@ -52,21 +50,14 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -90,7 +81,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -133,7 +123,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.foundation.background
 
 class HomeViews {
     companion object {
@@ -145,8 +134,7 @@ class HomeViews {
             Icon(
                 Icons.Filled.Add,
                 contentDescription = "N/A",
-                modifier = modifier,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                modifier = modifier
             )
         }
 
@@ -175,16 +163,9 @@ class HomeViews {
             val isSelected = selectedModel.value == gameModel
 
             val decoder = Base64.getDecoder()
-            // 修复：正确定义 sizeValue 变量
-            val sizeValue = ListImageSize / Resources.getSystem().displayMetrics.density
-            
-            ElevatedCard(
-                elevation = CardDefaults.elevatedCardElevation(defaultElevation = 4.dp),
+            Surface(
                 shape = MaterialTheme.shapes.medium,
-                colors = CardDefaults.elevatedCardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    contentColor = MaterialTheme.colorScheme.onSurface
-                ),
+                color = MaterialTheme.colorScheme.surface,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(8.dp)
@@ -225,92 +206,46 @@ class HomeViews {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
+                        .padding(8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Row {
                         if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
                             Box(
                                 modifier = if (isSelected) {
                                     Modifier
-                                        .padding(end = 16.dp)
-                                        .border(3.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
-                                        .shadow(8.dp, RoundedCornerShape(12.dp))
+                                        .padding(end = 8.dp)
+                                        .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
                                 } else {
-                                    Modifier
-                                        .padding(end = 16.dp)
-                                        .shadow(4.dp, RoundedCornerShape(12.dp))
+                                    Modifier.padding(end = 8.dp)
                                 }
                             ) {
                                 if (gameModel.icon?.isNotEmpty() == true) {
                                     val pic = decoder.decode(gameModel.icon)
+                                    val size =
+                                        ListImageSize / Resources.getSystem().displayMetrics.density
                                     Image(
                                         bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
                                             .asImageBitmap(),
                                         contentDescription = gameModel.getDisplayName() + " icon",
-                                        contentScale = ContentScale.Crop,
                                         modifier = Modifier
-                                            .width(sizeValue.roundToInt().dp)
-                                            .height(sizeValue.roundToInt().dp)
-                                            .clip(RoundedCornerShape(12.dp))
+                                            .width(size.roundToInt().dp)
+                                            .height(size.roundToInt().dp)
                                     )
                                 } else if (gameModel.type == FileType.Nro)
-                                    NROIcon(
-                                        modifier = Modifier
-                                            .width(sizeValue.roundToInt().dp)
-                                            .height(sizeValue.roundToInt().dp)
-                                            .padding(8.dp)
-                                    )
-                                else NotAvailableIcon(
-                                    modifier = Modifier
-                                        .width(sizeValue.roundToInt().dp)
-                                        .height(sizeValue.roundToInt().dp)
-                                        .padding(16.dp)
-                                )
+                                    NROIcon()
+                                else NotAvailableIcon()
                             }
-                        } else NotAvailableIcon(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .padding(8.dp)
-                        )
+                        } else NotAvailableIcon()
                         Column {
-                            Text(
-                                text = gameModel.getDisplayName(),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = gameModel.developer ?: "Unknown Developer",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = gameModel.titleId ?: "No Title ID",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.outline
-                            )
+                            Text(text = gameModel.getDisplayName())
+                            Text(text = gameModel.developer ?: "")
+                            Text(text = gameModel.titleId ?: "")
                         }
                     }
-                    Column(
-                        horizontalAlignment = Alignment.End
-                    ) {
-                        Text(
-                            text = gameModel.version ?: "v1.0.0",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = String.format("%.2f GB", gameModel.fileSize),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.outline
-                        )
+                    Column {
+                        Text(text = gameModel.version ?: "")
+                        Text(text = String.format("%.3f", gameModel.fileSize))
                     }
                 }
             }
@@ -332,20 +267,12 @@ class HomeViews {
             val isSelected = selectedModel.value == gameModel
 
             val decoder = Base64.getDecoder()
-            ElevatedCard(
-                elevation = CardDefaults.elevatedCardElevation(
-                    defaultElevation = 8.dp,
-                    pressedElevation = 4.dp
-                ),
-                shape = MaterialTheme.shapes.large,
-                colors = CardDefaults.elevatedCardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                    contentColor = MaterialTheme.colorScheme.onSurface
-                ),
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.surface,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(8.dp)
-                    .aspectRatio(0.75f)
+                    .padding(4.dp)
                     .combinedClickable(
                         onClick = {
                             if (viewModel.mainViewModel?.selected != null) {
@@ -382,7 +309,7 @@ class HomeViews {
             ) {
                 Column(
                     modifier = Modifier
-                        .padding(12.dp)
+                        .padding(4.dp)
                         .fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
@@ -392,13 +319,11 @@ class HomeViews {
                                 Modifier
                                     .fillMaxWidth()
                                     .aspectRatio(1f)
-                                    .border(3.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(20.dp))
-                                    .shadow(12.dp, RoundedCornerShape(20.dp))
+                                    .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
                             } else {
                                 Modifier
                                     .fillMaxWidth()
                                     .aspectRatio(1f)
-                                    .shadow(8.dp, RoundedCornerShape(16.dp))
                             }
                         ) {
                             if (gameModel.icon?.isNotEmpty() == true) {
@@ -421,12 +346,11 @@ class HomeViews {
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .clip(RoundedCornerShape(16.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                                    contentAlignment = Alignment.Center
                                 ) {
                                     NROIcon(
                                         modifier = Modifier
-                                            .fillMaxSize(0.7f)
+                                            .fillMaxSize(0.8f)
+                                            .align(Alignment.Center)
                                     )
                                 }
                             } else {
@@ -434,12 +358,11 @@ class HomeViews {
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .clip(RoundedCornerShape(16.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                                    contentAlignment = Alignment.Center
                                 ) {
                                     NotAvailableIcon(
                                         modifier = Modifier
-                                            .fillMaxSize(0.5f)
+                                        .fillMaxSize(0.8f)
+                                        .align(Alignment.Center)
                                     )
                                 }
                             }
@@ -450,46 +373,27 @@ class HomeViews {
                                 Modifier
                                     .fillMaxWidth()
                                     .aspectRatio(1f)
-                                    .border(3.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(20.dp))
+                                    .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
                             } else {
                                 Modifier
                                     .fillMaxWidth()
                                     .aspectRatio(1f)
                             }
                         ) {
-                            Box(
+                            NotAvailableIcon(
                                 modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                NotAvailableIcon(
-                                    modifier = Modifier
-                                        .fillMaxSize(0.5f)
-                                )
-                            }
+                                    .fillMaxSize(0.8f)
+                                    .align(Alignment.Center)
+                            )
                         }
                     }
-                    Spacer(modifier = Modifier.height(12.dp))
                     Text(
                         text = gameModel.getDisplayName(),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 2,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center,
                         modifier = Modifier
-                            .padding(horizontal = 4.dp)
-                            .fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = gameModel.version ?: "v1.0.0",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(horizontal = 4.dp)
+                            .padding(vertical = 4.dp)
+                            .basicMarquee()
                     )
                 }
             }
@@ -508,12 +412,14 @@ class HomeViews {
             onItemClick: () -> Unit = {}
         ) {
             if (gameModel == null) {
+                // 空项目
                 Box(
                     modifier = Modifier
                         .size(100.dp)
                         .clip(RoundedCornerShape(16.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                )
+                ) {
+                    // 空项目不显示任何内容
+                }
                 return
             }
 
@@ -523,21 +429,19 @@ class HomeViews {
             val isSelected = selectedModel.value == gameModel
             val decoder = Base64.getDecoder()
             
+            // 根据主题确定边框颜色 - 使用背景色的亮度来判断
             val backgroundColor = MaterialTheme.colorScheme.background
             val luminance = 0.299 * backgroundColor.red + 0.587 * backgroundColor.green + 0.114 * backgroundColor.blue
-            val borderColor = if (luminance > 0.5) Color(0x26000000) else Color(0x26FFFFFF)
+            val borderColor = if (luminance > 0.5) Color.Black else Color.White
 
             if (isCentered) {
-                ElevatedCard(
-                    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 16.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.elevatedCardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
-                    ),
+                // 中央项目 - 只显示图标，不显示文字
+                // 修复：将combinedClickable移到外层，确保边框不影响点击区域
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth(0.7f)
-                        .aspectRatio(1.1f)
-                        .offset(y = (-30).dp)
+                        .fillMaxWidth(0.6f)
+                        .aspectRatio(1.3f)
+                        .offset(y = (-23).dp) // 向上移动10dp
                         .combinedClickable(
                             onClick = {
                                 if (viewModel.mainViewModel?.selected != null) {
@@ -575,13 +479,13 @@ class HomeViews {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .border(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), RoundedCornerShape(24.dp))
+                            .border(1.dp, borderColor, RoundedCornerShape(12.dp)) // 添加超细线框
                             .then(
                                 if (isSelected) {
                                     Modifier.border(
-                                        4.dp,
+                                        2.dp,
                                         MaterialTheme.colorScheme.primary,
-                                        RoundedCornerShape(24.dp)
+                                        RoundedCornerShape(12.dp)
                                     )
                                 } else {
                                     Modifier
@@ -595,86 +499,39 @@ class HomeViews {
                                     bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
                                         .asImageBitmap(),
                                     contentDescription = gameModel.getDisplayName() + " icon",
-                                    contentScale = ContentScale.Crop,
+                                    contentScale = ContentScale.FillBounds, // 改为FillBounds以拉伸图片
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .clip(RoundedCornerShape(24.dp))
+                                        .clip(RoundedCornerShape(12.dp))
                                 )
                             } else if (gameModel.type == FileType.Nro) {
-                                Box(
+                                NROIcon(
                                     modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(RoundedCornerShape(24.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    NROIcon(
-                                        modifier = Modifier
-                                            .fillMaxSize(0.6f)
-                                    )
-                                }
+                                        .fillMaxSize(0.8f)
+                                        .align(Alignment.Center)
+                                )
                             } else {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(RoundedCornerShape(24.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    NotAvailableIcon(
-                                        modifier = Modifier
-                                            .fillMaxSize(0.4f)
-                                    )
-                                }
-                            }
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(RoundedCornerShape(24.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                                contentAlignment = Alignment.Center
-                            ) {
                                 NotAvailableIcon(
                                     modifier = Modifier
-                                        .fillMaxSize(0.4f)
+                                        .fillMaxSize(0.8f)
+                                        .align(Alignment.Center)
                                 )
                             }
-                        }
-                        
-                        // 添加游戏名称覆盖层
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(40.dp)
-                                .align(Alignment.BottomCenter)
-                                .background(
-                                    Color.Transparent
-                                )
-                        ) {
-                            Text(
-                                text = gameModel.getDisplayName(),
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                        } else {
+                            NotAvailableIcon(
                                 modifier = Modifier
+                                    .fillMaxSize(0.8f)
                                     .align(Alignment.Center)
-                                    .padding(horizontal = 12.dp)
-                                    .basicMarquee()
                             )
                         }
                     }
                 }
             } else {
-                Card(
-                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                    ),
+                // 两侧项目 - 只显示图标
+                Box(
                     modifier = Modifier
-                        .size(90.dp)
+                        .size(80.dp)
+                        .clip(RoundedCornerShape(12.dp))
                         .clickable(onClick = onItemClick)
                 ) {
                     if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
@@ -685,50 +542,27 @@ class HomeViews {
                                     .asImageBitmap(),
                                 contentDescription = gameModel.getDisplayName() + " icon",
                                 contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(RoundedCornerShape(16.dp))
+                                modifier = Modifier.fillMaxSize()
                             )
                         } else if (gameModel.type == FileType.Nro) {
-                            Box(
+                            NROIcon(
                                 modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                NROIcon(
-                                    modifier = Modifier
-                                        .fillMaxSize(0.7f)
-                                )
-                            }
+                                    .fillMaxSize(0.8f)
+                                    .align(Alignment.Center)
+                            )
                         } else {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                NotAvailableIcon(
-                                    modifier = Modifier
-                                        .fillMaxSize(0.5f)
-                                )
-                            }
-                        }
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant),
-                            contentAlignment = Alignment.Center
-                        ) {
                             NotAvailableIcon(
                                 modifier = Modifier
-                                    .fillMaxSize(0.5f)
+                                    .fillMaxSize(0.8f)
+                                    .align(Alignment.Center)
                             )
                         }
+                    } else {
+                        NotAvailableIcon(
+                            modifier = Modifier
+                                .fillMaxSize(0.8f)
+                                .align(Alignment.Center)
+                        )
                     }
                 }
             }
@@ -766,6 +600,7 @@ class HomeViews {
                 mutableStateOf(true)
             }
 
+            // 添加重命名功能的状态变量
             var showRenameDialog by remember { mutableStateOf(false) }
             var newGameName by remember { mutableStateOf("") }
             val focusRequester = remember { FocusRequester() }
@@ -784,33 +619,112 @@ class HomeViews {
                 }
             }
 
+            // 获取屏幕方向
             val configuration = LocalConfiguration.current
             val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
+            // 添加屏幕方向改变时的处理
             LaunchedEffect(configuration.orientation) {
+                // 当屏幕方向改变时，关闭底部操作菜单
                 showAppActions.value = false
                 selectedModel.value = null
                 viewModel.mainViewModel?.selected = null
             }
 
+            // 横屏模式下跟踪当前中央项
             var centeredIndex by remember { mutableStateOf(0) }
+            // 添加一个标志来跟踪是否是初始加载
             var isInitialLoad by remember { mutableStateOf(true) }
 
+            // 使用无背景的ModalBottomSheet
             val sheetState = androidx.compose.material3.rememberModalBottomSheetState()
 
             Scaffold(
                 modifier = Modifier.fillMaxSize(),
                 topBar = {
                     if (!isLandscape) {
-                        Surface(
-                            tonalElevation = 8.dp,
-                            shadowElevation = 8.dp,
-                            modifier = Modifier.fillMaxWidth()
+                        // 竖屏模式下的搜索栏
+                        SearchBar(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp),
+                            shape = SearchBarDefaults.inputFieldShape,
+                            query = query,
+                            onQueryChange = {
+                                query = it
+                            },
+                            onSearch = {},
+                            active = false,
+                            onActiveChange = {},
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Filled.Search,
+                                    contentDescription = "Search Games"
+                                )
+                            },
+                            placeholder = {
+                                Text(text = "Ryujinx")
+                            },
+                            trailingIcon = {
+                                IconButton(onClick = {
+                                    openAppBarExtra = !openAppBarExtra
+                                }) {
+                                    if (!refreshUser) {
+                                        refreshUser = true
+                                    }
+                                    if (refreshUser)
+                                        if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
+                                            val pic =
+                                                viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
+                                            Image(
+                                                bitmap = BitmapFactory.decodeByteArray(
+                                                    pic,
+                                                    0,
+                                                    pic?.size ?: 0
+                                                )
+                                                    .asImageBitmap(),
+                                                contentDescription = "user image",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .padding(4.dp)
+                                                    .size(40.dp) // 调整大小
+                                                    .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
+                                                    .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)) // 添加边框
+                                            )
+                                        } else {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(40.dp)
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    Icons.Filled.Person,
+                                                    contentDescription = "user",
+                                                    modifier = Modifier.size(24.dp)
+                                                )
+                                            }
+                                        }
+                                }
+                            }
                         ) {
+
+                        }
+                    } else {
+                        // 横屏模式下的紧凑搜索栏 - 移到左上角，宽度缩短
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Start // 改为靠左对齐
+                        ) {
+                            // 搜索框 - 缩短宽度，靠左显示
                             SearchBar(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
+                                    .width(185.dp) // 固定宽度
+                                    .height(55.dp),
                                 shape = SearchBarDefaults.inputFieldShape,
                                 query = query,
                                 onQueryChange = {
@@ -822,184 +736,84 @@ class HomeViews {
                                 leadingIcon = {
                                     Icon(
                                         Icons.Filled.Search,
-                                        contentDescription = "Search Games",
-                                        tint = MaterialTheme.colorScheme.primary
+                                        contentDescription = "Search Games"
                                     )
                                 },
                                 placeholder = {
-                                    Text(
-                                        text = "Search your games...",
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                    Text(text = "Search Games")
                                 },
                                 trailingIcon = {
-                                    IconButton(onClick = {
-                                        openAppBarExtra = !openAppBarExtra
-                                    }) {
+                                    // 用户头像放在搜索框内部右侧
+                                    IconButton(
+                                        onClick = {
+                                            openAppBarExtra = !openAppBarExtra
+                                        },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
                                         if (!refreshUser) {
-                                            refreshUser = true
-                                        }
-                                        if (refreshUser)
-                                            if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
-                                                val pic =
-                                                    viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
-                                                Image(
-                                                    bitmap = BitmapFactory.decodeByteArray(
-                                                        pic,
-                                                        0,
-                                                        pic?.size ?: 0
-                                                    )
-                                                        .asImageBitmap(),
-                                                    contentDescription = "user image",
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier
-                                                        .size(36.dp)
-                                                        .clip(RoundedCornerShape(10.dp))
-                                                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(10.dp))
-                                                )
-                                            } else {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(36.dp)
-                                                        .clip(RoundedCornerShape(10.dp))
-                                                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                                                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(10.dp)),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Icon(
-                                                        Icons.Filled.Person,
-                                                        contentDescription = "user",
-                                                        modifier = Modifier.size(20.dp),
-                                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                                    )
-                                                }
-                                            }
+                                        refreshUser = true
                                     }
-                                },
-                                colors = SearchBarDefaults.colors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceContainer
-                                )
-                            ) {}
-                        }
-                    } else {
-                        Surface(
-                            tonalElevation = 8.dp,
-                            shadowElevation = 8.dp,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Start
-                            ) {
-                                SearchBar(
-                                    modifier = Modifier
-                                        .width(220.dp)
-                                        .height(56.dp),
-                                    shape = SearchBarDefaults.inputFieldShape,
-                                    query = query,
-                                    onQueryChange = {
-                                        query = it
-                                    },
-                                    onSearch = {},
-                                    active = false,
-                                    onActiveChange = {},
-                                    leadingIcon = {
-                                        Icon(
-                                            Icons.Filled.Search,
-                                            contentDescription = "Search Games",
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                    },
-                                    placeholder = {
-                                        Text(
-                                            text = "Search Games",
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    },
-                                    trailingIcon = {
-                                        IconButton(
-                                            onClick = {
-                                                openAppBarExtra = !openAppBarExtra
-                                            },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            if (!refreshUser) {
-                                                refreshUser = true
+                                    if (refreshUser)
+                                        if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
+                                            val pic =
+                                                viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
+                                            Image(
+                                                bitmap = BitmapFactory.decodeByteArray(
+                                                    pic,
+                                                    0,
+                                                    pic?.size ?: 0
+                                                )
+                                                    .asImageBitmap(),
+                                                contentDescription = "user image",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .size(32.dp)
+                                                    .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
+                                                    .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)) // 添加边框
+                                            )
+                                        } else {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(32.dp)
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    Icons.Filled.Person,
+                                                    contentDescription = "user",
+                                                    modifier = Modifier.size(24.dp)
+                                                )
                                             }
-                                            if (refreshUser)
-                                                if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
-                                                    val pic =
-                                                        viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
-                                                    Image(
-                                                        bitmap = BitmapFactory.decodeByteArray(
-                                                            pic,
-                                                            0,
-                                                            pic?.size ?: 0
-                                                        )
-                                                            .asImageBitmap(),
-                                                        contentDescription = "user image",
-                                                        contentScale = ContentScale.Crop,
-                                                        modifier = Modifier
-                                                            .size(28.dp)
-                                                            .clip(RoundedCornerShape(8.dp))
-                                                            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp))
-                                                    )
-                                                } else {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(28.dp)
-                                                            .clip(RoundedCornerShape(8.dp))
-                                                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                                                            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp)),
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Icon(
-                                                            Icons.Filled.Person,
-                                                            contentDescription = "user",
-                                                            modifier = Modifier.size(16.dp),
-                                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                                        )
-                                                    }
-                                                }
                                         }
-                                    },
-                                    colors = SearchBarDefaults.colors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceContainer
-                                    )
-                                ) {}
-                            }
+                                }
+                                }
+                            ) {}
                         }
                     }
                 },
                 floatingActionButton = {
                     AnimatedVisibility(
                         visible = isFabVisible,
-                        enter = slideInVertically(initialOffsetY = { it * 2 }) + fadeIn(),
-                        exit = slideOutVertically(targetOffsetY = { it * 2 }) + fadeOut()
+                        enter = slideInVertically(initialOffsetY = { it * 2 }),
+                        exit = slideOutVertically(targetOffsetY = { it * 2 })
                     ) {
                         FloatingActionButton(
                             onClick = {
                                 viewModel.requestReload()
                                 viewModel.ensureReloadIfNecessary()
                             },
-                            shape = MaterialTheme.shapes.medium,
-                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            elevation = FloatingActionButtonDefaults.elevation(
-                                defaultElevation = 8.dp,
-                                pressedElevation = 4.dp
-                            )
+                            shape = MaterialTheme.shapes.small
                         ) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Refresh Games")
+                            Icon(Icons.Default.Refresh, contentDescription = "refresh")
                         }
                     }
                 }
 
             ) { contentPadding ->
+                // 将用户卡片和游戏列表分开处理，确保正确的z-index顺序
                 Box(modifier = Modifier.fillMaxSize()) {
+                    // 游戏列表内容
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -1020,25 +834,17 @@ class HomeViews {
                             if (isLoading.value) {
                                 Box(modifier = Modifier.fillMaxSize())
                                 {
-                                    Column(
-                                        modifier = Modifier.align(Alignment.Center),
-                                        horizontalAlignment = Alignment.CenterHorizontally
-                                    ) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(64.dp),
-                                            color = MaterialTheme.colorScheme.primary,
-                                            strokeWidth = 4.dp
-                                        )
-                                        Spacer(modifier = Modifier.height(16.dp))
-                                        Text(
-                                            text = "Loading Games...",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
+                                    CircularProgressIndicator(
+                                        modifier = Modifier
+                                            .width(64.dp)
+                                            .align(Alignment.Center),
+                                        color = MaterialTheme.colorScheme.secondary,
+                                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                                    )
                                 }
                             } else {
                                 if (isLandscape) {
+                                    // 横屏模式：使用自定义轮播布局
                                     val filteredList = list.filter {
                                         it.getDisplayName().isNotEmpty() && 
                                         (query.trim().isEmpty() || 
@@ -1046,39 +852,23 @@ class HomeViews {
                                     }
                                     
                                     if (filteredList.isEmpty()) {
+                                        // 没有游戏时显示空状态
                                         Box(
                                             modifier = Modifier.fillMaxSize(),
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            Column(
-                                                horizontalAlignment = Alignment.CenterHorizontally
-                                            ) {
-                                                Icon(
-                                                    Icons.Filled.Search,
-                                                    contentDescription = "No games",
-                                                    modifier = Modifier.size(64.dp),
-                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                                Spacer(modifier = Modifier.height(16.dp))
-                                                Text(
-                                                    text = "No games found",
-                                                    style = MaterialTheme.typography.titleMedium,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                                Spacer(modifier = Modifier.height(8.dp))
-                                                Text(
-                                                    text = "Try adjusting your search or add new games",
-                                                    style = MaterialTheme.typography.bodyMedium,
-                                                    color = MaterialTheme.colorScheme.outline,
-                                                    textAlign = TextAlign.Center
-                                                )
-                                            }
+                                            Text(
+                                                text = "No games found",
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
                                         }
                                     } else {
+                                        // 确保centeredIndex在有效范围内
                                         if (centeredIndex >= filteredList.size) {
                                             centeredIndex = 0
                                         }
                                         
+                                        // 计算左右项目的索引
                                         val leftIndex = if (centeredIndex == 0) filteredList.size - 1 else centeredIndex - 1
                                         val rightIndex = if (centeredIndex == filteredList.size - 1) 0 else centeredIndex + 1
                                         
@@ -1088,21 +878,26 @@ class HomeViews {
                                                 .nestedScroll(nestedScrollConnection)
                                                 .pointerInput(Unit) {
                                                     detectHorizontalDragGestures { change, dragAmount ->
+                                                        // 检测滑动手势
                                                         if (dragAmount > 50) {
+                                                            // 向右滑动，显示上一个
                                                             centeredIndex = if (centeredIndex == 0) filteredList.size - 1 else centeredIndex - 1
                                                         } else if (dragAmount < -50) {
+                                                            // 向左滑动，显示下一个
                                                             centeredIndex = if (centeredIndex == filteredList.size - 1) 0 else centeredIndex + 1
                                                         }
                                                     }
                                                 }
                                         ) {
+                                            // 游戏项目 - 调整排列方式确保三个项目都能显示
                                             Row(
                                                 modifier = Modifier
                                                     .fillMaxSize()
-                                                    .padding(horizontal = 16.dp),
-                                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                                    .padding(horizontal = 8.dp), // 减少水平内边距
+                                                horizontalArrangement = Arrangement.SpaceEvenly, // 使用均匀分布
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
+                                                // 左侧项目
                                                 LandscapeGameCarouselItem(
                                                     gameModel = filteredList.getOrNull(leftIndex),
                                                     viewModel = viewModel,
@@ -1116,6 +911,7 @@ class HomeViews {
                                                     }
                                                 )
                                                 
+                                                // 中央项目
                                                 LandscapeGameCarouselItem(
                                                     gameModel = filteredList.getOrNull(centeredIndex),
                                                     viewModel = viewModel,
@@ -1126,6 +922,7 @@ class HomeViews {
                                                     isCentered = true
                                                 )
                                                 
+                                                // 右侧项目
                                                 LandscapeGameCarouselItem(
                                                     gameModel = filteredList.getOrNull(rightIndex),
                                                     viewModel = viewModel,
@@ -1139,44 +936,17 @@ class HomeViews {
                                                     }
                                                 )
                                             }
-                                            
-                                            // 添加指示器
-                                            if (filteredList.size > 1) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .align(Alignment.BottomCenter)
-                                                        .padding(bottom = 32.dp)
-                                                ) {
-                                                    Row(
-                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                                    ) {
-                                                        filteredList.forEachIndexed { index, _ ->
-                                                            Box(
-                                                                modifier = Modifier
-                                                                    .size(8.dp)
-                                                                    .clip(CircleShape)
-                                                                    .background(
-                                                                        if (index == centeredIndex) 
-                                                                            MaterialTheme.colorScheme.primary 
-                                                                        else 
-                                                                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
-                                                                    )
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                            }
                                         }
                                     }
                                 } else if (settings.isGrid) {
                                     LazyVerticalGrid(
-                                        columns = GridCells.Adaptive(160.dp),
+                                        columns = GridCells.Fixed(2),
                                         modifier = Modifier
                                             .fillMaxSize()
-                                            .padding(16.dp)
+                                            .padding(horizontal = 8.dp)
                                             .nestedScroll(nestedScrollConnection),
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         items(list) {
                                             if (it.getDisplayName().isNotEmpty() && (query.trim()
@@ -1196,11 +966,7 @@ class HomeViews {
                                     }
                                 } else {
                                     LazyColumn(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(horizontal = 8.dp)
-                                            .nestedScroll(nestedScrollConnection),
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        modifier = Modifier.fillMaxSize()
                                     ) {
                                         items(list) {
                                             if (it.getDisplayName().isNotEmpty() && (query.trim()
@@ -1209,14 +975,16 @@ class HomeViews {
                                                 )
                                                     .contains(query))
                                             ) {
-                                                ListGameItem(
-                                                    gameModel = it,
-                                                    viewModel = viewModel,
-                                                    showAppActions = showAppActions,
-                                                    showLoading = showLoading,
-                                                    selectedModel = selectedModel,
-                                                    showError = showError
-                                                )
+                                                Box(modifier = Modifier) {
+                                                    ListGameItem(
+                                                        gameModel = it,
+                                                        viewModel = viewModel,
+                                                        showAppActions = showAppActions,
+                                                        showLoading = showLoading,
+                                                        selectedModel = selectedModel,
+                                                        showError = showError
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -1225,166 +993,141 @@ class HomeViews {
                         }
                     }
 
+                    // 用户卡片 - 放在游戏列表上方
                     Column(
                         modifier = Modifier
                             .padding(contentPadding)
                             .zIndex(2f)
                     ) {
-                        val iconSize = 56.dp
+                        val iconSize = 52.dp
                         AnimatedVisibility(
                             visible = openAppBarExtra,
-                            enter = slideInVertically() + fadeIn(),
-                            exit = slideOutVertically() + fadeOut()
                         ) {
-                            ElevatedCard(
-                                elevation = CardDefaults.elevatedCardElevation(defaultElevation = 12.dp),
-                                shape = MaterialTheme.shapes.large,
-                                colors = CardDefaults.elevatedCardColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                                ),
+                            Card(
                                 modifier = Modifier
-                                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp, horizontal = 16.dp)
+                                    .fillMaxWidth(),
+                                shape = MaterialTheme.shapes.medium
                             ) {
-                                Column(modifier = Modifier.padding(16.dp)) {
+                                Column(modifier = Modifier.padding(8.dp)) {
                                     Row(
                                         modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        if (refreshUser) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .border(
-                                                        width = 2.dp,
-                                                        color = MaterialTheme.colorScheme.primary,
-                                                        shape = RoundedCornerShape(14.dp)
-                                                    )
-                                                    .size(iconSize)
-                                                    .padding(2.dp),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
-                                                    val pic =
-                                                        viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
-                                                    Image(
-                                                        bitmap = BitmapFactory.decodeByteArray(
-                                                            pic,
-                                                            0,
-                                                            pic?.size ?: 0
-                                                        )
-                                                            .asImageBitmap(),
-                                                        contentDescription = "user image",
-                                                        contentScale = ContentScale.Crop,
-                                                        modifier = Modifier
-                                                            .size(iconSize)
-                                                            .clip(RoundedCornerShape(12.dp))
-                                                    )
-                                                } else {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(iconSize)
-                                                            .clip(RoundedCornerShape(12.dp))
-                                                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Icon(
-                                                            Icons.Filled.Person,
-                                                            contentDescription = "user",
-                                                            modifier = Modifier.size(28.dp),
-                                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        Card(
-                                            modifier = Modifier
-                                                .padding(horizontal = 8.dp)
-                                                .fillMaxWidth(0.7f)
-                                                .height(iconSize),
-                                            shape = MaterialTheme.shapes.medium,
-                                            colors = CardDefaults.cardColors(
-                                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-                                            )
-                                        ) {
-                                            LazyRow(
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                                contentPadding = PaddingValues(8.dp)
-                                            ) {
-                                                if (viewModel.mainViewModel?.userViewModel?.userList?.isNotEmpty() == true) {
-                                                    items(viewModel.mainViewModel!!.userViewModel.userList) { user ->
-                                                        if (user.id != viewModel.mainViewModel!!.userViewModel.openedUser.id) {
-                                                            Image(
-                                                                bitmap = BitmapFactory.decodeByteArray(
-                                                                    user.userPicture,
-                                                                    0,
-                                                                    user.userPicture?.size ?: 0
-                                                                )
-                                                                    .asImageBitmap(),
-                                                                contentDescription = "user image",
-                                                                contentScale = ContentScale.Crop,
-                                                                modifier = Modifier
-                                                                    .size(40.dp)
-                                                                    .clip(RoundedCornerShape(10.dp))
-                                                                    .combinedClickable(
-                                                                        onClick = {
-                                                                            viewModel.mainViewModel!!.userViewModel.openUser(
-                                                                                user
-                                                                            )
-                                                                            refreshUser = false
-                                                                        })
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        Box(
-                                            modifier = Modifier
-                                                .size(iconSize)
-                                        ) {
-                                            IconButton(
-                                                modifier = Modifier.fillMaxSize(),
-                                                onClick = {
-                                                    openAppBarExtra = false
-                                                    navController?.navigate("user")
-                                                }) {
-                                                Icon(
-                                                    Icons.Filled.Add,
-                                                    contentDescription = "Add User",
-                                                    tint = MaterialTheme.colorScheme.primary
-                                                )
-                                            }
-                                        }
-                                    }
-                                    TextButton(
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                if (refreshUser) {
+                                    Box(
                                         modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(top = 8.dp),
-                                        onClick = {
-                                            navController?.navigate("settings")
-                                        }
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                Icons.Filled.Settings,
-                                                contentDescription = "Settings",
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                            .border(
+                                                width = 2.dp,
+                                                color = Color(0xFF14bf00),
+                                                shape = RoundedCornerShape(12.dp) // 改为圆角方形
                                             )
-                                            Text(
-                                                text = "Settings",
-                                                modifier = Modifier.padding(start = 12.dp),
-                                                color = MaterialTheme.colorScheme.onSurface
+                                            .size(iconSize)
+                                            .padding(2.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
+                                            val pic =
+                                                viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
+                                            Image(
+                                                bitmap = BitmapFactory.decodeByteArray(
+                                                    pic,
+                                                    0,
+                                                    pic?.size ?: 0
+                                                )
+                                                    .asImageBitmap(),
+                                                contentDescription = "user image",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .padding(4.dp)
+                                                    .size(iconSize)
+                                                    .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
+                                            )
+                                        } else {
+                                            Icon(
+                                                Icons.Filled.Person,
+                                                contentDescription = "user",
+                                                modifier = Modifier.size(32.dp)
                                             )
                                         }
                                     }
                                 }
+                                Card(
+                                    modifier = Modifier
+                                        .padding(horizontal = 4.dp)
+                                        .fillMaxWidth(0.7f),
+                                    shape = MaterialTheme.shapes.small,
+                                ) {
+                                    LazyRow {
+                                        if (viewModel.mainViewModel?.userViewModel?.userList?.isNotEmpty() == true) {
+                                            items(viewModel.mainViewModel!!.userViewModel.userList) { user ->
+                                                if (user.id != viewModel.mainViewModel!!.userViewModel.openedUser.id) {
+                                                    Image(
+                                                        bitmap = BitmapFactory.decodeByteArray(
+                                                            user.userPicture,
+                                                            0,
+                                                            user.userPicture?.size ?: 0
+                                                        )
+                                                            .asImageBitmap(),
+                                                        contentDescription = "selected image",
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier
+                                                            .padding(4.dp)
+                                                            .size(iconSize)
+                                                            .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
+                                                            .combinedClickable(
+                                                                onClick = {
+                                                                    viewModel.mainViewModel!!.userViewModel.openUser(
+                                                                        user
+                                                                    )
+                                                                    refreshUser =
+                                                                        false
+                                                                })
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .size(iconSize)
+                                ) {
+                                    IconButton(
+                                        modifier = Modifier.fillMaxSize(),
+                                        onClick = {
+                                            openAppBarExtra = false
+                                            navController?.navigate("user")
+                                        }) {
+                                        Icon(
+                                            Icons.Filled.Add,
+                                            contentDescription = "N/A"
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        TextButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                navController?.navigate("settings")
+                            }
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Filled.Settings,
+                                    contentDescription = "Settings"
+                                )
+                                Text(
+                                    text = "Settings",
+                                    modifier = Modifier.padding(start = 8.dp)
+                                )
                             }
                         }
                     }
@@ -1395,40 +1138,23 @@ class HomeViews {
                 BasicAlertDialog(onDismissRequest = { }) {
                     Card(
                         modifier = Modifier
-                            .padding(32.dp)
-                            .fillMaxWidth(0.8f),
-                        shape = MaterialTheme.shapes.extraLarge,
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                        ),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 24.dp)
+                            .padding(16.dp)
+                            .fillMaxWidth(),
+                        shape = MaterialTheme.shapes.medium
                     ) {
                         Column(
                             modifier = Modifier
-                                .padding(24.dp)
-                                .fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                                .padding(16.dp)
+                                .fillMaxWidth()
                         ) {
-                            Text(
-                                text = "Loading Game",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Spacer(modifier = Modifier.height(20.dp))
+                            Text(text = "Loading")
                             LinearProgressIndicator(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(6.dp)
-                                    .clip(RoundedCornerShape(3.dp)),
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Please wait...",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    .padding(top = 16.dp)
                             )
                         }
+
                     }
                 }
             }
@@ -1440,14 +1166,14 @@ class HomeViews {
                         modifier = Modifier
                             .wrapContentWidth()
                             .wrapContentHeight(),
-                        shape = MaterialTheme.shapes.extraLarge,
-                        tonalElevation = AlertDialogDefaults.TonalElevation,
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh
+                        shape = MaterialTheme.shapes.large,
+                        tonalElevation = AlertDialogDefaults.TonalElevation
                     ) {
                         val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
                         val name = viewModel.mainViewModel?.selected?.getDisplayName() ?: ""
                         TitleUpdateViews.Main(titleId, name, openTitleUpdateDialog, canClose)
                     }
+
                 }
             }
             if (openDlcDialog.value) {
@@ -1458,66 +1184,68 @@ class HomeViews {
                         modifier = Modifier
                             .wrapContentWidth()
                             .wrapContentHeight(),
-                        shape = MaterialTheme.shapes.extraLarge,
-                        tonalElevation = AlertDialogDefaults.TonalElevation,
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh
+                        shape = MaterialTheme.shapes.large,
+                        tonalElevation = AlertDialogDefaults.TonalElevation
                     ) {
                         val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
                         val name = viewModel.mainViewModel?.selected?.getDisplayName() ?: ""
                         DlcViews.Main(titleId, name, openDlcDialog, canClose)
                     }
+
                 }
             }
 
             if (showAppActions.value) {
+                // 获取屏幕配置以确定横竖屏
                 val configuration = LocalConfiguration.current
                 val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
                 
+                // 修复：添加菜单状态变量
                 var showAppMenu by remember { mutableStateOf(false) }
                 
                 ModalBottomSheet(
                     onDismissRequest = {
                         showAppActions.value = false
                         selectedModel.value = null
-                        showAppMenu = false
+                        showAppMenu = false // 关闭底部操作菜单时也关闭子菜单
                     },
                     sheetState = sheetState,
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    scrimColor = Color(0x99000000),
+                    scrimColor = Color.Transparent,
                     modifier = if (isLandscape) {
+                        // 横屏模式下设置最大高度
                         Modifier.heightIn(max = configuration.screenHeightDp.dp * 0.7f)
                     } else {
                         Modifier
                     }
                 ) {
+                    // 使用可滚动的LazyColumn替代固定的Column
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .padding(16.dp)
                     ) {
                         item {
+                            // 显示游戏名和版本号
                             selectedModel.value?.let { game ->
                                 Column(
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Text(
                                         text = game.getDisplayName(),
-                                        style = MaterialTheme.typography.titleLarge,
+                                        fontSize = 20.sp,
                                         fontWeight = FontWeight.Bold,
                                         modifier = Modifier.align(Alignment.CenterHorizontally),
-                                        textAlign = TextAlign.Center,
-                                        color = MaterialTheme.colorScheme.onSurface
+                                        textAlign = TextAlign.Center
                                     )
                                     if (!game.version.isNullOrEmpty()) {
                                         Text(
-                                            text = "Version ${game.version}",
-                                            style = MaterialTheme.typography.bodyMedium,
+                                            text = "v${game.version}",
+                                            fontSize = 16.sp,
                                             modifier = Modifier.align(Alignment.CenterHorizontally),
-                                            textAlign = TextAlign.Center,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            textAlign = TextAlign.Center
                                         )
                                     }
-                                    Spacer(modifier = Modifier.height(20.dp))
+                                    Spacer(modifier = Modifier.height(16.dp))
                                 }
                             }
                         }
@@ -1527,288 +1255,139 @@ class HomeViews {
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceEvenly
                             ) {
-                                IconButton(
-                                    onClick = {
-                                        if (viewModel.mainViewModel?.selected != null) {
-                                            thread {
-                                                showLoading.value = true
-                                                val success =
-                                                    viewModel.mainViewModel!!.loadGame(viewModel.mainViewModel!!.selected!!)
-                                                if (success == 1) {
-                                                    launchOnUiThread {
-                                                        viewModel.mainViewModel!!.navigateToGame()
-                                                    }
-                                                } else {
-                                                    if (success == -2)
-                                                        showError.value =
-                                                            "Error loading update. Please re-add update file"
-                                                    viewModel.mainViewModel!!.selected!!.close()
+                                IconButton(onClick = {
+                                    if (viewModel.mainViewModel?.selected != null) {
+                                        thread {
+                                            showLoading.value = true
+                                            val success =
+                                                viewModel.mainViewModel!!.loadGame(viewModel.mainViewModel!!.selected!!)
+                                            if (success == 1) {
+                                                launchOnUiThread {
+                                                    viewModel.mainViewModel!!.navigateToGame()
                                                 }
-                                                showLoading.value = false
+                                            } else {
+                                                if (success == -2)
+                                                    showError.value =
+                                                        "Error loading update. Please re-add update file"
+                                                viewModel.mainViewModel!!.selected!!.close()
                                             }
+                                            showLoading.value = false
                                         }
-                                    },
-                                    modifier = Modifier.size(56.dp)
-                                ) {
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(44.dp)
-                                                .clip(CircleShape)
-                                                .background(MaterialTheme.colorScheme.primaryContainer),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                Icons.Filled.PlayArrow,
-                                                contentDescription = "Run",
-                                                modifier = Modifier.size(24.dp),
-                                                tint = MaterialTheme.colorScheme.onPrimaryContainer
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            text = "Play",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
                                     }
+                                }) {
+                                    // 只显示播放图标，不显示文字
+                                    Icon(
+                                        Icons.Filled.PlayArrow,
+                                        contentDescription = "Run",
+                                        modifier = Modifier.size(28.dp)
+                                    )
                                 }
                                 
+                                // 修复：将菜单按钮状态移到此处
                                 Box {
-                                    IconButton(
-                                        onClick = {
-                                            showAppMenu = !showAppMenu
-                                        },
-                                        modifier = Modifier.size(56.dp)
-                                    ) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally
-                                        ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(44.dp)
-                                                    .clip(CircleShape)
-                                                    .background(MaterialTheme.colorScheme.secondaryContainer),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Icon(
-                                                    Icons.Filled.MoreVert,
-                                                    contentDescription = "Menu",
-                                                    modifier = Modifier.size(24.dp),
-                                                    tint = MaterialTheme.colorScheme.onSecondaryContainer
-                                                )
-                                            }
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Text(
-                                                text = "More",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurface
-                                            )
-                                        }
+                                    IconButton(onClick = {
+                                        // 修复：正确切换菜单状态
+                                        showAppMenu = !showAppMenu
+                                    }) {
+                                        // 只显示菜单图标，不显示文字
+                                        Icon(
+                                            Icons.Filled.Menu,
+                                            contentDescription = "Menu",
+                                            modifier = Modifier.size(28.dp)
+                                        )
                                     }
                                     
+                                    // 修复：简化下拉菜单，移除LazyColumn
                                     DropdownMenu(
                                         expanded = showAppMenu,
                                         onDismissRequest = { showAppMenu = false },
-                                        modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                        modifier = if (isLandscape) {
+                                            Modifier.heightIn(max = configuration.screenHeightDp.dp * 0.6f)
+                                        } else {
+                                            Modifier
+                                        }
                                     ) {
-                                        DropdownMenuItem(
-                                            text = { 
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Icon(
-                                                        Icons.Filled.Edit,
-                                                        contentDescription = "Rename",
-                                                        modifier = Modifier.size(20.dp),
-                                                        tint = MaterialTheme.colorScheme.onSurface
+                                        // 修复：使用简单的Column而不是LazyColumn
+                                        Column {
+                                            DropdownMenuItem(
+                                                text = { Text("重命名游戏") },
+                                                onClick = {
+                                                    showAppMenu = false
+                                                    selectedModel.value?.let { game ->
+                                                        newGameName = game.getDisplayName()
+                                                        showRenameDialog = true
+                                                    }
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("清除 PPTC 缓存") },
+                                                onClick = {
+                                                    showAppMenu = false
+                                                    viewModel.mainViewModel?.clearPptcCache(
+                                                        viewModel.mainViewModel?.selected?.titleId ?: ""
                                                     )
-                                                    Spacer(modifier = Modifier.width(12.dp))
-                                                    Text("Rename Game")
                                                 }
-                                            },
-                                            onClick = {
-                                                showAppMenu = false
-                                                selectedModel.value?.let { game ->
-                                                    newGameName = game.getDisplayName()
-                                                    showRenameDialog = true
-                                                }
-                                            }
-                                        )
-                                        DropdownMenuItem(
-                                            text = { 
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Icon(
-                                                        Icons.Filled.Build,
-                                                        contentDescription = "Clear Cache",
-                                                        modifier = Modifier.size(20.dp),
-                                                        tint = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("清除着色器缓存") },
+                                                onClick = {
+                                                    showAppMenu = false
+                                                    viewModel.mainViewModel?.purgeShaderCache(
+                                                        viewModel.mainViewModel?.selected?.titleId ?: ""
                                                     )
-                                                    Spacer(modifier = Modifier.width(12.dp))
-                                                    Text("Clear PPTC Cache")
                                                 }
-                                            },
-                                            onClick = {
-                                                showAppMenu = false
-                                                viewModel.mainViewModel?.clearPptcCache(
-                                                    viewModel.mainViewModel?.selected?.titleId ?: ""
-                                                )
-                                            }
-                                        )
-                                        DropdownMenuItem(
-                                            text = { 
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Icon(
-                                                        Icons.Filled.Build,
-                                                        contentDescription = "Purge Shaders",
-                                                        modifier = Modifier.size(20.dp),
-                                                        tint = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("删除所有缓存") },
+                                                onClick = {
+                                                    showAppMenu = false
+                                                    viewModel.mainViewModel?.deleteCache(
+                                                        viewModel.mainViewModel?.selected?.titleId ?: ""
                                                     )
-                                                    Spacer(modifier = Modifier.width(12.dp))
-                                                    Text("Clear Shader Cache")
                                                 }
-                                            },
-                                            onClick = {
-                                                showAppMenu = false
-                                                viewModel.mainViewModel?.purgeShaderCache(
-                                                    viewModel.mainViewModel?.selected?.titleId ?: ""
-                                                )
-                                            }
-                                        )
-                                        DropdownMenuItem(
-                                            text = { 
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Icon(
-                                                        Icons.Filled.Delete,
-                                                        contentDescription = "Delete Cache",
-                                                        modifier = Modifier.size(20.dp),
-                                                        tint = MaterialTheme.colorScheme.onSurface
-                                                    )
-                                                    Spacer(modifier = Modifier.width(12.dp))
-                                                    Text("Delete All Cache")
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("管理更新") },
+                                                onClick = {
+                                                    showAppMenu = false
+                                                    openTitleUpdateDialog.value = true
                                                 }
-                                            },
-                                            onClick = {
-                                                showAppMenu = false
-                                                viewModel.mainViewModel?.deleteCache(
-                                                    viewModel.mainViewModel?.selected?.titleId ?: ""
-                                                )
-                                            }
-                                        )
-                                        DropdownMenuItem(
-                                            text = { 
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Icon(
-                                                        Icons.Filled.Build,
-                                                        contentDescription = "Manage Updates",
-                                                        modifier = Modifier.size(20.dp),
-                                                        tint = MaterialTheme.colorScheme.onSurface
-                                                    )
-                                                    Spacer(modifier = Modifier.width(12.dp))
-                                                    Text("Manage Updates")
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("管理 DLC") },
+                                                onClick = {
+                                                    showAppMenu = false
+                                                    openDlcDialog.value = true
                                                 }
-                                            },
-                                            onClick = {
-                                                showAppMenu = false
-                                                openTitleUpdateDialog.value = true
-                                            }
-                                        )
-                                        DropdownMenuItem(
-                                            text = { 
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Icon(
-                                                        Icons.Filled.Build,
-                                                        contentDescription = "Manage DLC",
-                                                        modifier = Modifier.size(20.dp),
-                                                        tint = MaterialTheme.colorScheme.onSurface
-                                                    )
-                                                    Spacer(modifier = Modifier.width(12.dp))
-                                                    Text("Manage DLC")
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("管理金手指") },
+                                                onClick = {
+                                                    showAppMenu = false
+                                                    val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
+                                                    val gamePath = viewModel.mainViewModel?.selected?.path ?: ""
+                                                    navController?.navigate("cheats/$titleId?gamePath=${android.net.Uri.encode(gamePath)}")
                                                 }
-                                            },
-                                            onClick = {
-                                                showAppMenu = false
-                                                openDlcDialog.value = true
-                                            }
-                                        )
-                                        DropdownMenuItem(
-                                            text = { 
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Icon(
-                                                        Icons.Filled.Build,
-                                                        contentDescription = "Manage Cheats",
-                                                        modifier = Modifier.size(20.dp),
-                                                        tint = MaterialTheme.colorScheme.onSurface
-                                                    )
-                                                    Spacer(modifier = Modifier.width(12.dp))
-                                                    Text("Manage Cheats")
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("管理存档数据") },
+                                                onClick = {
+                                                    showAppMenu = false
+                                                    val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
+                                                    val gameName = viewModel.mainViewModel?.selected?.getDisplayName() ?: ""
+                                                    navController?.navigate("savedata/$titleId?gameName=${android.net.Uri.encode(gameName)}")
                                                 }
-                                            },
-                                            onClick = {
-                                                showAppMenu = false
-                                                val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
-                                                val gamePath = viewModel.mainViewModel?.selected?.path ?: ""
-                                                navController?.navigate("cheats/$titleId?gamePath=${android.net.Uri.encode(gamePath)}")
-                                            }
-                                        )
-                                        DropdownMenuItem(
-                                            text = { 
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Icon(
-                                                        Icons.Filled.Build,
-                                                        contentDescription = "Manage Save Data",
-                                                        modifier = Modifier.size(20.dp),
-                                                        tint = MaterialTheme.colorScheme.onSurface
-                                                    )
-                                                    Spacer(modifier = Modifier.width(12.dp))
-                                                    Text("Manage Save Data")
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("管理 Mods") },
+                                                onClick = {
+                                                    showAppMenu = false
+                                                    val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
+                                                    val gameName = viewModel.mainViewModel?.selected?.getDisplayName() ?: ""
+                                                    navController?.navigate("mods/$titleId?gameName=${android.net.Uri.encode(gameName)}")
                                                 }
-                                            },
-                                            onClick = {
-                                                showAppMenu = false
-                                                val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
-                                                val gameName = viewModel.mainViewModel?.selected?.getDisplayName() ?: ""
-                                                navController?.navigate("savedata/$titleId?gameName=${android.net.Uri.encode(gameName)}")
-                                            }
-                                        )
-                                        DropdownMenuItem(
-                                            text = { 
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Icon(
-                                                        Icons.Filled.Build,
-                                                        contentDescription = "Manage Mods",
-                                                        modifier = Modifier.size(20.dp),
-                                                        tint = MaterialTheme.colorScheme.onSurface
-                                                    )
-                                                    Spacer(modifier = Modifier.width(12.dp))
-                                                    Text("Manage Mods")
-                                                }
-                                            },
-                                            onClick = {
-                                                showAppMenu = false
-                                                val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
-                                                val gameName = viewModel.mainViewModel?.selected?.getDisplayName() ?: ""
-                                                navController?.navigate("mods/$titleId?gameName=${android.net.Uri.encode(gameName)}")
-                                            }
-                                        )
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -1817,29 +1396,17 @@ class HomeViews {
                 }
             }
 
+            // 添加重命名对话框
             if (showRenameDialog) {
                 AlertDialog(
                     onDismissRequest = { showRenameDialog = false },
-                    title = { 
-                        Text(
-                            text = "Rename Game", 
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    },
+                    title = { Text(text = "Rename Game") },
                     text = {
                         OutlinedTextField(
                             value = newGameName,
                             onValueChange = { newGameName = it },
                             label = { Text("Game Name") },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRequester(focusRequester),
-                            shape = MaterialTheme.shapes.small,
-                            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                            )
+                            modifier = Modifier.focusRequester(focusRequester)
                         )
                     },
                     confirmButton = {
@@ -1847,33 +1414,21 @@ class HomeViews {
                             onClick = {
                                 selectedModel.value?.customName = newGameName
                                 showRenameDialog = false
+                                // 刷新列表以显示新名称
                                 viewModel.filter(query)
                             }
                         ) {
-                            Text(
-                                "Confirm",
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                            Text("OK")
                         }
                     },
                     dismissButton = {
                         TextButton(
                             onClick = { showRenameDialog = false }
                         ) {
-                            Text(
-                                "Cancel",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Text("Cancel")
                         }
-                    },
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                )
-                
-                LaunchedEffect(showRenameDialog) {
-                    if (showRenameDialog) {
-                        focusRequester.requestFocus()
                     }
-                }
+                )
             }
         }
 
@@ -1883,4 +1438,5 @@ class HomeViews {
             Home(isPreview = true)
         }
     }
-}
+}}}
+
