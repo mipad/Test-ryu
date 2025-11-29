@@ -437,7 +437,8 @@ class SettingViews {
                     modifier = Modifier
                         .padding(contentPadding)
                         .verticalScroll(rememberScrollState())
-                        .background(if (!isSystemInLightTheme()) DarkBlackBackground else MaterialTheme.colorScheme.background)
+                        .fillMaxSize()
+                        .background(if (isSystemInDarkTheme()) DarkBlackBackground else MaterialTheme.colorScheme.background)
                 ) {
                     ExpandableView(onCardArrowClick = { }, title = "App") {
                         Column(modifier = Modifier.fillMaxWidth()) {
@@ -2437,36 +2438,27 @@ class SettingViews {
                 if (mutableExpanded.value) 0f else 180f
             }
 
-            Card(
-                shape = MaterialTheme.shapes.large,
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (!isSystemInLightTheme()) DarkBlackSurface else MaterialTheme.colorScheme.surface,
-                    contentColor = if (!isSystemInLightTheme()) Color.White else MaterialTheme.colorScheme.onSurface
-                ),
+            // 修改：去掉卡片阴影和圆角，使用矩形形状，去掉外边距
+            Surface(
+                color = if (isSystemInDarkTheme()) DarkBlackSurface else MaterialTheme.colorScheme.surface,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(
-                        horizontal = 16.dp,
-                        vertical = 8.dp
-                    )
             ) {
                 Column {
-                    Card(
-                        onClick = {
-                            mutableExpanded.value = !mutableExpanded.value
-                            onCardArrowClick()
-                        },
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (!isSystemInLightTheme()) DarkBlackSurfaceVariant else MaterialTheme.colorScheme.surfaceVariant,
-                            contentColor = if (!isSystemInLightTheme()) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                        ),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    // 修改：标题栏也使用矩形形状，去掉阴影
+                    Surface(
+                        color = if (isSystemInDarkTheme()) DarkBlackSurfaceVariant else MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier
+                            .fillMaxWidth()
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                                .clickable {
+                                    mutableExpanded.value = !mutableExpanded.value
+                                    onCardArrowClick()
+                                },
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -2503,7 +2495,7 @@ class SettingViews {
                 textAlign = TextAlign.Center,
                 fontWeight = FontWeight.SemiBold,
                 style = MaterialTheme.typography.titleMedium,
-                color = if (!isSystemInLightTheme()) Color.White else MaterialTheme.colorScheme.onSurface
+                color = if (isSystemInDarkTheme()) Color.White else MaterialTheme.colorScheme.onSurface
             )
         }
 
@@ -2539,8 +2531,8 @@ class SettingViews {
             ) {
                 Column(
                     modifier = Modifier
-                        .padding(8.dp)
-                        .background(if (!isSystemInLightTheme()) DarkBlackSurface else MaterialTheme.colorScheme.surface)
+                        .fillMaxWidth()
+                        .background(if (isSystemInDarkTheme()) DarkBlackSurface else MaterialTheme.colorScheme.surface)
                 ) {
                     content()
                 }
@@ -2569,13 +2561,13 @@ class SettingViews {
                         text = text,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
-                        color = if (!isSystemInLightTheme()) Color.White else MaterialTheme.colorScheme.onSurface
+                        color = if (isSystemInDarkTheme()) Color.White else MaterialTheme.colorScheme.onSurface
                     )
                     if (description != null) {
                         Text(
                             text = description,
                             fontSize = 12.sp,
-                            color = if (!isSystemInLightTheme()) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            color = if (isSystemInDarkTheme()) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                             modifier = Modifier.padding(top = 2.dp)
                         )
                     }
@@ -2611,7 +2603,7 @@ class SettingViews {
                     text = title,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium,
-                    color = if (!isSystemInLightTheme()) Color.White else MaterialTheme.colorScheme.onSurface
+                    color = if (isSystemInDarkTheme()) Color.White else MaterialTheme.colorScheme.onSurface
                 )
                 Row(
                     verticalAlignment = Alignment.CenterVertically
@@ -2650,7 +2642,7 @@ class SettingViews {
                     text = title,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium,
-                    color = if (!isSystemInLightTheme()) Color.White else MaterialTheme.colorScheme.onSurface
+                    color = if (isSystemInDarkTheme()) Color.White else MaterialTheme.colorScheme.onSurface
                 )
                 ModernOutlinedButton(
                     text = actionText,
@@ -2675,11 +2667,11 @@ class SettingViews {
                     text = title,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium,
-                    color = if (!isSystemInLightTheme()) Color.White else MaterialTheme.colorScheme.onSurface
+                    color = if (isSystemInDarkTheme()) Color.White else MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = value,
-                    color = if (!isSystemInLightTheme()) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    color = if (isSystemInDarkTheme()) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
             }
         }
@@ -2694,12 +2686,12 @@ class SettingViews {
                 onClick = onClick,
                 modifier = modifier,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (!isSystemInLightTheme()) DarkBlackSurface else MaterialTheme.colorScheme.surface,
+                    containerColor = if (isSystemInDarkTheme()) DarkBlackSurface else MaterialTheme.colorScheme.surface,
                     contentColor = MaterialTheme.colorScheme.primary
                 ),
                 border = androidx.compose.foundation.BorderStroke(
                     1.dp,
-                    if (!isSystemInLightTheme()) Color.White.copy(alpha = 0.3f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                    if (isSystemInDarkTheme()) Color.White.copy(alpha = 0.3f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
                 ),
                 elevation = ButtonDefaults.buttonElevation(
                     defaultElevation = 2.dp,
@@ -2730,7 +2722,7 @@ class SettingViews {
                                 MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
                             )
                         } else {
-                            Modifier.background(if (!isSystemInLightTheme()) DarkBlackSurfaceVariant else MaterialTheme.colorScheme.surfaceVariant)
+                            Modifier.background(if (isSystemInDarkTheme()) DarkBlackSurfaceVariant else MaterialTheme.colorScheme.surfaceVariant)
                         }
                     )
                     .then(
@@ -2751,7 +2743,7 @@ class SettingViews {
                     fontSize = 12.sp,
                     textAlign = TextAlign.Center,
                     color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer 
-                           else if (!isSystemInLightTheme()) Color.White else MaterialTheme.colorScheme.onSurface,
+                           else if (isSystemInDarkTheme()) Color.White else MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                 )
             }
@@ -2778,15 +2770,17 @@ class SettingViews {
                     text = text,
                     modifier = Modifier.padding(start = 16.dp),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = if (!isSystemInLightTheme()) Color.White else MaterialTheme.colorScheme.onSurface
+                    color = if (isSystemInDarkTheme()) Color.White else MaterialTheme.colorScheme.onSurface
                 )
             }
         }
 
-        // 检查是否为亮色主题的辅助函数
+        // 检查是否为深色主题的辅助函数
         @Composable
-        fun isSystemInLightTheme(): Boolean {
-            return MaterialTheme.colorScheme.primary != Color.White
+        fun isSystemInDarkTheme(): Boolean {
+            return MaterialTheme.colorScheme.primary == Color.White || 
+                   MaterialTheme.colorScheme.surface == Color.Black ||
+                   MaterialTheme.colorScheme.background == Color.Black
         }
     }
 }
