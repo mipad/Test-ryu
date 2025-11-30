@@ -50,7 +50,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Wallpaper
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Card
@@ -679,21 +679,22 @@ class HomeViews {
                             .fillMaxSize()
                             .zIndex(0f)
                     ) {
-                        try {
-                            val inputStream = context.contentResolver.openInputStream(customBackgroundUri!!)
-                            inputStream?.use { stream ->
-                                val bitmap = BitmapFactory.decodeStream(stream)
+                        // 修复：移除try-catch块，使用更安全的方式加载图片
+                        val inputStream = try {
+                            context.contentResolver.openInputStream(customBackgroundUri!!)
+                        } catch (e: Exception) {
+                            null
+                        }
+                        
+                        inputStream?.use { stream ->
+                            val bitmap = BitmapFactory.decodeStream(stream)
+                            if (bitmap != null) {
                                 Image(
                                     bitmap = bitmap.asImageBitmap(),
                                     contentDescription = "Custom Background",
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier.fillMaxSize()
                                 )
-                            }
-                        } catch (e: Exception) {
-                            // 如果加载失败，显示默认背景
-                            Canvas(modifier = Modifier.fillMaxSize()) {
-                                // 空画布，使用默认主题背景
                             }
                         }
                     }
@@ -1520,7 +1521,7 @@ class HomeViews {
                             }
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Filled.Wallpaper, contentDescription = "选择背景")
+                                Icon(Icons.Filled.Image, contentDescription = "选择背景")
                                 Text("选择图片", modifier = Modifier.padding(start = 8.dp))
                             }
                         }
