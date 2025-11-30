@@ -473,12 +473,19 @@ class ControlEditViews {
                             Button(
                                 onClick = {
                                     if (combinationName.value.isNotBlank() && selectedKeys.value.isNotEmpty()) {
-                                        mainViewModel.controller?.createCombination(
+                                        // 关键修复：确保组合按键创建后正确刷新位置
+                                        val success = mainViewModel.controller?.createCombination(
                                             combinationName.value,
                                             selectedKeys.value
-                                        )
-                                        onCombinationCreated()
-                                        onDismiss()
+                                        ) ?: -1
+                                        
+                                        if (success != -1) {
+                                            onCombinationCreated()
+                                            onDismiss()
+                                        } else {
+                                            // 处理创建失败的情况
+                                            // 可以显示一个 Toast 或错误消息
+                                        }
                                     }
                                 },
                                 enabled = combinationName.value.isNotBlank() && selectedKeys.value.isNotEmpty()
