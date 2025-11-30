@@ -1,5 +1,8 @@
 include(FetchContent)
 
+# For more information about using CMake with Android Studio, read the
+# documentation: https://d.android.com/studio/projects/add-native-code.html
+
 # Sets the minimum version of CMake required to build the native library.
 cmake_minimum_required(VERSION 3.22.1)
 
@@ -9,8 +12,10 @@ project("ryujinxjni")
 # 设置构建类型
 set(CMAKE_BUILD_TYPE Release)
 
-# 注意：不在全局启用 LTO，只在特定目标启用
-set(CMAKE_INTERPROCEDURAL_OPTIMIZATION FALSE)
+# 其他选项
+set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded)
+set(SKIA_USE_SYSTEM_EXPAT OFF)
+set(SKIA_ENABLE_PARAGRAPH ON)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
@@ -37,46 +42,42 @@ if(TARGET linkernsbypass)
     target_compile_definitions(linkernsbypass PRIVATE PAGE_SIZE=4096)
 endif()
 
+# 为 adrenotools 的子目录目标也添加定义
+get_target_property(adrenotools_sources adrenotools SOURCES)
+if(adrenotools_sources)
+    target_compile_definitions(adrenotools PRIVATE PAGE_SIZE=4096)
+endif()
+
 # 使用 FetchContent 获取 Oboe 源码
 FetchContent_Declare(
     oboe
     GIT_REPOSITORY https://github.com/google/oboe.git
-    GIT_TAG        1.10.0
+    GIT_TAG        1.10.0  # 使用与 Gradle 依赖相同的版本
 )
 
-FetchContent_MakeAvailable(oboe)
+# 设置 Oboe 构建选项，禁用格式转换以减少代码大小
+set(OBOE_DISABLE_CONVERSION ON CACHE BOOL "Disable format conversion in Oboe")
 
-# 为 oboe 启用 LTO 优化
-if(TARGET oboe)
-    target_compile_options(oboe PRIVATE
-        -flto
-        -O3
-    )
-    target_link_options(oboe PRIVATE
-        -flto
-    )
-    # 设置 interprocedural optimization 属性
-    set_target_properties(oboe PROPERTIES
-        INTERPROCEDURAL_OPTIMIZATION TRUE
-    )
-    message(STATUS "LTO enabled for oboe library")
-endif()
+FetchContent_MakeAvailable(oboe)
 
 # 使用 FetchContent 获取标准 OpenAL Soft
 FetchContent_Declare(
     openal
     GIT_REPOSITORY https://github.com/kcat/openal-soft.git
-    GIT_TAG        1.24.3
+    GIT_TAG        1.24.3  # 使用稳定版本
 )
 
+# 设置 OpenAL 构建选项 - 优化以减少杂音和延迟
 set(ALSOFT_REQUIRE_OPENSL ON CACHE BOOL "Enable OpenSL backend")
 set(ALSOFT_BACKEND_OPENSL ON CACHE BOOL "Enable OpenSL backend")
 set(ALSOFT_TESTS OFF CACHE BOOL "Disable tests")
+
+# 添加优化选项以减少杂音和延迟
 set(ALSOFT_CPUEXT_NEON ON CACHE BOOL "Enable NEON optimizations")
 
 FetchContent_MakeAvailable(openal)
 
-# 创建主库 - 这是我们要启用 LTO 的主要目标
+# 创建主库
 add_library(
     ryujinxjni
     SHARED
@@ -88,22 +89,22 @@ add_library(
 # 添加编译定义以优化音频处理
 target_compile_definitions(ryujinxjni PRIVATE
     RYUJINX_AUDIO_OPTIMIZE=1
+    # 如果需要，可以添加更多音频优化标志
 )
 
-# ========== 关键部分：只在主目标启用 LTO ==========
-# 为主目标添加编译选项（启用 LTO）
+# 为音频渲染器文件单独启用激进优化
+# 注意：如果某些游戏出现杂音，可以回退到 "-O3" 或 "-O3 -ffast-math"
+set_source_files_properties(oboe_audio_renderer.cpp PROPERTIES
+    COMPILE_FLAGS "-Ofast"
+)
+
+# 为主目标添加编译选项（其他文件保持 -O3，不包含 -ffast-math）
 target_compile_options(ryujinxjni PRIVATE
     -std=c++20
-    -flto
     -O3
     -DNDEBUG
     -march=armv8-a
-    -funroll-loops
-)
-
-# 为音频渲染器文件单独启用优化
-set_source_files_properties(oboe_audio_renderer.cpp PROPERTIES
-    COMPILE_FLAGS "-O3 -ffast-math"
+    #-Ofast
 )
 
 # 查找系统库
@@ -126,17 +127,6 @@ target_link_libraries(
     OpenAL
 )
 
-# 为主目标设置链接器选项（启用 LTO）
-target_link_options(ryujinxjni PRIVATE
-    -flto
-    -fuse-ld=lld
-)
-
-# ========== 可选：为其他性能关键目标启用 LTO ==========
-# 如果 OpenAL 也需要 LTO，可以单独为它启用
-# target_compile_options(OpenAL PRIVATE -flto=thin)
-# target_link_options(OpenAL PRIVATE -flto=thin -fuse-ld=lld)
-
 # 设置 JNI 库输出路径
 set(JNI_PATH ../jniLibs/${CMAKE_ANDROID_ARCH_ABI})
 cmake_path(ABSOLUTE_PATH JNI_PATH NORMALIZE)
@@ -156,5 +146,3 @@ set_target_properties(OpenAL PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
     RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
 )
-
-message(STATUS "LTO enabled for main target and oboe - Configuration completed")
