@@ -36,7 +36,7 @@ android {
         }
     }
 
-    buildTypes {
+   /* buildTypes {
         release {
             postprocessing {
                 removeUnusedCode false
@@ -49,7 +49,18 @@ android {
             debuggable false
             jniDebuggable false
         }
+    }*/
+    buildTypes {
+    release {
+        minifyEnabled true        // 替换 removeUnusedCode
+        shrinkResources false     // 替换 removeUnusedResources  
+        proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        signingConfig signingConfigs.debug
+        debuggable false
+        jniDebuggable false
     }
+}
+    
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
