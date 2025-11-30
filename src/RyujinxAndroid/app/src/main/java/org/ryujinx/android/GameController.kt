@@ -1891,19 +1891,26 @@ class GameController(var activity: Activity) {
         return newId
     }
     
+    // 修复删除组合按键后的位置偏移问题
     fun deleteCombination(combinationId: Int) {
         val manager = buttonLayoutManager ?: return
         manager.deleteCombination(combinationId)
         
         // 刷新控件以移除组合按键
         refreshControls()
+        
+        // 关键修复：确保在 UI 线程中正确刷新位置
+        buttonContainer?.post {
+            // 延迟刷新位置，确保容器尺寸已正确计算
+            refreshControlPositions()
+        }
     }
     
     fun getAllCombinations(): List<CombinationConfig> {
         return buttonLayoutManager?.getAllCombinationConfigs() ?: emptyList()
     }
     
-    // 增强的 refreshControlPositions 方法 - 修复组合按键创建后的位置偏移
+    // 增强的 refreshControlPositions 方法 - 修复组合按键创建和删除后的位置偏移
     private fun refreshControlPositions() {
         val manager = buttonLayoutManager ?: return
         val buttonContainer = this.buttonContainer ?: return
