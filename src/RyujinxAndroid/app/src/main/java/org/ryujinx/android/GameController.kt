@@ -1874,13 +1874,19 @@ class GameController(var activity: Activity) {
         }
     }
     
-    // 组合按键管理方法
+    // 组合按键管理方法 - 修复创建组合按键后的位置偏移问题
     fun createCombination(name: String, keyCodes: List<Int>): Int {
         val manager = buttonLayoutManager ?: return -1
         val newId = manager.createCombination(name, keyCodes)
         
         // 刷新控件以显示新的组合按键
         refreshControls()
+        
+        // 关键修复：确保在 UI 线程中正确刷新位置
+        buttonContainer?.post {
+            // 延迟刷新位置，确保容器尺寸已正确计算
+            refreshControlPositions()
+        }
         
         return newId
     }
@@ -1897,6 +1903,7 @@ class GameController(var activity: Activity) {
         return buttonLayoutManager?.getAllCombinationConfigs() ?: emptyList()
     }
     
+    // 增强的 refreshControlPositions 方法 - 修复组合按键创建后的位置偏移
     private fun refreshControlPositions() {
         val manager = buttonLayoutManager ?: return
         val buttonContainer = this.buttonContainer ?: return
@@ -1904,27 +1911,42 @@ class GameController(var activity: Activity) {
         val containerWidth = buttonContainer.width
         val containerHeight = buttonContainer.height
         
-        if (containerWidth <= 0 || containerHeight <= 0) return
+        // 关键修复：如果容器尺寸无效，延迟执行
+        if (containerWidth <= 0 || containerHeight <= 0) {
+            buttonContainer.post {
+                refreshControlPositions()
+            }
+            return
+        }
         
         // 统一使用布局管理器读取位置
         virtualJoysticks.forEach { (joystickId, joystick) ->
             val (x, y) = manager.getJoystickPosition(joystickId, containerWidth, containerHeight)
-            joystick.setPosition(x, y)
+            // 关键修复：确保坐标在有效范围内
+            val safeX = x.coerceIn(0, containerWidth)
+            val safeY = y.coerceIn(0, containerHeight)
+            joystick.setPosition(safeX, safeY)
         }
         
         dpadView?.let { dpad ->
             val (x, y) = manager.getDpadPosition(containerWidth, containerHeight)
-            dpad.setPosition(x, y)
+            val safeX = x.coerceIn(0, containerWidth)
+            val safeY = y.coerceIn(0, containerHeight)
+            dpad.setPosition(safeX, safeY)
         }
         
         virtualButtons.forEach { (buttonId, button) ->
             val (x, y) = manager.getButtonPosition(buttonId, containerWidth, containerHeight)
-            button.setPosition(x, y)
+            val safeX = x.coerceIn(0, containerWidth)
+            val safeY = y.coerceIn(0, containerHeight)
+            button.setPosition(safeX, safeY)
         }
         
         virtualCombinations.forEach { (combinationId, combination) ->
             val (x, y) = manager.getCombinationPosition(combinationId, containerWidth, containerHeight)
-            combination.setPosition(x, y)
+            val safeX = x.coerceIn(0, containerWidth)
+            val safeY = y.coerceIn(0, containerHeight)
+            combination.setPosition(safeX, safeY)
         }
     }
     
