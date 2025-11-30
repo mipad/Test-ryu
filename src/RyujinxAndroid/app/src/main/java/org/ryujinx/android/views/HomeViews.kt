@@ -135,6 +135,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.statusBarsPadding
+import android.util.Log
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.DpOffset
 
 class HomeViews {
     companion object {
@@ -627,6 +632,7 @@ class HomeViews {
                 onResult = { uri ->
                     uri?.let {
                         customBackgroundUri = it
+                        Log.d("HomeViews", "Background image selected: $it")
                         // 这里可以保存URI到SharedPreferences以便下次启动时加载
                     }
                 }
@@ -680,11 +686,19 @@ class HomeViews {
                         // 修复：改进背景图片加载
                         val bitmap = remember(customBackgroundUri) {
                             try {
+                                Log.d("HomeViews", "Loading background image: $customBackgroundUri")
                                 val inputStream = context.contentResolver.openInputStream(customBackgroundUri!!)
                                 inputStream?.use { stream ->
-                                    BitmapFactory.decodeStream(stream)
+                                    val bitmap = BitmapFactory.decodeStream(stream)
+                                    if (bitmap != null) {
+                                        Log.d("HomeViews", "Background image loaded successfully: ${bitmap.width}x${bitmap.height}")
+                                    } else {
+                                        Log.e("HomeViews", "Failed to decode background image")
+                                    }
+                                    bitmap
                                 }
                             } catch (e: Exception) {
+                                Log.e("HomeViews", "Error loading background image", e)
                                 null
                             }
                         }
@@ -696,6 +710,11 @@ class HomeViews {
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize()
                             )
+                        } else {
+                            // 如果加载失败，显示默认背景
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                // 空画布，使用默认主题背景
+                            }
                         }
                     }
                 }
@@ -1276,6 +1295,7 @@ class HomeViews {
                 
                 // 修复：添加菜单状态变量
                 var showAppMenu by remember { mutableStateOf(false) }
+                var dropdownOffset by remember { mutableStateOf(DpOffset.Zero) }
                 
                 ModalBottomSheet(
                     onDismissRequest = {
@@ -1357,16 +1377,35 @@ class HomeViews {
                                 
                                 // 修复：将菜单按钮状态移到此处
                                 Box {
-                                    IconButton(onClick = {
-                                        // 修复：正确切换菜单状态
-                                        showAppMenu = !showAppMenu
-                                    }) {
-                                        // 修复：移除文字标题，只显示图标
-                                        Icon(
-                                            Icons.Filled.Menu,
-                                            contentDescription = "Menu",
-                                            modifier = Modifier.size(32.dp)
-                                        )
+                                    // 修复：使用透明Box作为锚点
+                                    Box(
+                                        modifier = Modifier
+                                            .size(48.dp)
+                                            .onGloballyPositioned { coordinates ->
+                                                // 计算下拉菜单的偏移量，使其从按钮上方显示
+                                                val density = LocalDensity.current
+                                                with(density) {
+                                                    dropdownOffset = DpOffset(
+                                                        x = 0.dp,
+                                                        y = -coordinates.size.height.toDp() - 8.dp
+                                                    )
+                                                }
+                                            }
+                                    ) {
+                                        IconButton(
+                                            modifier = Modifier.fillMaxSize(),
+                                            onClick = {
+                                                // 修复：正确切换菜单状态
+                                                showAppMenu = !showAppMenu
+                                            }
+                                        ) {
+                                            // 修复：移除文字标题，只显示图标
+                                            Icon(
+                                                Icons.Filled.Menu,
+                                                contentDescription = "Menu",
+                                                modifier = Modifier.size(32.dp)
+                                            )
+                                        }
                                     }
                                     
                                     // 修复：下拉菜单从按钮上方显示
@@ -1375,7 +1414,8 @@ class HomeViews {
                                         onDismissRequest = { showAppMenu = false },
                                         modifier = Modifier
                                             .width(200.dp)
-                                            .heightIn(max = configuration.screenHeightDp.dp * 0.6f)
+                                            .heightIn(max = configuration.screenHeightDp.dp * 0.6f),
+                                        offset = dropdownOffset // 使用计算的偏移量
                                     ) {
                                         // 修复：使用简单的Column而不是LazyColumn
                                         Column {
