@@ -626,6 +626,24 @@ class HomeViews {
             var customBackgroundUri by remember { mutableStateOf<Uri?>(null) }
             val context = LocalContext.current
 
+            // 修复：使用remember保存自定义背景，避免重组时丢失
+            val sharedPreferences = remember { 
+                context.getSharedPreferences("app_preferences", Context.MODE_PRIVATE) 
+            }
+            
+            // 从SharedPreferences加载保存的自定义背景URI
+            LaunchedEffect(Unit) {
+                val savedUriString = sharedPreferences.getString("custom_background_uri", null)
+                savedUriString?.let { uriString ->
+                    try {
+                        customBackgroundUri = Uri.parse(uriString)
+                        Log.d("HomeViews", "Loaded background URI from preferences: $customBackgroundUri")
+                    } catch (e: Exception) {
+                        Log.e("HomeViews", "Error loading background URI from preferences", e)
+                    }
+                }
+            }
+
             // 图片选择器
             val imagePicker = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.GetContent(),
@@ -633,7 +651,15 @@ class HomeViews {
                     uri?.let {
                         customBackgroundUri = it
                         Log.d("HomeViews", "Background image selected: $it")
-                        // 这里可以保存URI到SharedPreferences以便下次启动时加载
+                        // 保存URI到SharedPreferences以便下次启动时加载
+                        try {
+                            sharedPreferences.edit()
+                                .putString("custom_background_uri", it.toString())
+                                .apply()
+                            Log.d("HomeViews", "Background URI saved to preferences")
+                        } catch (e: Exception) {
+                            Log.e("HomeViews", "Error saving background URI to preferences", e)
+                        }
                     }
                 }
             )
@@ -672,50 +698,47 @@ class HomeViews {
             // 使用正确的ModalBottomSheet状态
             val sheetState = rememberModalBottomSheetState()
 
-            // 修复：添加背景长按手势处理
+            // 修复：改进背景实现，确保正确显示
             BoxWithConstraints(
                 modifier = Modifier.fillMaxSize()
             ) {
-                // 自定义背景层
-                if (customBackgroundUri != null) {
+                // 自定义背景层 - 使用remember改进性能
+                val backgroundBitmap = remember(customBackgroundUri) {
+                    if (customBackgroundUri != null) {
+                        try {
+                            Log.d("HomeViews", "Loading background image: $customBackgroundUri")
+                            val inputStream = context.contentResolver.openInputStream(customBackgroundUri!!)
+                            inputStream?.use { stream ->
+                                val bitmap = BitmapFactory.decodeStream(stream)
+                                if (bitmap != null) {
+                                    Log.d("HomeViews", "Background image loaded successfully: ${bitmap.width}x${bitmap.height}")
+                                } else {
+                                    Log.e("HomeViews", "Failed to decode background image")
+                                }
+                                bitmap
+                            }
+                        } catch (e: Exception) {
+                            Log.e("HomeViews", "Error loading background image", e)
+                            null
+                        }
+                    } else {
+                        null
+                    }
+                }
+
+                // 背景层 - 确保在所有内容下方
+                if (backgroundBitmap != null) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .zIndex(0f)
+                            .zIndex(-1f) // 确保背景在最底层
                     ) {
-                        // 修复：改进背景图片加载
-                        val bitmap = remember(customBackgroundUri) {
-                            try {
-                                Log.d("HomeViews", "Loading background image: $customBackgroundUri")
-                                val inputStream = context.contentResolver.openInputStream(customBackgroundUri!!)
-                                inputStream?.use { stream ->
-                                    val bitmap = BitmapFactory.decodeStream(stream)
-                                    if (bitmap != null) {
-                                        Log.d("HomeViews", "Background image loaded successfully: ${bitmap.width}x${bitmap.height}")
-                                    } else {
-                                        Log.e("HomeViews", "Failed to decode background image")
-                                    }
-                                    bitmap
-                                }
-                            } catch (e: Exception) {
-                                Log.e("HomeViews", "Error loading background image", e)
-                                null
-                            }
-                        }
-                        
-                        if (bitmap != null) {
-                            Image(
-                                bitmap = bitmap.asImageBitmap(),
-                                contentDescription = "Custom Background",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else {
-                            // 如果加载失败，显示默认背景
-                            Canvas(modifier = Modifier.fillMaxSize()) {
-                                // 空画布，使用默认主题背景
-                            }
-                        }
+                        Image(
+                            bitmap = backgroundBitmap.asImageBitmap(),
+                            contentDescription = "Custom Background",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
                     }
                 }
 
@@ -901,6 +924,15 @@ class HomeViews {
                                 .fillMaxSize()
                                 .padding(contentPadding)
                                 .zIndex(1f)
+                                // 修复：添加背景长按手势 - 直接打开图片选择器
+                                .pointerInput(Unit) {
+                                    detectTapGestures(
+                                        onLongPress = {
+                                            // 长按背景直接打开文件管理器选择图片
+                                            imagePicker.launch("image/*")
+                                        }
+                                    )
+                                }
                         ) {
                             val list = remember {
                                 viewModel.gameList
@@ -969,15 +1001,6 @@ class HomeViews {
                                                                 centeredIndex = if (centeredIndex == filteredList.size - 1) 0 else centeredIndex + 1
                                                             }
                                                         }
-                                                    }
-                                                    // 修复：添加背景长按手势 - 直接打开图片选择器
-                                                    .pointerInput(Unit) {
-                                                        detectTapGestures(
-                                                            onLongPress = {
-                                                                // 长按背景直接打开文件管理器选择图片
-                                                                imagePicker.launch("image/*")
-                                                            }
-                                                        )
                                                     }
                                             ) {
                                                 // 游戏项目 - 调整排列方式确保三个项目都能显示
@@ -1404,13 +1427,14 @@ class HomeViews {
                                         }
                                     }
                                     
-                                    // 修复：下拉菜单从按钮上方显示
+                                    // 修复：下拉菜单从按钮上方显示，添加圆角
                                     DropdownMenu(
                                         expanded = showAppMenu,
                                         onDismissRequest = { showAppMenu = false },
                                         modifier = Modifier
                                             .width(200.dp)
-                                            .heightIn(max = configuration.screenHeightDp.dp * 0.6f),
+                                            .heightIn(max = configuration.screenHeightDp.dp * 0.6f)
+                                            .clip(RoundedCornerShape(16.dp)), // 添加圆角
                                         offset = DpOffset(
                                             x = 0.dp,
                                             y = with(density) { -buttonHeight.toDp() - 8.dp }
