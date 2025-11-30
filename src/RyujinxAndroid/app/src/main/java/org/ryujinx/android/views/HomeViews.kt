@@ -1295,7 +1295,6 @@ class HomeViews {
                 
                 // 修复：添加菜单状态变量
                 var showAppMenu by remember { mutableStateOf(false) }
-                var dropdownOffset by remember { mutableStateOf(DpOffset.Zero) }
                 
                 ModalBottomSheet(
                     onDismissRequest = {
@@ -1377,19 +1376,16 @@ class HomeViews {
                                 
                                 // 修复：将菜单按钮状态移到此处
                                 Box {
-                                    // 修复：使用透明Box作为锚点
+                                    // 修复：简化下拉菜单位置计算，避免在非Composable上下文中调用Composable函数
+                                    var buttonHeight by remember { mutableStateOf(0) }
+                                    val density = LocalDensity.current
+                                    
                                     Box(
                                         modifier = Modifier
                                             .size(48.dp)
                                             .onGloballyPositioned { coordinates ->
-                                                // 计算下拉菜单的偏移量，使其从按钮上方显示
-                                                val density = LocalDensity.current
-                                                with(density) {
-                                                    dropdownOffset = DpOffset(
-                                                        x = 0.dp,
-                                                        y = -coordinates.size.height.toDp() - 8.dp
-                                                    )
-                                                }
+                                                // 在非Composable上下文中只记录位置信息
+                                                buttonHeight = coordinates.size.height
                                             }
                                     ) {
                                         IconButton(
@@ -1415,7 +1411,10 @@ class HomeViews {
                                         modifier = Modifier
                                             .width(200.dp)
                                             .heightIn(max = configuration.screenHeightDp.dp * 0.6f),
-                                        offset = dropdownOffset // 使用计算的偏移量
+                                        offset = DpOffset(
+                                            x = 0.dp,
+                                            y = with(density) { -buttonHeight.toDp() - 8.dp }
+                                        )
                                     ) {
                                         // 修复：使用简单的Column而不是LazyColumn
                                         Column {
