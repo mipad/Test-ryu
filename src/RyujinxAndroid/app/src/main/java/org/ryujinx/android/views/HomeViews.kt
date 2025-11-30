@@ -50,7 +50,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Card
@@ -1521,7 +1520,8 @@ class HomeViews {
                             }
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Filled.Image, contentDescription = "选择背景")
+                                // 使用确实存在的图标
+                                Icon(Icons.Filled.Settings, contentDescription = "选择背景")
                                 Text("选择图片", modifier = Modifier.padding(start = 8.dp))
                             }
                         }
