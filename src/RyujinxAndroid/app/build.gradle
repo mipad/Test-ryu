@@ -59,16 +59,15 @@ android {
         debuggable false
         jniDebuggable false
     }
-}
-    
+}    
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
-    }
+    }  
     kotlinOptions {
         jvmTarget = '21'
-        freeCompilerArgs += ["-opt-in=kotlin.RequiresOptIn",
-            "-Xjvm-default=all"]
+       // freeCompilerArgs += ["-opt-in=kotlin.RequiresOptIn",
+            //"-Xjvm-default=all"]
     }
     buildFeatures {
         compose true
