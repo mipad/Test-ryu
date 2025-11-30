@@ -123,13 +123,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.statusBarsPadding
 
 class HomeViews {
     companion object {
@@ -643,8 +636,8 @@ class HomeViews {
             // 添加一个标志来跟踪是否是初始加载
             var isInitialLoad by remember { mutableStateOf(true) }
 
-            // 使用正确的ModalBottomSheet状态
-            val sheetState = rememberModalBottomSheetState()
+            // 使用无背景的ModalBottomSheet
+            val sheetState = androidx.compose.material3.rememberModalBottomSheetState()
 
             Scaffold(
                 modifier = Modifier.fillMaxSize(),
@@ -1210,6 +1203,9 @@ class HomeViews {
                 // 修复：添加菜单状态变量
                 var showAppMenu by remember { mutableStateOf(false) }
                 
+                // 修复：在横屏模式下使用不同的底部边距
+                val bottomPadding = if (isLandscape) 0.dp else 0.dp
+                
                 ModalBottomSheet(
                     onDismissRequest = {
                         showAppActions.value = false
@@ -1217,11 +1213,12 @@ class HomeViews {
                         showAppMenu = false // 关闭底部操作菜单时也关闭子菜单
                     },
                     sheetState = sheetState,
-                    // 修复：移除透明背景，确保菜单贴底显示
+                    // 修复：移除透明背景，使用默认的半透明背景
+                    // scrimColor = Color.Transparent,
                     modifier = Modifier
                         .fillMaxWidth()
                         .wrapContentHeight()
-                        .systemBarsPadding() // 确保不被系统状态栏遮挡
+                        .padding(bottom = bottomPadding)
                 ) {
                     // 使用可滚动的LazyColumn替代固定的Column
                     LazyColumn(
@@ -1281,14 +1278,11 @@ class HomeViews {
                                     }
                                 }) {
                                     // 只显示播放图标，不显示文字
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Icon(
-                                            Icons.Filled.PlayArrow,
-                                            contentDescription = "Run",
-                                            modifier = Modifier.size(28.dp)
-                                        )
-                                        Text("运行", fontSize = 12.sp)
-                                    }
+                                    Icon(
+                                        Icons.Filled.PlayArrow,
+                                        contentDescription = "Run",
+                                        modifier = Modifier.size(28.dp)
+                                    )
                                 }
                                 
                                 // 修复：将菜单按钮状态移到此处
@@ -1298,14 +1292,11 @@ class HomeViews {
                                         showAppMenu = !showAppMenu
                                     }) {
                                         // 只显示菜单图标，不显示文字
-                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Icon(
-                                                Icons.Filled.Menu,
-                                                contentDescription = "Menu",
-                                                modifier = Modifier.size(28.dp)
-                                            )
-                                            Text("菜单", fontSize = 12.sp)
-                                        }
+                                        Icon(
+                                            Icons.Filled.Menu,
+                                            contentDescription = "Menu",
+                                            modifier = Modifier.size(28.dp)
+                                        )
                                     }
                                     
                                     // 修复：简化下拉菜单，移除LazyColumn
@@ -1313,8 +1304,7 @@ class HomeViews {
                                         expanded = showAppMenu,
                                         onDismissRequest = { showAppMenu = false },
                                         modifier = Modifier
-                                            .width(200.dp)
-                                            .heightIn(max = configuration.screenHeightDp.dp * 0.6f)
+                                            .width(200.dp) // 固定宽度避免过长
                                     ) {
                                         // 修复：使用简单的Column而不是LazyColumn
                                         Column {
