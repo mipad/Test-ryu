@@ -619,7 +619,6 @@ class HomeViews {
 
             // 自定义背景相关状态
             var customBackgroundUri by remember { mutableStateOf<Uri?>(null) }
-            var showBackgroundOptions by remember { mutableStateOf(false) }
             val context = LocalContext.current
 
             // 图片选择器
@@ -950,12 +949,12 @@ class HomeViews {
                                                             }
                                                         }
                                                     }
-                                                    // 修复：添加背景长按手势
+                                                    // 修复：添加背景长按手势 - 直接打开图片选择器
                                                     .pointerInput(Unit) {
                                                         detectTapGestures(
                                                             onLongPress = {
-                                                                // 长按背景显示背景选项
-                                                                showBackgroundOptions = true
+                                                                // 长按背景直接打开文件管理器选择图片
+                                                                imagePicker.launch("image/*")
                                                             }
                                                         )
                                                     }
@@ -1501,40 +1500,6 @@ class HomeViews {
                             onClick = { showRenameDialog = false }
                         ) {
                             Text("Cancel")
-                        }
-                    }
-                )
-            }
-
-            // 添加背景选项对话框
-            if (showBackgroundOptions) {
-                AlertDialog(
-                    onDismissRequest = { showBackgroundOptions = false },
-                    title = { Text("背景设置") },
-                    text = { Text("选择背景图片或清除当前背景") },
-                    confirmButton = {
-                        TextButton(
-                            onClick = {
-                                showBackgroundOptions = false
-                                imagePicker.launch("image/*")
-                            }
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                // 使用确实存在的图标
-                                Icon(Icons.Filled.Settings, contentDescription = "选择背景")
-                                Text("选择图片", modifier = Modifier.padding(start = 8.dp))
-                            }
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(
-                            onClick = {
-                                showBackgroundOptions = false
-                                customBackgroundUri = null
-                                // 这里可以清除保存的背景URI
-                            }
-                        ) {
-                            Text("清除背景")
                         }
                     }
                 )
