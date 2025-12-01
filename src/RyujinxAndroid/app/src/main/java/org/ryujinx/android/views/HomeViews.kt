@@ -3,10 +3,9 @@ package org.ryujinx.android.views
 
 import android.content.res.Configuration
 import android.content.res.Resources
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -20,6 +19,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -29,7 +29,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -38,8 +37,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -75,9 +72,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -111,19 +106,14 @@ import java.util.Base64
 import java.util.Locale
 import kotlin.concurrent.thread
 import kotlin.math.roundToInt
-import kotlin.math.abs
 import kotlinx.coroutines.launch
-import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.clickable
-import java.io.File
 import android.content.Context
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -133,13 +123,17 @@ import android.content.Intent
 import android.provider.MediaStore
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.statusBarsPadding
 import android.util.Log
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.DpOffset
+import androidx.compose.foundation.background
+import java.io.File
+import java.io.FileOutputStream
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.compose.foundation.Canvas
 
 class HomeViews {
     companion object {
@@ -446,19 +440,17 @@ class HomeViews {
             val isSelected = selectedModel.value == gameModel
             val decoder = Base64.getDecoder()
             
-            // 根据主题确定边框颜色 - 使用背景色的亮度来判断
+            // 根据主题确定边框颜色
             val backgroundColor = MaterialTheme.colorScheme.background
             val luminance = 0.299 * backgroundColor.red + 0.587 * backgroundColor.green + 0.114 * backgroundColor.blue
             val borderColor = if (luminance > 0.5) Color.Black else Color.White
 
             if (isCentered) {
-                // 中央项目 - 只显示图标，不显示文字
-                // 修复：将combinedClickable移到外层，确保边框不影响点击区域
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(0.6f)
                         .aspectRatio(1.3f)
-                        .offset(y = (-23).dp) // 向上移动10dp
+                        .offset(y = (-23).dp)
                         .combinedClickable(
                             onClick = {
                                 if (viewModel.mainViewModel?.selected != null) {
@@ -496,7 +488,7 @@ class HomeViews {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .border(1.dp, borderColor, RoundedCornerShape(12.dp)) // 添加超细线框
+                            .border(1.dp, borderColor, RoundedCornerShape(12.dp))
                             .then(
                                 if (isSelected) {
                                     Modifier.border(
@@ -516,7 +508,7 @@ class HomeViews {
                                     bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
                                         .asImageBitmap(),
                                     contentDescription = gameModel.getDisplayName() + " icon",
-                                    contentScale = ContentScale.FillBounds, // 改为FillBounds以拉伸图片
+                                    contentScale = ContentScale.FillBounds,
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .clip(RoundedCornerShape(12.dp))
@@ -544,7 +536,6 @@ class HomeViews {
                     }
                 }
             } else {
-                // 两侧项目 - 只显示图标
                 Box(
                     modifier = Modifier
                         .size(80.dp)
@@ -623,68 +614,67 @@ class HomeViews {
             val focusRequester = remember { FocusRequester() }
 
             // 自定义背景相关状态
-            var customBackgroundUri by remember { mutableStateOf<Uri?>(null) }
+            var customBackgroundBitmap by remember { mutableStateOf<Bitmap?>(null) }
             val context = LocalContext.current
+            val coroutineScope = rememberCoroutineScope()
 
-            // 修复：使用绝对路径存储自定义背景
-            val sharedPreferences = remember { 
-                context.getSharedPreferences("app_preferences", Context.MODE_PRIVATE) 
-            }
-            
-            // 从SharedPreferences加载保存的自定义背景路径
+            // 从SharedPreferences加载保存的自定义背景
             LaunchedEffect(Unit) {
-                val savedBackgroundPath = sharedPreferences.getString("custom_background_path", null)
-                savedBackgroundPath?.let { path ->
+                val sharedPreferences = context.getSharedPreferences("app_preferences", Context.MODE_PRIVATE)
+                val backgroundPath = sharedPreferences.getString("custom_background_path", null)
+                backgroundPath?.let { path ->
                     try {
                         val file = File(path)
                         if (file.exists()) {
-                            customBackgroundUri = Uri.fromFile(file)
-                            Log.d("HomeViews", "Loaded background from absolute path: $path")
-                        } else {
-                            Log.e("HomeViews", "Background file does not exist: $path")
-                            // 文件不存在，清除保存的路径
-                            sharedPreferences.edit().remove("custom_background_path").apply()
+                            val bitmap = BitmapFactory.decodeFile(path)
+                            if (bitmap != null) {
+                                customBackgroundBitmap = bitmap
+                            }
                         }
                     } catch (e: Exception) {
-                        Log.e("HomeViews", "Error loading background from path", e)
+                        Log.e("HomeViews", "Error loading background", e)
                     }
                 }
             }
 
-            // 图片选择器 - 使用ActivityResultContracts.GetContent()
+            // 图片选择器
             val imagePicker = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.GetContent(),
                 onResult = { uri ->
-                    uri?.let { selectedUri ->
-                        try {
-                            // 获取输入流来读取图片
-                            val inputStream = context.contentResolver.openInputStream(selectedUri)
-                            inputStream?.use { stream ->
-                                // 将图片保存到应用私有目录
-                                val backgroundDir = File(context.filesDir, "backgrounds")
-                                if (!backgroundDir.exists()) {
-                                    backgroundDir.mkdirs()
+                    uri?.let {
+                        coroutineScope.launch {
+                            withContext(Dispatchers.IO) {
+                                try {
+                                    val inputStream = context.contentResolver.openInputStream(it)
+                                    inputStream?.use { stream ->
+                                        val bitmap = BitmapFactory.decodeStream(stream)
+                                        if (bitmap != null) {
+                                            // 保存到应用私有目录
+                                            val backgroundDir = File(context.filesDir, "backgrounds")
+                                            if (!backgroundDir.exists()) {
+                                                backgroundDir.mkdirs()
+                                            }
+                                            val outputFile = File(backgroundDir, "custom_background.jpg")
+                                            val outputStream = FileOutputStream(outputFile)
+                                            bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
+                                            outputStream.close()
+                                            
+                                            // 保存路径到SharedPreferences
+                                            val sharedPreferences = context.getSharedPreferences("app_preferences", Context.MODE_PRIVATE)
+                                            sharedPreferences.edit()
+                                                .putString("custom_background_path", outputFile.absolutePath)
+                                                .apply()
+                                            
+                                            // 更新UI
+                                            withContext(Dispatchers.Main) {
+                                                customBackgroundBitmap = bitmap
+                                            }
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("HomeViews", "Error saving background", e)
                                 }
-                                
-                                val outputFile = File(backgroundDir, "custom_background.jpg")
-                                outputFile.outputStream().use { outputStream ->
-                                    stream.copyTo(outputStream)
-                                }
-                                
-                                // 使用绝对路径
-                                customBackgroundUri = Uri.fromFile(outputFile)
-                                
-                                // 保存绝对路径到SharedPreferences
-                                sharedPreferences.edit()
-                                    .putString("custom_background_path", outputFile.absolutePath)
-                                    .apply()
-                                
-                                Log.d("HomeViews", "Background saved to: ${outputFile.absolutePath}")
                             }
-                        } catch (e: Exception) {
-                            Log.e("HomeViews", "Error saving background image", e)
-                            // 如果保存失败，尝试直接使用URI
-                            customBackgroundUri = selectedUri
                         }
                     }
                 }
@@ -710,7 +700,6 @@ class HomeViews {
 
             // 添加屏幕方向改变时的处理
             LaunchedEffect(configuration.orientation) {
-                // 当屏幕方向改变时，关闭底部操作菜单
                 showAppActions.value = false
                 selectedModel.value = null
                 viewModel.mainViewModel?.selected = null
@@ -718,83 +707,27 @@ class HomeViews {
 
             // 横屏模式下跟踪当前中央项
             var centeredIndex by remember { mutableStateOf(0) }
-            // 添加一个标志来跟踪是否是初始加载
-            var isInitialLoad by remember { mutableStateOf(true) }
 
             // 使用正确的ModalBottomSheet状态
             val sheetState = rememberModalBottomSheetState()
 
-            // 修复：改进背景实现，使用绝对路径
             BoxWithConstraints(
                 modifier = Modifier.fillMaxSize()
             ) {
-                // 自定义背景层 - 使用remember改进性能
-                val backgroundBitmap = remember(customBackgroundUri) {
-                    if (customBackgroundUri != null) {
-                        try {
-                            Log.d("HomeViews", "Loading background image from: $customBackgroundUri")
-                            
-                            // 尝试多种方式加载图片
-                            val bitmap = when {
-                                customBackgroundUri?.scheme == "file" -> {
-                                    // 使用绝对路径加载
-                                    val filePath = customBackgroundUri.path
-                                    if (filePath != null) {
-                                        BitmapFactory.decodeFile(filePath)
-                                    } else {
-                                        null
-                                    }
-                                }
-                                else -> {
-                                    // 使用ContentResolver加载
-                                    val inputStream = context.contentResolver.openInputStream(customBackgroundUri!!)
-                                    inputStream?.use { stream ->
-                                        BitmapFactory.decodeStream(stream)
-                                    }
-                                }
-                            }
-                            
-                            if (bitmap != null) {
-                                Log.d("HomeViews", "Background image loaded successfully: ${bitmap.width}x${bitmap.height}")
-                            } else {
-                                Log.e("HomeViews", "Failed to decode background image from URI: $customBackgroundUri")
-                                // 如果加载失败，清除保存的路径
-                                sharedPreferences.edit().remove("custom_background_path").apply()
-                            }
-                            bitmap
-                        } catch (e: Exception) {
-                            Log.e("HomeViews", "Error loading background image", e)
-                            // 如果加载失败，清除保存的路径
-                            sharedPreferences.edit().remove("custom_background_path").apply()
-                            null
-                        }
-                    } else {
-                        null
-                    }
-                }
-
-                // 背景层 - 确保在所有内容下方
-                if (backgroundBitmap != null) {
+                // 自定义背景层
+                if (customBackgroundBitmap != null) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .zIndex(-1f) // 确保背景在最底层
+                            .zIndex(-1f)
                     ) {
                         Image(
-                            bitmap = backgroundBitmap.asImageBitmap(),
+                            bitmap = customBackgroundBitmap!!.asImageBitmap(),
                             contentDescription = "Custom Background",
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
-                } else {
-                    // 如果没有自定义背景，显示默认背景颜色
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .zIndex(-1f)
-                            .background(MaterialTheme.colorScheme.background)
-                    )
                 }
 
                 Scaffold(
@@ -803,7 +736,6 @@ class HomeViews {
                         .zIndex(1f),
                     topBar = {
                         if (!isLandscape) {
-                            // 竖屏模式下的搜索栏
                             SearchBar(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -847,9 +779,9 @@ class HomeViews {
                                                     contentScale = ContentScale.Crop,
                                                     modifier = Modifier
                                                         .padding(4.dp)
-                                                        .size(40.dp) // 调整大小
-                                                        .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
-                                                        .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)) // 添加边框
+                                                        .size(40.dp)
+                                                        .clip(RoundedCornerShape(12.dp))
+                                                        .border(1.dp, Color.Gray, RoundedCornerShape(12.dp))
                                                 )
                                             } else {
                                                 Box(
@@ -872,18 +804,16 @@ class HomeViews {
 
                             }
                         } else {
-                            // 横屏模式下的紧凑搜索栏 - 移到左上角，宽度缩短
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Start // 改为靠左对齐
+                                horizontalArrangement = Arrangement.Start
                             ) {
-                                // 搜索框 - 缩短宽度，靠左显示
                                 SearchBar(
                                     modifier = Modifier
-                                        .width(185.dp) // 固定宽度
+                                        .width(185.dp)
                                         .height(55.dp),
                                     shape = SearchBarDefaults.inputFieldShape,
                                     query = query,
@@ -903,7 +833,6 @@ class HomeViews {
                                         Text(text = "Search Games")
                                     },
                                     trailingIcon = {
-                                        // 用户头像放在搜索框内部右侧
                                         IconButton(
                                             onClick = {
                                                 openAppBarExtra = !openAppBarExtra
@@ -928,8 +857,8 @@ class HomeViews {
                                                     contentScale = ContentScale.Crop,
                                                     modifier = Modifier
                                                         .size(32.dp)
-                                                        .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
-                                                        .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)) // 添加边框
+                                                        .clip(RoundedCornerShape(12.dp))
+                                                        .border(1.dp, Color.Gray, RoundedCornerShape(12.dp))
                                                 )
                                             } else {
                                                 Box(
@@ -971,19 +900,15 @@ class HomeViews {
                     }
 
                 ) { contentPadding ->
-                    // 将用户卡片和游戏列表分开处理，确保正确的z-index顺序
                     Box(modifier = Modifier.fillMaxSize()) {
-                        // 游戏列表内容
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(contentPadding)
                                 .zIndex(1f)
-                                // 修复：添加背景长按手势 - 直接打开图片选择器
                                 .pointerInput(Unit) {
                                     detectTapGestures(
                                         onLongPress = {
-                                            // 长按背景直接打开文件管理器选择图片
                                             imagePicker.launch("image/*")
                                         }
                                     )
@@ -1013,7 +938,6 @@ class HomeViews {
                                     }
                                 } else {
                                     if (isLandscape) {
-                                        // 横屏模式：使用自定义轮播布局
                                         val filteredList = list.filter {
                                             it.getDisplayName().isNotEmpty() && 
                                             (query.trim().isEmpty() || 
@@ -1021,7 +945,6 @@ class HomeViews {
                                         }
                                         
                                         if (filteredList.isEmpty()) {
-                                            // 没有游戏时显示空状态
                                             Box(
                                                 modifier = Modifier.fillMaxSize(),
                                                 contentAlignment = Alignment.Center
@@ -1032,12 +955,10 @@ class HomeViews {
                                                 )
                                             }
                                         } else {
-                                            // 确保centeredIndex在有效范围内
                                             if (centeredIndex >= filteredList.size) {
                                                 centeredIndex = 0
                                             }
                                             
-                                            // 计算左右项目的索引
                                             val leftIndex = if (centeredIndex == 0) filteredList.size - 1 else centeredIndex - 1
                                             val rightIndex = if (centeredIndex == filteredList.size - 1) 0 else centeredIndex + 1
                                             
@@ -1047,26 +968,21 @@ class HomeViews {
                                                     .nestedScroll(nestedScrollConnection)
                                                     .pointerInput(Unit) {
                                                         detectHorizontalDragGestures { change, dragAmount ->
-                                                            // 检测滑动手势
                                                             if (dragAmount > 50) {
-                                                                // 向右滑动，显示上一个
                                                                 centeredIndex = if (centeredIndex == 0) filteredList.size - 1 else centeredIndex - 1
                                                             } else if (dragAmount < -50) {
-                                                                // 向左滑动，显示下一个
                                                                 centeredIndex = if (centeredIndex == filteredList.size - 1) 0 else centeredIndex + 1
                                                             }
                                                         }
                                                     }
                                             ) {
-                                                // 游戏项目 - 调整排列方式确保三个项目都能显示
                                                 Row(
                                                     modifier = Modifier
                                                         .fillMaxSize()
-                                                        .padding(horizontal = 8.dp), // 减少水平内边距
-                                                    horizontalArrangement = Arrangement.SpaceEvenly, // 使用均匀分布
+                                                        .padding(horizontal = 8.dp),
+                                                    horizontalArrangement = Arrangement.SpaceEvenly,
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
-                                                    // 左侧项目
                                                     LandscapeGameCarouselItem(
                                                         gameModel = filteredList.getOrNull(leftIndex),
                                                         viewModel = viewModel,
@@ -1080,7 +996,6 @@ class HomeViews {
                                                         }
                                                     )
                                                     
-                                                    // 中央项目
                                                     LandscapeGameCarouselItem(
                                                         gameModel = filteredList.getOrNull(centeredIndex),
                                                         viewModel = viewModel,
@@ -1091,7 +1006,6 @@ class HomeViews {
                                                         isCentered = true
                                                     )
                                                     
-                                                    // 右侧项目
                                                     LandscapeGameCarouselItem(
                                                         gameModel = filteredList.getOrNull(rightIndex),
                                                         viewModel = viewModel,
@@ -1162,7 +1076,7 @@ class HomeViews {
                             }
                         }
 
-                        // 用户卡片 - 放在游戏列表上方
+                        // 用户卡片
                         Column(
                             modifier = Modifier
                                 .padding(contentPadding)
@@ -1192,7 +1106,7 @@ class HomeViews {
                                             .border(
                                                 width = 2.dp,
                                                 color = Color(0xFF14bf00),
-                                                shape = RoundedCornerShape(12.dp) // 改为圆角方形
+                                                shape = RoundedCornerShape(12.dp)
                                             )
                                             .size(iconSize)
                                             .padding(2.dp),
@@ -1213,7 +1127,7 @@ class HomeViews {
                                                 modifier = Modifier
                                                     .padding(4.dp)
                                                     .size(iconSize)
-                                                    .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
+                                                    .clip(RoundedCornerShape(12.dp))
                                             )
                                         } else {
                                             Icon(
@@ -1246,7 +1160,7 @@ class HomeViews {
                                                         modifier = Modifier
                                                             .padding(4.dp)
                                                             .size(iconSize)
-                                                            .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
+                                                            .clip(RoundedCornerShape(12.dp))
                                                             .combinedClickable(
                                                                 onClick = {
                                                                     viewModel.mainViewModel!!.userViewModel.openUser(
@@ -1365,36 +1279,31 @@ class HomeViews {
                 }
             }
 
-            // 修复：底部操作菜单贴底显示
+            // 底部操作菜单
             if (showAppActions.value) {
-                // 获取屏幕配置以确定横竖屏
                 val configuration = LocalConfiguration.current
                 val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
                 
-                // 修复：添加菜单状态变量
                 var showAppMenu by remember { mutableStateOf(false) }
                 
                 ModalBottomSheet(
                     onDismissRequest = {
                         showAppActions.value = false
                         selectedModel.value = null
-                        showAppMenu = false // 关闭底部操作菜单时也关闭子菜单
+                        showAppMenu = false
                     },
                     sheetState = sheetState,
-                    // 修复：移除透明背景，确保菜单贴底显示
                     modifier = Modifier
                         .fillMaxWidth()
                         .wrapContentHeight()
-                        .systemBarsPadding() // 确保不被系统状态栏遮挡
+                        .systemBarsPadding()
                 ) {
-                    // 使用可滚动的LazyColumn替代固定的Column
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(16.dp)
                     ) {
                         item {
-                            // 显示游戏名和版本号
                             selectedModel.value?.let { game ->
                                 Column(
                                     modifier = Modifier.fillMaxWidth()
@@ -1444,7 +1353,6 @@ class HomeViews {
                                         }
                                     }
                                 }) {
-                                    // 修复：移除文字标题，只显示图标
                                     Icon(
                                         Icons.Filled.PlayArrow,
                                         contentDescription = "Run",
@@ -1452,9 +1360,8 @@ class HomeViews {
                                     )
                                 }
                                 
-                                // 修复：将菜单按钮状态移到此处
+                                // 修复菜单圆角问题
                                 Box {
-                                    // 修复：简化下拉菜单位置计算，避免在非Composable上下文中调用Composable函数
                                     var buttonHeight by remember { mutableStateOf(0) }
                                     val density = LocalDensity.current
                                     
@@ -1462,18 +1369,15 @@ class HomeViews {
                                         modifier = Modifier
                                             .size(48.dp)
                                             .onGloballyPositioned { coordinates ->
-                                                // 在非Composable上下文中只记录位置信息
                                                 buttonHeight = coordinates.size.height
                                             }
                                     ) {
                                         IconButton(
                                             modifier = Modifier.fillMaxSize(),
                                             onClick = {
-                                                // 修复：正确切换菜单状态
                                                 showAppMenu = !showAppMenu
                                             }
                                         ) {
-                                            // 修复：移除文字标题，只显示图标
                                             Icon(
                                                 Icons.Filled.Menu,
                                                 contentDescription = "Menu",
@@ -1482,26 +1386,20 @@ class HomeViews {
                                         }
                                     }
                                     
-                                    // 修复：下拉菜单从按钮上方显示，添加圆角并贴着图标
+                                    // 修复：使用Material3的DropdownMenu并设置圆角
                                     DropdownMenu(
                                         expanded = showAppMenu,
                                         onDismissRequest = { showAppMenu = false },
                                         modifier = Modifier
                                             .width(200.dp)
                                             .heightIn(max = configuration.screenHeightDp.dp * 0.6f)
-                                            .clip(RoundedCornerShape(16.dp)) // 添加圆角
-                                            .background(MaterialTheme.colorScheme.surface) // 确保背景色正确
-                                            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp)), // 添加边框
+                                            .clip(RoundedCornerShape(16.dp)),
                                         offset = DpOffset(
-                                            x = (-175).dp, // 调整水平位置，使其贴着图标
-                                            y = with(density) { -buttonHeight.toDp() - 180.dp } // 调整垂直位置，贴着上方
+                                            x = (-175).dp, // 调整到合适位置
+                                            y = with(density) { -buttonHeight.toDp() - 180.dp }
                                         )
                                     ) {
-                                        // 修复：使用简单的Column而不是LazyColumn
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                        ) {
+                                        Column {
                                             DropdownMenuItem(
                                                 text = { Text("重命名游戏") },
                                                 onClick = {
@@ -1589,7 +1487,7 @@ class HomeViews {
                 }
             }
 
-            // 添加重命名对话框
+            // 重命名对话框
             if (showRenameDialog) {
                 AlertDialog(
                     onDismissRequest = { showRenameDialog = false },
@@ -1607,7 +1505,6 @@ class HomeViews {
                             onClick = {
                                 selectedModel.value?.customName = newGameName
                                 showRenameDialog = false
-                                // 刷新列表以显示新名称
                                 viewModel.filter(query)
                             }
                         ) {
