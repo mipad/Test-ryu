@@ -1,3 +1,4 @@
+
 package org.ryujinx.android.views 
 
 import android.content.res.Configuration
@@ -619,19 +620,15 @@ class HomeViews {
 
             // 从SharedPreferences加载保存的自定义背景
             LaunchedEffect(Unit) {
-                withContext(Dispatchers.IO) {
+                val sharedPreferences = context.getSharedPreferences("app_preferences", Context.MODE_PRIVATE)
+                val backgroundPath = sharedPreferences.getString("custom_background_path", null)
+                backgroundPath?.let { path ->
                     try {
-                        val sharedPreferences = context.getSharedPreferences("app_preferences", Context.MODE_PRIVATE)
-                        val backgroundPath = sharedPreferences.getString("custom_background_path", null)
-                        backgroundPath?.let { path ->
-                            val file = File(path)
-                            if (file.exists()) {
-                                val bitmap = BitmapFactory.decodeFile(path)
-                                if (bitmap != null) {
-                                    withContext(Dispatchers.Main) {
-                                        customBackgroundBitmap = bitmap
-                                    }
-                                }
+                        val file = File(path)
+                        if (file.exists()) {
+                            val bitmap = BitmapFactory.decodeFile(path)
+                            if (bitmap != null) {
+                                customBackgroundBitmap = bitmap
                             }
                         }
                     } catch (e: Exception) {
@@ -640,27 +637,18 @@ class HomeViews {
                 }
             }
 
-            // 图片选择器 - 修复参数传递
+            // 图片选择器
             val imagePicker = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.GetContent(),
                 onResult = { uri ->
                     uri?.let {
                         coroutineScope.launch {
-                            try {
-                                val bitmap = withContext(Dispatchers.IO) {
-                                    try {
-                                        context.contentResolver.openInputStream(it)?.use { stream ->
-                                            BitmapFactory.decodeStream(stream)
-                                        }
-                                    } catch (e: Exception) {
-                                        Log.e("HomeViews", "Error decoding image", e)
-                                        null
-                                    }
-                                }
-                                
-                                bitmap?.let { bmp ->
-                                    withContext(Dispatchers.IO) {
-                                        try {
+                            withContext(Dispatchers.IO) {
+                                try {
+                                    val inputStream = context.contentResolver.openInputStream(it)
+                                    inputStream?.use { stream ->
+                                        val bitmap = BitmapFactory.decodeStream(stream)
+                                        if (bitmap != null) {
                                             // 保存到应用私有目录
                                             val backgroundDir = File(context.filesDir, "backgrounds")
                                             if (!backgroundDir.exists()) {
@@ -668,7 +656,7 @@ class HomeViews {
                                             }
                                             val outputFile = File(backgroundDir, "custom_background.jpg")
                                             val outputStream = FileOutputStream(outputFile)
-                                            bmp.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
+                                            bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
                                             outputStream.close()
                                             
                                             // 保存路径到SharedPreferences
@@ -677,49 +665,20 @@ class HomeViews {
                                                 .putString("custom_background_path", outputFile.absolutePath)
                                                 .apply()
                                             
+                                            // 更新UI
                                             withContext(Dispatchers.Main) {
-                                                customBackgroundBitmap = bmp
+                                                customBackgroundBitmap = bitmap
                                             }
-                                        } catch (e: Exception) {
-                                            Log.e("HomeViews", "Error saving background", e)
                                         }
                                     }
+                                } catch (e: Exception) {
+                                    Log.e("HomeViews", "Error saving background", e)
                                 }
-                            } catch (e: Exception) {
-                                Log.e("HomeViews", "Error processing image", e)
                             }
                         }
                     }
                 }
             )
-
-            // 清除背景函数
-            fun clearBackground() {
-                coroutineScope.launch {
-                    withContext(Dispatchers.IO) {
-                        try {
-                            // 清除SharedPreferences
-                            val sharedPreferences = context.getSharedPreferences("app_preferences", Context.MODE_PRIVATE)
-                            sharedPreferences.edit()
-                                .remove("custom_background_path")
-                                .apply()
-                            
-                            // 删除背景文件
-                            val backgroundDir = File(context.filesDir, "backgrounds")
-                            val outputFile = File(backgroundDir, "custom_background.jpg")
-                            if (outputFile.exists()) {
-                                outputFile.delete()
-                            }
-                            
-                            withContext(Dispatchers.Main) {
-                                customBackgroundBitmap = null
-                            }
-                        } catch (e: Exception) {
-                            Log.e("HomeViews", "Error clearing background", e)
-                        }
-                    }
-                }
-            }
 
             val nestedScrollConnection = remember {
                 object : NestedScrollConnection {
@@ -928,58 +887,32 @@ class HomeViews {
                             enter = slideInVertically(initialOffsetY = { it * 2 }),
                             exit = slideOutVertically(targetOffsetY = { it * 2 })
                         ) {
-                            Column {
-                                // 添加背景管理FAB
-                                FloatingActionButton(
-                                    onClick = {
-                                        if (customBackgroundBitmap == null) {
-                                            imagePicker.launch("image/*")
-                                        } else {
-                                            clearBackground()
-                                        }
-                                    },
-                                    shape = MaterialTheme.shapes.small,
-                                    modifier = Modifier.padding(bottom = 8.dp)
-                                ) {
-                                    Icon(
-                                        if (customBackgroundBitmap == null) 
-                                            Icons.Filled.Add 
-                                        else 
-                                            painterResource(id = android.R.drawable.ic_menu_delete),
-                                        contentDescription = if (customBackgroundBitmap == null) "Set Background" else "Clear Background"
-                                    )
-                                }
-                                
-                                FloatingActionButton(
-                                    onClick = {
-                                        viewModel.requestReload()
-                                        viewModel.ensureReloadIfNecessary()
-                                    },
-                                    shape = MaterialTheme.shapes.small
-                                ) {
-                                    Icon(Icons.Default.Refresh, contentDescription = "refresh")
-                                }
+                            FloatingActionButton(
+                                onClick = {
+                                    viewModel.requestReload()
+                                    viewModel.ensureReloadIfNecessary()
+                                },
+                                shape = MaterialTheme.shapes.small
+                            ) {
+                                Icon(Icons.Default.Refresh, contentDescription = "refresh")
                             }
                         }
                     }
 
                 ) { contentPadding ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .pointerInput(Unit) {
-                                detectTapGestures(
-                                    onLongPress = {
-                                        imagePicker.launch("image/*")
-                                    }
-                                )
-                            }
-                    ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(contentPadding)
                                 .zIndex(1f)
+                                .pointerInput(Unit) {
+                                    detectTapGestures(
+                                        onLongPress = {
+                                            imagePicker.launch("image/*")
+                                        }
+                                    )
+                                }
                         ) {
                             val list = remember {
                                 viewModel.gameList
@@ -1455,8 +1388,8 @@ class HomeViews {
                                         )
                                     } else {
                                         DpOffset(
-                                            x = (-90).dp, // 水平偏移
-                                            y = (-90).dp  // 减少向上偏移量，使菜单更靠近图标
+                                            x = (-70).dp, // 水平偏移
+                                            y = (-50).dp  // 减少向上偏移量，使菜单更靠近图标
                                         )
                                     }
                                     
@@ -1598,5 +1531,4 @@ class HomeViews {
             Home(isPreview = true)
         }
     }
-}
-    }}
+}}}
