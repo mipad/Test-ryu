@@ -134,7 +134,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.RowScope
 
 class HomeViews {
     companion object {
@@ -1361,19 +1360,11 @@ class HomeViews {
                                     )
                                 }
                                 
-                                // 修复：简化菜单定位，使用更大的圆角
+                                // 修复：简化菜单位置，移除 positionInWindow 调用
                                 Box {
-                                    var buttonPosition by remember { mutableStateOf(Offset.Zero) }
-                                    val density = LocalDensity.current
-                                    
                                     Box(
                                         modifier = Modifier
                                             .size(48.dp)
-                                            .onGloballyPositioned { coordinates ->
-                                                // 获取按钮在屏幕上的位置
-                                                val position = coordinates.positionInWindow()
-                                                buttonPosition = position
-                                            }
                                     ) {
                                         IconButton(
                                             modifier = Modifier.fillMaxSize(),
@@ -1389,7 +1380,7 @@ class HomeViews {
                                         }
                                     }
                                     
-                                    // 修复：使用更合理的偏移和更大的圆角
+                                    // 修复：使用合适的偏移量，菜单紧贴图标上方
                                     DropdownMenu(
                                         expanded = showAppMenu,
                                         onDismissRequest = { showAppMenu = false },
@@ -1398,8 +1389,8 @@ class HomeViews {
                                             .heightIn(max = configuration.screenHeightDp.dp * 0.6f)
                                             .clip(RoundedCornerShape(20.dp)), // 更大的圆角
                                         offset = DpOffset(
-                                            x = (-160).dp, // 更靠近按钮
-                                            y = (-280).dp // 直接贴在按钮上方
+                                            x = (-150).dp, // 水平偏移，使菜单贴近图标
+                                            y = (-280).dp // 垂直偏移，菜单在图标上方
                                         )
                                     ) {
                                         Column {
