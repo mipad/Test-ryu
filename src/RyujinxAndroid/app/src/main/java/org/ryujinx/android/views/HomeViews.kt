@@ -626,39 +626,65 @@ class HomeViews {
             var customBackgroundUri by remember { mutableStateOf<Uri?>(null) }
             val context = LocalContext.current
 
-            // 修复：使用remember保存自定义背景，避免重组时丢失
+            // 修复：使用绝对路径存储自定义背景
             val sharedPreferences = remember { 
                 context.getSharedPreferences("app_preferences", Context.MODE_PRIVATE) 
             }
             
-            // 从SharedPreferences加载保存的自定义背景URI
+            // 从SharedPreferences加载保存的自定义背景路径
             LaunchedEffect(Unit) {
-                val savedUriString = sharedPreferences.getString("custom_background_uri", null)
-                savedUriString?.let { uriString ->
+                val savedBackgroundPath = sharedPreferences.getString("custom_background_path", null)
+                savedBackgroundPath?.let { path ->
                     try {
-                        customBackgroundUri = Uri.parse(uriString)
-                        Log.d("HomeViews", "Loaded background URI from preferences: $customBackgroundUri")
+                        val file = File(path)
+                        if (file.exists()) {
+                            customBackgroundUri = Uri.fromFile(file)
+                            Log.d("HomeViews", "Loaded background from absolute path: $path")
+                        } else {
+                            Log.e("HomeViews", "Background file does not exist: $path")
+                            // 文件不存在，清除保存的路径
+                            sharedPreferences.edit().remove("custom_background_path").apply()
+                        }
                     } catch (e: Exception) {
-                        Log.e("HomeViews", "Error loading background URI from preferences", e)
+                        Log.e("HomeViews", "Error loading background from path", e)
                     }
                 }
             }
 
-            // 图片选择器
+            // 图片选择器 - 使用ActivityResultContracts.GetContent()
             val imagePicker = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.GetContent(),
                 onResult = { uri ->
-                    uri?.let {
-                        customBackgroundUri = it
-                        Log.d("HomeViews", "Background image selected: $it")
-                        // 保存URI到SharedPreferences以便下次启动时加载
+                    uri?.let { selectedUri ->
                         try {
-                            sharedPreferences.edit()
-                                .putString("custom_background_uri", it.toString())
-                                .apply()
-                            Log.d("HomeViews", "Background URI saved to preferences")
+                            // 获取输入流来读取图片
+                            val inputStream = context.contentResolver.openInputStream(selectedUri)
+                            inputStream?.use { stream ->
+                                // 将图片保存到应用私有目录
+                                val backgroundDir = File(context.filesDir, "backgrounds")
+                                if (!backgroundDir.exists()) {
+                                    backgroundDir.mkdirs()
+                                }
+                                
+                                val outputFile = File(backgroundDir, "custom_background.jpg")
+                                outputFile.outputStream().use { outputStream ->
+                                    stream.copyTo(outputStream)
+                                }
+                                
+                                // 使用绝对路径
+                                customBackgroundUri = Uri.fromFile(outputFile)
+                                
+                                // 保存绝对路径到SharedPreferences
+                                sharedPreferences.edit()
+                                    .putString("custom_background_path", outputFile.absolutePath)
+                                    .apply()
+                                
+                                Log.d("HomeViews", "Background saved to: ${outputFile.absolutePath}")
+                            }
                         } catch (e: Exception) {
-                            Log.e("HomeViews", "Error saving background URI to preferences", e)
+                            Log.e("HomeViews", "Error saving background image", e)
+                            // 如果保存失败，尝试直接使用URI
+                            customBackgroundUri = selectedUri
                         }
                     }
                 }
@@ -698,7 +724,7 @@ class HomeViews {
             // 使用正确的ModalBottomSheet状态
             val sheetState = rememberModalBottomSheetState()
 
-            // 修复：改进背景实现，确保正确显示
+            // 修复：改进背景实现，使用绝对路径
             BoxWithConstraints(
                 modifier = Modifier.fillMaxSize()
             ) {
@@ -706,19 +732,40 @@ class HomeViews {
                 val backgroundBitmap = remember(customBackgroundUri) {
                     if (customBackgroundUri != null) {
                         try {
-                            Log.d("HomeViews", "Loading background image: $customBackgroundUri")
-                            val inputStream = context.contentResolver.openInputStream(customBackgroundUri!!)
-                            inputStream?.use { stream ->
-                                val bitmap = BitmapFactory.decodeStream(stream)
-                                if (bitmap != null) {
-                                    Log.d("HomeViews", "Background image loaded successfully: ${bitmap.width}x${bitmap.height}")
-                                } else {
-                                    Log.e("HomeViews", "Failed to decode background image")
+                            Log.d("HomeViews", "Loading background image from: $customBackgroundUri")
+                            
+                            // 尝试多种方式加载图片
+                            val bitmap = when {
+                                customBackgroundUri?.scheme == "file" -> {
+                                    // 使用绝对路径加载
+                                    val filePath = customBackgroundUri.path
+                                    if (filePath != null) {
+                                        BitmapFactory.decodeFile(filePath)
+                                    } else {
+                                        null
+                                    }
                                 }
-                                bitmap
+                                else -> {
+                                    // 使用ContentResolver加载
+                                    val inputStream = context.contentResolver.openInputStream(customBackgroundUri!!)
+                                    inputStream?.use { stream ->
+                                        BitmapFactory.decodeStream(stream)
+                                    }
+                                }
                             }
+                            
+                            if (bitmap != null) {
+                                Log.d("HomeViews", "Background image loaded successfully: ${bitmap.width}x${bitmap.height}")
+                            } else {
+                                Log.e("HomeViews", "Failed to decode background image from URI: $customBackgroundUri")
+                                // 如果加载失败，清除保存的路径
+                                sharedPreferences.edit().remove("custom_background_path").apply()
+                            }
+                            bitmap
                         } catch (e: Exception) {
                             Log.e("HomeViews", "Error loading background image", e)
+                            // 如果加载失败，清除保存的路径
+                            sharedPreferences.edit().remove("custom_background_path").apply()
                             null
                         }
                     } else {
@@ -740,6 +787,14 @@ class HomeViews {
                             modifier = Modifier.fillMaxSize()
                         )
                     }
+                } else {
+                    // 如果没有自定义背景，显示默认背景颜色
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .zIndex(-1f)
+                            .background(MaterialTheme.colorScheme.background)
+                    )
                 }
 
                 Scaffold(
@@ -1427,21 +1482,26 @@ class HomeViews {
                                         }
                                     }
                                     
-                                    // 修复：下拉菜单从按钮上方显示，添加圆角
+                                    // 修复：下拉菜单从按钮上方显示，添加圆角并贴着图标
                                     DropdownMenu(
                                         expanded = showAppMenu,
                                         onDismissRequest = { showAppMenu = false },
                                         modifier = Modifier
                                             .width(200.dp)
                                             .heightIn(max = configuration.screenHeightDp.dp * 0.6f)
-                                            .clip(RoundedCornerShape(16.dp)), // 添加圆角
+                                            .clip(RoundedCornerShape(16.dp)) // 添加圆角
+                                            .background(MaterialTheme.colorScheme.surface) // 确保背景色正确
+                                            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp)), // 添加边框
                                         offset = DpOffset(
-                                            x = 0.dp,
-                                            y = with(density) { -buttonHeight.toDp() - 8.dp }
+                                            x = (-175).dp, // 调整水平位置，使其贴着图标
+                                            y = with(density) { -buttonHeight.toDp() - 180.dp } // 调整垂直位置，贴着上方
                                         )
                                     ) {
                                         // 修复：使用简单的Column而不是LazyColumn
-                                        Column {
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                        ) {
                                             DropdownMenuItem(
                                                 text = { Text("重命名游戏") },
                                                 onClick = {
