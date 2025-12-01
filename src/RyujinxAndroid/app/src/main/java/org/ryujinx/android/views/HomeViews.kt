@@ -1360,7 +1360,7 @@ class HomeViews {
                                     )
                                 }
                                 
-                                // 修复：简化菜单位置，移除 positionInWindow 调用
+                                // 修改：优化菜单位置，使其更靠近图标
                                 Box {
                                     Box(
                                         modifier = Modifier
@@ -1380,97 +1380,172 @@ class HomeViews {
                                         }
                                     }
                                     
-                                    // 修复：使用合适的偏移量，菜单紧贴图标上方
+                                    // 修改：根据屏幕方向调整菜单位置
+                                    val menuOffset = if (isLandscape) {
+                                        DpOffset(
+                                            x = (-180).dp, // 横屏模式向左偏移更多
+                                            y = (-280).dp // 向上偏移，使菜单更靠近图标
+                                        )
+                                    } else {
+                                        DpOffset(
+                                            x = (-180).dp, // 竖屏模式也向左偏移
+                                            y = (-280).dp // 向上偏移，使菜单更靠近图标
+                                        )
+                                    }
+                                    
                                     DropdownMenu(
                                         expanded = showAppMenu,
                                         onDismissRequest = { showAppMenu = false },
                                         modifier = Modifier
-                                            .width(220.dp)
-                                            .heightIn(max = configuration.screenHeightDp.dp * 0.6f)
-                                            .clip(RoundedCornerShape(20.dp)), // 更大的圆角
-                                        offset = DpOffset(
-                                            x = (-150).dp, // 水平偏移，使菜单贴近图标
-                                            y = (-280).dp // 垂直偏移，菜单在图标上方
-                                        )
+                                            .width(240.dp) // 增加宽度
+                                            .heightIn(max = configuration.screenHeightDp.dp * 0.5f) // 限制最大高度
+                                            .clip(RoundedCornerShape(16.dp)), // 圆角
+                                        offset = menuOffset
                                     ) {
-                                        Column {
+                                        Column(
+                                            modifier = Modifier
+                                                .padding(vertical = 4.dp) // 增加垂直内边距
+                                        ) {
                                             DropdownMenuItem(
-                                                text = { Text("重命名游戏") },
+                                                text = { 
+                                                    Text(
+                                                        "重命名游戏",
+                                                        fontSize = 14.sp // 减小字体
+                                                    )
+                                                },
                                                 onClick = {
                                                     showAppMenu = false
                                                     selectedModel.value?.let { game ->
                                                         newGameName = game.getDisplayName()
                                                         showRenameDialog = true
                                                     }
-                                                }
+                                                },
+                                                modifier = Modifier
+                                                    .height(48.dp) // 固定高度
                                             )
                                             DropdownMenuItem(
-                                                text = { Text("清除 PPTC 缓存") },
+                                                text = { 
+                                                    Text(
+                                                        "清除 PPTC 缓存",
+                                                        fontSize = 14.sp
+                                                    )
+                                                },
                                                 onClick = {
                                                     showAppMenu = false
                                                     viewModel.mainViewModel?.clearPptcCache(
                                                         viewModel.mainViewModel?.selected?.titleId ?: ""
                                                     )
-                                                }
+                                                },
+                                                modifier = Modifier
+                                                    .height(48.dp)
                                             )
                                             DropdownMenuItem(
-                                                text = { Text("清除着色器缓存") },
+                                                text = { 
+                                                    Text(
+                                                        "清除着色器缓存",
+                                                        fontSize = 14.sp
+                                                    )
+                                                },
                                                 onClick = {
                                                     showAppMenu = false
                                                     viewModel.mainViewModel?.purgeShaderCache(
                                                         viewModel.mainViewModel?.selected?.titleId ?: ""
                                                     )
-                                                }
+                                                },
+                                                modifier = Modifier
+                                                    .height(48.dp)
                                             )
                                             DropdownMenuItem(
-                                                text = { Text("删除所有缓存") },
+                                                text = { 
+                                                    Text(
+                                                        "删除所有缓存",
+                                                        fontSize = 14.sp
+                                                    )
+                                                },
                                                 onClick = {
                                                     showAppMenu = false
                                                     viewModel.mainViewModel?.deleteCache(
                                                         viewModel.mainViewModel?.selected?.titleId ?: ""
                                                     )
-                                                }
+                                                },
+                                                modifier = Modifier
+                                                    .height(48.dp)
                                             )
                                             DropdownMenuItem(
-                                                text = { Text("管理更新") },
+                                                text = { 
+                                                    Text(
+                                                        "管理更新",
+                                                        fontSize = 14.sp
+                                                    )
+                                                },
                                                 onClick = {
                                                     showAppMenu = false
                                                     openTitleUpdateDialog.value = true
-                                                }
+                                                },
+                                                modifier = Modifier
+                                                    .height(48.dp)
                                             )
                                             DropdownMenuItem(
-                                                text = { Text("管理 DLC") },
+                                                text = { 
+                                                    Text(
+                                                        "管理 DLC",
+                                                        fontSize = 14.sp
+                                                    )
+                                                },
                                                 onClick = {
                                                     showAppMenu = false
                                                     openDlcDialog.value = true
-                                                }
+                                                },
+                                                modifier = Modifier
+                                                    .height(48.dp)
                                             )
                                             DropdownMenuItem(
-                                                text = { Text("管理金手指") },
+                                                text = { 
+                                                    Text(
+                                                        "管理金手指",
+                                                        fontSize = 14.sp
+                                                    )
+                                                },
                                                 onClick = {
                                                     showAppMenu = false
                                                     val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
                                                     val gamePath = viewModel.mainViewModel?.selected?.path ?: ""
                                                     navController?.navigate("cheats/$titleId?gamePath=${android.net.Uri.encode(gamePath)}")
-                                                }
+                                                },
+                                                modifier = Modifier
+                                                    .height(48.dp)
                                             )
                                             DropdownMenuItem(
-                                                text = { Text("管理存档数据") },
+                                                text = { 
+                                                    Text(
+                                                        "管理存档数据",
+                                                        fontSize = 14.sp
+                                                    )
+                                                },
                                                 onClick = {
                                                     showAppMenu = false
                                                     val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
                                                     val gameName = viewModel.mainViewModel?.selected?.getDisplayName() ?: ""
                                                     navController?.navigate("savedata/$titleId?gameName=${android.net.Uri.encode(gameName)}")
-                                                }
+                                                },
+                                                modifier = Modifier
+                                                    .height(48.dp)
                                             )
                                             DropdownMenuItem(
-                                                text = { Text("管理 Mods") },
+                                                text = { 
+                                                    Text(
+                                                        "管理 Mods",
+                                                        fontSize = 14.sp
+                                                    )
+                                                },
                                                 onClick = {
                                                     showAppMenu = false
                                                     val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
                                                     val gameName = viewModel.mainViewModel?.selected?.getDisplayName() ?: ""
                                                     navController?.navigate("mods/$titleId?gameName=${android.net.Uri.encode(gameName)}")
-                                                }
+                                                },
+                                                modifier = Modifier
+                                                    .height(48.dp)
                                             )
                                         }
                                     }
