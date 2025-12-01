@@ -134,6 +134,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.RowScope
 
 class HomeViews {
     companion object {
@@ -1360,16 +1361,18 @@ class HomeViews {
                                     )
                                 }
                                 
-                                // 修复菜单圆角问题
+                                // 修复：简化菜单定位，使用更大的圆角
                                 Box {
-                                    var buttonHeight by remember { mutableStateOf(0) }
+                                    var buttonPosition by remember { mutableStateOf(Offset.Zero) }
                                     val density = LocalDensity.current
                                     
                                     Box(
                                         modifier = Modifier
                                             .size(48.dp)
                                             .onGloballyPositioned { coordinates ->
-                                                buttonHeight = coordinates.size.height
+                                                // 获取按钮在屏幕上的位置
+                                                val position = coordinates.positionInWindow()
+                                                buttonPosition = position
                                             }
                                     ) {
                                         IconButton(
@@ -1386,17 +1389,17 @@ class HomeViews {
                                         }
                                     }
                                     
-                                    // 修复：使用Material3的DropdownMenu并设置圆角
+                                    // 修复：使用更合理的偏移和更大的圆角
                                     DropdownMenu(
                                         expanded = showAppMenu,
                                         onDismissRequest = { showAppMenu = false },
                                         modifier = Modifier
-                                            .width(200.dp)
+                                            .width(220.dp)
                                             .heightIn(max = configuration.screenHeightDp.dp * 0.6f)
-                                            .clip(RoundedCornerShape(16.dp)),
+                                            .clip(RoundedCornerShape(20.dp)), // 更大的圆角
                                         offset = DpOffset(
-                                            x = (-175).dp, // 调整到合适位置
-                                            y = with(density) { -buttonHeight.toDp() - 180.dp }
+                                            x = (-160).dp, // 更靠近按钮
+                                            y = (-280).dp // 直接贴在按钮上方
                                         )
                                     ) {
                                         Column {
