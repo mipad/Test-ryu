@@ -68,8 +68,6 @@ FetchContent_Declare(
 )
 
 # 设置 OpenAL 构建选项 - 优化以减少杂音和延迟
-set(ALSOFT_REQUIRE_OPENSL ON CACHE BOOL "Enable OpenSL backend")
-set(ALSOFT_BACKEND_OPENSL ON CACHE BOOL "Enable OpenSL backend")
 set(ALSOFT_TESTS OFF CACHE BOOL "Disable tests")
 
 # 添加优化选项以减少杂音和延迟
@@ -95,6 +93,7 @@ target_compile_definitions(ryujinxjni PRIVATE
 # 查找系统库
 find_library(log-lib log)
 find_library(opensles-lib OpenSLES)
+find_library(aaudio-lib aaudio)
 find_library(android-lib android)
 
 # 添加 Oboe 包含目录
@@ -105,6 +104,7 @@ target_link_libraries(
     ryujinxjni
     ${log-lib}
     ${opensles-lib}
+    ${aaudio-lib}
     ${android-lib}
     -lvulkan
     adrenotools
