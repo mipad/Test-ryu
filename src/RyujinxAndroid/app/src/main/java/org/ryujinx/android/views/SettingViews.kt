@@ -323,9 +323,21 @@ class SettingViews {
                 loaded.value = true
             }
             
-            // 修改：移除NCE和JIT Cache Eviction的强制关联逻辑
-            // 当NCE开启时，应该禁用JIT Cache Eviction（因为它们是互斥的）
-            // 但不要强制在NCE关闭时开启JIT Cache Eviction
+            // 当NCE状态改变时，自动设置JIT Cache Eviction的状态（只作为默认行为，不是强制）
+            LaunchedEffect(useNce.value) {
+                if (useNce.value) {
+                    // 如果NCE开启，则关闭JIT Cache Eviction（它们互斥）
+                    enableJitCacheEviction.value = false
+                } else {
+                    // 如果NCE关闭，则自动打开JIT Cache Eviction（作为默认行为）
+                    // 但如果用户之前已经手动关闭了，我们尊重用户的选择
+                    // 这里只会在状态初始化时执行一次
+                    if (loaded.value) {
+                        // 只有在NCE刚关闭时才自动打开
+                        enableJitCacheEviction.value = true
+                    }
+                }
+            }
             
             Scaffold(modifier = Modifier.fillMaxSize(),
                 topBar = {
@@ -670,15 +682,16 @@ class SettingViews {
                                 checked = useNce.value,
                                 onCheckedChange = {
                                     useNce.value = it
-                                    // 修改：当NCE开启时，强制关闭JIT Cache Eviction（因为它们是互斥的）
-                                    // 但当NCE关闭时，不要强制开启JIT Cache Eviction，让用户自己选择
+                                    // 当NCE开启时，强制关闭JIT Cache Eviction（它们互斥）
                                     if (it) {
                                         enableJitCacheEviction.value = false
                                     }
+                                    // 当NCE关闭时，不强制打开JIT Cache Eviction，让用户自己选择
+                                    // 用户仍然可以手动关闭它
                                 }
                             )
                             
-                            // 修改：只在NCE关闭时显示JIT Cache Eviction选项
+                            // 只在NCE关闭时显示JIT Cache Eviction选项
                             AnimatedVisibility(visible = !useNce.value) {
                                 Column {
                                     ModernSwitchRow(
@@ -1000,7 +1013,6 @@ class SettingViews {
                                     4f -> "4x"
                                     8f -> "8x"
                                     16f -> "16x"
-                                    32f -> "32x"
                                     else -> "off"
                                 },
                                 onClick = { 
@@ -1015,7 +1027,7 @@ class SettingViews {
                             // 各向异性过滤选项
                             AnimatedVisibility(visible = showAnisotropyOptions.value) {
                                 Column(modifier = Modifier.fillMaxWidth()) {
-                                    val anisotropyOptions = listOf(-1f, 0f, 2f, 4f, 8f, 16f, 32f)
+                                    val anisotropyOptions = listOf(-1f, 0f, 2f, 4f, 8f, 16f)
                                     
                                     Row(
                                         modifier = Modifier
@@ -1035,7 +1047,6 @@ class SettingViews {
                                                     4f -> "4x"
                                                     8f -> "8x"
                                                     16f -> "16x"
-                                                    32f -> "32x"
                                                     else -> "off"
                                                 },
                                                 isSelected = isSelected,
