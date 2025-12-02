@@ -68,6 +68,9 @@ FetchContent_Declare(
 )
 
 # 设置 OpenAL 构建选项 - 优化以减少杂音和延迟
+set(ALSOFT_REQUIRE_OPENSL ON CACHE BOOL "Enable OpenSL backend")
+set(ALSOFT_BACKEND_OPENSL ON CACHE BOOL "Enable OpenSL backend")
+set(ALSOFT_BACKEND_AAUDIO ON CACHE BOOL "Enable AAudio backend")
 set(ALSOFT_TESTS OFF CACHE BOOL "Disable tests")
 
 # 添加优化选项以减少杂音和延迟
