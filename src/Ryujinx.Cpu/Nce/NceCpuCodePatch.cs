@@ -61,11 +61,14 @@ namespace Ryujinx.Cpu.Nce
                 code[patchTarget.PatchBranchIndex] |= EncodeSImm26_2(checked((int)((long)instTextAddress - (long)instPatchBranchAddress + sizeof(uint))));
                 memoryManager.Write(instTextAddress, 0x14000000u | EncodeSImm26_2(checked((int)((long)instPatchStartAddress - (long)instTextAddress))));
 
+                memoryManager.Reprotect(instTextAddress & ~0xFFFUL, 0x1000, MemoryPermission.ReadAndExecute);
+
                 uint newInst = memoryManager.Read<uint>(instTextAddress);
             }
 
             if (Size != 0)
             {
+                memoryManager.Reprotect(patchAddress, Size, MemoryPermission.ReadAndWrite);
                 memoryManager.Write(patchAddress, MemoryMarshal.Cast<uint, byte>(code));
                 memoryManager.Reprotect(patchAddress, Size, MemoryPermission.ReadAndExecute);
             }
