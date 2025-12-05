@@ -137,29 +137,10 @@ namespace Ryujinx.Memory
         {
             if (srcBlock._sharedMemory == IntPtr.Zero)
             {
-                // 回退方案：使用内存复制而不是共享内存映射
-                // 这对于加载游戏代码等场景是可行的
-                CopyMemory(srcBlock, srcOffset, dstOffset, size);
-                return;
+                throw new ArgumentException("The source memory block is not mirrorable, and thus cannot be mapped on the current block.");
             }
 
             MemoryManagement.MapView(srcBlock._sharedMemory, srcOffset, GetPointerInternal(dstOffset, size), size, this);
-        }
-
-        /// <summary>
-        /// 内存复制回退方案
-        /// </summary>
-        private void CopyMemory(MemoryBlock srcBlock, ulong srcOffset, ulong dstOffset, ulong size)
-        {
-            const int MaxChunkSize = 1 << 24; // 16MB 块大小，避免大内存分配问题
-            
-            for (ulong offset = 0; offset < size; offset += MaxChunkSize)
-            {
-                int copySize = (int)Math.Min(MaxChunkSize, size - offset);
-                var srcSpan = srcBlock.GetSpan(srcOffset + offset, copySize);
-                var dstSpan = GetSpan(dstOffset + offset, copySize);
-                srcSpan.CopyTo(dstSpan);
-            }
         }
 
         /// <summary>
@@ -170,13 +151,6 @@ namespace Ryujinx.Memory
         /// <param name="size">Size of the range to be unmapped</param>
         public void UnmapView(MemoryBlock srcBlock, ulong offset, ulong size)
         {
-            if (srcBlock._sharedMemory == IntPtr.Zero)
-            {
-                // 如果源内存块没有共享内存，那么这是通过CopyMemory映射的
-                // 我们不需要做任何特殊操作，因为内存已经复制过了
-                return;
-            }
-
             MemoryManagement.UnmapView(srcBlock._sharedMemory, GetPointerInternal(offset, size), size, this);
         }
 
