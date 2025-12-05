@@ -30,7 +30,7 @@ namespace Ryujinx.Cpu.Nce
             _suspendThreadHandlerPtr = Marshal.GetFunctionPointerForDelegate(_suspendThreadHandler);
         }
 
-        public static void RegisterThread(NceExecutionContext context, ITickSource tickSource, IMemoryManager memoryManager)
+        public static void RegisterThread(NceExecutionContext context, ITickSource tickSource, ICpuMemoryManager memoryManager)
         {
             _context = context;
             _tickSource = tickSource;
