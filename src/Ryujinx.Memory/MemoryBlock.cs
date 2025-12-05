@@ -1,3 +1,4 @@
+using Ryujinx.Common;
 using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -13,20 +14,13 @@ namespace Ryujinx.Memory
         private readonly bool _isMirror;
         private readonly bool _viewCompatible;
         private readonly bool _forJit;
-        private DualMappedJitAllocator _dualMappedAllocator;
         private IntPtr _sharedMemory;
         private IntPtr _pointer;
-        private IntPtr _rxPointer;
 
         /// <summary>
-        /// Pointer to the memory block data (RW).
+        /// Pointer to the memory block data.
         /// </summary>
         public IntPtr Pointer => _pointer;
-
-        /// <summary>
-        /// Pointer to the RX mapping (for execution), or IntPtr.Zero if not dual-mapped.
-        /// </summary>
-        public IntPtr RxPointer => _rxPointer;
 
         /// <summary>
         /// Size of the memory block.
@@ -42,16 +36,7 @@ namespace Ryujinx.Memory
         /// <exception cref="PlatformNotSupportedException">Throw when the current platform is not supported</exception>
         public MemoryBlock(ulong size, MemoryAllocationFlags flags = MemoryAllocationFlags.None)
         {
-            Size = size;
-            if (flags.HasFlag(MemoryAllocationFlags.DualMapping))
-            {
-                _dualMappedAllocator = new DualMappedJitAllocator(size);
-                _pointer = _dualMappedAllocator.RwPtr;
-                _rxPointer = _dualMappedAllocator.RxPtr;
-                _forJit = true;
-                return;
-            }
-            else if (flags.HasFlag(MemoryAllocationFlags.Mirrorable))
+            if (flags.HasFlag(MemoryAllocationFlags.Mirrorable))
             {
                 _sharedMemory = MemoryManagement.CreateSharedMemory(size, flags.HasFlag(MemoryAllocationFlags.Reserve));
 
@@ -74,7 +59,7 @@ namespace Ryujinx.Memory
                 _pointer = MemoryManagement.Allocate(size, _forJit);
             }
 
-            _rxPointer = _pointer;
+            Size = size;
         }
 
         /// <summary>
@@ -91,7 +76,7 @@ namespace Ryujinx.Memory
             _usesSharedMemory = true;
             _isMirror = true;
         }
-        
+
         /// <summary>
         /// Creates a memory block that shares the backing storage with this block.
         /// The memory and page commitments will be shared, however memory protections are separate.
@@ -108,18 +93,6 @@ namespace Ryujinx.Memory
             }
 
             return new MemoryBlock(Size, _sharedMemory);
-        }
-
-        /// <summary>
-        /// Detaches StikDebug from the app, Indicating that the JIT regions have been mapped.
-        /// AFter this is called, We will not be able to map any more JIT memory for iOS 26+ (TXM)
-        /// </summary>
-        public void Detach()
-        {
-            if (_dualMappedAllocator != null && DualMappedJitAllocator.hasTXM)
-            {
-                DualMappedJitAllocator.BreakJITDetach();
-            }
         }
 
         /// <summary>
@@ -164,10 +137,29 @@ namespace Ryujinx.Memory
         {
             if (srcBlock._sharedMemory == IntPtr.Zero)
             {
-                throw new ArgumentException("The source memory block is not mirrorable, and thus cannot be mapped on the current block.");
+                // 回退方案：使用内存复制而不是共享内存映射
+                // 这对于加载游戏代码等场景是可行的
+                CopyMemory(srcBlock, srcOffset, dstOffset, size);
+                return;
             }
 
             MemoryManagement.MapView(srcBlock._sharedMemory, srcOffset, GetPointerInternal(dstOffset, size), size, this);
+        }
+
+        /// <summary>
+        /// 内存复制回退方案
+        /// </summary>
+        private void CopyMemory(MemoryBlock srcBlock, ulong srcOffset, ulong dstOffset, ulong size)
+        {
+            const int MaxChunkSize = 1 << 24; // 16MB 块大小，避免大内存分配问题
+            
+            for (ulong offset = 0; offset < size; offset += MaxChunkSize)
+            {
+                int copySize = (int)Math.Min(MaxChunkSize, size - offset);
+                var srcSpan = srcBlock.GetSpan(srcOffset + offset, copySize);
+                var dstSpan = GetSpan(dstOffset + offset, copySize);
+                srcSpan.CopyTo(dstSpan);
+            }
         }
 
         /// <summary>
@@ -178,6 +170,13 @@ namespace Ryujinx.Memory
         /// <param name="size">Size of the range to be unmapped</param>
         public void UnmapView(MemoryBlock srcBlock, ulong offset, ulong size)
         {
+            if (srcBlock._sharedMemory == IntPtr.Zero)
+            {
+                // 如果源内存块没有共享内存，那么这是通过CopyMemory映射的
+                // 我们不需要做任何特殊操作，因为内存已经复制过了
+                return;
+            }
+
             MemoryManagement.UnmapView(srcBlock._sharedMemory, GetPointerInternal(offset, size), size, this);
         }
 
@@ -193,10 +192,7 @@ namespace Ryujinx.Memory
         /// <exception cref="MemoryProtectionException">Throw when <paramref name="permission"/> is invalid</exception>
         public void Reprotect(ulong offset, ulong size, MemoryPermission permission, bool throwOnFail = true)
         {
-            if (_rxPointer == _pointer)
-            {
-                MemoryManagement.Reprotect(GetPointerInternal(offset, size), size, permission, _viewCompatible, throwOnFail);
-            }
+            MemoryManagement.Reprotect(GetPointerInternal(offset, size), size, permission, _viewCompatible, throwOnFail);
         }
 
         /// <summary>
@@ -419,13 +415,8 @@ namespace Ryujinx.Memory
         {
             IntPtr ptr = Interlocked.Exchange(ref _pointer, IntPtr.Zero);
 
-            if (_dualMappedAllocator != null)
-            {
-                _dualMappedAllocator.Dispose();
-                _dualMappedAllocator = null;
-                _rxPointer = IntPtr.Zero;
-            }
-            else if (ptr != IntPtr.Zero)
+            // If pointer is null, the memory was already freed or never allocated.
+            if (ptr != IntPtr.Zero)
             {
                 if (_usesSharedMemory)
                 {
@@ -462,7 +453,7 @@ namespace Ryujinx.Memory
                     return OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17134);
                 }
 
-                return OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsIOS();
+                return OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || PlatformInfo.IsBionic;
             }
 
             return true;
