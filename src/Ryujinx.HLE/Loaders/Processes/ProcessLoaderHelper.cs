@@ -506,12 +506,13 @@ namespace Ryujinx.HLE.Loaders.Processes
             {
                 try
                 {
-                    var memoryInfo = hostTrackedMemoryManager.GetMemoryOffsetAndSizePublic(textStart, (ulong)image.Text.Length);
-                    if (memoryInfo.memory != null)
+                    // 使用元组解构来获取返回值
+                    var (memory, offset, size) = hostTrackedMemoryManager.GetMemoryOffsetAndSize(textStart, (ulong)image.Text.Length);
+                    if (memory != null)
                     {
                         // 重新保护内存为读取和执行权限
-                        memoryInfo.memory.Reprotect(memoryInfo.rangeOffset, memoryInfo.copySize, MemoryPermission.ReadAndExecute);
-                        Logger.Debug?.Print(LogClass.Loader, $"Additional memory protection applied for NCE patch at 0x{textStart:X16}, size: 0x{memoryInfo.copySize:X}");
+                        memory.Reprotect(offset, size, MemoryPermission.ReadAndExecute);
+                        Logger.Debug?.Print(LogClass.Loader, $"Additional memory protection applied for NCE patch at 0x{textStart:X16}, size: 0x{size:X}");
                     }
                 }
                 catch (Exception ex)
