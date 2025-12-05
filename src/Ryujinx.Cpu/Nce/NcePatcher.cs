@@ -41,7 +41,7 @@ namespace Ryujinx.Cpu.Nce
                     codePatch.AddCode(i, WriteMrsTpidrEl0Patch(rd));
                     Logger.Debug?.Print(LogClass.Cpu, $"Patched MRS x{rd}, tpidr_el0 at 0x{address:X}.");
                 }
-                else if ((inst & ~0x1f) == 0xd53b0020 && OperatingSystem.IsMacOS()) // mrs x0, ctr_el0
+                else if ((inst & ~0x1f) == 0xd53b0020 && (OperatingSystem.IsMacOS() || OperatingSystem.IsIOS())) // mrs x0, ctr_el0
                 {
                     uint rd = inst & 0x1f;
                     codePatch.AddCode(i, WriteMrsCtrEl0Patch(rd));
@@ -192,7 +192,7 @@ namespace Ryujinx.Cpu.Nce
         {
             asm.Mov(tmp0, (ulong)NceThreadTable.EntriesPointer);
 
-            if (OperatingSystem.IsMacOS())
+            if (OperatingSystem.IsMacOS() || OperatingSystem.IsIOS())
             {
                 asm.MrsTpidrroEl0(tmp1);
             }
@@ -222,7 +222,7 @@ namespace Ryujinx.Cpu.Nce
             asm.Ldur(tmp3, tmp0, -8);
             asm.Add(tmp3, tmp0, tmp3, ArmShiftType.Lsl, 4);
 
-            if (OperatingSystem.IsMacOS())
+            if (OperatingSystem.IsMacOS() || OperatingSystem.IsIOS())
             {
                 asm.MrsTpidrroEl0(tmp1);
             }
@@ -363,11 +363,13 @@ namespace Ryujinx.Cpu.Nce
             }
 
             asm.LdpRiUn(Gpr(30), Gpr(1), Gpr(0), NceNativeContext.GetXOffset(30));
+
             asm.MovSp(Gpr(Assembler.SpRegister), Gpr(1));
 
             asm.StrRiUn(Gpr(Assembler.ZrRegister, OperandType.I32), Gpr(0), NceNativeContext.GetInManagedOffset());
 
             asm.LdpRiUn(Gpr(0), Gpr(1), Gpr(0), NceNativeContext.GetXOffset(0));
+
             asm.Br(Gpr(30));
 
             return asm.GetCode();

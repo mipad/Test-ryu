@@ -23,6 +23,7 @@ namespace Ryujinx.Cpu.Nce
             public IntPtr HostThreadHandle;
             public ulong TempStorage;
             public IntPtr SvcCallHandler;
+            public ulong AddressSpaceBase;
         }
 
         private static NativeCtxStorage _dummyStorage = new();
@@ -84,6 +85,11 @@ namespace Ryujinx.Cpu.Nce
         public static int GetSvcCallHandlerOffset()
         {
             return StorageOffset(ref _dummyStorage, ref _dummyStorage.SvcCallHandler);
+        }
+
+        public static int GetAddressSpaceBaseOffset()
+        {
+            return StorageOffset(ref _dummyStorage, ref _dummyStorage.AddressSpaceBase);
         }
 
         private static int StorageOffset<T>(ref NativeCtxStorage storage, ref T target)

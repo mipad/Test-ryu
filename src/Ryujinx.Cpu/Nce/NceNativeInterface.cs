@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using ARMeilleure.Memory;
 
 namespace Ryujinx.Cpu.Nce
 {
@@ -17,6 +18,9 @@ namespace Ryujinx.Cpu.Nce
 
         [ThreadStatic]
         private static ITickSource _tickSource;
+        
+        [ThreadStatic]
+        private static IMemoryManager _memoryManager;
 
         static NceNativeInterface()
         {
@@ -26,10 +30,11 @@ namespace Ryujinx.Cpu.Nce
             _suspendThreadHandlerPtr = Marshal.GetFunctionPointerForDelegate(_suspendThreadHandler);
         }
 
-        public static void RegisterThread(NceExecutionContext context, ITickSource tickSource)
+        public static void RegisterThread(NceExecutionContext context, ITickSource tickSource, IMemoryManager memoryManager)
         {
             _context = context;
             _tickSource = tickSource;
+            _memoryManager = memoryManager;
         }
 
         public static ulong GetTickCounter()
@@ -50,6 +55,11 @@ namespace Ryujinx.Cpu.Nce
         public static IntPtr GetSuspendThreadHandlerFunctionPointer()
         {
             return _suspendThreadHandlerPtr;
+        }
+        
+        public static IMemoryManager GetMemoryManager()
+        {
+            return _memoryManager;
         }
     }
 }

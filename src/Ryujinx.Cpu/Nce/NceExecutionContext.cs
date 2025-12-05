@@ -4,16 +4,17 @@ using Ryujinx.Memory;
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Ryujinx.Common.Logging;
+
 
 namespace Ryujinx.Cpu.Nce
 {
     class NceExecutionContext : IExecutionContext
     {
-        private const ulong AlternateStackSize = 0x4000;
+        private const ulong AlternateStackSize = 65536;
 
         private readonly NceNativeContext _context;
         private readonly ExceptionCallbacks _exceptionCallbacks;
-        private volatile bool _disposed = false; // 添加 disposed 标志
 
         internal IntPtr NativeContextPtr => _context.BasePtr;
 
@@ -104,6 +105,17 @@ namespace Ryujinx.Cpu.Nce
             storage.X[30] = address;
             storage.HostThreadHandle = NceThreadPal.GetCurrentThreadHandle();
 
+            var memoryManager = NceNativeInterface.GetMemoryManager();
+            Logger.Info?.Print(LogClass.Cpu,
+                $"test"); 
+                
+            ulong guestSp = storage.X[31];
+            if (guestSp != 0)
+            {
+                Logger.Info?.Print(LogClass.Cpu,
+                    $"SP: Guest VA=0x{guestSp:X16}");
+
+            }
             RegisterAlternateStack();
         }
 
@@ -116,17 +128,33 @@ namespace Ryujinx.Cpu.Nce
 
         private void RegisterAlternateStack()
         {
-            // We need to use an alternate stack to handle the suspend signal,
-            // as the guest stack may be in a state that is not suitable for the signal handlers.
+            // Allocate memory for alternate stack
+           //  _alternateStackMemory = new MemoryBlock(AlternateStackSize);
 
-            _alternateStackMemory = new MemoryBlock(AlternateStackSize);
-            NativeSignalHandler.InstallUnixAlternateStackForCurrentThread(_alternateStackMemory.GetPointer(0UL, AlternateStackSize), AlternateStackSize);
+            // _alternateStackMemory.Reprotect(0, AlternateStackSize, MemoryPermission.ReadAndWrite);
+            // IntPtr stackPtr = _alternateStackMemory.GetPointer(0, AlternateStackSize);
+            
+            // Logger.Debug?.Print(LogClass.Cpu, $"Attempting to register alternate stack: ptr=0x{stackPtr:X}, size={AlternateStackSize}");
+            
+            try
+            {
+               //  UnixSignalHandlerRegistration.RegisterAlternateStack(stackPtr, (ulong)AlternateStackSize);
+            }
+            catch (Exception ex)
+            {
+                // Clean up memory if registration fails
+                // _alternateStackMemory?.Dispose();
+               //  _alternateStackMemory = null;
+
+                // Logger.Error?.Print(LogClass.Cpu, $"Alternate stack registration failed: {ex.Message}");
+
+            }
         }
 
         private void UnregisterAlternateStack()
         {
-            NativeSignalHandler.UninstallUnixAlternateStackForCurrentThread();
-            _alternateStackMemory.Dispose();
+            // NativeSignalHandler.UninstallUnixAlternateStackForCurrentThread();
+            // _alternateStackMemory.Dispose();
             _alternateStackMemory = null;
         }
 
@@ -144,10 +172,6 @@ namespace Ryujinx.Cpu.Nce
 
         public void RequestInterrupt()
         {
-            // 检查是否已释放
-            if (_disposed)
-                return;
-
             IntPtr threadHandle = _context.GetStorage().HostThreadHandle;
             if (threadHandle != IntPtr.Zero)
             {
@@ -161,16 +185,20 @@ namespace Ryujinx.Cpu.Nce
 
                 if (oldValue == 0)
                 {
-                    try
-                    {
-                        NceThreadPal.SuspendThread(threadHandle);
-                    }
-                    catch (Exception)
-                    {
-                        // 静默处理异常，不记录日志以避免依赖
-                    }
+                    NceThreadPal.SuspendThread(threadHandle);
                 }
             }
+        }
+        
+        public void SetAddressSpaceBase(ulong addressSpaceBase)
+        {
+            ref var storage = ref _context.GetStorage();
+            storage.AddressSpaceBase = addressSpaceBase;
+        }
+
+        public ulong GetAddressSpaceBase()
+        {
+            return _context.GetStorage().AddressSpaceBase;
         }
 
         public void StopRunning()
@@ -180,11 +208,12 @@ namespace Ryujinx.Cpu.Nce
 
         public void Dispose()
         {
-            if (!_disposed)
-            {
-                _disposed = true;
-                _context?.Dispose();
-            }
+            _context.Dispose();
+        }
+
+        public ref NceNativeContext.NativeCtxStorage GetNativeStorage()
+        {
+            return ref _context.GetStorage();
         }
     }
 }
