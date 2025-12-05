@@ -427,7 +427,7 @@ namespace Ryujinx.Cpu.Jit
             return Math.Min(contiguousSize, size);
         }
 
-        private (MemoryBlock, ulong, ulong) GetMemoryOffsetAndSize(ulong va, ulong size)
+        public (MemoryBlock, ulong, ulong) GetMemoryOffsetAndSize(ulong va, ulong size)
         {
             PrivateRange privateRange = _addressSpace.GetFirstPrivateAllocation(va, size, out ulong nextVa);
 
@@ -635,11 +635,5 @@ namespace Ryujinx.Cpu.Jit
 
         protected override nuint TranslateVirtualAddressUnchecked(ulong va)
             => (nuint)GetPhysicalAddressInternal(va);
-
-            // 添加这个方法到 MemoryManagerHostTracked .cs 中
-public (MemoryBlock, ulong, ulong) GetMemoryOffsetAndSizePublic(ulong va, ulong size)
-{
-    return GetMemoryOffsetAndSize(va, size);
-}
     }
 }
