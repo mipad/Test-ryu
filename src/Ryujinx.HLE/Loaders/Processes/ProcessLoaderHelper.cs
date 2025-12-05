@@ -200,7 +200,7 @@ namespace Ryujinx.HLE.Loaders.Processes
             }
 
             // TODO: Support NCE of KIPs too.
-            result = LoadIntoMemory(process, kip, codeBaseAddress);
+            result = LoadIntoMemory(process, kip, codeBaseAddress, kip.Is64Bit);
 
             if (result != Result.Success)
             {
