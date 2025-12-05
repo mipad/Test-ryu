@@ -506,7 +506,7 @@ namespace Ryujinx.HLE.Loaders.Processes
             {
                 try
                 {
-                    var memoryInfo = hostTrackedMemoryManager.GetMemoryOffsetAndSize(textStart, (ulong)image.Text.Length);
+                    var memoryInfo = hostTrackedMemoryManager.GetMemoryOffsetAndSizePublic(textStart, (ulong)image.Text.Length);
                     if (memoryInfo.memory != null)
                     {
                         // 重新保护内存为读取和执行权限
