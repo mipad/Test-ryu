@@ -34,7 +34,7 @@ namespace Ryujinx.Cpu.Nce
         {
             _context = context;
             _tickSource = tickSource;
-            ICpuMemoryManager = memoryManager;
+            _memoryManager = memoryManager;
         }
 
         public static ulong GetTickCounter()
