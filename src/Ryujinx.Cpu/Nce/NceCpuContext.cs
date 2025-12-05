@@ -173,7 +173,7 @@ namespace Ryujinx.Cpu.Nce
             }
         }
 
-        public NceCpuContext(ITickSource tickSource, IMemoryManager memory, bool for64Bit)
+        public NceCpuContext(ITickSource tickSource, ICpuMemoryManager memory, bool for64Bit)
         {
             Logger.Info?.Print(LogClass.Cpu, $"Constructing NceCpuContext instance. 64-bit mode: {for64Bit}");
             Logger.Debug?.Print(LogClass.Cpu, $"TickSource type: {tickSource?.GetType().Name ?? "null"}, MemoryManager type: {memory?.GetType().Name ?? "null"}");
