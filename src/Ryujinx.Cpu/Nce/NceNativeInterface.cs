@@ -20,7 +20,7 @@ namespace Ryujinx.Cpu.Nce
         private static ITickSource _tickSource;
         
         [ThreadStatic]
-        private static IMemoryManager _memoryManager;
+        private static ICpuMemoryManager _memoryManager;
 
         static NceNativeInterface()
         {
@@ -34,7 +34,7 @@ namespace Ryujinx.Cpu.Nce
         {
             _context = context;
             _tickSource = tickSource;
-            _memoryManager = memoryManager;
+            ICpuMemoryManager = memoryManager;
         }
 
         public static ulong GetTickCounter()
