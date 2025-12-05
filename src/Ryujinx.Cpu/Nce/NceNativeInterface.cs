@@ -57,7 +57,7 @@ namespace Ryujinx.Cpu.Nce
             return _suspendThreadHandlerPtr;
         }
         
-        public static IMemoryManager GetMemoryManager()
+        public static ICpuMemoryManager GetMemoryManager()
         {
             return _memoryManager;
         }
