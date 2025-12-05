@@ -95,7 +95,7 @@ namespace Ryujinx.Cpu.Nce
         private static GetTpidrEl0 _getTpidrEl0;
 
         private readonly ITickSource _tickSource;
-        private readonly IMemoryManager _memoryManager;
+        private readonly ICpuMemoryManager _memoryManager;
 
         static NceCpuContext()
         {
