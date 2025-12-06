@@ -249,6 +249,9 @@ namespace Ryujinx.HLE.Loaders.Processes
             }
 
             ref readonly var meta = ref npdm.Meta;
+            
+            // 定义 for64Bit 变量
+            bool for64Bit = ((ProcessCreationFlags)meta.Flags).HasFlag(ProcessCreationFlags.Is64Bit);
 
             ulong argsStart = 0;
             uint argsSize = 0;
@@ -286,8 +289,6 @@ namespace Ryujinx.HLE.Loaders.Processes
                 }
 
                 nsoSize = BitUtils.AlignUp<uint>(nsoSize, KPageTableBase.PageSize);
-
-                bool for64Bit = ((ProcessCreationFlags)meta.Flags).HasFlag(ProcessCreationFlags.Is64Bit);
 
                 NceCpuCodePatch codePatch = ArmProcessContextFactory.CreateCodePatchForNce(context, for64Bit, nso.Text);
                 nsoPatch[index] = codePatch;
@@ -408,8 +409,6 @@ namespace Ryujinx.HLE.Loaders.Processes
                 return ProcessResult.Failed;
             }
 
-            //bool for64Bit = ((ProcessCreationFlags)meta.Flags).HasFlag(ProcessCreationFlags.Is64Bit);
-
             for (int index = 0; index < executables.Length; index++)
             {
                 ulong nsoBaseAddress = process.Context.ReservedSize + nsoBase[index];
@@ -518,10 +517,9 @@ namespace Ryujinx.HLE.Loaders.Processes
                 return process.MemoryManager.SetProcessMemoryPermission(address, size, permission);
             }
 
-// reminder
             if (process.CpuMemory is Ryujinx.Cpu.Jit.MemoryManagerHostTracked hostTrackedMemoryManager && codePatch != null && is64bit)
             {
-                (MemoryBlock memory, ulong rangeOffset, ulong copySize)  memoryInfo = hostTrackedMemoryManager.GetMemoryOffsetAndSize(textStart, (ulong)image.Text.Length);
+                (MemoryBlock memory, ulong rangeOffset, ulong copySize) memoryInfo = hostTrackedMemoryManager.GetMemoryOffsetAndSize(textStart, (ulong)image.Text.Length);
                 
                 memoryInfo.memory.Reprotect(memoryInfo.copySize, 0, MemoryPermission.ReadAndExecute);
             }
