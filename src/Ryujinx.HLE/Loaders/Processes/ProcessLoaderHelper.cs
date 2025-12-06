@@ -191,7 +191,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                 codeAddress,
                 codeSize);
 
-            result = process.InitializeKip(creationInfo, kip.Capabilities, pageList, context.ResourceLimit, memoryRegion, processContextFactory);
+            result = process.InitializeKip(creationInfo, kip.Capabilities, pageList, context.ResourceLimit, memoryRegion, context.Device.Configuration.MemoryConfiguration, processContextFactory);
             if (result != Result.Success)
             {
                 Logger.Error?.Print(LogClass.Loader, $"Process initialization returned error \"{result}\".");
@@ -397,9 +397,8 @@ namespace Ryujinx.HLE.Loaders.Processes
                 MemoryMarshal.Cast<byte, uint>(npdm.KernelCapabilityData),
                 resourceLimit,
                 memoryRegion,
+                context.Device.Configuration.MemoryConfiguration,
                 processContextFactory,
-                null,
-                nsoPatch[0]?.Size ?? 0UL);
                 entrypointOffset: nsoPatch[0]?.Size ?? 0UL);
 
             if (result != Result.Success)
@@ -476,7 +475,7 @@ namespace Ryujinx.HLE.Loaders.Processes
             return processResult;
         }
 
-        public static Result LoadIntoMemory(KProcess process, IExecutable image, ulong baseAddress, bool is64bit = true, NceCpuCodePatch codePatch = null)
+        private static Result LoadIntoMemory(KProcess process, IExecutable image, ulong baseAddress, bool is64bit = true,  NceCpuCodePatch codePatch = null)
         {
             ulong textStart = baseAddress + image.TextOffset;
             ulong roStart = baseAddress + image.RoOffset;
@@ -498,6 +497,8 @@ namespace Ryujinx.HLE.Loaders.Processes
             {
                 codePatch.Write(process.CpuMemory, baseAddress - codePatch.Size, textStart);
             }
+
+            // process.CpuMemory.Fill(bssStart, image.BssSize, 0);
 
 
             if (codePatch != null)
@@ -524,7 +525,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                 
                 memoryInfo.memory.Reprotect(memoryInfo.copySize, 0, MemoryPermission.ReadAndExecute);
             }
-
+            
             Result result = SetProcessMemoryPermission(textStart, (ulong)image.Text.Length, KMemoryPermission.ReadAndExecute);
             if (result != Result.Success)
             {
