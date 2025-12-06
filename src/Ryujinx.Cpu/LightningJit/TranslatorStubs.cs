@@ -25,6 +25,8 @@ namespace Ryujinx.Cpu.LightningJit
 
         private readonly AddressTable<ulong> _functionTable;
         private readonly NoWxCache _noWxCache;
+        private readonly DualMappedNoWxCache _dualMappedCache;
+
         private readonly GetFunctionAddressDelegate _getFunctionAddressRef;
         private readonly IntPtr _getFunctionAddress;
         private readonly Lazy<IntPtr> _dispatchStub;
@@ -93,6 +95,43 @@ namespace Ryujinx.Cpu.LightningJit
         }
 
         /// <summary>
+        /// Initializes a new instance of the <see cref="TranslatorStubs"/> class with the specified
+        /// <see cref="Translator"/> instance.
+        /// </summary>
+        /// <param name="functionTable">Function table used to store pointers to the functions that the guest code will call</param>
+        /// <param name="writeZeroCache">Cache used on iOS versions that need a debugger to make a debug map</param>
+        /// <exception cref="ArgumentNullException"><paramref name="translator"/> is null</exception>
+        public TranslatorStubs(AddressTable<ulong> functionTable, DualMappedNoWxCache dualMappedCache)
+        {
+            ArgumentNullException.ThrowIfNull(functionTable);
+
+            _functionTable = functionTable;
+            _dualMappedCache = dualMappedCache;
+            _getFunctionAddressRef = NativeInterface.GetFunctionAddress;
+            _getFunctionAddress = Marshal.GetFunctionPointerForDelegate(_getFunctionAddressRef);
+            _slowDispatchStub = new(GenerateSlowDispatchStub, isThreadSafe: true);
+            _dispatchStub = new(GenerateDispatchStub, isThreadSafe: true);
+            _dispatchLoop = new(GenerateDispatchLoop, isThreadSafe: true);
+        }
+
+                /// <summary>
+        /// Initializes a new instance of the <see cref="TranslatorStubs"/> class with the specified
+        /// <see cref="Translator"/> instance.
+        /// </summary>
+        /// <param name="functionTable">Function table used to store pointers to the functions that the guest code will call</param>
+        public TranslatorStubs(AddressTable<ulong> functionTable)
+        {
+            ArgumentNullException.ThrowIfNull(functionTable);
+
+            _functionTable = functionTable;
+            _getFunctionAddressRef = NativeInterface.GetFunctionAddress;
+            _getFunctionAddress = Marshal.GetFunctionPointerForDelegate(_getFunctionAddressRef);
+            _slowDispatchStub = new(GenerateSlowDispatchStub, isThreadSafe: true);
+            _dispatchStub = new(GenerateDispatchStub, isThreadSafe: true);
+            _dispatchLoop = new(GenerateDispatchLoop, isThreadSafe: true);
+        }
+
+        /// <summary>
         /// Releases all resources used by the <see cref="TranslatorStubs"/> instance.
         /// </summary>
         public void Dispose()
@@ -109,7 +148,7 @@ namespace Ryujinx.Cpu.LightningJit
         {
             if (!_disposed)
             {
-                if (_noWxCache == null)
+                if (_noWxCache == null && _dualMappedCache == null)
                 {
                     if (_dispatchStub.IsValueCreated)
                     {
@@ -361,9 +400,25 @@ namespace Ryujinx.Cpu.LightningJit
             {
                 return _noWxCache.MapPageAligned(code);
             }
+            else if (_dualMappedCache != null) 
+            {
+                return _dualMappedCache.MapPageAligned(code);
+            }
             else
             {
-                return JitCache.Map(code);
+                IntPtr ptr = Marshal.AllocHGlobal(code.Length);
+
+                // Copy code into unmanaged memory
+                unsafe
+                {
+                    fixed (byte* pCode = code)
+                    {
+                        Buffer.MemoryCopy(pCode, (void*)ptr, code.Length, code.Length);
+                    }
+                }
+
+                // return JitCache.Map(code);
+                return ptr;
             }
         }
 
