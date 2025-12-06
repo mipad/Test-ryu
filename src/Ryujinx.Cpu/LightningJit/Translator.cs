@@ -11,13 +11,21 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.IO;
 
 namespace Ryujinx.Cpu.LightningJit
 {
+    public class DualMappedTranslator {
+        public static bool InitializeDualMapped() {
+            return Translator.InitializeDualMapped();
+        }
+    }
+
     class Translator : IDisposable
     {
         // Should be enabled on platforms that enforce W^X.
-        private static bool IsNoWxPlatform => false;
+        private static bool IsNoWxPlatform => OperatingSystem.IsIOS();
+
 
         private static readonly AddressTable<ulong>.Level[] _levels64Bit =
             new AddressTable<ulong>.Level[]
@@ -40,11 +48,15 @@ namespace Ryujinx.Cpu.LightningJit
 
         private readonly ConcurrentQueue<KeyValuePair<ulong, TranslatedFunction>> _oldFuncs;
         private readonly NoWxCache _noWxCache;
+        public DualMappedNoWxCache _dualMappedCache;
         private bool _disposed;
 
-        internal TranslatorCache<TranslatedFunction> Functions { get; }
+        private static DualMappedNoWxCache originalDualMappedCache;
+        private static bool firstSet = false;
+
+        static internal TranslatorCache<TranslatedFunction> Functions { get; set; }
         internal AddressTable<ulong> FunctionTable { get; }
-        internal TranslatorStubs Stubs { get; }
+        static internal TranslatorStubs Stubs { get; set; }
         internal IMemoryManager Memory { get; }
 
         public Translator(IMemoryManager memory, bool for64Bits)
@@ -55,16 +67,55 @@ namespace Ryujinx.Cpu.LightningJit
 
             if (IsNoWxPlatform)
             {
-                _noWxCache = new(new JitMemoryAllocator(), CreateStackWalker(), this);
+                string dualMapped = Environment.GetEnvironmentVariable("DUAL_MAPPED_JIT");
+                if (dualMapped == "1") //(OperatingSystem.IsIOSVersionAtLeast(19) || OperatingSystem.IsIOSVersionAtLeast(26))
+                {
+                    Console.WriteLine($"Dual Mapped JIT enabled.");
+                    if (DualMappedJitAllocator.hasTXM)
+                    {
+                        if (originalDualMappedCache == null) {
+                            originalDualMappedCache = new(new JitMemoryAllocator(), CreateStackWalker());
+                            Functions = new TranslatorCache<TranslatedFunction>();
+                        }
+                        _dualMappedCache = originalDualMappedCache;
+                        _dualMappedCache.SetTranslator(this);
+                        FunctionTable = new AddressTable<ulong>(for64Bits ? _levels64Bit : _levels32Bit);
+                        Stubs = new TranslatorStubs(FunctionTable, _dualMappedCache); 
+                    } 
+                    else
+                    {
+                        if (originalDualMappedCache != null && !firstSet)
+                        {
+                            _dualMappedCache = originalDualMappedCache;
+                            firstSet = true;
+                        } else
+                        {
+                            _dualMappedCache = new(new JitMemoryAllocator(), CreateStackWalker());
+                        }
+                        _dualMappedCache.SetTranslator(this);
+                        Functions = new TranslatorCache<TranslatedFunction>();
+                        FunctionTable = new AddressTable<ulong>(for64Bits ? _levels64Bit : _levels32Bit);
+                        Stubs = new TranslatorStubs(FunctionTable, _dualMappedCache); 
+                    }
+                }
+                else
+                {
+                    if (_dualMappedCache != null) {
+                        _dualMappedCache = null;
+                    }
+                    _noWxCache = new(new JitMemoryAllocator(), CreateStackWalker(), this);
+                    Functions = new TranslatorCache<TranslatedFunction>();
+                    FunctionTable = new AddressTable<ulong>(for64Bits ? _levels64Bit : _levels32Bit);
+                    Stubs = new TranslatorStubs(FunctionTable, _noWxCache);
+                }
             }
             else
             {
                 JitCache.Initialize(new JitMemoryAllocator(forJit: true));
+                Functions = new TranslatorCache<TranslatedFunction>();
+                FunctionTable = new AddressTable<ulong>(for64Bits ? _levels64Bit : _levels32Bit);
+                Stubs = new TranslatorStubs(FunctionTable, (NoWxCache)null);
             }
-
-            Functions = new TranslatorCache<TranslatedFunction>();
-            FunctionTable = new AddressTable<ulong>(for64Bits ? _levels64Bit : _levels32Bit);
-            Stubs = new TranslatorStubs(FunctionTable, _noWxCache);
 
             FunctionTable.Fill = (ulong)Stubs.SlowDispatchStub;
 
@@ -72,6 +123,32 @@ namespace Ryujinx.Cpu.LightningJit
             {
                 NativeSignalHandler.InitializeSignalHandler();
             }
+
+        }
+
+        public static bool InitializeDualMapped() {
+            if (IsNoWxPlatform)
+            {   
+                string dualMapped = Environment.GetEnvironmentVariable("DUAL_MAPPED_JIT");
+                if (dualMapped == "1") //(OperatingSystem.IsIOSVersionAtLeast(19) || OperatingSystem.IsIOSVersionAtLeast(26))
+                {
+                    Console.WriteLine($"Dual Mapped JIT enabled.");
+                    try {
+                        if (originalDualMappedCache == null) {
+                            originalDualMappedCache = new(new JitMemoryAllocator(), CreateStackWalker());
+                            Functions = new TranslatorCache<TranslatedFunction>();
+                        }
+                    } catch {
+                        return false;
+                    }
+
+                    NativeSignalHandler.InitializeSignalHandler();
+
+                }
+
+            }
+
+            return true;
         }
 
         private static IStackWalker CreateStackWalker()
@@ -94,17 +171,30 @@ namespace Ryujinx.Cpu.LightningJit
 
             Stubs.DispatchLoop(context.NativeContextPtr, address);
 
+
             NativeInterface.UnregisterThread();
             _noWxCache?.ClearEntireThreadLocalCache();
+            _dualMappedCache?.ClearEntireThreadLocalCache();
         }
 
         internal IntPtr GetOrTranslatePointer(IntPtr framePointer, ulong address, ExecutionMode mode)
         {
-            if (_noWxCache != null)
+            try
             {
-                CompiledFunction func = Compile(address, mode);
-
-                return _noWxCache.Map(framePointer, func.Code, address, (ulong)func.GuestCodeLength);
+                if (_noWxCache != null)
+                {
+                    CompiledFunction func = Compile(address, mode);
+                    return _noWxCache.Map(framePointer, func.Code, address, (ulong)func.GuestCodeLength);
+                }
+                else if (_dualMappedCache != null)
+                {
+                    CompiledFunction func = Compile(address, mode);
+                    return _dualMappedCache.Map(framePointer, func.Code, address, (ulong)func.GuestCodeLength);
+                }
+            }
+            catch
+            {
+                return IntPtr.Zero;
             }
 
             return GetOrTranslate(address, mode).FuncPointer;
@@ -204,6 +294,10 @@ namespace Ryujinx.Cpu.LightningJit
                     if (_noWxCache != null)
                     {
                         _noWxCache.Dispose();
+                    }
+                    else if (_dualMappedCache != null)
+                    {
+                        _dualMappedCache.Dispose();
                     }
                     else
                     {
