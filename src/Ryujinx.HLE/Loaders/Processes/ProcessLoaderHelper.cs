@@ -6,6 +6,7 @@ using LibHac.Fs.Shim;
 using LibHac.Loader;
 using LibHac.Ncm;
 using LibHac.Ns;
+using Ryujinx.Memory;
 using LibHac.Tools.Fs;
 using LibHac.Tools.FsSystem;
 using LibHac.Tools.FsSystem.NcaUtils;
@@ -21,7 +22,6 @@ using Ryujinx.HLE.Loaders.Executables;
 using Ryujinx.HLE.Loaders.Processes.Extensions;
 using Ryujinx.Horizon.Common;
 using Ryujinx.Horizon.Sdk.Arp;
-using Ryujinx.Memory;  // 添加了Memory命名空间
 using System;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -191,7 +191,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                 codeAddress,
                 codeSize);
 
-            result = process.InitializeKip(creationInfo, kip.Capabilities, pageList, context.ResourceLimit, memoryRegion, context.Device.Configuration.MemoryConfiguration, processContextFactory);
+            result = process.InitializeKip(creationInfo, kip.Capabilities, pageList, context.ResourceLimit, memoryRegion, processContextFactory);
             if (result != Result.Success)
             {
                 Logger.Error?.Print(LogClass.Loader, $"Process initialization returned error \"{result}\".");
@@ -200,7 +200,7 @@ namespace Ryujinx.HLE.Loaders.Processes
             }
 
             // TODO: Support NCE of KIPs too.
-            result = LoadIntoMemory(process, kip, codeBaseAddress, kip.Is64Bit);
+            result = LoadIntoMemory(process, kip, codeBaseAddress);
 
             if (result != Result.Success)
             {
@@ -265,9 +265,6 @@ namespace Ryujinx.HLE.Loaders.Processes
             NceCpuCodePatch[] nsoPatch = new NceCpuCodePatch[executables.Length];
             ulong[] nsoBase = new ulong[executables.Length];
 
-            // 从meta.Flags中获取是否为64位进程的标志
-            bool for64Bit = ((ProcessCreationFlags)meta.Flags).HasFlag(ProcessCreationFlags.Is64Bit);
-
             for (int index = 0; index < executables.Length; index++)
             {
                 IExecutable nso = executables[index];
@@ -289,6 +286,8 @@ namespace Ryujinx.HLE.Loaders.Processes
                 }
 
                 nsoSize = BitUtils.AlignUp<uint>(nsoSize, KPageTableBase.PageSize);
+
+                bool for64Bit = ((ProcessCreationFlags)meta.Flags).HasFlag(ProcessCreationFlags.Is64Bit);
 
                 NceCpuCodePatch codePatch = ArmProcessContextFactory.CreateCodePatchForNce(context, for64Bit, nso.Text);
                 nsoPatch[index] = codePatch;
@@ -398,8 +397,9 @@ namespace Ryujinx.HLE.Loaders.Processes
                 MemoryMarshal.Cast<byte, uint>(npdm.KernelCapabilityData),
                 resourceLimit,
                 memoryRegion,
-                context.Device.Configuration.MemoryConfiguration,
                 processContextFactory,
+                null,
+                nsoPatch[0]?.Size ?? 0UL);
                 entrypointOffset: nsoPatch[0]?.Size ?? 0UL);
 
             if (result != Result.Success)
@@ -409,13 +409,14 @@ namespace Ryujinx.HLE.Loaders.Processes
                 return ProcessResult.Failed;
             }
 
+            bool for64Bit = ((ProcessCreationFlags)meta.Flags).HasFlag(ProcessCreationFlags.Is64Bit);
+
             for (int index = 0; index < executables.Length; index++)
             {
                 ulong nsoBaseAddress = process.Context.ReservedSize + nsoBase[index];
 
-                Logger.Info?.Print(LogClass.Loader, $"Loading image {index} at 0x{nsoBaseAddress:x16}...");
+                Logger.Info?.Print(LogClass.Loader, $"Loading image {index} at 0x{nsoBase[index]:x16}, with patch: {nsoPatch[index]?.Size ?? 0} ...");
 
-                // 传递for64Bit参数，用于内存保护
                 result = LoadIntoMemory(process, executables[index], nsoBaseAddress, for64Bit, nsoPatch[index]);
 
                 if (result != Result.Success)
@@ -475,7 +476,7 @@ namespace Ryujinx.HLE.Loaders.Processes
             return processResult;
         }
 
-        private static Result LoadIntoMemory(KProcess process, IExecutable image, ulong baseAddress, bool is64Bit, NceCpuCodePatch codePatch = null)
+        public static Result LoadIntoMemory(KProcess process, IExecutable image, ulong baseAddress, bool is64bit = true, NceCpuCodePatch codePatch = null)
         {
             ulong textStart = baseAddress + image.TextOffset;
             ulong roStart = baseAddress + image.RoOffset;
@@ -493,33 +494,15 @@ namespace Ryujinx.HLE.Loaders.Processes
             process.CpuMemory.Write(roStart, image.Ro);
             process.CpuMemory.Write(dataStart, image.Data);
 
-            process.CpuMemory.Fill(bssStart, image.BssSize, 0);
-
-            if (codePatch != null)
+            if (codePatch != null && is64bit)
             {
                 codePatch.Write(process.CpuMemory, baseAddress - codePatch.Size, textStart);
             }
 
-            // 从(3)版本合入的内存保护代码
-            // 只对64位进程且使用NCE补丁的情况应用额外的内存保护
-            if (process.CpuMemory is Ryujinx.Cpu.Jit.MemoryManagerHostTracked hostTrackedMemoryManager && codePatch != null && is64Bit)
+
+            if (codePatch != null)
             {
-                try
-                {
-                    // 使用元组解构来获取返回值
-                    var (memory, offset, size) = hostTrackedMemoryManager.GetMemoryOffsetAndSize(textStart, (ulong)image.Text.Length);
-                    if (memory != null)
-                    {
-                        // 重新保护内存为读取和执行权限
-                        memory.Reprotect(offset, size, MemoryPermission.ReadAndExecute);
-                        Logger.Debug?.Print(LogClass.Loader, $"Additional memory protection applied for NCE patch at 0x{textStart:X16}, size: 0x{size:X}");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.Warning?.Print(LogClass.Loader, $"Failed to apply additional memory protection for NCE patch: {ex.Message}");
-                    // 继续执行，因为这不是致命错误
-                }
+                codePatch.Write(process.CpuMemory, baseAddress - codePatch.Size, textStart);
             }
 
             Result SetProcessMemoryPermission(ulong address, ulong size, KMemoryPermission permission)
@@ -532,6 +515,14 @@ namespace Ryujinx.HLE.Loaders.Processes
                 size = BitUtils.AlignUp<ulong>(size, KPageTableBase.PageSize);
 
                 return process.MemoryManager.SetProcessMemoryPermission(address, size, permission);
+            }
+
+// reminder
+            if (process.CpuMemory is Ryujinx.Cpu.Jit.MemoryManagerHostTracked hostTrackedMemoryManager && codePatch != null && is64bit)
+            {
+                (MemoryBlock memory, ulong rangeOffset, ulong copySize)  memoryInfo = hostTrackedMemoryManager.GetMemoryOffsetAndSize(textStart, (ulong)image.Text.Length);
+                
+                memoryInfo.memory.Reprotect(memoryInfo.copySize, 0, MemoryPermission.ReadAndExecute);
             }
 
             Result result = SetProcessMemoryPermission(textStart, (ulong)image.Text.Length, KMemoryPermission.ReadAndExecute);
