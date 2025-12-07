@@ -1,14 +1,14 @@
 using Ryujinx.Common.Logging;
 using Ryujinx.HLE.HOS.Kernel.Process;
-using Ryujinx.HLE.HOS.Tamper;
+using Ryujinx.HLE.HOS;  // 添加这个using以引用TamperMachine
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-namespace Ryujinx.HLE.Loaders
+namespace Ryujinx.HLE.HOS  // 修改命名空间以匹配文件系统扩展
 {
-    public class ModLoader
+    public class ModLoader  // 保持为public
     {
         private readonly Switch _device;
         private readonly Dictionary<ulong, List<CheatInfo>> _cheatCache = new();
@@ -18,7 +18,7 @@ namespace Ryujinx.HLE.Loaders
             _device = device;
         }
 
-        public void LoadCheats(ulong programId, ProcessTamperInfo tamperInfo, TamperMachine tamperMachine)
+        public void LoadCheats(ulong programId, ProcessTamperInfo tamperInfo, TamperMachine tamperMachine)  // 保持为public
         {
             try
             {
