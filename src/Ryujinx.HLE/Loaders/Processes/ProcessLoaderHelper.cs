@@ -598,7 +598,8 @@ namespace Ryujinx.HLE.Loaders.Processes
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Loader, $"写入内存失败: 地址=0x{baseAddress:X}, 错误={ex.Message}");
-                return Result.InvalidMemoryRegion;
+                // 使用适当的错误码，这里使用Result.InvalidAddress
+                return KernelResult.InvalidAddress;
             }
 
             Result SetProcessMemoryPermission(ulong address, ulong size, KMemoryPermission permission)
