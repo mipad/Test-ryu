@@ -407,63 +407,50 @@ namespace Ryujinx.HLE.Loaders.Processes
                 return ProcessResult.Failed;
             }
 
-            // ==== 关键修改开始：正确计算NSO加载地址 ====
-            // 获取实际的ASLR基址（内存管理器代码区域起始地址）
+            // ==== 修复的NCE模式地址计算逻辑 ====
+            // 获取实际的内存区域信息
             ulong actualAslrBase = process.MemoryManager.CodeRegionStart;
             ulong actualHeapBase = process.MemoryManager.HeapRegionStart;
             ulong actualAliasBase = process.MemoryManager.AliasRegionStart;
-            
+
             // 记录调试信息
             Logger.Info?.Print(LogClass.Loader, $"实际内存地址 - ASLR: 0x{actualAslrBase:X}, 堆: 0x{actualHeapBase:X}, 别名: 0x{actualAliasBase:X}");
             Logger.Info?.Print(LogClass.Loader, $"原始codeStart: 0x{codeStart:X}");
-            
-            // 计算ASLR偏移（实际ASLR基址与原始codeStart的差值）
-            ulong aslrOffset = actualAslrBase > codeStart ? actualAslrBase - codeStart : 0;
-            
-            // 判断是否是NCE模式（ASLR地址显著大于原始codeStart）
-            bool isNceMode = aslrOffset > 0x10000000; // 偏移大于256MB认为是NCE模式
-            
-            // 保存原始NSO基址（相对于codeStart的偏移）
-            ulong[] originalNsoBase = new ulong[executables.Length];
-            Array.Copy(nsoBase, originalNsoBase, executables.Length);
-            
-            // 重新计算NSO加载地址
+            Logger.Info?.Print(LogClass.Loader, $"ReservedSize: 0x{process.Context.ReservedSize:X}");
+
+            // 检查是否为NCE模式（通过是否有NCE补丁判断）
+            bool isNceMode = nsoPatch[0] != null;
             ulong[] loadedNsoBase = new ulong[executables.Length];
-            
+
+            // 统一使用ReservedSize计算加载地址，这是最安全的方法
+            // ReservedSize已经考虑了NCE补丁和JIT模式的差异
             for (int index = 0; index < executables.Length; index++)
             {
+                loadedNsoBase[index] = nsoBase[index] + process.Context.ReservedSize;
+                
                 if (isNceMode)
                 {
-                    // NCE模式：使用 actualAslrBase + (nsoBase[index] - codeStart)
-                    // 因为nsoBase[index]是相对于codeStart的地址，所以实际地址是 actualAslrBase + (nsoBase[index] - codeStart)
-                    loadedNsoBase[index] = actualAslrBase + (nsoBase[index] - codeStart);
-                    
                     Logger.Info?.Print(LogClass.Loader, 
-                        $"NSO[{index}] NCE模式加载地址计算: " +
-                        $"原始基址=0x{originalNsoBase[index]:X}, " +
-                        $"加载地址=0x{loadedNsoBase[index]:X}, " +
-                        $"ASLR偏移=0x{aslrOffset:X}");
+                        $"NSO[{index}] NCE模式加载: " +
+                        $"nsoBase=0x{nsoBase[index]:X}, " +
+                        $"ReservedSize=0x{process.Context.ReservedSize:X}, " +
+                        $"最终地址=0x{loadedNsoBase[index]:X}");
                 }
                 else
                 {
-                    // JIT模式：使用原来的计算方式，加上 process.Context.ReservedSize
-                    loadedNsoBase[index] = nsoBase[index] + process.Context.ReservedSize;
-                    
                     Logger.Info?.Print(LogClass.Loader, 
-                        $"NSO[{index}] JIT模式加载地址计算: " +
-                        $"原始基址=0x{originalNsoBase[index]:X}, " +
-                        $"加载地址=0x{loadedNsoBase[index]:X}, " +
-                        $"ReservedSize=0x{process.Context.ReservedSize:X}");
+                        $"NSO[{index}] JIT模式加载: " +
+                        $"nsoBase=0x{nsoBase[index]:X}, " +
+                        $"ReservedSize=0x{process.Context.ReservedSize:X}, " +
+                        $"最终地址=0x{loadedNsoBase[index]:X}");
                 }
             }
             
-            // 记录NCE模式信息
             if (isNceMode)
             {
-                Logger.Info?.Print(LogClass.Loader, $"NCE模式检测: ASLR偏移=0x{aslrOffset:X}");
-                Logger.Info?.Print(LogClass.Loader, $"ReservedSize: 0x{process.Context.ReservedSize:X}");
+                Logger.Info?.Print(LogClass.Loader, $"NCE模式检测: ASLR基址=0x{actualAslrBase:X}, 补丁大小={nsoPatch[0]?.Size ?? 0:X}");
             }
-            // ==== 关键修改结束 ====
+            // ==== 修复结束 ====
 
             for (int index = 0; index < executables.Length; index++)
             {
@@ -528,12 +515,12 @@ namespace Ryujinx.HLE.Loaders.Processes
                         buildIds.FirstOrDefault() ?? "unknown",
                         new[] { 
                             $"# NCE调试信息",
-                            $"# ASLR偏移: 0x{aslrOffset:X}",
-                            $"# 主NSO基址: 0x{mainNsoBase:X}",
                             $"# ASLR基址: 0x{actualAslrBase:X}",
+                            $"# 主NSO基址: 0x{mainNsoBase:X}",
                             $"# 原始codeStart: 0x{codeStart:X}",
                             $"# NCE模式: {isNceMode}",
-                            $"# ReservedSize: 0x{process.Context.ReservedSize:X}"
+                            $"# ReservedSize: 0x{process.Context.ReservedSize:X}",
+                            $"# NCE补丁偏移: 0x{ncePatchOffset:X}"
                         },
                         tamperInfo,
                         mainNsoBase);  // 使用主NSO基址作为exeAddress
@@ -595,15 +582,23 @@ namespace Ryujinx.HLE.Loaders.Processes
                 end = bssStart + image.BssSize;
             }
 
-            process.CpuMemory.Write(textStart, image.Text);
-            process.CpuMemory.Write(roStart, image.Ro);
-            process.CpuMemory.Write(dataStart, image.Data);
-
-            process.CpuMemory.Fill(bssStart, image.BssSize, 0);
-
-            if (codePatch != null)
+            try
             {
-                codePatch.Write(process.CpuMemory, baseAddress - codePatch.Size, textStart);
+                process.CpuMemory.Write(textStart, image.Text);
+                process.CpuMemory.Write(roStart, image.Ro);
+                process.CpuMemory.Write(dataStart, image.Data);
+
+                process.CpuMemory.Fill(bssStart, image.BssSize, 0);
+
+                if (codePatch != null)
+                {
+                    codePatch.Write(process.CpuMemory, baseAddress - codePatch.Size, textStart);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Loader, $"写入内存失败: 地址=0x{baseAddress:X}, 错误={ex.Message}");
+                return Result.InvalidMemoryRegion;
             }
 
             Result SetProcessMemoryPermission(ulong address, ulong size, KMemoryPermission permission)
