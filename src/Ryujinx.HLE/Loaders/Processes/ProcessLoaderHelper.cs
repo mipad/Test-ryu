@@ -264,6 +264,12 @@ namespace Ryujinx.HLE.Loaders.Processes
             NceCpuCodePatch[] nsoPatch = new NceCpuCodePatch[executables.Length];
             ulong[] nsoBase = new ulong[executables.Length];
 
+            // ==== 修正1：使用正确的NSO基址计算 ====
+            // 第一个NSO的偏移在不同模式下不同：
+            // - JIT模式：0x4000（从codeStart开始）
+            // - NCE模式：NCE补丁大小（通常0x1000）
+            ulong currentAddress = codeStart;
+            
             for (int index = 0; index < executables.Length; index++)
             {
                 IExecutable nso = executables[index];
@@ -291,21 +297,38 @@ namespace Ryujinx.HLE.Loaders.Processes
                 NceCpuCodePatch codePatch = ArmProcessContextFactory.CreateCodePatchForNce(context, for64Bit, nso.Text);
                 nsoPatch[index] = codePatch;
 
-                if (codePatch != null)
+                // 计算当前NSO的基址
+                if (index == 0)
                 {
-                    codeSize += codePatch.Size;
+                    // 第一个NSO：根据模式使用不同的偏移
+                    if (codePatch != null)
+                    {
+                        // NCE模式：codeStart + 补丁大小
+                        nsoBase[index] = codeStart + codePatch.Size;
+                    }
+                    else
+                    {
+                        // JIT模式：codeStart + 0x4000
+                        nsoBase[index] = codeStart + 0x4000UL;
+                    }
+                }
+                else
+                {
+                    // 后续NSO：基于前一个NSO的结束地址
+                    nsoBase[index] = nsoBase[index - 1] + GetNsoAlignedSize(executables[index - 1]);
                 }
 
-                nsoBase[index] = codeStart + codeSize;
-
+                // 更新codeSize
+                if (index == 0)
+                {
+                    codeSize += nsoBase[index] - codeStart;
+                }
                 codeSize += nsoSize;
 
                 if (arguments != null && argsSize == 0)
                 {
-                    argsStart = codeSize;
-
+                    argsStart = nsoBase[index] + nsoSize;
                     argsSize = (uint)BitUtils.AlignDown(arguments.Length * 2 + ProcessConst.NsoArgsTotalSize - 1, KPageTableBase.PageSize);
-
                     codeSize += argsSize;
                 }
             }
@@ -407,7 +430,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                 return ProcessResult.Failed;
             }
 
-            // ==== 修复的NCE模式地址计算逻辑 ====
+            // ==== 关键修正2：计算实际加载地址 ====
             // 获取实际的内存区域信息
             ulong actualAslrBase = process.MemoryManager.CodeRegionStart;
             ulong actualHeapBase = process.MemoryManager.HeapRegionStart;
@@ -422,36 +445,26 @@ namespace Ryujinx.HLE.Loaders.Processes
             bool isNceMode = nsoPatch[0] != null;
             ulong[] loadedNsoBase = new ulong[executables.Length];
 
-            // 统一使用ReservedSize计算加载地址，这是最安全的方法
-            // ReservedSize已经考虑了NCE补丁和JIT模式的差异
+            // 计算实际加载地址：nsoBase + ReservedSize
+            // 这是最安全的方法，ReservedSize已经考虑了NCE补丁和JIT模式的差异
             for (int index = 0; index < executables.Length; index++)
             {
                 loadedNsoBase[index] = nsoBase[index] + process.Context.ReservedSize;
                 
-                if (isNceMode)
-                {
-                    Logger.Info?.Print(LogClass.Loader, 
-                        $"NSO[{index}] NCE模式加载: " +
-                        $"nsoBase=0x{nsoBase[index]:X}, " +
-                        $"ReservedSize=0x{process.Context.ReservedSize:X}, " +
-                        $"最终地址=0x{loadedNsoBase[index]:X}");
-                }
-                else
-                {
-                    Logger.Info?.Print(LogClass.Loader, 
-                        $"NSO[{index}] JIT模式加载: " +
-                        $"nsoBase=0x{nsoBase[index]:X}, " +
-                        $"ReservedSize=0x{process.Context.ReservedSize:X}, " +
-                        $"最终地址=0x{loadedNsoBase[index]:X}");
-                }
+                Logger.Info?.Print(LogClass.Loader, 
+                    $"NSO[{index}] 加载: " +
+                    $"nsoBase=0x{nsoBase[index]:X}, " +
+                    $"ReservedSize=0x{process.Context.ReservedSize:X}, " +
+                    $"最终地址=0x{loadedNsoBase[index]:X}, " +
+                    $"模式={(isNceMode ? "NCE" : "JIT")}");
             }
             
             if (isNceMode)
             {
                 Logger.Info?.Print(LogClass.Loader, $"NCE模式检测: ASLR基址=0x{actualAslrBase:X}, 补丁大小={nsoPatch[0]?.Size ?? 0:X}");
             }
-            // ==== 修复结束 ====
-
+            
+            // 加载NSO到内存
             for (int index = 0; index < executables.Length; index++)
             {
                 Logger.Info?.Print(LogClass.Loader, $"加载镜像 {index} 到地址 0x{loadedNsoBase[index]:x16}...");
@@ -467,19 +480,13 @@ namespace Ryujinx.HLE.Loaders.Processes
             }
 
             process.DefaultCpuCore = meta.DefaultCpuId;
-
             context.Processes.TryAdd(process.Pid, process);
 
-            // 计算NCE补丁偏移（如果有）
-            ulong ncePatchOffset = 0;
-            if (nsoPatch[0] != null)
-            {
-                ncePatchOffset = nsoPatch[0].Size;
-                Logger.Info?.Print(LogClass.Loader, $"NCE补丁大小: 0x{ncePatchOffset:X}");
-            }
-            
             // 主NSO基址（第一个NSO的加载地址）
             ulong mainNsoBase = loadedNsoBase[0];
+            
+            // 计算偏移用于调试
+            ulong offsetFromAslr = mainNsoBase - actualAslrBase;
             
             // 记录详细的地址信息，用于调试
             Logger.Info?.Print(LogClass.Loader, 
@@ -487,7 +494,9 @@ namespace Ryujinx.HLE.Loaders.Processes
                 $"PID={process.Pid}, " +
                 $"主NSO基址=0x{mainNsoBase:X}, " +
                 $"ASLR基址=0x{actualAslrBase:X}, " +
+                $"偏移ASLR=0x{offsetFromAslr:X}, " +
                 $"原始codeStart=0x{codeStart:X}, " +
+                $"ReservedSize=0x{process.Context.ReservedSize:X}, " +
                 $"NCE模式={isNceMode}");
             
             // 创建ProcessTamperInfo，传递重新计算后的地址
@@ -501,27 +510,25 @@ namespace Ryujinx.HLE.Loaders.Processes
                 mainNsoBase,  // 传递主NSO基址
                 codeStart);   // 传递原始codeStart用于偏移计算
 
-            // ==== 关键修改：直接调用TamperMachine安装调试金手指 ====
-            // 在NCE模式下，记录调试信息金手指
+            // ==== 安装调试金手指用于验证 ====
+            // 只在NCE模式下安装调试金手指
             if (isNceMode)
             {
                 Logger.Info?.Print(LogClass.Loader, "NCE模式检测，安装调试金手指...");
                 
                 try
                 {
+                    // 使用有效的指令而不是注释
+                    var debugInstructions = new[] { 
+                        "04000000 00000000", // 无操作指令
+                        "20000000 00000000"  // 结束指令
+                    };
+                    
                     // 直接调用TamperMachine的InstallAtmosphereCheat方法
                     device.TamperMachine.InstallAtmosphereCheat(
                         "NCE调试信息",
                         buildIds.FirstOrDefault() ?? "unknown",
-                        new[] { 
-                            $"# NCE调试信息",
-                            $"# ASLR基址: 0x{actualAslrBase:X}",
-                            $"# 主NSO基址: 0x{mainNsoBase:X}",
-                            $"# 原始codeStart: 0x{codeStart:X}",
-                            $"# NCE模式: {isNceMode}",
-                            $"# ReservedSize: 0x{process.Context.ReservedSize:X}",
-                            $"# NCE补丁偏移: 0x{ncePatchOffset:X}"
-                        },
+                        debugInstructions,
                         tamperInfo,
                         mainNsoBase);  // 使用主NSO基址作为exeAddress
                     
@@ -532,7 +539,10 @@ namespace Ryujinx.HLE.Loaders.Processes
                     Logger.Error?.Print(LogClass.Loader, $"安装NCE调试金手指失败: {ex.Message}");
                 }
             }
-            // ==== 关键修改结束 ====
+            
+            // 安装测试金手指验证功能
+            Logger.Info?.Print(LogClass.Loader, "安装测试金手指验证功能...");
+            device.TamperMachine.InstallTestCheat(tamperInfo);
 
             // Once everything is loaded, we can load cheats.
             device.Configuration.VirtualFileSystem.ModLoader.LoadCheats(programId, tamperInfo, device.TamperMachine);
@@ -566,6 +576,16 @@ namespace Ryujinx.HLE.Loaders.Processes
             updater.SetApplicationProcessProperty(process.Pid, new ApplicationProcessProperty() { ProgramIndex = programIndex });
 
             return processResult;
+        }
+
+        private static uint GetNsoAlignedSize(IExecutable nso)
+        {
+            uint textEnd = nso.TextOffset + (uint)nso.Text.Length;
+            uint roEnd = nso.RoOffset + (uint)nso.Ro.Length;
+            uint dataEnd = nso.DataOffset + (uint)nso.Data.Length + nso.BssSize;
+            
+            uint nsoSize = Math.Max(Math.Max(textEnd, roEnd), dataEnd);
+            return BitUtils.AlignUp<uint>(nsoSize, KPageTableBase.PageSize);
         }
 
         private static Result LoadIntoMemory(KProcess process, IExecutable image, ulong baseAddress, NceCpuCodePatch codePatch = null)
