@@ -23,7 +23,7 @@ namespace Ryujinx.Graphics.OpenGL
         private VertexArray _vertexArray;
         private Framebuffer _framebuffer;
 
-        private IntPtr _indexBaseOffset;
+        private nint _indexBaseOffset;
 
         private DrawElementsType _elementsType;
 
@@ -358,7 +358,7 @@ namespace Ryujinx.Graphics.OpenGL
                     break;
             }
 
-            IntPtr indexBaseOffset = _indexBaseOffset + firstIndex * indexElemSize;
+            nint indexBaseOffset = _indexBaseOffset + firstIndex * indexElemSize;
 
             if (_primitiveType == PrimitiveType.Quads && !HwCapabilities.SupportsQuads)
             {
@@ -396,7 +396,7 @@ namespace Ryujinx.Graphics.OpenGL
         private void DrawQuadsIndexedImpl(
             int indexCount,
             int instanceCount,
-            IntPtr indexBaseOffset,
+            nint indexBaseOffset,
             int indexElemSize,
             int firstVertex,
             int firstInstance)
@@ -447,7 +447,7 @@ namespace Ryujinx.Graphics.OpenGL
             }
             else
             {
-                IntPtr[] indices = new IntPtr[quadsCount];
+                nint[] indices = new nint[quadsCount];
 
                 int[] counts = new int[quadsCount];
 
@@ -475,7 +475,7 @@ namespace Ryujinx.Graphics.OpenGL
         private void DrawQuadStripIndexedImpl(
             int indexCount,
             int instanceCount,
-            IntPtr indexBaseOffset,
+            nint indexBaseOffset,
             int indexElemSize,
             int firstVertex,
             int firstInstance)
@@ -483,7 +483,7 @@ namespace Ryujinx.Graphics.OpenGL
             // TODO: Instanced rendering.
             int quadsCount = (indexCount - 2) / 2;
 
-            IntPtr[] indices = new IntPtr[quadsCount];
+            nint[] indices = new nint[quadsCount];
 
             int[] counts = new int[quadsCount];
 
@@ -516,7 +516,7 @@ namespace Ryujinx.Graphics.OpenGL
         private void DrawIndexedImpl(
             int indexCount,
             int instanceCount,
-            IntPtr indexBaseOffset,
+            nint indexBaseOffset,
             int firstVertex,
             int firstInstance)
         {
@@ -587,9 +587,9 @@ namespace Ryujinx.Graphics.OpenGL
 
             _vertexArray.SetRangeOfIndexBuffer();
 
-            GL.BindBuffer((BufferTarget)All.DrawIndirectBuffer, indirectBuffer.Handle.ToInt32());
+            GL.BindBuffer((BufferTarget)All.DrawIndirectBuffer, indirectBuffer.Handle);
 
-            GL.DrawElementsIndirect(_primitiveType, _elementsType, (IntPtr)indirectBuffer.Offset);
+            GL.DrawElementsIndirect(_primitiveType, _elementsType, (nint)indirectBuffer.Offset);
 
             _vertexArray.RestoreIndexBuffer();
 
@@ -608,14 +608,14 @@ namespace Ryujinx.Graphics.OpenGL
 
             _vertexArray.SetRangeOfIndexBuffer();
 
-            GL.BindBuffer((BufferTarget)All.DrawIndirectBuffer, indirectBuffer.Handle.ToInt32());
-            GL.BindBuffer((BufferTarget)All.ParameterBuffer, parameterBuffer.Handle.ToInt32());
+            GL.BindBuffer((BufferTarget)All.DrawIndirectBuffer, indirectBuffer.Handle);
+            GL.BindBuffer((BufferTarget)All.ParameterBuffer, parameterBuffer.Handle);
 
             GL.MultiDrawElementsIndirectCount(
                 _primitiveType,
                 (All)_elementsType,
-                (IntPtr)indirectBuffer.Offset,
-                (IntPtr)parameterBuffer.Offset,
+                (nint)indirectBuffer.Offset,
+                (nint)parameterBuffer.Offset,
                 maxDrawCount,
                 stride);
 
@@ -634,9 +634,9 @@ namespace Ryujinx.Graphics.OpenGL
 
             PreDrawVbUnbounded();
 
-            GL.BindBuffer((BufferTarget)All.DrawIndirectBuffer, indirectBuffer.Handle.ToInt32());
+            GL.BindBuffer((BufferTarget)All.DrawIndirectBuffer, indirectBuffer.Handle);
 
-            GL.DrawArraysIndirect(_primitiveType, (IntPtr)indirectBuffer.Offset);
+            GL.DrawArraysIndirect(_primitiveType, (nint)indirectBuffer.Offset);
 
             PostDraw();
         }
@@ -651,13 +651,13 @@ namespace Ryujinx.Graphics.OpenGL
 
             PreDrawVbUnbounded();
 
-            GL.BindBuffer((BufferTarget)All.DrawIndirectBuffer, indirectBuffer.Handle.ToInt32());
-            GL.BindBuffer((BufferTarget)All.ParameterBuffer, parameterBuffer.Handle.ToInt32());
+            GL.BindBuffer((BufferTarget)All.DrawIndirectBuffer, indirectBuffer.Handle);
+            GL.BindBuffer((BufferTarget)All.ParameterBuffer, parameterBuffer.Handle);
 
             GL.MultiDrawArraysIndirectCount(
                 _primitiveType,
-                (IntPtr)indirectBuffer.Offset,
-                (IntPtr)parameterBuffer.Offset,
+                (nint)indirectBuffer.Offset,
+                (nint)parameterBuffer.Offset,
                 maxDrawCount,
                 stride);
 
@@ -812,10 +812,10 @@ namespace Ryujinx.Graphics.OpenGL
             EnsureFramebuffer();
 
             _framebuffer.SetDualSourceBlend(
-                blend.ColorSrcFactor.IsDualSource() ||
-                blend.ColorDstFactor.IsDualSource() ||
-                blend.AlphaSrcFactor.IsDualSource() ||
-                blend.AlphaDstFactor.IsDualSource());
+                blend.ColorSrcFactor.IsDualSource ||
+                blend.ColorDstFactor.IsDualSource ||
+                blend.AlphaSrcFactor.IsDualSource ||
+                blend.AlphaDstFactor.IsDualSource);
 
             if (_blendConstant != blend.BlendConstant)
             {
@@ -925,7 +925,7 @@ namespace Ryujinx.Graphics.OpenGL
                 return;
             }
 
-            GL.CullFace((TriangleFace)face.Convert());
+            GL.CullFace(face.Convert());
 
             GL.Enable(EnableCap.CullFace);
         }
@@ -960,7 +960,7 @@ namespace Ryujinx.Graphics.OpenGL
 
         public void SetImageArray(ShaderStage stage, int binding, IImageArray array)
         {
-            (array as ImageArray)?.Bind(binding);
+            (array as ImageArray).Bind(binding);
         }
 
         public void SetImageArraySeparate(ShaderStage stage, int setIndex, IImageArray array)
@@ -972,7 +972,7 @@ namespace Ryujinx.Graphics.OpenGL
         {
             _elementsType = type.Convert();
 
-            _indexBaseOffset = (IntPtr)buffer.Offset;
+            _indexBaseOffset = (nint)buffer.Offset;
 
             EnsureVertexArray();
 
@@ -1085,12 +1085,12 @@ namespace Ryujinx.Graphics.OpenGL
         {
             if (frontMode == backMode)
             {
-                GL.PolygonMode(TriangleFace.FrontAndBack, frontMode.Convert());
+                GL.PolygonMode(MaterialFace.FrontAndBack, frontMode.Convert());
             }
             else
             {
-                GL.PolygonMode(TriangleFace.Front, frontMode.Convert());
-                GL.PolygonMode(TriangleFace.Back, backMode.Convert());
+                GL.PolygonMode(MaterialFace.Front, frontMode.Convert());
+                GL.PolygonMode(MaterialFace.Back, backMode.Convert());
             }
         }
 
@@ -1166,7 +1166,7 @@ namespace Ryujinx.Graphics.OpenGL
             }
         }
 
-        public void SetRenderTargets(ITexture[] colors, ITexture depthStencil)
+        public void SetRenderTargets(Span<ITexture> colors, ITexture depthStencil)
         {
             EnsureFramebuffer();
 
@@ -1178,7 +1178,7 @@ namespace Ryujinx.Graphics.OpenGL
 
                 if (color != null)
                 {
-                    int isBgra = color.Format.IsBgr() ? 1 : 0;
+                    int isBgra = color.Format.IsBgr ? 1 : 0;
 
                     if (_fpIsBgra[index].X != isBgra)
                     {
@@ -1205,7 +1205,7 @@ namespace Ryujinx.Graphics.OpenGL
             {
                 int vIndex = index * 4;
 
-                var region = regions[index];
+                Rectangle<int> region = regions[index];
 
                 bool enabled = (region.X | region.Y) != 0 || region.Width != 0xffff || region.Height != 0xffff;
                 uint mask = 1u << index;
@@ -1314,7 +1314,7 @@ namespace Ryujinx.Graphics.OpenGL
 
         public void SetTextureArray(ShaderStage stage, int binding, ITextureArray array)
         {
-            (array as TextureArray)?.Bind(binding);
+            (array as TextureArray).Bind(binding);
         }
 
         public void SetTextureArraySeparate(ShaderStage stage, int setIndex, ITextureArray array)
@@ -1349,7 +1349,7 @@ namespace Ryujinx.Graphics.OpenGL
 
                 Buffer.Resize(_tfbs[i], buffer.Size);
                 Buffer.Copy(buffer.Handle, _tfbs[i], buffer.Offset, 0, buffer.Size);
-                GL.BindBufferBase(BufferRangeTarget.TransformFeedbackBuffer, i, _tfbs[i].ToInt32());
+                GL.BindBufferBase(BufferRangeTarget.TransformFeedbackBuffer, i, _tfbs[i]);
             }
 
             if (_tfEnabled)
@@ -1450,11 +1450,11 @@ namespace Ryujinx.Graphics.OpenGL
 
                 if (buffer.Handle == BufferHandle.Null)
                 {
-                    GL.BindBufferRange(target, assignment.Binding, 0, IntPtr.Zero, 0);
+                    GL.BindBufferRange(target, assignment.Binding, 0, nint.Zero, 0);
                     continue;
                 }
 
-                GL.BindBufferRange(target, assignment.Binding, buffer.Handle.ToInt32(), (IntPtr)buffer.Offset, buffer.Size);
+                GL.BindBufferRange(target, assignment.Binding, buffer.Handle, (nint)buffer.Offset, buffer.Size);
             }
         }
 
