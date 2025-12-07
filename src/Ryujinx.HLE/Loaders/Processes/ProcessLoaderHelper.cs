@@ -548,7 +548,7 @@ namespace Ryujinx.HLE.Loaders.Processes
             // ==== 关键修改结束 ====
 
             // Once everything is loaded, we can load cheats.
-            device.Configuration.VirtualFileSystem.ModLoader.LoadCheats(programId, tamperInfo);
+            device.Configuration.VirtualFileSystem.ModLoader.LoadCheats(programId, tamperInfo, device.TamperMachine);
 
             ProcessResult processResult = new(
                 metaLoader,
