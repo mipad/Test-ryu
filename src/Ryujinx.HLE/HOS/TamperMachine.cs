@@ -6,6 +6,7 @@ using Ryujinx.HLE.HOS.Tamper;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 
 namespace Ryujinx.HLE.HOS
@@ -20,6 +21,11 @@ namespace Ryujinx.HLE.HOS
         private readonly ConcurrentQueue<ITamperProgram> _programs = new();
         private long _pressedKeys = 0;
         private readonly Dictionary<string, ITamperProgram> _programDictionary = new();
+
+        public TamperMachine()
+        {
+            Logger.Info?.Print(LogClass.TamperMachine, "TamperMachine initialized");
+        }
 
         private void Activate()
         {
@@ -41,7 +47,8 @@ namespace Ryujinx.HLE.HOS
 
         internal void InstallAtmosphereCheat(string name, string buildId, IEnumerable<string> rawInstructions, ProcessTamperInfo info, ulong exeAddress)
         {
-            Logger.Debug?.Print(LogClass.TamperMachine, $"Installing Atmosphere cheat: {name} for build ID: {buildId}");
+            Logger.Info?.Print(LogClass.TamperMachine, 
+                $"[金手指安装] 开始安装: {name}, BuildId: {buildId}");
             
             if (!CanInstallOnPid(info.Process.Pid))
             {
@@ -51,109 +58,69 @@ namespace Ryujinx.HLE.HOS
 
             ITamperedProcess tamperedProcess = new TamperedKProcess(info.Process);
             
-            // ==== 关键修改开始：在NCE模式下验证和调整exeAddress ====
+            // ==== 关键修改：基于偏移的模式判断和地址验证 ====
             ulong actualExeAddress = exeAddress;
             
-            // 记录地址信息用于调试
-            Logger.Debug?.Print(LogClass.TamperMachine, 
-                $"[地址调试] 金手指 '{name}' 信息:");
-            Logger.Debug?.Print(LogClass.TamperMachine, 
-                $"  传入的exeAddress: 0x{exeAddress:X}");
-            Logger.Debug?.Print(LogClass.TamperMachine, 
-                $"  info.MainNsoBase: 0x{info.MainNsoBase:X}");
-            Logger.Debug?.Print(LogClass.TamperMachine, 
-                $"  info.AslrAddress: 0x{info.AslrAddress:X}");
-            Logger.Debug?.Print(LogClass.TamperMachine, 
-                $"  info.FixedCodeStart: 0x{info.FixedCodeStart:X}");
-            
             // 计算偏移
-            ulong offsetFromAslr = info.MainNsoBase > info.AslrAddress ? info.MainNsoBase - info.AslrAddress : 0;
-            ulong offsetFromFixed = info.MainNsoBase > info.FixedCodeStart ? info.MainNsoBase - info.FixedCodeStart : 0;
+            ulong offsetFromAslr = info.MainNsoBase - info.AslrAddress;
+            ulong offsetFromFixed = info.MainNsoBase - info.FixedCodeStart;
             
-            Logger.Debug?.Print(LogClass.TamperMachine,
+            // 记录地址信息用于调试
+            Logger.Info?.Print(LogClass.TamperMachine, 
+                $"[地址信息] 金手指 '{name}':");
+            Logger.Info?.Print(LogClass.TamperMachine, 
+                $"  传入的exeAddress: 0x{exeAddress:X}");
+            Logger.Info?.Print(LogClass.TamperMachine, 
+                $"  info.MainNsoBase: 0x{info.MainNsoBase:X}");
+            Logger.Info?.Print(LogClass.TamperMachine, 
+                $"  info.AslrAddress: 0x{info.AslrAddress:X}");
+            Logger.Info?.Print(LogClass.TamperMachine, 
                 $"  主NSO偏移ASLR: 0x{offsetFromAslr:X}");
-            Logger.Debug?.Print(LogClass.TamperMachine,
-                $"  主NSO偏移固定: 0x{offsetFromFixed:X}");
             
-            // 检测NCE模式（ASLR地址大于4GB）
-            bool isLikelyNceMode = info.AslrAddress > 0x100000000UL;
+            // 基于偏移判断模式
+            bool isNceModeByOffset = offsetFromAslr == 0xE7000;
+            bool isJitModeByOffset = offsetFromAslr == 0x104000;
             
-            if (isLikelyNceMode)
+            if (isNceModeByOffset)
             {
                 Logger.Info?.Print(LogClass.TamperMachine,
-                    $"[NCE模式检测] 金手指 '{name}' 可能在NCE模式下运行");
-                
-                // NCE模式下的验证逻辑
-                if (exeAddress == info.AslrAddress)
-                {
-                    // 如果传入的是ASLR地址，但在NCE模式下应该使用主NSO基址
-                    Logger.Warning?.Print(LogClass.TamperMachine,
-                        $"NCE模式：传入的exeAddress是ASLR地址，使用主NSO基址替代");
-                    actualExeAddress = info.MainNsoBase;
-                }
-                else if (exeAddress == info.FixedCodeStart)
-                {
-                    // 如果传入的是固定codeStart，在NCE模式下需要调整
-                    Logger.Warning?.Print(LogClass.TamperMachine,
-                        $"NCE模式：传入的exeAddress是固定codeStart，使用主NSO基址替代");
-                    actualExeAddress = info.MainNsoBase;
-                }
-                else if (exeAddress == 0)
-                {
-                    // 如果传入0，使用主NSO基址
-                    Logger.Warning?.Print(LogClass.TamperMachine,
-                        $"NCE模式：传入的exeAddress为0，使用主NSO基址");
-                    actualExeAddress = info.MainNsoBase;
-                }
-                else if (exeAddress != info.MainNsoBase)
-                {
-                    // 如果传入的地址既不是ASLR也不是固定codeStart，也不是主NSO基址
-                    // 检查是否可能是JIT模式的地址（ASLR + 偏移）
-                    if (exeAddress == info.AslrAddress + offsetFromAslr)
-                    {
-                        // 这实际上就是主NSO基址，直接使用
-                        actualExeAddress = info.MainNsoBase;
-                    }
-                    else
-                    {
-                        // 在NCE模式下，我们假设应该使用主NSO基址
-                        Logger.Warning?.Print(LogClass.TamperMachine,
-                            $"NCE模式：传入的exeAddress (0x{exeAddress:X}) 不明确，使用主NSO基址 (0x{info.MainNsoBase:X})");
-                        actualExeAddress = info.MainNsoBase;
-                    }
-                }
-                
-                // 检查偏移是否正常（JIT模式下通常是~0x580000）
-                if (offsetFromAslr < 0x500000 || offsetFromAslr > 0x600000)
-                {
-                    Logger.Warning?.Print(LogClass.TamperMachine,
-                        $"[NCE警告] 主NSO偏移异常: 0x{offsetFromAslr:X} " +
-                        $"(JIT模式预期: ~0x{0x580000:X})");
-                }
+                    $"[模式判断] 偏移0x{offsetFromAslr:X} => NCE模式");
+            }
+            else if (isJitModeByOffset)
+            {
+                Logger.Info?.Print(LogClass.TamperMachine,
+                    $"[模式判断] 偏移0x{offsetFromAslr:X} => JIT模式");
             }
             else
             {
-                // JIT模式下的验证逻辑
-                if (exeAddress == 0)
+                Logger.Warning?.Print(LogClass.TamperMachine,
+                    $"[模式警告] 未知偏移: 0x{offsetFromAslr:X}, 使用info.IsLikelyNceMode");
+            }
+            
+            // 验证exeAddress
+            if (exeAddress == 0)
+            {
+                // 如果传入0，使用主NSO基址
+                actualExeAddress = info.MainNsoBase;
+                Logger.Info?.Print(LogClass.TamperMachine,
+                    $"传入的exeAddress为0，使用主NSO基址: 0x{actualExeAddress:X}");
+            }
+            else if (exeAddress != info.MainNsoBase)
+            {
+                // 检查传入的地址是否在NSO地址列表中
+                if (info.CodeAddresses.Contains(exeAddress))
                 {
-                    // 如果传入0，使用主NSO基址
-                    actualExeAddress = info.MainNsoBase;
+                    // 如果在列表中，保持原地址
+                    Logger.Info?.Print(LogClass.TamperMachine,
+                        $"exeAddress (0x{exeAddress:X}) 在NSO地址列表中，保持原地址");
+                    actualExeAddress = exeAddress;
                 }
-                else if (exeAddress != info.MainNsoBase && exeAddress != info.AslrAddress)
+                else
                 {
-                    // 如果传入的地址既不是主NSO基址也不是ASLR地址，检查是否可能是正确的地址
-                    // 在JIT模式下，exeAddress可能是 ASLR + 偏移
-                    if (exeAddress == info.AslrAddress + offsetFromAslr)
-                    {
-                        // 这实际上就是主NSO基址
-                        actualExeAddress = info.MainNsoBase;
-                    }
-                    else
-                    {
-                        // 记录警告，但继续使用传入的地址
-                        Logger.Warning?.Print(LogClass.TamperMachine,
-                            $"JIT模式：传入的exeAddress (0x{exeAddress:X}) 不明确，但继续使用");
-                    }
+                    // 不在列表中，使用主NSO基址
+                    Logger.Warning?.Print(LogClass.TamperMachine,
+                        $"exeAddress (0x{exeAddress:X}) 不在NSO地址列表中，使用主NSO基址: 0x{info.MainNsoBase:X}");
+                    actualExeAddress = info.MainNsoBase;
                 }
             }
             
@@ -165,18 +132,48 @@ namespace Ryujinx.HLE.HOS
                 return;
             }
             
+            // 过滤掉注释行
+            var validInstructions = new List<string>();
+            int commentCount = 0;
+            
+            foreach (var instruction in rawInstructions)
+            {
+                var trimmed = instruction.Trim();
+                if (string.IsNullOrEmpty(trimmed))
+                {
+                    continue;
+                }
+                
+                if (trimmed.StartsWith("#"))
+                {
+                    commentCount++;
+                    Logger.Debug?.Print(LogClass.TamperMachine, $"跳过注释行: {trimmed}");
+                    continue;
+                }
+                
+                validInstructions.Add(instruction);
+            }
+            
+            Logger.Info?.Print(LogClass.TamperMachine,
+                $"[指令过滤] 原始: {rawInstructions.Count()}, 有效: {validInstructions.Count}, 注释: {commentCount}");
+            
+            if (validInstructions.Count == 0)
+            {
+                Logger.Warning?.Print(LogClass.TamperMachine,
+                    $"金手指 '{name}' 没有有效指令，跳过安装");
+                return;
+            }
+            
+            // 输出最终的地址信息
             Logger.Info?.Print(LogClass.TamperMachine,
                 $"[最终决定] 金手指 '{name}' 使用exeAddress: 0x{actualExeAddress:X}");
-            // ==== 关键修改结束 ====
+            Logger.Info?.Print(LogClass.TamperMachine,
+                $"[编译器地址] Exe=0x{actualExeAddress:X}, Heap=0x{info.HeapAddress:X}, " +
+                $"Alias=0x{info.AliasAddress:X}, Aslr=0x{info.AslrAddress:X}");
             
             AtmosphereCompiler compiler = new(actualExeAddress, info.HeapAddress, info.AliasAddress, info.AslrAddress, tamperedProcess);
             
-            Logger.Debug?.Print(LogClass.TamperMachine, 
-                $"Compiling cheat {name} with addresses: " +
-                $"Exe=0x{actualExeAddress:X}, Heap=0x{info.HeapAddress:X}, " +
-                $"Alias=0x{info.AliasAddress:X}, Aslr=0x{info.AslrAddress:X}");
-            
-            ITamperProgram program = compiler.Compile(name, rawInstructions);
+            ITamperProgram program = compiler.Compile(name, validInstructions);
 
             if (program != null)
             {
@@ -185,15 +182,42 @@ namespace Ryujinx.HLE.HOS
                 _programs.Enqueue(program);
                 _programDictionary.TryAdd($"{buildId}-{name}", program);
                 
-                Logger.Info?.Print(LogClass.TamperMachine, $"Successfully installed cheat '{name}' with ID {buildId}-{name}");
-                Logger.Debug?.Print(LogClass.TamperMachine, $"Program queue size: {_programs.Count}, Dictionary size: {_programDictionary.Count}");
+                Logger.Info?.Print(LogClass.TamperMachine, $"成功安装金手指 '{name}' with ID {buildId}-{name}");
+                Logger.Debug?.Print(LogClass.TamperMachine, $"程序队列大小: {_programs.Count}, 字典大小: {_programDictionary.Count}");
             }
             else
             {
-                Logger.Error?.Print(LogClass.TamperMachine, $"Failed to compile cheat {name}");
+                Logger.Error?.Print(LogClass.TamperMachine, $"编译金手指失败: {name}");
             }
 
             Activate();
+        }
+
+        // 安装测试金手指的方法
+        public void InstallTestCheat(ProcessTamperInfo info)
+        {
+            try
+            {
+                string buildId = info.BuildIds.FirstOrDefault() ?? "test";
+                ulong exeAddress = info.MainNsoBase;
+                
+                // 创建一个简单的测试金手指
+                var testInstructions = new[]
+                {
+                    "580F0000 00000000",  // 加载基址
+                    "780F0000 00000100",  // 偏移0x100
+                    "640F0000 00000000 12345678", // 写入测试值
+                    "20000000 00000000"   // 结束
+                };
+                
+                InstallAtmosphereCheat("测试金手指", buildId, testInstructions, info, exeAddress);
+                
+                Logger.Info?.Print(LogClass.TamperMachine, "测试金手指已安装");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.TamperMachine, $"安装测试金手指失败: {ex.Message}");
+            }
         }
 
         private static bool CanInstallOnPid(ulong pid)
