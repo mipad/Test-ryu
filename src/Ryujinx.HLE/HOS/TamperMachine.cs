@@ -98,13 +98,29 @@ namespace Ryujinx.HLE.HOS
                         $"NCE模式：传入的exeAddress是固定codeStart，使用主NSO基址替代");
                     actualExeAddress = info.MainNsoBase;
                 }
+                else if (exeAddress == 0)
+                {
+                    // 如果传入0，使用主NSO基址
+                    Logger.Warning?.Print(LogClass.TamperMachine,
+                        $"NCE模式：传入的exeAddress为0，使用主NSO基址");
+                    actualExeAddress = info.MainNsoBase;
+                }
                 else if (exeAddress != info.MainNsoBase)
                 {
                     // 如果传入的地址既不是ASLR也不是固定codeStart，也不是主NSO基址
-                    // 在NCE模式下，我们假设应该使用主NSO基址
-                    Logger.Warning?.Print(LogClass.TamperMachine,
-                        $"NCE模式：传入的exeAddress (0x{exeAddress:X}) 与主NSO基址 (0x{info.MainNsoBase:X}) 不匹配，使用主NSO基址");
-                    actualExeAddress = info.MainNsoBase;
+                    // 检查是否可能是JIT模式的地址（ASLR + 偏移）
+                    if (exeAddress == info.AslrAddress + offsetFromAslr)
+                    {
+                        // 这实际上就是主NSO基址，直接使用
+                        actualExeAddress = info.MainNsoBase;
+                    }
+                    else
+                    {
+                        // 在NCE模式下，我们假设应该使用主NSO基址
+                        Logger.Warning?.Print(LogClass.TamperMachine,
+                            $"NCE模式：传入的exeAddress (0x{exeAddress:X}) 不明确，使用主NSO基址 (0x{info.MainNsoBase:X})");
+                        actualExeAddress = info.MainNsoBase;
+                    }
                 }
                 
                 // 检查偏移是否正常（JIT模式下通常是~0x580000）
@@ -125,9 +141,19 @@ namespace Ryujinx.HLE.HOS
                 }
                 else if (exeAddress != info.MainNsoBase && exeAddress != info.AslrAddress)
                 {
-                    // 如果传入的地址既不是主NSO基址也不是ASLR地址，记录警告
-                    Logger.Warning?.Print(LogClass.TamperMachine,
-                        $"JIT模式：传入的exeAddress (0x{exeAddress:X}) 不明确");
+                    // 如果传入的地址既不是主NSO基址也不是ASLR地址，检查是否可能是正确的地址
+                    // 在JIT模式下，exeAddress可能是 ASLR + 偏移
+                    if (exeAddress == info.AslrAddress + offsetFromAslr)
+                    {
+                        // 这实际上就是主NSO基址
+                        actualExeAddress = info.MainNsoBase;
+                    }
+                    else
+                    {
+                        // 记录警告，但继续使用传入的地址
+                        Logger.Warning?.Print(LogClass.TamperMachine,
+                            $"JIT模式：传入的exeAddress (0x{exeAddress:X}) 不明确，但继续使用");
+                    }
                 }
             }
             
