@@ -22,7 +22,7 @@ namespace Ryujinx.Graphics.GAL.Multithreading
     /// </summary>
     public class ThreadedRenderer : IRenderer
     {
-        private const int SpanPoolBytes = 4 * 1024 * 1024;
+        private const int SpanPoolBytes = 8 * 1024 * 1024;
         private const int MaxRefsPerCommand = 2;
         private const int QueueCount = 10000;
 
@@ -58,7 +58,7 @@ namespace Ryujinx.Graphics.GAL.Multithreading
         public uint ProgramCount { get; set; } = 0;
 
         private Action _interruptAction;
-        private readonly object _interruptLock = new();
+        private readonly Lock _interruptLock = new();
 
         public event EventHandler<ScreenCaptureImageInfo> ScreenCaptured;
 
