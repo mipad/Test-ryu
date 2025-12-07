@@ -251,8 +251,12 @@ namespace Ryujinx.HLE.Loaders.Processes
 
             ulong argsStart = 0;
             uint argsSize = 0;
-            ulong codeStart = ((meta.Flags & 1) != 0 ? 0x8000000UL : 0x200000UL) + CodeStartOffset;
+            
+            // ==== 关键修改开始 ====
+            // 获取固定的codeStart（用于计算相对偏移）
+            ulong fixedCodeStart = ((meta.Flags & 1) != 0 ? 0x8000000UL : 0x200000UL) + CodeStartOffset;
             ulong codeSize = 0;
+            // ==== 关键修改结束 ====
 
             var buildIds = executables.Select(e => (e switch
             {
@@ -296,7 +300,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                     codeSize += codePatch.Size;
                 }
 
-                nsoBase[index] = codeStart + codeSize;
+                nsoBase[index] = fixedCodeStart + codeSize;
 
                 codeSize += nsoSize;
 
@@ -317,7 +321,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                 name,
                 (int)meta.Version,
                 programId,
-                codeStart,
+                fixedCodeStart,
                 codePagesCount,
                 (ProcessCreationFlags)meta.Flags | ProcessCreationFlags.IsApplication,
                 0,
@@ -388,7 +392,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                 $"{programId:x16}",
                 displayVersion,
                 diskCacheEnabled,
-                codeStart,
+                fixedCodeStart,
                 codeSize);
 
             result = process.Initialize(
@@ -407,17 +411,44 @@ namespace Ryujinx.HLE.Loaders.Processes
                 return ProcessResult.Failed;
             }
 
+            // ==== 关键修改开始 ====
+            // 现在我们知道实际的ASLR地址了，重新计算NSO基址
+            ulong actualAslrBase = process.MemoryManager.CodeRegionStart;
+            ulong actualHeapBase = process.MemoryManager.HeapRegionStart;
+            ulong actualAliasBase = process.MemoryManager.AliasRegionStart;
+            
+            Logger.Info?.Print(LogClass.Loader, $"实际内存地址: ASLR=0x{actualAslrBase:X}, Heap=0x{actualHeapBase:X}, Alias=0x{actualAliasBase:X}");
+            Logger.Info?.Print(LogClass.Loader, $"固定codeStart: 0x{fixedCodeStart:X}");
+            
+            // 重新计算NSO基址（基于实际的ASLR地址）
+            // 计算ASLR相对于固定codeStart的偏移
+            ulong aslrOffset = actualAslrBase - fixedCodeStart;
+            Logger.Info?.Print(LogClass.Loader, $"ASLR偏移: 0x{aslrOffset:X}");
+            
+            for (int index = 0; index < executables.Length; index++)
+            {
+                // 基于实际的ASLR地址重新计算NSO基址
+                nsoBase[index] = actualAslrBase + (nsoBase[index] - fixedCodeStart);
+                
+                Logger.Info?.Print(LogClass.Loader, 
+                    $"NSO[{index}]重新定位: " +
+                    $"固定地址=0x{nsoBase[index] - aslrOffset:X}, " +
+                    $"实际地址=0x{nsoBase[index]:X}, " +
+                    $"偏移=0x{nsoBase[index] - actualAslrBase:X}");
+            }
+            // ==== 关键修改结束 ====
+
             for (int index = 0; index < executables.Length; index++)
             {
                 ulong nsoBaseAddress = process.Context.ReservedSize + nsoBase[index];
 
-                Logger.Info?.Print(LogClass.Loader, $"Loading image {index} at 0x{nsoBaseAddress:x16}...");
+                Logger.Info?.Print(LogClass.Loader, $"加载镜像 {index} 到地址 0x{nsoBaseAddress:x16}...");
 
                 result = LoadIntoMemory(process, executables[index], nsoBaseAddress, nsoPatch[index]);
 
                 if (result != Result.Success)
                 {
-                    Logger.Error?.Print(LogClass.Loader, $"Process initialization returned error \"{result}\".");
+                    Logger.Error?.Print(LogClass.Loader, $"进程初始化返回错误 \"{result}\".");
 
                     return ProcessResult.Failed;
                 }
@@ -427,18 +458,33 @@ namespace Ryujinx.HLE.Loaders.Processes
 
             context.Processes.TryAdd(process.Pid, process);
 
-            // Keep the build ids because the tamper machine uses them to know which process to associate a
-            // tamper to and also keep the starting address of each executable inside a process because some
-            // memory modifications are relative to this address.
+            // 计算NCE补丁偏移（用于金手指）
+            ulong ncePatchOffset = 0;
+            if (nsoPatch[0] != null)
+            {
+                ncePatchOffset = nsoPatch[0].Size;
+            }
+
+            // 记录详细的地址信息，用于调试
+            Logger.Info?.Print(LogClass.Loader, 
+                $"进程加载完成: " +
+                $"PID={process.Pid}, " +
+                $"主NSO基址=0x{nsoBase[0]:X}, " +
+                $"ASLR基址=0x{actualAslrBase:X}, " +
+                $"NCE补丁偏移=0x{ncePatchOffset:X}, " +
+                $"固定codeStart=0x{fixedCodeStart:X}");
+
             ProcessTamperInfo tamperInfo = new(
                 process,
                 buildIds,
-                nsoBase,
-                process.MemoryManager.HeapRegionStart,
-                process.MemoryManager.AliasRegionStart,
-                process.MemoryManager.CodeRegionStart);
+                nsoBase,  // 使用重新计算后的NSO基址
+                actualHeapBase,  // 使用实际的堆地址
+                actualAliasBase,  // 使用实际的别名地址
+                actualAslrBase,   // 使用实际的ASLR地址
+                nsoBase[0],  // 明确指定主NSO基址
+                fixedCodeStart);  // 传递固定的codeStart用于偏移计算
 
-            // Once everything is loaded, we can load cheats.
+            // 一旦加载完成，我们就可以加载金手指
             device.Configuration.VirtualFileSystem.ModLoader.LoadCheats(programId, tamperInfo, device.TamperMachine);
 
             ProcessResult processResult = new(
