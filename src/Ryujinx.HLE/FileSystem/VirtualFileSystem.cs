@@ -25,7 +25,7 @@ using Path = System.IO.Path;
 
 namespace Ryujinx.HLE.FileSystem
 {
-    internal class VirtualFileSystem : IDisposable
+    public class VirtualFileSystem : IDisposable
     {
         public static readonly string SafeNandPath = Path.Combine(AppDataManager.DefaultNandDir, "safe");
         public static readonly string SystemNandPath = Path.Combine(AppDataManager.DefaultNandDir, "system");
