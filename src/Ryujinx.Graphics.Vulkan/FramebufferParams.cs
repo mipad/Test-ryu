@@ -357,7 +357,7 @@ namespace Ryujinx.Graphics.Vulkan
                     return ComponentType.SignedInteger;
                 }
 
-                if (format.IsUnsignedInt)
+                if (format.IsUint())
                 {
                     return ComponentType.UnsignedInteger;
                 }
