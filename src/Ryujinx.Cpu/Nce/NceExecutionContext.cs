@@ -225,7 +225,7 @@ namespace Ryujinx.Cpu.Nce
                 _disposed = true;
                 _context?.Dispose();
             }
-
+}
         public ref NceNativeContext.NativeCtxStorage GetNativeStorage()
         {
             return ref _context.GetStorage();
