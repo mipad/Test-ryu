@@ -15,6 +15,7 @@ namespace Ryujinx.Cpu.Nce
 
         private readonly NceNativeContext _context;
         private readonly ExceptionCallbacks _exceptionCallbacks;
+        private volatile bool _disposed = false; // 
 
         internal IntPtr NativeContextPtr => _context.BasePtr;
 
@@ -172,6 +173,10 @@ namespace Ryujinx.Cpu.Nce
 
         public void RequestInterrupt()
         {
+        // 检查是否已释放
+            if (_disposed)
+                return;
+                
             IntPtr threadHandle = _context.GetStorage().HostThreadHandle;
             if (threadHandle != IntPtr.Zero)
             {
@@ -185,7 +190,14 @@ namespace Ryujinx.Cpu.Nce
 
                 if (oldValue == 0)
                 {
-                    NceThreadPal.SuspendThread(threadHandle);
+                    try
+                    {
+                        NceThreadPal.SuspendThread(threadHandle);
+                    }
+                    catch (Exception)
+                    {
+                        // 静默处理异常，不记录日志以避免依赖
+                    }
                 }
             }
         }
@@ -208,8 +220,11 @@ namespace Ryujinx.Cpu.Nce
 
         public void Dispose()
         {
-            _context.Dispose();
-        }
+            if (!_disposed)
+            {
+                _disposed = true;
+                _context?.Dispose();
+            }
 
         public ref NceNativeContext.NativeCtxStorage GetNativeStorage()
         {
