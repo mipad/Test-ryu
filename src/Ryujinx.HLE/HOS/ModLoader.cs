@@ -8,7 +8,7 @@ using System.Linq;
 
 namespace Ryujinx.HLE.Loaders
 {
-    public class ModLoader
+    internal class ModLoader
     {
         private readonly Switch _device;
         private readonly Dictionary<ulong, List<CheatInfo>> _cheatCache = new();
