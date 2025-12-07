@@ -251,12 +251,8 @@ namespace Ryujinx.HLE.Loaders.Processes
 
             ulong argsStart = 0;
             uint argsSize = 0;
-            
-            // ==== 关键修改开始 ====
-            // 获取固定的codeStart（用于计算相对偏移）
-            ulong fixedCodeStart = ((meta.Flags & 1) != 0 ? 0x8000000UL : 0x200000UL) + CodeStartOffset;
+            ulong codeStart = ((meta.Flags & 1) != 0 ? 0x8000000UL : 0x200000UL) + CodeStartOffset;
             ulong codeSize = 0;
-            // ==== 关键修改结束 ====
 
             var buildIds = executables.Select(e => (e switch
             {
@@ -300,7 +296,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                     codeSize += codePatch.Size;
                 }
 
-                nsoBase[index] = fixedCodeStart + codeSize;
+                nsoBase[index] = codeStart + codeSize;
 
                 codeSize += nsoSize;
 
@@ -321,7 +317,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                 name,
                 (int)meta.Version,
                 programId,
-                fixedCodeStart,
+                codeStart,
                 codePagesCount,
                 (ProcessCreationFlags)meta.Flags | ProcessCreationFlags.IsApplication,
                 0,
@@ -392,7 +388,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                 $"{programId:x16}",
                 displayVersion,
                 diskCacheEnabled,
-                fixedCodeStart,
+                codeStart,
                 codeSize);
 
             result = process.Initialize(
@@ -411,30 +407,38 @@ namespace Ryujinx.HLE.Loaders.Processes
                 return ProcessResult.Failed;
             }
 
-            // ==== 关键修改开始 ====
-            // 现在我们知道实际的ASLR地址了，重新计算NSO基址
+            // ==== 关键修改开始：重新计算NSO基址以处理NCE模式 ====
+            // 获取实际的ASLR基址（内存管理器代码区域起始地址）
             ulong actualAslrBase = process.MemoryManager.CodeRegionStart;
             ulong actualHeapBase = process.MemoryManager.HeapRegionStart;
             ulong actualAliasBase = process.MemoryManager.AliasRegionStart;
             
-            Logger.Info?.Print(LogClass.Loader, $"实际内存地址: ASLR=0x{actualAslrBase:X}, Heap=0x{actualHeapBase:X}, Alias=0x{actualAliasBase:X}");
-            Logger.Info?.Print(LogClass.Loader, $"固定codeStart: 0x{fixedCodeStart:X}");
+            // 记录调试信息
+            Logger.Info?.Print(LogClass.Loader, $"实际内存地址 - ASLR: 0x{actualAslrBase:X}, 堆: 0x{actualHeapBase:X}, 别名: 0x{actualAliasBase:X}");
+            Logger.Info?.Print(LogClass.Loader, $"原始codeStart: 0x{codeStart:X}");
             
-            // 重新计算NSO基址（基于实际的ASLR地址）
-            // 计算ASLR相对于固定codeStart的偏移
-            ulong aslrOffset = actualAslrBase - fixedCodeStart;
-            Logger.Info?.Print(LogClass.Loader, $"ASLR偏移: 0x{aslrOffset:X}");
+            // 计算ASLR偏移（实际ASLR基址与原始codeStart的差值）
+            ulong aslrOffset = actualAslrBase > codeStart ? actualAslrBase - codeStart : 0;
             
-            for (int index = 0; index < executables.Length; index++)
+            if (aslrOffset > 0)
             {
-                // 基于实际的ASLR地址重新计算NSO基址
-                nsoBase[index] = actualAslrBase + (nsoBase[index] - fixedCodeStart);
+                Logger.Info?.Print(LogClass.Loader, $"ASLR偏移检测: 0x{aslrOffset:X} (NCE模式?)");
                 
-                Logger.Info?.Print(LogClass.Loader, 
-                    $"NSO[{index}]重新定位: " +
-                    $"固定地址=0x{nsoBase[index] - aslrOffset:X}, " +
-                    $"实际地址=0x{nsoBase[index]:X}, " +
-                    $"偏移=0x{nsoBase[index] - actualAslrBase:X}");
+                // 重新计算NSO基址，考虑ASLR偏移
+                for (int index = 0; index < executables.Length; index++)
+                {
+                    // 保存原始基址用于调试
+                    ulong originalBase = nsoBase[index];
+                    
+                    // 重新计算：原始基址 + ASLR偏移
+                    nsoBase[index] = originalBase + aslrOffset;
+                    
+                    Logger.Info?.Print(LogClass.Loader, 
+                        $"NSO[{index}]基址重新计算: " +
+                        $"原始=0x{originalBase:X}, " +
+                        $"实际=0x{nsoBase[index]:X}, " +
+                        $"偏移=0x{aslrOffset:X}");
+                }
             }
             // ==== 关键修改结束 ====
 
@@ -458,22 +462,27 @@ namespace Ryujinx.HLE.Loaders.Processes
 
             context.Processes.TryAdd(process.Pid, process);
 
-            // 计算NCE补丁偏移（用于金手指）
+            // ==== 关键修改：创建ProcessTamperInfo时传递正确的主NSO基址 ====
+            // 计算NCE补丁偏移（如果有）
             ulong ncePatchOffset = 0;
             if (nsoPatch[0] != null)
             {
                 ncePatchOffset = nsoPatch[0].Size;
+                Logger.Info?.Print(LogClass.Loader, $"NCE补丁大小: 0x{ncePatchOffset:X}");
             }
-
+            
+            // 主NSO基址（第一个NSO的基址，已经包含了ASLR偏移）
+            ulong mainNsoBase = nsoBase[0];
+            
             // 记录详细的地址信息，用于调试
             Logger.Info?.Print(LogClass.Loader, 
                 $"进程加载完成: " +
                 $"PID={process.Pid}, " +
-                $"主NSO基址=0x{nsoBase[0]:X}, " +
+                $"主NSO基址=0x{mainNsoBase:X}, " +
                 $"ASLR基址=0x{actualAslrBase:X}, " +
-                $"NCE补丁偏移=0x{ncePatchOffset:X}, " +
-                $"固定codeStart=0x{fixedCodeStart:X}");
-
+                $"原始codeStart=0x{codeStart:X}");
+            
+            // 创建ProcessTamperInfo，传递重新计算后的地址
             ProcessTamperInfo tamperInfo = new(
                 process,
                 buildIds,
@@ -481,11 +490,42 @@ namespace Ryujinx.HLE.Loaders.Processes
                 actualHeapBase,  // 使用实际的堆地址
                 actualAliasBase,  // 使用实际的别名地址
                 actualAslrBase,   // 使用实际的ASLR地址
-                nsoBase[0],  // 明确指定主NSO基址
-                fixedCodeStart);  // 传递固定的codeStart用于偏移计算
+                mainNsoBase,  // 传递主NSO基址
+                codeStart);   // 传递原始codeStart用于偏移计算
 
-            // 一旦加载完成，我们就可以加载金手指
-            device.Configuration.VirtualFileSystem.ModLoader.LoadCheats(programId, tamperInfo, device.TamperMachine);
+            // ==== 关键修改：直接调用TamperMachine安装调试金手指 ====
+            // 在NCE模式下，记录调试信息金手指
+            if (aslrOffset > 0)
+            {
+                Logger.Info?.Print(LogClass.Loader, "NCE模式检测，安装调试金手指...");
+                
+                try
+                {
+                    // 直接调用TamperMachine的InstallAtmosphereCheat方法
+                    device.TamperMachine.InstallAtmosphereCheat(
+                        "NCE调试信息",
+                        buildIds.FirstOrDefault() ?? "unknown",
+                        new[] { 
+                            $"# NCE调试信息",
+                            $"# ASLR偏移: 0x{aslrOffset:X}",
+                            $"# 主NSO基址: 0x{mainNsoBase:X}",
+                            $"# ASLR基址: 0x{actualAslrBase:X}",
+                            $"# 原始codeStart: 0x{codeStart:X}"
+                        },
+                        tamperInfo,
+                        mainNsoBase);  // 使用主NSO基址作为exeAddress
+                    
+                    Logger.Info?.Print(LogClass.Loader, "NCE调试金手指已安装");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error?.Print(LogClass.Loader, $"安装NCE调试金手指失败: {ex.Message}");
+                }
+            }
+            // ==== 关键修改结束 ====
+
+            // Once everything is loaded, we can load cheats.
+            device.Configuration.VirtualFileSystem.ModLoader.LoadCheats(programId, tamperInfo);
 
             ProcessResult processResult = new(
                 metaLoader,
