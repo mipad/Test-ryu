@@ -4,7 +4,7 @@ using Ryujinx.Common.Logging;
 
 namespace Ryujinx.HLE.HOS.Kernel.Process
 {
-    class ProcessTamperInfo
+    public class ProcessTamperInfo  // 将 class 改为 public
     {
         public KProcess Process { get; }
         public IEnumerable<string> BuildIds { get; }
