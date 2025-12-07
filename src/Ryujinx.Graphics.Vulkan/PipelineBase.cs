@@ -1035,7 +1035,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        private void SetRenderTargetsInternal(ITexture[] colors, ITexture depthStencil, bool filterWriteMasked)
+        private void SetRenderTargetsInternal(Span<ITexture> colors, ITexture depthStencil, bool filterWriteMasked)
         {
             CreateFramebuffer(colors, depthStencil, filterWriteMasked);
             CreateRenderPass();
@@ -1043,7 +1043,7 @@ namespace Ryujinx.Graphics.Vulkan
             SignalAttachmentChange();
         }
 
-        public void SetRenderTargets(ITexture[] colors, ITexture depthStencil)
+        public void SetRenderTargets(Span<ITexture> colors, ITexture depthStencil)
         {
             _framebufferUsingColorWriteMask = false;
             SetRenderTargetsInternal(colors, depthStencil, Gd.IsTBDR);
@@ -1181,7 +1181,7 @@ namespace Ryujinx.Graphics.Vulkan
 
                 if (!attribute.IsZero)
                 {
-                    newVbScalarSizes[rawIndex] = Math.Max(newVbScalarSizes[rawIndex], attribute.Format.GetScalarSize());
+                    newVbScalarSizes[rawIndex] = Math.Max(newVbScalarSizes[rawIndex], attribute.Format.ScalarSize);
                     dirtyVbSizes |= 1u << rawIndex;
                 }
 
@@ -1389,7 +1389,7 @@ namespace Ryujinx.Graphics.Vulkan
             _currentPipelineHandle = 0;
         }
 
-        private void CreateFramebuffer(ITexture[] colors, ITexture depthStencil, bool filterWriteMasked)
+        private void CreateFramebuffer(Span<ITexture> colors, ITexture depthStencil, bool filterWriteMasked)
         {
             if (filterWriteMasked)
             {
@@ -1399,7 +1399,7 @@ namespace Ryujinx.Graphics.Vulkan
                 // Just try to remove duplicate attachments.
                 // Save a copy of the array to rebind when mask changes.
 
-                void MaskOut()
+                void MaskOut(ReadOnlySpan<ITexture> colors)
                 {
                     if (!_framebufferUsingColorWriteMask)
                     {
@@ -1436,12 +1436,12 @@ namespace Ryujinx.Graphics.Vulkan
                             if (vkBlend.ColorWriteMask == 0)
                             {
                                 colors[i] = null;
-                                MaskOut();
+                                MaskOut(colors);
                             }
                             else if (vkBlend2.ColorWriteMask == 0)
                             {
                                 colors[j] = null;
-                                MaskOut();
+                                MaskOut(colors);
                             }
                         }
                     }
@@ -1575,7 +1575,7 @@ namespace Ryujinx.Graphics.Vulkan
                     // May need to enforce feedback loop layout here in the future.
                     // Though technically, it should always work with the general layout.
 
-                    if (view.Info.Format.IsDepthOrStencil())
+                    if (view.Info.Format.IsDepthOrStencil)
                     {
                         if (_passWritesDepthStencil)
                         {
@@ -1698,7 +1698,7 @@ namespace Ryujinx.Graphics.Vulkan
 
                 Auto<DisposablePipeline> pipeline = pbp == PipelineBindPoint.Compute
                     ? _newState.CreateComputePipeline(Gd, Device, _program, PipelineCache)
-                    : _newState.CreateGraphicsPipeline(Gd, Device, _program, PipelineCache, _renderPass!.Get(Cbs).Value);
+                    : _newState.CreateGraphicsPipeline(Gd, Device, _program, PipelineCache, _renderPass.Get(Cbs).Value);
 
                 if (pipeline == null)
                 {

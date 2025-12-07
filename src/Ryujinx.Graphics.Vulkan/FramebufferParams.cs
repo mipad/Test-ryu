@@ -38,7 +38,7 @@ namespace Ryujinx.Graphics.Vulkan
         {
             Format format = view.Info.Format;
 
-            bool isDepthStencil = format.IsDepthOrStencil();
+            bool isDepthStencil = format.IsDepthOrStencil;
 
             _device = device;
             _attachments = [view.GetImageViewForAttachment()];
@@ -62,8 +62,8 @@ namespace Ryujinx.Graphics.Vulkan
             AttachmentSamples = [(uint)view.Info.Samples];
             AttachmentFormats = [view.VkFormat];
             AttachmentIndices = isDepthStencil ? [] : [0];
-            AttachmentIntegerFormatMask = format.IsInteger() ? 1u : 0u;
-            LogicOpsAllowed = !format.IsFloatOrSrgb();
+            AttachmentIntegerFormatMask = format.IsInt ? 1u : 0u;
+            LogicOpsAllowed = !format.IsFloatOrSrgb;
 
             AttachmentsCount = 1;
             _totalCount = 1;
@@ -71,17 +71,31 @@ namespace Ryujinx.Graphics.Vulkan
             HasDepthStencil = isDepthStencil;
         }
 
-        public FramebufferParams(Device device, ITexture[] colors, ITexture depthStencil)
+        public FramebufferParams(Device device, ReadOnlySpan<ITexture> colors, ITexture depthStencil)
         {
             _device = device;
 
-            int colorsCount = colors.Count(IsValidTextureView);
+            int colorsCount = 0;
+            _colorsCanonical = new TextureView[colors.Length];
+
+            for (int i = 0; i < colors.Length; i++)
+            {
+                ITexture color = colors[i];
+                if (color is TextureView { Valid: true } view)
+                {
+                    colorsCount++;
+                    _colorsCanonical[i] = view;
+                }
+                else
+                {
+                    _colorsCanonical[i] = null;
+                }
+            }
 
             int count = colorsCount + (IsValidTextureView(depthStencil) ? 1 : 0);
 
             _attachments = new Auto<DisposableImageView>[count];
             _colors = new TextureView[colorsCount];
-            _colorsCanonical = colors.Select(color => color is TextureView view && view.Valid ? view : null).ToArray();
 
             AttachmentSamples = new uint[count];
             AttachmentFormats = new VkFormat[count];
@@ -113,12 +127,12 @@ namespace Ryujinx.Graphics.Vulkan
 
                     Format format = texture.Info.Format;
 
-                    if (format.IsInteger())
+                    if (format.IsInt)
                     {
                         attachmentIntegerFormatMask |= 1u << bindIndex;
                     }
 
-                    allFormatsFloatOrSrgb &= format.IsFloatOrSrgb();
+                    allFormatsFloatOrSrgb &= format.IsFloatOrSrgb;
 
                     width = Math.Min(width, (uint)texture.Width);
                     height = Math.Min(height, (uint)texture.Height);
@@ -165,9 +179,17 @@ namespace Ryujinx.Graphics.Vulkan
             _totalCount = colors.Length;
         }
         
-        public FramebufferParams Update(ITexture[] colors, ITexture depthStencil)
+        public FramebufferParams Update(ReadOnlySpan<ITexture> colors, ITexture depthStencil)
         {
-            int colorsCount = colors.Count(IsValidTextureView);
+            int colorsCount = 0;
+            
+            foreach (ITexture color in colors)
+            {
+                if (IsValidTextureView(color))
+                {
+                    colorsCount++;
+                }
+            }
 
             int count = colorsCount + (IsValidTextureView(depthStencil) ? 1 : 0);
             
@@ -250,12 +272,12 @@ namespace Ryujinx.Graphics.Vulkan
 
                     Format format = texture.Info.Format;
 
-                    if (format.IsInteger())
+                    if (format.IsInt)
                     {
                         attachmentIntegerFormatMask |= 1u << bindIndex;
                     }
 
-                    allFormatsFloatOrSrgb &= format.IsFloatOrSrgb();
+                    allFormatsFloatOrSrgb &= format.IsFloatOrSrgb;
 
                     width = Math.Min(width, (uint)texture.Width);
                     height = Math.Min(height, (uint)texture.Height);
@@ -330,12 +352,12 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 Format format = _colors[index].Info.Format;
 
-                if (format.IsSint())
+                if (format.IsSignedInt)
                 {
                     return ComponentType.SignedInteger;
                 }
 
-                if (format.IsUint())
+                if (format.IsUnsignedInt)
                 {
                     return ComponentType.UnsignedInteger;
                 }
