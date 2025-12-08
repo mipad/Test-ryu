@@ -48,13 +48,21 @@ namespace Ryujinx.Cpu.Nce
             }
         }
 
-        private enum JumpType
+        /// <summary>
+        /// Jump type for patch operations.
+        /// </summary>
+        public enum JumpType
         {
-            Auto,           // 自动选择最佳跳转方式
-            Direct26Bit,    // 26位直接跳转 (±128MB)
-            Direct19Bit,    // 19位直接跳转 (±1MB) - ADR
-            IndirectLoad,   // 间接加载跳转 (无范围限制)
-            Trampoline      // 通过跳板跳转
+            /// <summary>Automatically select the best jump method</summary>
+            Auto,
+            /// <summary>26-bit direct jump (±128MB range)</summary>
+            Direct26Bit,
+            /// <summary>19-bit direct jump (±1MB range) using ADR</summary>
+            Direct19Bit,
+            /// <summary>Indirect load jump (unlimited range)</summary>
+            IndirectLoad,
+            /// <summary>Jump through trampoline</summary>
+            Trampoline
         }
 
         /// <inheritdoc/>
