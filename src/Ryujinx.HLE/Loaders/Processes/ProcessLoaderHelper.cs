@@ -436,7 +436,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                 $"NCE Mode: {(nsoPatch[0] != null ? "NCE" : "JIT")}, " +
                 $"CodeStart: 0x{codeStart:X}, " +
                 $"CodeRegionStart: 0x{process.MemoryManager.CodeRegionStart:X}, " +
-                $"ActualAslrAddress: 0x{actualAslrAddress:X}, " +
+                $"ActualAslrAddress: 0x{actualAslrAddress:X}");
               //  $"Process Entrypoint: 0x{process.entrypoint:X}");
 
             // Keep the build ids because the tamper machine uses them to know which process to associate a
