@@ -131,81 +131,106 @@ namespace Ryujinx.Cpu.Nce
 
             uint[] code = _code.ToArray();
 
-            // First pass: process all patch targets and generate trampolines if needed
+            // First, make original code pages writable
+            var textPages = new HashSet<ulong>();
             foreach (var patchTarget in _patchTargets)
             {
-                ulong instPatchStartAddress = patchAddress + (ulong)patchTarget.PatchStartIndex * sizeof(uint);
                 ulong instTextAddress = textAddress + (ulong)patchTarget.TextIndex * sizeof(uint);
-                ulong instPatchBranchAddress = patchAddress + (ulong)patchTarget.PatchBranchIndex * sizeof(uint);
+                ulong pageStart = BitUtils.AlignDown(instTextAddress, 0x1000);
+                textPages.Add(pageStart);
+            }
 
-                // Determine the best jump type
-                JumpType jumpType = DetermineJumpType(patchTarget, instTextAddress, instPatchStartAddress);
+            foreach (ulong page in textPages)
+            {
+                memoryManager.Reprotect(page, 0x1000, MemoryPermission.ReadAndWrite);
+            }
 
-                // Generate the jump instruction
-                uint jumpInstruction = GenerateJumpInstruction(
-                    jumpType, 
-                    instTextAddress, 
-                    instPatchStartAddress,
-                    out uint[] additionalCode);
-
-                // Write the jump to the original code location
-                memoryManager.Write(instTextAddress, jumpInstruction);
-
-                // If additional code is needed (for indirect jumps), write it after the jump
-                if (additionalCode != null && additionalCode.Length > 0)
+            try
+            {
+                // First pass: process all patch targets and generate trampolines if needed
+                foreach (var patchTarget in _patchTargets)
                 {
-                    for (int i = 0; i < additionalCode.Length; i++)
+                    ulong instPatchStartAddress = patchAddress + (ulong)patchTarget.PatchStartIndex * sizeof(uint);
+                    ulong instTextAddress = textAddress + (ulong)patchTarget.TextIndex * sizeof(uint);
+                    ulong instPatchBranchAddress = patchAddress + (ulong)patchTarget.PatchBranchIndex * sizeof(uint);
+
+                    // Determine the best jump type
+                    JumpType jumpType = DetermineJumpType(patchTarget, instTextAddress, instPatchStartAddress);
+
+                    // Generate the jump instruction
+                    uint jumpInstruction = GenerateJumpInstruction(
+                        jumpType, 
+                        instTextAddress, 
+                        instPatchStartAddress,
+                        out uint[] additionalCode);
+
+                    // Write the jump to the original code location
+                    memoryManager.Write(instTextAddress, jumpInstruction);
+
+                    // If additional code is needed (for indirect jumps), write it after the jump
+                    if (additionalCode != null && additionalCode.Length > 0)
                     {
-                        memoryManager.Write(instTextAddress + (ulong)((i + 1) * sizeof(uint)), additionalCode[i]);
+                        for (int i = 0; i < additionalCode.Length; i++)
+                        {
+                            memoryManager.Write(instTextAddress + (ulong)((i + 1) * sizeof(uint)), additionalCode[i]);
+                        }
+                    }
+
+                    // Handle the return branch in patch code
+                    if (patchTarget.PatchBranchIndex >= 0)
+                    {
+                        ulong returnTargetAddress = instTextAddress + (ulong)sizeof(uint);
+                        long returnOffset = (long)returnTargetAddress - (long)instPatchBranchAddress;
+                        
+                        // Check if return jump needs special handling
+                        if (Math.Abs(returnOffset) < (1 << 27)) // Within ±128MB
+                        {
+                            code[patchTarget.PatchBranchIndex] = 0x14000000u | EncodeSImm26_2(checked((int)returnOffset));
+                        }
+                        else
+                        {
+                            // Generate indirect return jump
+                            code[patchTarget.PatchBranchIndex] = GenerateIndirectJump(
+                                instPatchBranchAddress, returnTargetAddress);
+                        }
+                    }
+
+                    // Store trampoline if created
+                    if (jumpType == JumpType.Trampoline)
+                    {
+                        ulong trampolineAddr = _trampolineBaseAddress + (ulong)_trampolines.Count * 4 * sizeof(uint);
+                        uint[] trampolineCode = CreateTrampolineCode(instPatchStartAddress, trampolineAddr);
+                        _trampolines.Add(new TrampolineEntry(instPatchStartAddress, trampolineAddr, trampolineCode));
                     }
                 }
 
-                // Handle the return branch in patch code
-                if (patchTarget.PatchBranchIndex >= 0)
+                // Write the main patch code
+                if (Size != 0)
                 {
-                    ulong returnTargetAddress = instTextAddress + (ulong)sizeof(uint);
-                    long returnOffset = (long)returnTargetAddress - (long)instPatchBranchAddress;
+                    memoryManager.Write(patchAddress, MemoryMarshal.Cast<uint, byte>(code));
+                    memoryManager.Reprotect(patchAddress, Size, MemoryPermission.ReadAndExecute);
+                }
+
+                // Write trampoline code
+                if (_trampolines.Count > 0)
+                {
+                    foreach (var trampoline in _trampolines)
+                    {
+                        memoryManager.Write(trampoline.TrampolineAddress, 
+                            MemoryMarshal.Cast<uint, byte>(trampoline.Code));
+                    }
                     
-                    // Check if return jump needs special handling
-                    if (Math.Abs(returnOffset) < (1 << 27)) // Within ±128MB
-                    {
-                        code[patchTarget.PatchBranchIndex] |= EncodeSImm26_2(checked((int)returnOffset));
-                    }
-                    else
-                    {
-                        // Generate indirect return jump
-                        code[patchTarget.PatchBranchIndex] = GenerateIndirectJump(
-                            instPatchBranchAddress, returnTargetAddress);
-                    }
-                }
-
-                // Store trampoline if created
-                if (jumpType == JumpType.Trampoline)
-                {
-                    ulong trampolineAddr = _trampolineBaseAddress + (ulong)_trampolines.Count * 4 * sizeof(uint);
-                    uint[] trampolineCode = CreateTrampolineCode(instPatchStartAddress, trampolineAddr);
-                    _trampolines.Add(new TrampolineEntry(instPatchStartAddress, trampolineAddr, trampolineCode));
+                    memoryManager.Reprotect(_trampolineBaseAddress, TrampolineSize, 
+                        MemoryPermission.ReadAndExecute);
                 }
             }
-
-            // Write the main patch code
-            if (Size != 0)
+            finally
             {
-                memoryManager.Write(patchAddress, MemoryMarshal.Cast<uint, byte>(code));
-                memoryManager.Reprotect(patchAddress, Size, MemoryPermission.ReadAndExecute);
-            }
-
-            // Write trampoline code
-            if (_trampolines.Count > 0)
-            {
-                foreach (var trampoline in _trampolines)
+                // Restore original code page permissions
+                foreach (ulong page in textPages)
                 {
-                    memoryManager.Write(trampoline.TrampolineAddress, 
-                        MemoryMarshal.Cast<uint, byte>(trampoline.Code));
+                    memoryManager.Reprotect(page, 0x1000, MemoryPermission.ReadAndExecute);
                 }
-                
-                memoryManager.Reprotect(_trampolineBaseAddress, TrampolineSize, 
-                    MemoryPermission.ReadAndExecute);
             }
         }
 
@@ -345,110 +370,25 @@ namespace Ryujinx.Cpu.Nce
         }
 
         /// <summary>
-        /// Write patches with optimal layout to minimize jump distances.
-        /// </summary>
-        public void WriteWithOptimalLayout(IVirtualMemoryManager memoryManager, ulong textAddress, 
-                                           ulong availableSpaceStart, ulong availableSpaceSize)
-        {
-            // Group patches by their text location to optimize placement
-            var patchesByRegion = new Dictionary<int, List<PatchTarget>>();
-            
-            foreach (var target in _patchTargets)
-            {
-                int region = target.TextIndex / 4096; // 4KB regions
-                if (!patchesByRegion.ContainsKey(region))
-                    patchesByRegion[region] = new List<PatchTarget>();
-                
-                patchesByRegion[region].Add(target);
-            }
-
-            // Allocate patch space near each region
-            ulong currentPatchAddr = availableSpaceStart;
-            var allPatches = new List<(ulong address, uint[] code)>();
-            
-            foreach (var region in patchesByRegion)
-            {
-                int regionStart = region.Key * 4096;
-                ulong regionBase = textAddress + (ulong)regionStart;
-                
-                // Calculate total size needed for this region's patches
-                int totalSize = 0;
-                foreach (var target in region.Value)
-                {
-                    totalSize += (target.PatchBranchIndex - target.PatchStartIndex + 1) * 4;
-                }
-                
-                // Find space near this region (within ±128MB)
-                ulong regionPatchAddr = FindNearbySpace(memoryManager, regionBase, 
-                    (ulong)totalSize, availableSpaceStart, availableSpaceSize);
-                
-                if (regionPatchAddr == 0)
-                {
-                    // Fall back to original method
-                    Write(memoryManager, currentPatchAddr, textAddress);
-                    return;
-                }
-                
-                // Extract and write this region's patch code
-                foreach (var target in region.Value)
-                {
-                    int length = target.PatchBranchIndex - target.PatchStartIndex + 1;
-                    uint[] patchCode = new uint[length];
-                    Array.Copy(_code.ToArray(), target.PatchStartIndex, patchCode, 0, length);
-                    
-                    allPatches.Add((regionPatchAddr, patchCode));
-                    
-                    // Update the patch target with new location
-                    // (In practice, you'd need to modify the data structure to support this)
-                }
-                
-                currentPatchAddr = regionPatchAddr + (ulong)totalSize;
-            }
-
-            // Write all patches to their optimal locations
-            // (Implementation depends on how you track patch locations)
-        }
-
-        /// <summary>
-        /// Find nearby space for patch code.
-        /// </summary>
-        private ulong FindNearbySpace(IVirtualMemoryManager memoryManager, ulong nearAddress, 
-                                     ulong size, ulong start, ulong maxSize)
-        {
-            // Simple implementation: try addresses within 128MB of nearAddress
-            const long maxDistance = 128 * 1024 * 1024; // 128MB
-            
-            // Try addresses above the target
-            for (ulong addr = nearAddress; addr < nearAddress + (ulong)maxDistance; addr += 0x1000)
-            {
-                if (addr >= start && addr + size < start + maxSize)
-                {
-                    // Check if this region is free (simplified)
-                    // In real implementation, you'd query memory manager
-                    return addr;
-                }
-            }
-            
-            // Try addresses below the target
-            for (ulong addr = nearAddress; addr > nearAddress - (ulong)maxDistance && addr > start; addr -= 0x1000)
-            {
-                if (addr >= start && addr + size < start + maxSize)
-                {
-                    return addr;
-                }
-            }
-            
-            return 0; // No suitable space found
-        }
-
-        /// <summary>
         /// Encode 26-bit signed immediate for branch instructions.
         /// </summary>
         private static uint EncodeSImm26_2(int value)
         {
-            uint imm = (uint)(value >> 2) & 0x3ffffff;
-            Debug.Assert(((int)imm << 6) >> 4 == value, $"Failed to encode constant 0x{value:X}.");
-            return imm;
+            // Ensure value is multiple of 4
+            Debug.Assert((value & 3) == 0, $"Branch offset must be multiple of 4, got 0x{value:X}.");
+            
+            // Convert byte offset to instruction offset (divide by 4)
+            int imm26 = value >> 2;
+            
+            // Mask to 26 bits
+            uint encoded = (uint)(imm26 & 0x3FFFFFF);
+            
+            // Verify encoding
+            int decoded = (int)encoded << 2;
+            Debug.Assert(decoded == value, 
+                $"Failed to encode constant 0x{value:X} (encoded=0x{encoded:X}, decoded=0x{decoded:X}).");
+            
+            return encoded;
         }
     }
 }
