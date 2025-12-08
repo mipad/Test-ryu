@@ -93,7 +93,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                 mapInfo[i].ProgramIndex = (byte)i;
             }
 
-            return device.System.LibHacHorizonManager.NsClient.Fs.RegisterProgramIndexMapInfo(mapInfo[..programCount]);
+            return device.System.LibHacHorizonManager.NsClient.Fs.RegisterProgramMapInfo(mapInfo[..programCount]);
         }
 
         public static LibHac.Result EnsureSaveData(Switch device, ApplicationId applicationId, BlitStruct<ApplicationControlProperty> applicationControlProperty)
@@ -264,12 +264,6 @@ namespace Ryujinx.HLE.Loaders.Processes
             NceCpuCodePatch[] nsoPatch = new NceCpuCodePatch[executables.Length];
             ulong[] nsoBase = new ulong[executables.Length];
 
-            // ==== 关键修正：恢复原始版本的计算方式 ====
-            // 原始版本的计算方式是正确的：
-            // - 第一个NSO基址 = codeStart
-            // - 第二个NSO基址 = codeStart + 第一个NSO的大小
-            ulong currentAddress = codeStart;
-            
             for (int index = 0; index < executables.Length; index++)
             {
                 IExecutable nso = executables[index];
@@ -297,24 +291,46 @@ namespace Ryujinx.HLE.Loaders.Processes
                 NceCpuCodePatch codePatch = ArmProcessContextFactory.CreateCodePatchForNce(context, for64Bit, nso.Text);
                 nsoPatch[index] = codePatch;
 
-                // 计算当前NSO的基址
+                // ===== 关键修正：NSO基址计算 =====
                 if (index == 0)
                 {
-                    // 第一个NSO：codeStart
-                    nsoBase[index] = codeStart;
-                    codeSize += nsoSize;
+                    // 第一个NSO：根据模式使用不同的偏移
+                    if (codePatch != null)
+                    {
+                        // NCE模式：codeStart + 补丁大小
+                        nsoBase[index] = codeStart + (codePatch.Size > 0 ? codePatch.Size : 0x1000UL);
+                        Logger.Info?.Print(LogClass.Loader, 
+                            $"NSO[0] NCE模式: 补丁大小=0x{codePatch.Size:X}, nsoBase=0x{nsoBase[index]:X}");
+                    }
+                    else
+                    {
+                        // JIT模式：codeStart + 0x4000
+                        nsoBase[index] = codeStart + 0x4000UL;
+                        Logger.Info?.Print(LogClass.Loader, 
+                            $"NSO[0] JIT模式: nsoBase=0x{nsoBase[index]:X}");
+                    }
+                    
+                    // 为第一个NSO添加补丁大小到codeSize
+                    if (codePatch != null && codePatch.Size > 0)
+                    {
+                        codeSize += codePatch.Size;
+                    }
                 }
                 else
                 {
                     // 后续NSO：基于前一个NSO的结束地址
-                    nsoBase[index] = nsoBase[index - 1] + GetNsoAlignedSize(executables[index - 1]);
-                    codeSize += nsoSize;
+                    IExecutable prevExe = executables[index - 1];
+                    nsoBase[index] = nsoBase[index - 1] + GetNsoAlignedSize(prevExe);
                 }
+
+                codeSize += nsoSize;
 
                 if (arguments != null && argsSize == 0)
                 {
-                    argsStart = nsoBase[index] + nsoSize;
+                    argsStart = codeSize;
+
                     argsSize = (uint)BitUtils.AlignDown(arguments.Length * 2 + ProcessConst.NsoArgsTotalSize - 1, KPageTableBase.PageSize);
+
                     codeSize += argsSize;
                 }
             }
@@ -416,8 +432,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                 return ProcessResult.Failed;
             }
 
-            // ==== 关键修正2：计算实际加载地址 ====
-            // 获取实际的内存区域信息
+            // ===== 获取实际内存区域信息 =====
             ulong actualAslrBase = process.MemoryManager.CodeRegionStart;
             ulong actualHeapBase = process.MemoryManager.HeapRegionStart;
             ulong actualAliasBase = process.MemoryManager.AliasRegionStart;
@@ -427,12 +442,11 @@ namespace Ryujinx.HLE.Loaders.Processes
             Logger.Info?.Print(LogClass.Loader, $"原始codeStart: 0x{codeStart:X}");
             Logger.Info?.Print(LogClass.Loader, $"ReservedSize: 0x{process.Context.ReservedSize:X}");
 
-            // 检查是否为NCE模式（通过是否有NCE补丁判断）
+            // 检查是否为NCE模式
             bool isNceMode = nsoPatch[0] != null;
             ulong[] loadedNsoBase = new ulong[executables.Length];
 
-            // 计算实际加载地址：nsoBase + ReservedSize
-            // 这是最安全的方法，ReservedSize已经考虑了NCE补丁和JIT模式的差异
+            // 计算实际加载地址
             for (int index = 0; index < executables.Length; index++)
             {
                 loadedNsoBase[index] = nsoBase[index] + process.Context.ReservedSize;
@@ -447,9 +461,12 @@ namespace Ryujinx.HLE.Loaders.Processes
             
             if (isNceMode)
             {
-                Logger.Info?.Print(LogClass.Loader, $"NCE模式检测: ASLR基址=0x{actualAslrBase:X}, 补丁大小={nsoPatch[0]?.Size ?? 0:X}");
+                Logger.Info?.Print(LogClass.Loader, 
+                    $"NCE模式检测: ASLR基址=0x{actualAslrBase:X}, " +
+                    $"补丁大小={nsoPatch[0]?.Size ?? 0:X}, " +
+                    $"主NSO地址=0x{loadedNsoBase[0]:X}");
             }
-            
+
             // 加载NSO到内存
             for (int index = 0; index < executables.Length; index++)
             {
@@ -470,26 +487,22 @@ namespace Ryujinx.HLE.Loaders.Processes
 
             // 主NSO基址（第一个NSO的加载地址）
             ulong mainNsoBase = loadedNsoBase[0];
-            // 第二个NSO基址（通常是金手指的目标）
-            ulong secondNsoBase = loadedNsoBase.Length > 1 ? loadedNsoBase[1] : 0;
             
             // 计算偏移用于调试
-            ulong offsetFromAslr = secondNsoBase > 0 ? (secondNsoBase - actualAslrBase) : (mainNsoBase - actualAslrBase);
+            ulong offsetFromAslr = mainNsoBase - actualAslrBase;
             
-            // 记录详细的地址信息，用于调试
+            // 记录详细的地址信息
             Logger.Info?.Print(LogClass.Loader, 
                 $"进程加载完成: " +
                 $"PID={process.Pid}, " +
                 $"主NSO基址=0x{mainNsoBase:X}, " +
-                $"第二个NSO基址=0x{secondNsoBase:X}, " +
                 $"ASLR基址=0x{actualAslrBase:X}, " +
                 $"偏移ASLR=0x{offsetFromAslr:X}, " +
                 $"原始codeStart=0x{codeStart:X}, " +
                 $"ReservedSize=0x{process.Context.ReservedSize:X}, " +
-                $"NCE模式={isNceMode}, " +
-                $"金手指目标基址=0x{secondNsoBase:X}");
+                $"NCE模式={isNceMode}");
             
-            // 创建ProcessTamperInfo，传递重新计算后的地址
+            // 创建ProcessTamperInfo
             ProcessTamperInfo tamperInfo = new(
                 process,
                 buildIds,
@@ -500,38 +513,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                 mainNsoBase,  // 传递主NSO基址
                 codeStart);   // 传递原始codeStart用于偏移计算
 
-            // ==== 安装调试金手指用于验证 ====
-            // 只在NCE模式下安装调试金手指
-            if (isNceMode)
-            {
-                Logger.Info?.Print(LogClass.Loader, "NCE模式检测，安装调试金手指...");
-                
-                try
-                {
-                    // 使用有效的指令而不是注释
-                    var debugInstructions = new[] { 
-                        "04000000 00000000", // 无操作指令
-                        "20000000 00000000"  // 结束指令
-                    };
-                    
-                    // 直接调用TamperMachine的InstallAtmosphereCheat方法
-                    device.TamperMachine.InstallAtmosphereCheat(
-                        "NCE调试信息",
-                        buildIds.FirstOrDefault() ?? "unknown",
-                        debugInstructions,
-                        tamperInfo,
-                        secondNsoBase > 0 ? secondNsoBase : mainNsoBase);  // 使用第二个NSO基址作为exeAddress
-                    
-                    Logger.Info?.Print(LogClass.Loader, "NCE调试金手指已安装");
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error?.Print(LogClass.Loader, $"安装NCE调试金手指失败: {ex.Message}");
-                }
-            }
-            
-            
-            // Once everything is loaded, we can load cheats.
+            // 加载金手指
             device.Configuration.VirtualFileSystem.ModLoader.LoadCheats(programId, tamperInfo, device.TamperMachine);
 
             ProcessResult processResult = new(
@@ -591,49 +573,67 @@ namespace Ryujinx.HLE.Loaders.Processes
 
             try
             {
+                // ===== 关键修正：在NCE模式下，需要先设置补丁区域权限 =====
+                if (codePatch != null && codePatch.Size > 0)
+                {
+                    // 设置补丁区域为可写
+                    ulong patchAddress = baseAddress - codePatch.Size;
+                    Logger.Info?.Print(LogClass.Loader, 
+                        $"NCE补丁: 地址=0x{patchAddress:X}, 大小=0x{codePatch.Size:X}, " +
+                        $"镜像基址=0x{baseAddress:X}");
+                    
+                    Result patchResult = SetProcessMemoryPermission(process, patchAddress, codePatch.Size, KMemoryPermission.ReadAndWrite);
+                    if (patchResult != Result.Success)
+                    {
+                        Logger.Error?.Print(LogClass.Loader, 
+                            $"设置补丁区域权限失败: 地址=0x{patchAddress:X}, 大小=0x{codePatch.Size:X}");
+                        return patchResult;
+                    }
+                    
+                    // 写入补丁
+                    codePatch.Write(process.CpuMemory, patchAddress, textStart);
+                }
+
+                // 写入NSO内容
                 process.CpuMemory.Write(textStart, image.Text);
                 process.CpuMemory.Write(roStart, image.Ro);
                 process.CpuMemory.Write(dataStart, image.Data);
 
                 process.CpuMemory.Fill(bssStart, image.BssSize, 0);
-
-                if (codePatch != null)
-                {
-                    codePatch.Write(process.CpuMemory, baseAddress - codePatch.Size, textStart);
-                }
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Loader, $"写入内存失败: 地址=0x{baseAddress:X}, 错误={ex.Message}");
-                // 使用适当的错误码，这里使用Result.InvalidAddress
+                Logger.Error?.Print(LogClass.Loader, 
+                    $"写入内存失败: 地址=0x{baseAddress:X}, 错误={ex.Message}");
                 return KernelResult.InvalidAddress;
             }
 
-            Result SetProcessMemoryPermission(ulong address, ulong size, KMemoryPermission permission)
-            {
-                if (size == 0)
-                {
-                    return Result.Success;
-                }
-
-                size = BitUtils.AlignUp<ulong>(size, KPageTableBase.PageSize);
-
-                return process.MemoryManager.SetProcessMemoryPermission(address, size, permission);
-            }
-
-            Result result = SetProcessMemoryPermission(textStart, (ulong)image.Text.Length, KMemoryPermission.ReadAndExecute);
+            // 设置内存权限
+            Result result = SetProcessMemoryPermission(process, textStart, (ulong)image.Text.Length, KMemoryPermission.ReadAndExecute);
             if (result != Result.Success)
             {
                 return result;
             }
 
-            result = SetProcessMemoryPermission(roStart, (ulong)image.Ro.Length, KMemoryPermission.Read);
+            result = SetProcessMemoryPermission(process, roStart, (ulong)image.Ro.Length, KMemoryPermission.Read);
             if (result != Result.Success)
             {
                 return result;
             }
 
-            return SetProcessMemoryPermission(dataStart, end - dataStart, KMemoryPermission.ReadAndWrite);
+            return SetProcessMemoryPermission(process, dataStart, end - dataStart, KMemoryPermission.ReadAndWrite);
+        }
+
+        private static Result SetProcessMemoryPermission(KProcess process, ulong address, ulong size, KMemoryPermission permission)
+        {
+            if (size == 0)
+            {
+                return Result.Success;
+            }
+
+            size = BitUtils.AlignUp<ulong>(size, KPageTableBase.PageSize);
+
+            return process.MemoryManager.SetProcessMemoryPermission(address, size, permission);
         }
     }
 }
