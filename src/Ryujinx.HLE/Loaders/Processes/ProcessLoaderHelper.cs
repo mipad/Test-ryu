@@ -540,10 +540,6 @@ namespace Ryujinx.HLE.Loaders.Processes
                 }
             }
             
-            // 安装测试金手指验证功能
-            Logger.Info?.Print(LogClass.Loader, "安装测试金手指验证功能...");
-            device.TamperMachine.InstallTestCheat(tamperInfo);
-
             // Once everything is loaded, we can load cheats.
             device.Configuration.VirtualFileSystem.ModLoader.LoadCheats(programId, tamperInfo, device.TamperMachine);
 
