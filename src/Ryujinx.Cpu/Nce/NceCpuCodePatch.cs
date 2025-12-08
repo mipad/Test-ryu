@@ -66,7 +66,7 @@ namespace Ryujinx.Cpu.Nce
         }
 
         /// <inheritdoc/>
-        public ulong Size => BitUtils.AlignUp((ulong)_code.Count * sizeof(uint), 0x1000UL);
+        public ulong Size => BitUtils.AlignUp<ulong>((ulong)_code.Count * sizeof(uint), 0x1000UL);
 
         /// <summary>
         /// Gets the total size including trampoline space.
@@ -76,7 +76,7 @@ namespace Ryujinx.Cpu.Nce
         /// <summary>
         /// Gets the trampoline section size.
         /// </summary>
-        public ulong TrampolineSize => BitUtils.AlignUp((ulong)_trampolines.Count * 4 * sizeof(uint), 0x1000UL);
+        public ulong TrampolineSize => BitUtils.AlignUp<ulong>((ulong)_trampolines.Count * 4 * sizeof(uint), 0x1000UL);
 
         public NceCpuCodePatch()
         {
@@ -136,7 +136,7 @@ namespace Ryujinx.Cpu.Nce
             foreach (var patchTarget in _patchTargets)
             {
                 ulong instTextAddress = textAddress + (ulong)patchTarget.TextIndex * sizeof(uint);
-                ulong pageStart = BitUtils.AlignDown(instTextAddress, 0x1000);
+                ulong pageStart = BitUtils.AlignDown<ulong>(instTextAddress, 0x1000);
                 textPages.Add(pageStart);
             }
 
