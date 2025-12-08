@@ -58,12 +58,11 @@ namespace Ryujinx.HLE.HOS
 
             ITamperedProcess tamperedProcess = new TamperedKProcess(info.Process);
             
-            // ==== 关键修改：基于偏移的模式判断和地址验证 ====
+            // ==== 关键修改：使用ProcessTamperInfo中的金手指基址 ====
             ulong actualExeAddress = exeAddress;
             
-            // 计算偏移
-            ulong offsetFromAslr = info.MainNsoBase - info.AslrAddress;
-            ulong offsetFromFixed = info.MainNsoBase - info.FixedCodeStart;
+            // 计算偏移（使用第二个NSO的偏移判断模式）
+            ulong offsetFromAslr = info.SecondNsoBase > 0 ? (info.SecondNsoBase - info.AslrAddress) : (info.MainNsoBase - info.AslrAddress);
             
             // 记录地址信息用于调试
             Logger.Info?.Print(LogClass.TamperMachine, 
@@ -73,9 +72,13 @@ namespace Ryujinx.HLE.HOS
             Logger.Info?.Print(LogClass.TamperMachine, 
                 $"  info.MainNsoBase: 0x{info.MainNsoBase:X}");
             Logger.Info?.Print(LogClass.TamperMachine, 
+                $"  info.SecondNsoBase: 0x{info.SecondNsoBase:X}");
+            Logger.Info?.Print(LogClass.TamperMachine, 
+                $"  info.CheatCompileExeAddress: 0x{info.CheatCompileExeAddress:X}");
+            Logger.Info?.Print(LogClass.TamperMachine, 
                 $"  info.AslrAddress: 0x{info.AslrAddress:X}");
             Logger.Info?.Print(LogClass.TamperMachine, 
-                $"  主NSO偏移ASLR: 0x{offsetFromAslr:X}");
+                $"  偏移ASLR: 0x{offsetFromAslr:X}");
             
             // 基于偏移判断模式
             bool isNceModeByOffset = offsetFromAslr == 0xE7000;
@@ -97,15 +100,15 @@ namespace Ryujinx.HLE.HOS
                     $"[模式警告] 未知偏移: 0x{offsetFromAslr:X}, 使用info.IsLikelyNceMode");
             }
             
-            // 验证exeAddress
+            // 验证exeAddress，如果为0或与预期不符，使用ProcessTamperInfo中的金手指基址
             if (exeAddress == 0)
             {
-                // 如果传入0，使用主NSO基址
-                actualExeAddress = info.MainNsoBase;
+                // 如果传入0，使用ProcessTamperInfo中的金手指基址
+                actualExeAddress = info.CheatCompileExeAddress;
                 Logger.Info?.Print(LogClass.TamperMachine,
-                    $"传入的exeAddress为0，使用主NSO基址: 0x{actualExeAddress:X}");
+                    $"传入的exeAddress为0，使用ProcessTamperInfo中的金手指基址: 0x{actualExeAddress:X}");
             }
-            else if (exeAddress != info.MainNsoBase)
+            else if (exeAddress != info.CheatCompileExeAddress)
             {
                 // 检查传入的地址是否在NSO地址列表中
                 if (info.CodeAddresses.Contains(exeAddress))
@@ -117,10 +120,10 @@ namespace Ryujinx.HLE.HOS
                 }
                 else
                 {
-                    // 不在列表中，使用主NSO基址
+                    // 不在列表中，使用ProcessTamperInfo中的金手指基址
                     Logger.Warning?.Print(LogClass.TamperMachine,
-                        $"exeAddress (0x{exeAddress:X}) 不在NSO地址列表中，使用主NSO基址: 0x{info.MainNsoBase:X}");
-                    actualExeAddress = info.MainNsoBase;
+                        $"exeAddress (0x{exeAddress:X}) 不在NSO地址列表中，使用ProcessTamperInfo中的金手指基址: 0x{info.CheatCompileExeAddress:X}");
+                    actualExeAddress = info.CheatCompileExeAddress;
                 }
             }
             
@@ -192,7 +195,7 @@ namespace Ryujinx.HLE.HOS
 
             Activate();
         }
-                
+
 
         private static bool CanInstallOnPid(ulong pid)
         {
