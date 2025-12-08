@@ -1,3 +1,4 @@
+// KProcess.cs (添加一个公共属性来获取入口地址)
 using Ryujinx.Common;
 using Ryujinx.Common.Logging;
 using Ryujinx.Cpu;
@@ -92,6 +93,9 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
         public IVirtualMemoryManager CpuMemory => Context.AddressSpace;
 
         public HleProcessDebugger Debugger { get; private set; }
+
+        // 添加一个公共属性来获取入口地址（用于调试和金手指）
+        public ulong Entrypoint => _entrypoint;
 
         public KProcess(KernelContext context, bool allowCodeMemoryForJit = false) : base(context)
         {
