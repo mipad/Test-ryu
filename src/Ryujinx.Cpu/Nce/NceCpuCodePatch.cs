@@ -14,7 +14,8 @@ namespace Ryujinx.Cpu.Nce
     {
         private readonly List<uint> _code;
         private readonly List<PatchTarget> _patchTargets;
-        private readonly List<TrampolineEntry> _trampolines;
+        private readonly List<TrampolineEntry> _forwardTrampolines;
+        private readonly List<ReturnTrampolineEntry> _returnTrampolines;
         private ulong _trampolineBaseAddress;
         private bool _trampolinesAllocated;
 
@@ -48,6 +49,20 @@ namespace Ryujinx.Cpu.Nce
             }
         }
 
+        private readonly struct ReturnTrampolineEntry
+        {
+            public readonly ulong ReturnAddress;
+            public readonly ulong TrampolineAddress;
+            public readonly uint[] Code;
+
+            public ReturnTrampolineEntry(ulong returnAddress, ulong trampolineAddress, uint[] code)
+            {
+                ReturnAddress = returnAddress;
+                TrampolineAddress = trampolineAddress;
+                Code = code;
+            }
+        }
+
         /// <summary>
         /// Jump type for patch operations.
         /// </summary>
@@ -76,13 +91,15 @@ namespace Ryujinx.Cpu.Nce
         /// <summary>
         /// Gets the trampoline section size.
         /// </summary>
-        public ulong TrampolineSize => BitUtils.AlignUp<ulong>((ulong)_trampolines.Count * 4 * sizeof(uint), 0x1000UL);
+        public ulong TrampolineSize => BitUtils.AlignUp<ulong>(
+            (ulong)(_forwardTrampolines.Count + _returnTrampolines.Count) * 4 * sizeof(uint), 0x1000UL);
 
         public NceCpuCodePatch()
         {
             _code = new List<uint>();
             _patchTargets = new List<PatchTarget>();
-            _trampolines = new List<TrampolineEntry>();
+            _forwardTrampolines = new List<TrampolineEntry>();
+            _returnTrampolines = new List<ReturnTrampolineEntry>();
             _trampolinesAllocated = false;
         }
 
@@ -142,17 +159,27 @@ namespace Ryujinx.Cpu.Nce
 
             foreach (ulong page in textPages)
             {
-                memoryManager.Reprotect(page, 0x1000, MemoryPermission.ReadAndWrite);
+                try
+                {
+                    memoryManager.Reprotect(page, 0x1000, MemoryPermission.ReadAndWrite);
+                }
+                catch
+                {
+                    // Ignore errors, the page might already have write permission
+                }
             }
 
             try
             {
-                // First pass: process all patch targets and generate trampolines if needed
+                // Clear trampoline lists
+                _forwardTrampolines.Clear();
+                _returnTrampolines.Clear();
+
+                // First pass: process all patch targets and generate forward trampolines if needed
                 foreach (var patchTarget in _patchTargets)
                 {
                     ulong instPatchStartAddress = patchAddress + (ulong)patchTarget.PatchStartIndex * sizeof(uint);
                     ulong instTextAddress = textAddress + (ulong)patchTarget.TextIndex * sizeof(uint);
-                    ulong instPatchBranchAddress = patchAddress + (ulong)patchTarget.PatchBranchIndex * sizeof(uint);
 
                     // Determine the best jump type
                     JumpType jumpType = DetermineJumpType(patchTarget, instTextAddress, instPatchStartAddress);
@@ -176,31 +203,57 @@ namespace Ryujinx.Cpu.Nce
                         }
                     }
 
-                    // Handle the return branch in patch code
-                    if (patchTarget.PatchBranchIndex >= 0)
+                    // Store forward trampoline if created
+                    if (jumpType == JumpType.Trampoline)
                     {
-                        ulong returnTargetAddress = instTextAddress + (ulong)sizeof(uint);
-                        long returnOffset = (long)returnTargetAddress - (long)instPatchBranchAddress;
+                        ulong trampolineAddr = _trampolineBaseAddress + (ulong)_forwardTrampolines.Count * 4 * sizeof(uint);
+                        uint[] trampolineCode = CreateTrampolineCode(instPatchStartAddress, trampolineAddr);
+                        _forwardTrampolines.Add(new TrampolineEntry(instPatchStartAddress, trampolineAddr, trampolineCode));
+                    }
+                }
+
+                // Second pass: handle return branches in patch code
+                foreach (var patchTarget in _patchTargets)
+                {
+                    if (patchTarget.PatchBranchIndex < 0)
+                        continue;
+
+                    ulong instPatchBranchAddress = patchAddress + (ulong)patchTarget.PatchBranchIndex * sizeof(uint);
+                    ulong instTextAddress = textAddress + (ulong)patchTarget.TextIndex * sizeof(uint);
+                    ulong returnTargetAddress = instTextAddress + (ulong)sizeof(uint);
+                    
+                    long returnOffset = (long)returnTargetAddress - (long)instPatchBranchAddress;
+                    
+                    // Check if return jump needs special handling
+                    if (Math.Abs(returnOffset) < (1 << 27)) // Within ±128MB
+                    {
+                        // Direct branch back to original code
+                        code[patchTarget.PatchBranchIndex] = 0x14000000u | EncodeSImm26_2(checked((int)returnOffset));
+                    }
+                    else
+                    {
+                        // Use trampoline for return jump
+                        ulong trampolineAddr = _trampolineBaseAddress + 
+                            (ulong)(_forwardTrampolines.Count + _returnTrampolines.Count) * 4 * sizeof(uint);
                         
-                        // Check if return jump needs special handling
-                        if (Math.Abs(returnOffset) < (1 << 27)) // Within ±128MB
+                        // Create return trampoline
+                        uint[] trampolineCode = CreateReturnTrampolineCode(returnTargetAddress, trampolineAddr);
+                        _returnTrampolines.Add(new ReturnTrampolineEntry(
+                            returnTargetAddress, trampolineAddr, trampolineCode));
+                        
+                        // Calculate jump to trampoline
+                        long trampolineOffset = (long)trampolineAddr - (long)instPatchBranchAddress;
+                        if (Math.Abs(trampolineOffset) < (1 << 27))
                         {
-                            code[patchTarget.PatchBranchIndex] = 0x14000000u | EncodeSImm26_2(checked((int)returnOffset));
+                            // Direct branch to trampoline
+                            code[patchTarget.PatchBranchIndex] = 0x14000000u | EncodeSImm26_2(checked((int)trampolineOffset));
                         }
                         else
                         {
-                            // Generate indirect return jump
+                            // Indirect jump to trampoline
                             code[patchTarget.PatchBranchIndex] = GenerateIndirectJump(
-                                instPatchBranchAddress, returnTargetAddress);
+                                instPatchBranchAddress, trampolineAddr);
                         }
-                    }
-
-                    // Store trampoline if created
-                    if (jumpType == JumpType.Trampoline)
-                    {
-                        ulong trampolineAddr = _trampolineBaseAddress + (ulong)_trampolines.Count * 4 * sizeof(uint);
-                        uint[] trampolineCode = CreateTrampolineCode(instPatchStartAddress, trampolineAddr);
-                        _trampolines.Add(new TrampolineEntry(instPatchStartAddress, trampolineAddr, trampolineCode));
                     }
                 }
 
@@ -211,15 +264,23 @@ namespace Ryujinx.Cpu.Nce
                     memoryManager.Reprotect(patchAddress, Size, MemoryPermission.ReadAndExecute);
                 }
 
-                // Write trampoline code
-                if (_trampolines.Count > 0)
+                // Write forward trampoline code
+                foreach (var trampoline in _forwardTrampolines)
                 {
-                    foreach (var trampoline in _trampolines)
-                    {
-                        memoryManager.Write(trampoline.TrampolineAddress, 
-                            MemoryMarshal.Cast<uint, byte>(trampoline.Code));
-                    }
-                    
+                    memoryManager.Write(trampoline.TrampolineAddress, 
+                        MemoryMarshal.Cast<uint, byte>(trampoline.Code));
+                }
+
+                // Write return trampoline code
+                foreach (var trampoline in _returnTrampolines)
+                {
+                    memoryManager.Write(trampoline.TrampolineAddress, 
+                        MemoryMarshal.Cast<uint, byte>(trampoline.Code));
+                }
+
+                // Protect trampoline area
+                if (_forwardTrampolines.Count > 0 || _returnTrampolines.Count > 0)
+                {
                     memoryManager.Reprotect(_trampolineBaseAddress, TrampolineSize, 
                         MemoryPermission.ReadAndExecute);
                 }
@@ -229,7 +290,14 @@ namespace Ryujinx.Cpu.Nce
                 // Restore original code page permissions
                 foreach (ulong page in textPages)
                 {
-                    memoryManager.Reprotect(page, 0x1000, MemoryPermission.ReadAndExecute);
+                    try
+                    {
+                        memoryManager.Reprotect(page, 0x1000, MemoryPermission.ReadAndExecute);
+                    }
+                    catch
+                    {
+                        // Ignore errors
+                    }
                 }
             }
         }
@@ -311,7 +379,9 @@ namespace Ryujinx.Cpu.Nce
                 case JumpType.Trampoline:
                     // Jump to trampoline (which will jump to actual target)
                     // We'll fill this in later when trampoline is created
-                    return 0x14000000u; // Placeholder, will be updated
+                    // For now, return a placeholder - it will be replaced with actual jump
+                    long trampolineOffset = 0; // Will be calculated when trampoline is created
+                    return 0x14000000u | EncodeSImm26_2(checked((int)trampolineOffset));
 
                 default:
                     throw new ArgumentException($"Unsupported jump type: {jumpType}");
@@ -335,8 +405,6 @@ namespace Ryujinx.Cpu.Nce
             int imm19 = (int)(offsetToData >> 2);
             uint ldrInstr = 0x58000000u | (uint)((imm19 & 0x7FFFF) << 5) | 0x11; // X17
             
-            // We need to write the address after this instruction
-            // This requires modifying the patch code array
             return ldrInstr;
         }
 
@@ -370,6 +438,35 @@ namespace Ryujinx.Cpu.Nce
         }
 
         /// <summary>
+        /// Create trampoline code for return jumps.
+        /// </summary>
+        private uint[] CreateReturnTrampolineCode(ulong returnAddress, ulong trampolineAddress)
+        {
+            // Return trampoline: jump back to original code
+            long offset = (long)returnAddress - (long)trampolineAddress;
+            
+            if (Math.Abs(offset) < (1 << 27))
+            {
+                // Can use direct branch from trampoline
+                return new uint[] 
+                {
+                    0x14000000u | EncodeSImm26_2(checked((int)offset))
+                };
+            }
+            else
+            {
+                // Need indirect jump even from trampoline
+                return new uint[]
+                {
+                    0x58000011u, // LDR X17, [PC, #0]
+                    0xD61F0220u, // BR X17
+                    (uint)(returnAddress & 0xFFFFFFFF),
+                    (uint)(returnAddress >> 32)
+                };
+            }
+        }
+
+        /// <summary>
         /// Encode 26-bit signed immediate for branch instructions.
         /// </summary>
         private static uint EncodeSImm26_2(int value)
@@ -380,11 +477,11 @@ namespace Ryujinx.Cpu.Nce
             // Convert byte offset to instruction offset (divide by 4)
             int imm26 = value >> 2;
             
-            // Mask to 26 bits
+            // Mask to 26 bits and ensure it's signed correctly
             uint encoded = (uint)(imm26 & 0x3FFFFFF);
             
             // Verify encoding
-            int decoded = (int)encoded << 2;
+            int decoded = ((int)(encoded << 6)) >> 4; // Sign extend and multiply by 4
             Debug.Assert(decoded == value, 
                 $"Failed to encode constant 0x{value:X} (encoded=0x{encoded:X}, decoded=0x{decoded:X}).");
             
