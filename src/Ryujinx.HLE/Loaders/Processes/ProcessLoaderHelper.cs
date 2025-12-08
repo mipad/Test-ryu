@@ -437,7 +437,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                 $"CodeStart: 0x{codeStart:X}, " +
                 $"CodeRegionStart: 0x{process.MemoryManager.CodeRegionStart:X}, " +
                 $"ActualAslrAddress: 0x{actualAslrAddress:X}, " +
-                $"Process Entrypoint: 0x{process.entrypoint:X}");
+              //  $"Process Entrypoint: 0x{process.entrypoint:X}");
 
             // Keep the build ids because the tamper machine uses them to know which process to associate a
             // tamper to and also keep the starting address of each executable inside a process because some
