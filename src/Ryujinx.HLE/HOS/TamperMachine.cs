@@ -50,9 +50,16 @@ namespace Ryujinx.HLE.HOS
             }
 
             ITamperedProcess tamperedProcess = new TamperedKProcess(info.Process);
-            AtmosphereCompiler compiler = new(exeAddress, info.HeapAddress, info.AliasAddress, info.AslrAddress, tamperedProcess);
             
-            Logger.Debug?.Print(LogClass.TamperMachine, $"Compiling cheat {name} with addresses: Exe=0x{exeAddress:X}, Heap=0x{info.HeapAddress:X}, Alias=0x{info.AliasAddress:X}, Aslr=0x{info.AslrAddress:X}");
+            // 使用进程的实际入口地址而不是传递的exeAddress
+            ulong actualExeAddress = info.Process.Entrypoint; // 使用新增的公共属性
+            
+            AtmosphereCompiler compiler = new(actualExeAddress, info.HeapAddress, info.AliasAddress, info.AslrAddress, tamperedProcess);
+            
+            Logger.Debug?.Print(LogClass.TamperMachine, 
+                $"Compiling cheat {name} with addresses: " +
+                $"ActualExe=0x{actualExeAddress:X}, ExeParam=0x{exeAddress:X}, " +
+                $"Heap=0x{info.HeapAddress:X}, Alias=0x{info.AliasAddress:X}, Aslr=0x{info.AslrAddress:X}");
             
             ITamperProgram program = compiler.Compile(name, rawInstructions);
 
