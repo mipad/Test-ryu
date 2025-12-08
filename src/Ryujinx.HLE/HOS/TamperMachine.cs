@@ -192,33 +192,7 @@ namespace Ryujinx.HLE.HOS
 
             Activate();
         }
-
-        // 安装测试金手指的方法
-        public void InstallTestCheat(ProcessTamperInfo info)
-        {
-            try
-            {
-                string buildId = info.BuildIds.FirstOrDefault() ?? "test";
-                ulong exeAddress = info.MainNsoBase;
                 
-                // 创建一个简单的测试金手指
-                var testInstructions = new[]
-                {
-                    "580F0000 00000000",  // 加载基址
-                    "780F0000 00000100",  // 偏移0x100
-                    "640F0000 00000000 12345678", // 写入测试值
-                    "20000000 00000000"   // 结束
-                };
-                
-                InstallAtmosphereCheat("测试金手指", buildId, testInstructions, info, exeAddress);
-                
-                Logger.Info?.Print(LogClass.TamperMachine, "测试金手指已安装");
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.Print(LogClass.TamperMachine, $"安装测试金手指失败: {ex.Message}");
-            }
-        }
 
         private static bool CanInstallOnPid(ulong pid)
         {
