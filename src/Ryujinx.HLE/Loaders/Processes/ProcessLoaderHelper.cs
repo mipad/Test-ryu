@@ -93,7 +93,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                 mapInfo[i].ProgramIndex = (byte)i;
             }
 
-            return device.System.LibHacHorizonManager.NsClient.Fs.RegisterProgramMapInfo(mapInfo[..programCount]);
+            return device.System.LibHacHorizonManager.NsClient.Fs.RegisterProgramIndexMapInfo(mapInfo[..programCount]);
         }
 
         public static LibHac.Result EnsureSaveData(Switch device, ApplicationId applicationId, BlitStruct<ApplicationControlProperty> applicationControlProperty)
