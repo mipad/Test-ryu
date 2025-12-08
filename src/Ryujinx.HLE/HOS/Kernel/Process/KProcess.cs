@@ -1,4 +1,3 @@
-// KProcess.cs (添加一个公共属性来获取入口地址)
 using Ryujinx.Common;
 using Ryujinx.Common.Logging;
 using Ryujinx.Cpu;
@@ -67,11 +66,14 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
         public bool IsApplication { get; private set; }
         public ulong Pid { get; private set; }
 
-        private ulong _entrypoint;
+        internal ulong _entrypoint; // 从 private 改为 internal
         private ThreadStart _customThreadStart;
         private ulong _imageSize;
         private ulong _mainThreadStackSize;
         private ulong _memoryUsageCapacity;
+
+        // 添加公共属性以便外部访问
+        public ulong Entrypoint => _entrypoint;
 
         // 注意：已移除AslrOffset32Bit常量，因为偏移量在ProcessLoaderHelper中添加
         // private const ulong AslrOffset32Bit = 0x500000;
@@ -93,9 +95,6 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
         public IVirtualMemoryManager CpuMemory => Context.AddressSpace;
 
         public HleProcessDebugger Debugger { get; private set; }
-
-        // 添加一个公共属性来获取入口地址（用于调试和金手指）
-        public ulong Entrypoint => _entrypoint;
 
         public KProcess(KernelContext context, bool allowCodeMemoryForJit = false) : base(context)
         {
@@ -1008,10 +1007,10 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
                     foreach (KThread thread in _threads)
                     {
                         if (thread != currentThread && (thread.SchedFlags & ThreadSchedState.LowMask) != ThreadSchedState.TerminationPending)
-                        {
-                            thread.IncrementReferenceCount();
+                    {
+                        thread.IncrementReferenceCount();
 
-                            blockedThread = thread;
+                        blockedThread = thread;
                             break;
                         }
                     }
