@@ -264,10 +264,10 @@ namespace Ryujinx.HLE.Loaders.Processes
             NceCpuCodePatch[] nsoPatch = new NceCpuCodePatch[executables.Length];
             ulong[] nsoBase = new ulong[executables.Length];
 
-            // ==== 修正1：使用正确的NSO基址计算 ====
-            // 第一个NSO的偏移在不同模式下不同：
-            // - JIT模式：0x4000（从codeStart开始）
-            // - NCE模式：NCE补丁大小（通常0x1000）
+            // ==== 关键修正：恢复原始版本的计算方式 ====
+            // 原始版本的计算方式是正确的：
+            // - 第一个NSO基址 = codeStart
+            // - 第二个NSO基址 = codeStart + 第一个NSO的大小
             ulong currentAddress = codeStart;
             
             for (int index = 0; index < executables.Length; index++)
@@ -300,30 +300,16 @@ namespace Ryujinx.HLE.Loaders.Processes
                 // 计算当前NSO的基址
                 if (index == 0)
                 {
-                    // 第一个NSO：根据模式使用不同的偏移
-                    if (codePatch != null)
-                    {
-                        // NCE模式：codeStart + 补丁大小
-                        nsoBase[index] = codeStart + codePatch.Size;
-                    }
-                    else
-                    {
-                        // JIT模式：codeStart + 0x4000
-                        nsoBase[index] = codeStart + 0x4000UL;
-                    }
+                    // 第一个NSO：codeStart
+                    nsoBase[index] = codeStart;
+                    codeSize += nsoSize;
                 }
                 else
                 {
                     // 后续NSO：基于前一个NSO的结束地址
                     nsoBase[index] = nsoBase[index - 1] + GetNsoAlignedSize(executables[index - 1]);
+                    codeSize += nsoSize;
                 }
-
-                // 更新codeSize
-                if (index == 0)
-                {
-                    codeSize += nsoBase[index] - codeStart;
-                }
-                codeSize += nsoSize;
 
                 if (arguments != null && argsSize == 0)
                 {
@@ -484,20 +470,24 @@ namespace Ryujinx.HLE.Loaders.Processes
 
             // 主NSO基址（第一个NSO的加载地址）
             ulong mainNsoBase = loadedNsoBase[0];
+            // 第二个NSO基址（通常是金手指的目标）
+            ulong secondNsoBase = loadedNsoBase.Length > 1 ? loadedNsoBase[1] : 0;
             
             // 计算偏移用于调试
-            ulong offsetFromAslr = mainNsoBase - actualAslrBase;
+            ulong offsetFromAslr = secondNsoBase > 0 ? (secondNsoBase - actualAslrBase) : (mainNsoBase - actualAslrBase);
             
             // 记录详细的地址信息，用于调试
             Logger.Info?.Print(LogClass.Loader, 
                 $"进程加载完成: " +
                 $"PID={process.Pid}, " +
                 $"主NSO基址=0x{mainNsoBase:X}, " +
+                $"第二个NSO基址=0x{secondNsoBase:X}, " +
                 $"ASLR基址=0x{actualAslrBase:X}, " +
                 $"偏移ASLR=0x{offsetFromAslr:X}, " +
                 $"原始codeStart=0x{codeStart:X}, " +
                 $"ReservedSize=0x{process.Context.ReservedSize:X}, " +
-                $"NCE模式={isNceMode}");
+                $"NCE模式={isNceMode}, " +
+                $"金手指目标基址=0x{secondNsoBase:X}");
             
             // 创建ProcessTamperInfo，传递重新计算后的地址
             ProcessTamperInfo tamperInfo = new(
@@ -530,7 +520,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                         buildIds.FirstOrDefault() ?? "unknown",
                         debugInstructions,
                         tamperInfo,
-                        mainNsoBase);  // 使用主NSO基址作为exeAddress
+                        secondNsoBase > 0 ? secondNsoBase : mainNsoBase);  // 使用第二个NSO基址作为exeAddress
                     
                     Logger.Info?.Print(LogClass.Loader, "NCE调试金手指已安装");
                 }
@@ -540,6 +530,10 @@ namespace Ryujinx.HLE.Loaders.Processes
                 }
             }
             
+            // 安装测试金手指验证功能
+            Logger.Info?.Print(LogClass.Loader, "安装测试金手指验证功能...");
+            device.TamperMachine.InstallTestCheat(tamperInfo);
+
             // Once everything is loaded, we can load cheats.
             device.Configuration.VirtualFileSystem.ModLoader.LoadCheats(programId, tamperInfo, device.TamperMachine);
 
