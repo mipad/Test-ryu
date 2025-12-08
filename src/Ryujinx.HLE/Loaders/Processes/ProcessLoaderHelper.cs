@@ -1,3 +1,4 @@
+// ProcessLoaderHelper.cs (修改后)
 using LibHac.Account;
 using LibHac.Common;
 using LibHac.Fs;
@@ -427,6 +428,17 @@ namespace Ryujinx.HLE.Loaders.Processes
 
             context.Processes.TryAdd(process.Pid, process);
 
+            // 关键修复：计算与KProcess一致的地址
+            ulong actualAslrAddress = codeStart + process.Context.ReservedSize;
+            
+            // 添加调试日志
+            Logger.Info?.Print(LogClass.Loader, 
+                $"NCE Mode: {(nsoPatch[0] != null ? "NCE" : "JIT")}, " +
+                $"CodeStart: 0x{codeStart:X}, " +
+                $"CodeRegionStart: 0x{process.MemoryManager.CodeRegionStart:X}, " +
+                $"ActualAslrAddress: 0x{actualAslrAddress:X}, " +
+                $"Process Entrypoint: 0x{process._entrypoint:X}");
+
             // Keep the build ids because the tamper machine uses them to know which process to associate a
             // tamper to and also keep the starting address of each executable inside a process because some
             // memory modifications are relative to this address.
@@ -436,7 +448,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                 nsoBase,
                 process.MemoryManager.HeapRegionStart,
                 process.MemoryManager.AliasRegionStart,
-                process.MemoryManager.CodeRegionStart);
+                actualAslrAddress);  // 使用修正后的地址
 
             // Once everything is loaded, we can load cheats.
             device.Configuration.VirtualFileSystem.ModLoader.LoadCheats(programId, tamperInfo, device.TamperMachine);
