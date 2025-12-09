@@ -2981,6 +2981,67 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         }
 
         /// <summary>
+        /// 检查指定虚拟地址是否已被映射。
+        /// </summary>
+        /// <param name="va">要检查的虚拟地址</param>
+        /// <returns>如果地址已映射则返回true，否则返回false</returns>
+        public bool IsMapped(ulong va)
+        {
+            lock (_blockManager)
+            {
+                KMemoryBlock block = _blockManager.FindBlock(va);
+                if (block != null)
+                {
+                    KMemoryInfo info = block.GetInfo();
+                    bool isMapped = info.State != MemoryState.Unmapped;
+                    KMemoryInfo.Pool.Release(info);
+                    return isMapped;
+                }
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 检查指定虚拟地址范围是否已被映射。
+        /// </summary>
+        /// <param name="va">要检查的虚拟地址起始地址</param>
+        /// <param name="size">要检查的大小</param>
+        /// <returns>如果整个地址范围都已映射则返回true，否则返回false</returns>
+        public bool IsRangeMapped(ulong va, ulong size)
+        {
+            ulong endVa = va + size;
+            
+            lock (_blockManager)
+            {
+                KMemoryBlock block = _blockManager.FindBlock(va);
+                
+                while (block != null && va < endVa)
+                {
+                    KMemoryInfo info = block.GetInfo();
+                    
+                    if (info.State == MemoryState.Unmapped)
+                    {
+                        KMemoryInfo.Pool.Release(info);
+                        return false;
+                    }
+                    
+                    ulong blockEnd = info.Address + info.Size;
+                    if (blockEnd >= endVa)
+                    {
+                        KMemoryInfo.Pool.Release(info);
+                        return true;
+                    }
+                    
+                    va = blockEnd;
+                    block = block.Successor;
+                    KMemoryInfo.Pool.Release(info);
+                }
+                
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Gets the host regions that make up the given virtual address region.
         /// If any part of the virtual region is unmapped, null is returned.
         /// </summary>
