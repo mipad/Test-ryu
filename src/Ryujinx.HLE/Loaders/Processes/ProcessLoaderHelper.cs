@@ -293,7 +293,8 @@ namespace Ryujinx.HLE.Loaders.Processes
 
                 if (codePatch != null)
                 {
-                    codeSize += codePatch.TotalSize;
+                    // 为补丁代码预留空间（对齐到4KB）
+                    codeSize += BitUtils.AlignUp<ulong>(codePatch.Size, 0x1000UL);
                 }
 
                 nsoBase[index] = codeStart + codeSize;
@@ -494,15 +495,35 @@ namespace Ryujinx.HLE.Loaders.Processes
 
             if (codePatch != null)
             {
-                // 关键修复：尝试在textStart附近寻找合适的补丁地址
-                ulong patchAddress = FindNearbyPatchAddress(process, textStart, codePatch.Size);
-                if (patchAddress == 0)
+                // 关键修复：确保补丁地址已映射且有效
+                // 在原始代码之前分配补丁空间
+                ulong patchAddress = baseAddress - codePatch.Size;
+                
+                // 确保地址对齐
+                patchAddress = BitUtils.AlignDown<ulong>(patchAddress, 0x1000);
+                
+                // 检查地址是否已映射
+                if (!process.MemoryManager.IsRangeMapped(patchAddress, codePatch.Size))
                 {
-                    // 如果找不到合适地址，使用原始方法
-                    patchAddress = baseAddress - codePatch.Size;
+                    // 如果未映射，尝试使用codeStart附近的地址
+                    patchAddress = FindValidPatchAddress(process, textStart, codePatch.Size);
+                    
+                    if (patchAddress == 0)
+                    {
+                        Logger.Error?.Print(LogClass.Loader, $"Failed to find valid patch address for image at 0x{baseAddress:X}");
+                        return Result.InvalidMemoryState;
+                    }
                 }
                 
-                codePatch.Write(process.CpuMemory, patchAddress, textStart);
+                try
+                {
+                    codePatch.Write(process.CpuMemory, patchAddress, textStart);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error?.Print(LogClass.Loader, $"Failed to write patch code at 0x{patchAddress:X}: {ex.Message}");
+                    return Result.InvalidMemoryState;
+                }
             }
 
             Result SetProcessMemoryPermission(ulong address, ulong size, KMemoryPermission permission)
@@ -531,57 +552,50 @@ namespace Ryujinx.HLE.Loaders.Processes
 
             return SetProcessMemoryPermission(dataStart, end - dataStart, KMemoryPermission.ReadAndWrite);
         }
-        
-        private static ulong FindNearbyPatchAddress(KProcess process, ulong textStart, ulong patchSize)
+
+        private static ulong FindValidPatchAddress(KProcess process, ulong textStart, ulong patchSize)
         {
-            // 在textStart附近寻找合适的补丁地址
+            // 在textStart附近寻找有效的补丁地址
             const ulong maxDistance = 0x8000000; // 128MB
             const ulong searchStep = 0x1000; // 4KB
             
-            // 对齐到页边界
-            patchSize = BitUtils.AlignUp<ulong>(patchSize, (ulong)KPageTableBase.PageSize);
+            // 对齐patchSize
+            ulong alignedPatchSize = BitUtils.AlignUp<ulong>(patchSize, searchStep);
             
-            // 先向上搜索
+            // 向上搜索
             for (ulong addr = textStart; addr < textStart + maxDistance; addr += searchStep)
             {
-                if (IsAddressRangeAvailable(process, addr, patchSize))
+                if (process.MemoryManager.IsRangeMapped(addr, alignedPatchSize))
                 {
                     return addr;
                 }
             }
             
-            // 再向下搜索
+            // 向下搜索
             for (ulong addr = textStart > maxDistance ? textStart - maxDistance : 0;
-                 addr < textStart;
+                 addr < textStart; 
                  addr += searchStep)
             {
-                if (IsAddressRangeAvailable(process, addr, patchSize))
+                if (process.MemoryManager.IsRangeMapped(addr, alignedPatchSize))
                 {
                     return addr;
                 }
             }
             
-            return 0; // 未找到合适地址
-        }
-        
-        private static bool IsAddressRangeAvailable(KProcess process, ulong address, ulong size)
-        {
-            try
+            // 尝试使用进程代码区域的末尾
+            ulong codeRegionEnd = process.MemoryManager.CodeRegionStart + process.MemoryManager.CodeRegionSize;
+            if (codeRegionEnd > alignedPatchSize)
             {
-                // 检查地址范围是否已映射
-                for (ulong i = 0; i < size; i += (ulong)KPageTableBase.PageSize)
+                ulong candidate = codeRegionEnd - alignedPatchSize;
+                candidate = BitUtils.AlignDown<ulong>(candidate, searchStep);
+                
+                if (process.MemoryManager.IsRangeMapped(candidate, alignedPatchSize))
                 {
-                    if (process.MemoryManager.IsMapped(address + i))
-                    {
-                        return false;
-                    }
+                    return candidate;
                 }
-                return true;
             }
-            catch
-            {
-                return false;
-            }
+            
+            return 0;
         }
     }
 }
