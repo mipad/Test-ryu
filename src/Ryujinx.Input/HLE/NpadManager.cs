@@ -22,7 +22,7 @@ namespace Ryujinx.Input.HLE
     {
         private readonly CemuHookClient _cemuHookClient;
 
-        private readonly Lock _lock = new();
+        private readonly object _lock = new();
 
         private bool _blockInputUpdates;
 
