@@ -20,28 +20,49 @@ namespace Ryujinx.HLE.HOS
         private readonly ConcurrentQueue<ITamperProgram> _programs = new();
         private long _pressedKeys = 0;
         private readonly Dictionary<string, ITamperProgram> _programDictionary = new();
+        private bool _isRunning = false;
+        private readonly object _threadLock = new object();
 
-        private void Activate()
+        private void ActivateIfNeeded()
         {
-            if (_tamperThread == null || !_tamperThread.IsAlive)
+            lock (_threadLock)
             {
-                Logger.Debug?.Print(LogClass.TamperMachine, "Activating TamperMachine thread");
-                
-                _tamperThread = new Thread(this.TamperRunner)
+                // 检查是否有至少一个启用的金手指
+                bool hasEnabledCheat = false;
+                foreach (var program in _programDictionary.Values)
                 {
-                    Name = "HLE.TamperMachine",
-                };
-                _tamperThread.Start();
-            }
-            else
-            {
-                Logger.Debug?.Print(LogClass.TamperMachine, "TamperMachine thread is already active");
+                    if (program.IsEnabled)
+                    {
+                        hasEnabledCheat = true;
+                        break;
+                    }
+                }
+
+                // 如果有启用的金手指且线程未运行，则启动线程
+                if (hasEnabledCheat && (!_isRunning || _tamperThread == null || !_tamperThread.IsAlive))
+                {
+                    Logger.Debug?.Print(LogClass.TamperMachine, "Activating TamperMachine thread");
+                    
+                    _isRunning = true;
+                    _tamperThread = new Thread(this.TamperRunner)
+                    {
+                        Name = "HLE.TamperMachine",
+                        IsBackground = true
+                    };
+                    _tamperThread.Start();
+                }
+                else if (!hasEnabledCheat && _isRunning)
+                {
+                    // 如果没有启用的金手指且线程正在运行，则停止线程
+                    _isRunning = false;
+                    Logger.Debug?.Print(LogClass.TamperMachine, "No enabled cheats, TamperMachine will stop");
+                }
             }
         }
 
         internal void InstallAtmosphereCheat(string name, string buildId, IEnumerable<string> rawInstructions, ProcessTamperInfo info, ulong exeAddress)
         {
-            Logger.Debug?.Print(LogClass.TamperMachine, $"Installing Atmosphere cheat: {name} for build ID: {buildId}");
+            Logger.Info?.Print(LogClass.TamperMachine, $"Installing Atmosphere cheat: {name} for build ID: {buildId}");
             
             if (!CanInstallOnPid(info.Process.Pid))
             {
@@ -59,19 +80,18 @@ namespace Ryujinx.HLE.HOS
             if (program != null)
             {
                 program.TampersCodeMemory = false;
+                // 默认禁用新安装的金手指
+                program.IsEnabled = false;
 
                 _programs.Enqueue(program);
                 _programDictionary.TryAdd($"{buildId}-{name}", program);
                 
                 Logger.Info?.Print(LogClass.TamperMachine, $"Successfully installed cheat '{name}' with ID {buildId}-{name}");
-                Logger.Debug?.Print(LogClass.TamperMachine, $"Program queue size: {_programs.Count}, Dictionary size: {_programDictionary.Count}");
             }
             else
             {
                 Logger.Error?.Print(LogClass.TamperMachine, $"Failed to compile cheat {name}");
             }
-
-            Activate();
         }
 
         private static bool CanInstallOnPid(ulong pid)
@@ -89,8 +109,9 @@ namespace Ryujinx.HLE.HOS
 
         public void EnableCheats(string[] enabledCheats)
         {
-            Logger.Debug?.Print(LogClass.TamperMachine, $"Enabling cheats: {string.Join(", ", enabledCheats)}");
+            Logger.Info?.Print(LogClass.TamperMachine, $"Enabling {enabledCheats.Length} cheat(s)");
             
+            // 首先禁用所有金手指
             foreach (var program in _programDictionary.Values)
             {
                 program.IsEnabled = false;
@@ -103,7 +124,6 @@ namespace Ryujinx.HLE.HOS
                 {
                     program.IsEnabled = true;
                     enabledCount++;
-                    Logger.Debug?.Print(LogClass.TamperMachine, $"Enabled cheat: {cheat}");
                 }
                 else
                 {
@@ -111,7 +131,10 @@ namespace Ryujinx.HLE.HOS
                 }
             }
             
-            Logger.Info?.Print(LogClass.TamperMachine, $"Enabled {enabledCount} cheat(s) out of {enabledCheats.Length} requested");
+            Logger.Info?.Print(LogClass.TamperMachine, $"Enabled {enabledCount} cheat(s)");
+            
+            // 根据启用状态管理服务线程
+            ActivateIfNeeded();
         }
 
         private static bool IsProcessValid(ITamperedProcess process)
@@ -120,28 +143,40 @@ namespace Ryujinx.HLE.HOS
                           process.State != ProcessState.Exiting && 
                           process.State != ProcessState.Exited;
             
-            if (!isValid)
-            {
-                Logger.Debug?.Print(LogClass.TamperMachine, $"Process is not valid for tampering: State={process.State}");
-            }
-            
             return isValid;
         }
 
         private void TamperRunner()
         {
-            Logger.Info?.Print(LogClass.TamperMachine, "TamperMachine thread running");
+            Logger.Info?.Print(LogClass.TamperMachine, "TamperMachine thread started");
             
             int sleepCounter = 0;
-            int executionCount = 0;
 
-            while (true)
+            while (_isRunning)
             {
-                // Sleep to not consume too much CPU.
+                // 检查是否还有启用的金手指
+                bool hasEnabledCheat = false;
+                foreach (var program in _programDictionary.Values)
+                {
+                    if (program.IsEnabled)
+                    {
+                        hasEnabledCheat = true;
+                        break;
+                    }
+                }
+
+                // 如果没有启用的金手指，退出线程
+                if (!hasEnabledCheat)
+                {
+                    Logger.Info?.Print(LogClass.TamperMachine, "No enabled cheats, stopping TamperMachine thread");
+                    _isRunning = false;
+                    break;
+                }
+
+                // 睡眠以降低CPU使用率
                 if (sleepCounter == 0)
                 {
                     sleepCounter = _programs.Count;
-                    Logger.Debug?.Print(LogClass.TamperMachine, $"Sleeping for {TamperMachineSleepMs}ms, programs count: {_programs.Count}");
                     Thread.Sleep(TamperMachineSleepMs);
                 }
                 else
@@ -151,82 +186,88 @@ namespace Ryujinx.HLE.HOS
 
                 if (!AdvanceTamperingsQueue())
                 {
-                    // No more work to be done.
+                    // 没有更多工作要做
                     Logger.Info?.Print(LogClass.TamperMachine, "TamperMachine thread exiting");
-                    return;
-                }
-                
-                executionCount++;
-                if (executionCount % 100 == 0) // Log every 100 executions
-                {
-                    Logger.Debug?.Print(LogClass.TamperMachine, $"TamperMachine has executed {executionCount} cycles");
+                    _isRunning = false;
+                    break;
                 }
             }
+            
+            Logger.Info?.Print(LogClass.TamperMachine, "TamperMachine thread stopped");
         }
 
         private bool AdvanceTamperingsQueue()
         {
             if (!_programs.TryDequeue(out ITamperProgram program))
             {
-                // No more programs in the queue.
-                Logger.Debug?.Print(LogClass.TamperMachine, "No programs in queue, clearing dictionary");
-                _programDictionary.Clear();
-
+                // 队列中没有程序
                 return false;
             }
 
-            // Check if the process is still suitable for running the tamper program.
+            // 检查进程是否仍然适合运行金手指程序
             if (!IsProcessValid(program.Process))
             {
-                // Exit without re-enqueuing the program because the process is no longer valid.
-                Logger.Warning?.Print(LogClass.TamperMachine, $"Process for program {program.Name} is no longer valid, removing from queue");
+                // 进程不再有效，从字典中移除
+                Logger.Warning?.Print(LogClass.TamperMachine, $"Process for program {program.Name} is no longer valid, removing");
+                RemoveProgramFromDictionary(program);
                 return true;
             }
 
-            // Re-enqueue the tampering program because the process is still valid.
+            // 重新入队金手指程序
             _programs.Enqueue(program);
 
-            // Skip execution if program is not enabled
+            // 如果程序未启用，跳过执行
             if (!program.IsEnabled)
             {
-                Logger.Debug?.Print(LogClass.TamperMachine, $"Skipping disabled program: {program.Name}");
                 return true;
             }
-
-            Logger.Debug?.Print(LogClass.TamperMachine, $"Running tampering program {program.Name}");
 
             try
             {
                 ControllerKeys pressedKeys = (ControllerKeys)Volatile.Read(ref _pressedKeys);
-                Logger.Debug?.Print(LogClass.TamperMachine, $"Current pressed keys: {pressedKeys}");
                 
                 program.Process.TamperedCodeMemory = false;
                 program.Execute(pressedKeys);
 
-                // Detect the first attempt to tamper memory and log it.
+                // 检测首次尝试篡改内存并记录
                 if (!program.TampersCodeMemory && program.Process.TamperedCodeMemory)
                 {
                     program.TampersCodeMemory = true;
                     Logger.Warning?.Print(LogClass.TamperMachine, $"Tampering program {program.Name} modifies code memory so it may not work properly");
                 }
-                
-                Logger.Debug?.Print(LogClass.TamperMachine, $"Successfully executed program {program.Name}");
             }
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.TamperMachine, $"The tampering program {program.Name} crashed: {ex.Message}");
-                Logger.Debug?.Print(LogClass.TamperMachine, $"Exception details: {ex}");
-
-                // Re-enqueue the program even if it crashed, as it might be a temporary issue
+                
+                // 即使崩溃也重新入队程序，因为可能是临时问题
                 _programs.Enqueue(program);
             }
 
             return true;
         }
 
+        private void RemoveProgramFromDictionary(ITamperProgram program)
+        {
+            string keyToRemove = null;
+            foreach (var kvp in _programDictionary)
+            {
+                if (kvp.Value == program)
+                {
+                    keyToRemove = kvp.Key;
+                    break;
+                }
+            }
+            
+            if (keyToRemove != null)
+            {
+                _programDictionary.Remove(keyToRemove);
+            }
+        }
+
         public void UpdateInput(List<GamepadInput> gamepadInputs)
         {
-            // Look for the input of the player one or the handheld.
+            // 查找玩家一或手持设备的输入
             foreach (GamepadInput input in gamepadInputs)
             {
                 if (input.PlayerId == PlayerIndex.Player1 || input.PlayerId == PlayerIndex.Handheld)
@@ -243,7 +284,7 @@ namespace Ryujinx.HLE.HOS
                 }
             }
 
-            // Clear the input because player one is not connected.
+            // 清除输入，因为玩家一未连接
             long oldKeys = Volatile.Read(ref _pressedKeys);
             if (oldKeys != 0)
             {
@@ -255,7 +296,30 @@ namespace Ryujinx.HLE.HOS
         // 添加一个方法来获取当前状态信息，用于调试
         public string GetStatus()
         {
-            return $"Programs in queue: {_programs.Count}, Dictionary entries: {_programDictionary.Count}, Thread alive: {_tamperThread?.IsAlive ?? false}";
+            int enabledCount = 0;
+            foreach (var program in _programDictionary.Values)
+            {
+                if (program.IsEnabled)
+                {
+                    enabledCount++;
+                }
+            }
+            
+            return $"Programs installed: {_programDictionary.Count}, Enabled: {enabledCount}, Thread running: {_isRunning}";
+        }
+        
+        // 添加一个方法来停止所有金手指服务
+        public void StopAllCheats()
+        {
+            Logger.Info?.Print(LogClass.TamperMachine, "Stopping all cheats");
+            
+            foreach (var program in _programDictionary.Values)
+            {
+                program.IsEnabled = false;
+            }
+            
+            _isRunning = false;
+            Logger.Info?.Print(LogClass.TamperMachine, "All cheats disabled");
         }
     }
 }
