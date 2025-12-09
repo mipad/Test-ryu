@@ -14,6 +14,9 @@ pthread_t _renderingThreadIdNative;
 std::chrono::time_point<std::chrono::steady_clock, std::chrono::nanoseconds> _currentTimePoint;
 bool isInitialOrientationFlipped = true;
 
+// 全局单例实例（保持向后兼容）
+static RyujinxOboe::OboeAudioRenderer* g_singleton_renderer = nullptr;
+
 extern "C" {
 
 JNIEXPORT jlong JNICALL
@@ -162,6 +165,86 @@ Java_org_ryujinx_android_NativeHelpers_setIsInitialOrientationFlipped(JNIEnv *en
     isInitialOrientationFlipped = is_flipped;
 }
 
+// ========== 单例 Oboe Audio JNI接口 (保持向后兼容) ==========
+
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_initOboeAudio(JNIEnv *env, jobject thiz, jint sample_rate, jint channel_count) {
+    if (!g_singleton_renderer) {
+        g_singleton_renderer = new RyujinxOboe::OboeAudioRenderer();
+    }
+    return g_singleton_renderer->Initialize(sample_rate, channel_count) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_initOboeAudioWithFormat(JNIEnv *env, jobject thiz, jint sample_rate, jint channel_count, jint sample_format) {
+    if (!g_singleton_renderer) {
+        g_singleton_renderer = new RyujinxOboe::OboeAudioRenderer();
+    }
+    return g_singleton_renderer->InitializeWithFormat(sample_rate, channel_count, sample_format) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_shutdownOboeAudio(JNIEnv *env, jobject thiz) {
+    if (g_singleton_renderer) {
+        g_singleton_renderer->Shutdown();
+        delete g_singleton_renderer;
+        g_singleton_renderer = nullptr;
+    }
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_writeOboeAudio(JNIEnv *env, jobject thiz, jshortArray audio_data, jint num_frames) {
+    if (!g_singleton_renderer || !audio_data || num_frames <= 0) return JNI_FALSE;
+    jshort* data = env->GetShortArrayElements(audio_data, nullptr);
+    if (data) {
+        bool success = g_singleton_renderer->WriteAudio(reinterpret_cast<int16_t*>(data), num_frames);
+        env->ReleaseShortArrayElements(audio_data, data, JNI_ABORT);
+        return success ? JNI_TRUE : JNI_FALSE;
+    }
+    return JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_writeOboeAudioRaw(JNIEnv *env, jobject thiz, jbyteArray audio_data, jint num_frames, jint sample_format) {
+    if (!g_singleton_renderer || !audio_data || num_frames <= 0) return JNI_FALSE;
+    jbyte* data = env->GetByteArrayElements(audio_data, nullptr);
+    if (data) {
+        bool success = g_singleton_renderer->WriteAudioRaw(reinterpret_cast<uint8_t*>(data), num_frames, sample_format);
+        env->ReleaseByteArrayElements(audio_data, data, JNI_ABORT);
+        return success ? JNI_TRUE : JNI_FALSE;
+    }
+    return JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_setOboeVolume(JNIEnv *env, jobject thiz, jfloat volume) {
+    if (g_singleton_renderer) {
+        g_singleton_renderer->SetVolume(volume);
+    }
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_isOboeInitialized(JNIEnv *env, jobject thiz) {
+    return g_singleton_renderer && g_singleton_renderer->IsInitialized() ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_isOboePlaying(JNIEnv *env, jobject thiz) {
+    return g_singleton_renderer && g_singleton_renderer->IsPlaying() ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jint JNICALL
+Java_org_ryujinx_android_NativeHelpers_getOboeBufferedFrames(JNIEnv *env, jobject thiz) {
+    return g_singleton_renderer ? static_cast<jint>(g_singleton_renderer->GetBufferedFrames()) : 0;
+}
+
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_resetOboeAudio(JNIEnv *env, jobject thiz) {
+    if (g_singleton_renderer) {
+        g_singleton_renderer->Reset();
+    }
+}
+
 // ========== 多实例 Oboe Audio JNI接口 ==========
 
 JNIEXPORT jlong JNICALL
@@ -210,11 +293,10 @@ JNIEXPORT jboolean JNICALL
 Java_org_ryujinx_android_NativeHelpers_writeOboeRendererAudioRaw(JNIEnv *env, jobject thiz, jlong renderer_ptr, jbyteArray audio_data, jint num_frames, jint sample_format) {
     auto renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer_ptr);
     if (!renderer || !audio_data || num_frames <= 0) return JNI_FALSE;
-    void* dataPtr = env->GetPrimitiveArrayCritical(audio_data, nullptr);
-    jbyte* data = static_cast<jbyte*>(dataPtr);
+    jbyte* data = env->GetByteArrayElements(audio_data, nullptr);
     if (data) {
         bool success = renderer->WriteAudioRaw(reinterpret_cast<uint8_t*>(data), num_frames, sample_format);
-        env->ReleasePrimitiveArrayCritical(audio_data, data, JNI_ABORT);
+        env->ReleaseByteArrayElements(audio_data, data, JNI_ABORT);
         return success ? JNI_TRUE : JNI_FALSE;
     }
     return JNI_FALSE;
@@ -269,6 +351,62 @@ Java_org_ryujinx_android_NativeHelpers_getAndroidDeviceBrand(JNIEnv *env, jobjec
 }
 
 } // extern "C" 结束
+
+// ========== 单例 Oboe Audio C接口 (保持向后兼容) ==========
+
+bool initOboeAudio(int sample_rate, int channel_count) {
+    if (!g_singleton_renderer) {
+        g_singleton_renderer = new RyujinxOboe::OboeAudioRenderer();
+    }
+    return g_singleton_renderer->Initialize(sample_rate, channel_count);
+}
+
+bool initOboeAudioWithFormat(int sample_rate, int channel_count, int sample_format) {
+    if (!g_singleton_renderer) {
+        g_singleton_renderer = new RyujinxOboe::OboeAudioRenderer();
+    }
+    return g_singleton_renderer->InitializeWithFormat(sample_rate, channel_count, sample_format);
+}
+
+void shutdownOboeAudio() {
+    if (g_singleton_renderer) {
+        g_singleton_renderer->Shutdown();
+        delete g_singleton_renderer;
+        g_singleton_renderer = nullptr;
+    }
+}
+
+bool writeOboeAudio(const int16_t* data, int32_t num_frames) {
+    return g_singleton_renderer && data && num_frames > 0 && g_singleton_renderer->WriteAudio(data, num_frames);
+}
+
+bool writeOboeAudioRaw(const uint8_t* data, int32_t num_frames, int32_t sample_format) {
+    return g_singleton_renderer && data && num_frames > 0 && g_singleton_renderer->WriteAudioRaw(data, num_frames, sample_format);
+}
+
+void setOboeVolume(float volume) {
+    if (g_singleton_renderer) {
+        g_singleton_renderer->SetVolume(volume);
+    }
+}
+
+bool isOboeInitialized() {
+    return g_singleton_renderer && g_singleton_renderer->IsInitialized();
+}
+
+bool isOboePlaying() {
+    return g_singleton_renderer && g_singleton_renderer->IsPlaying();
+}
+
+int32_t getOboeBufferedFrames() {
+    return g_singleton_renderer ? static_cast<int32_t>(g_singleton_renderer->GetBufferedFrames()) : 0;
+}
+
+void resetOboeAudio() {
+    if (g_singleton_renderer) {
+        g_singleton_renderer->Reset();
+    }
+}
 
 // ========== 多实例 Oboe Audio C接口 ==========
 

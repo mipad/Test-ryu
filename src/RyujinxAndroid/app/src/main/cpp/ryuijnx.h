@@ -32,6 +32,18 @@ extern jclass _mainActivityClass;
 extern pthread_t _renderingThreadIdNative;
 
 extern "C" {
+    // 单例接口 (保持向后兼容)
+    bool initOboeAudio(int sample_rate, int channel_count);
+    bool initOboeAudioWithFormat(int sample_rate, int channel_count, int sample_format);
+    void shutdownOboeAudio();
+    bool writeOboeAudio(const int16_t* data, int32_t num_frames);
+    bool writeOboeAudioRaw(const uint8_t* data, int32_t num_frames, int32_t sample_format);
+    void setOboeVolume(float volume);
+    bool isOboeInitialized();
+    bool isOboePlaying();
+    int32_t getOboeBufferedFrames();
+    void resetOboeAudio();
+    
     // 多实例接口
     void* createOboeRenderer();
     void destroyOboeRenderer(void* renderer);
