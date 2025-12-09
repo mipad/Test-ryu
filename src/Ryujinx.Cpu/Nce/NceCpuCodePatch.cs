@@ -14,7 +14,6 @@ namespace Ryujinx.Cpu.Nce
     {
         private readonly List<uint> _code;
         private readonly List<PatchTarget> _patchTargets;
-        private readonly List<(ulong Address, uint[] Code)> _trampolines;
 
         private readonly struct PatchTarget
         {
@@ -32,17 +31,11 @@ namespace Ryujinx.Cpu.Nce
 
         /// <inheritdoc/>
         public ulong Size => BitUtils.AlignUp<ulong>((ulong)_code.Count * sizeof(uint), 0x1000UL);
-        
-        /// <summary>
-        /// Gets the total size including trampolines.
-        /// </summary>
-        public ulong TotalSize => Size + (ulong)_trampolines.Count * 4 * sizeof(uint);
 
         public NceCpuCodePatch()
         {
             _code = new List<uint>();
             _patchTargets = new List<PatchTarget>();
-            _trampolines = new List<(ulong Address, uint[] Code)>();
         }
 
         internal void AddCode(int textIndex, IEnumerable<uint> code)
@@ -52,17 +45,28 @@ namespace Ryujinx.Cpu.Nce
             _patchTargets.Add(new PatchTarget(textIndex, patchStartIndex, _code.Count - 1));
         }
 
-        /// <summary>
-        /// Write all patches to memory.
-        /// </summary>
+        /// <inheritdoc/>
         public void Write(IVirtualMemoryManager memoryManager, ulong patchAddress, ulong textAddress)
         {
-            uint[] code = _code.ToArray();
-            _trampolines.Clear();
+            // 首先检查patchAddress是否已映射且可写
+            if (!memoryManager.IsRangeMapped(patchAddress, Size))
+            {
+                // 尝试映射内存
+                throw new InvalidOperationException($"Patch address 0x{patchAddress:X} is not mapped or invalid. Size: 0x{Size:X}");
+            }
 
-            // 记录需要修改权限的页面
-            var modifiedPages = new HashSet<ulong>();
-            
+            uint[] code = _code.ToArray();
+
+            // 首先确保patchAddress区域可写
+            try
+            {
+                memoryManager.Reprotect(patchAddress, Size, MemoryPermission.ReadAndWrite);
+            }
+            catch
+            {
+                // 如果已经可写，忽略错误
+            }
+
             try
             {
                 foreach (var patchTarget in _patchTargets)
@@ -70,173 +74,109 @@ namespace Ryujinx.Cpu.Nce
                     ulong instPatchStartAddress = patchAddress + (ulong)patchTarget.PatchStartIndex * sizeof(uint);
                     ulong instPatchBranchAddress = patchAddress + (ulong)patchTarget.PatchBranchIndex * sizeof(uint);
                     ulong instTextAddress = textAddress + (ulong)patchTarget.TextIndex * sizeof(uint);
-                    
-                    // 保存原始页面权限并设置为可写
-                    ulong textPage = BitUtils.AlignDown<ulong>(instTextAddress, 0x1000);
-                    modifiedPages.Add(textPage);
-                    
-                    // 计算跳转偏移
-                    long forwardOffset = (long)instPatchStartAddress - (long)instTextAddress;
-                    long returnOffset = (long)(instTextAddress + 4) - (long)instPatchBranchAddress;
-                    
-                    // 检查偏移是否在范围内
-                    bool forwardInRange = Math.Abs(forwardOffset) < (1 << 27);
-                    bool returnInRange = Math.Abs(returnOffset) < (1 << 27);
-                    
-                    if (!forwardInRange || !returnInRange)
+
+                    // 确保原始指令地址可写
+                    try
                     {
-                        // 使用跳板（trampoline）进行间接跳转
-                        ulong trampolineAddress = textAddress + (ulong)((_patchTargets.Count + _trampolines.Count) * 0x1000);
-                        uint[] trampolineCode = CreateTrampoline(instPatchStartAddress, trampolineAddress);
-                        _trampolines.Add((trampolineAddress, trampolineCode));
-                        
-                        // 修改原始指令，跳转到跳板
-                        long trampolineOffset = (long)trampolineAddress - (long)instTextAddress;
-                        if (Math.Abs(trampolineOffset) < (1 << 27))
+                        memoryManager.Reprotect(instTextAddress, (ulong)sizeof(uint), MemoryPermission.ReadAndWrite);
+                    }
+                    catch
+                    {
+                        // 如果已经可写，忽略错误
+                    }
+
+                    try
+                    {
+                        // 计算跳转偏移
+                        long forwardOffset = (long)instPatchStartAddress - (long)instTextAddress;
+                        long returnOffset = (long)(instTextAddress + sizeof(uint)) - (long)instPatchBranchAddress;
+
+                        // 检查偏移是否在范围内（±128MB）
+                        bool forwardInRange = Math.Abs(forwardOffset) < (1 << 27);
+                        bool returnInRange = Math.Abs(returnOffset) < (1 << 27);
+
+                        if (forwardInRange && returnInRange)
                         {
-                            memoryManager.Write(instTextAddress, 0x14000000u | EncodeSImm26_2(checked((int)trampolineOffset)));
+                            // 直接跳转
+                            code[patchTarget.PatchBranchIndex] |= EncodeSImm26_2(checked((int)returnOffset));
+                            memoryManager.Write(instTextAddress, 0x14000000u | EncodeSImm26_2(checked((int)forwardOffset)));
                         }
                         else
                         {
-                            // 如果跳板距离也超出范围，使用间接跳转
-                            memoryManager.Write(instTextAddress, CreateIndirectJump(instTextAddress, trampolineAddress));
-                        }
-                        
-                        // 返回跳转使用直接跳转或间接跳转
-                        if (returnInRange)
-                        {
-                            code[patchTarget.PatchBranchIndex] = 0x14000000u | EncodeSImm26_2(checked((int)returnOffset));
-                        }
-                        else
-                        {
-                            code[patchTarget.PatchBranchIndex] = CreateIndirectJump(instPatchBranchAddress, instTextAddress + 4);
+                            // 使用间接跳转
+                            WriteIndirectJump(memoryManager, instTextAddress, instPatchStartAddress);
+                            WriteIndirectJumpInCode(code, patchTarget.PatchBranchIndex, instPatchBranchAddress, instTextAddress + sizeof(uint));
                         }
                     }
-                    else
+                    finally
                     {
-                        // 使用直接跳转
-                        code[patchTarget.PatchBranchIndex] |= EncodeSImm26_2(checked((int)returnOffset));
-                        memoryManager.Write(instTextAddress, 0x14000000u | EncodeSImm26_2(checked((int)forwardOffset)));
+                        // 恢复原始指令地址权限
+                        try
+                        {
+                            memoryManager.Reprotect(instTextAddress, (ulong)sizeof(uint), MemoryPermission.ReadAndExecute);
+                        }
+                        catch
+                        {
+                            // 忽略错误
+                        }
                     }
                 }
 
-                // 写入主补丁代码
+                // 写入补丁代码
                 if (Size != 0)
                 {
                     memoryManager.Write(patchAddress, MemoryMarshal.Cast<uint, byte>(code));
-                }
-                
-                // 写入跳板代码
-                foreach (var trampoline in _trampolines)
-                {
-                    memoryManager.Write(trampoline.Address, MemoryMarshal.Cast<uint, byte>(trampoline.Code));
-                }
-                
-                // 设置内存权限
-                memoryManager.Reprotect(patchAddress, Size, MemoryPermission.ReadAndExecute);
-                foreach (var trampoline in _trampolines)
-                {
-                    memoryManager.Reprotect(trampoline.Address, (ulong)trampoline.Code.Length * sizeof(uint), MemoryPermission.ReadAndExecute);
+                    memoryManager.Reprotect(patchAddress, Size, MemoryPermission.ReadAndExecute);
                 }
             }
-            finally
+            catch (Exception ex)
             {
-                // 恢复原始页面的权限
-                foreach (var page in modifiedPages)
-                {
-                    memoryManager.Reprotect(page, 0x1000, MemoryPermission.ReadAndExecute);
-                }
+                Debug.WriteLine($"NceCpuCodePatch.Write failed: {ex.Message}");
+                throw;
             }
         }
-        
+
         /// <summary>
-        /// Write patches with automatic nearby allocation.
+        /// 写入间接跳转指令到内存
         /// </summary>
-        public bool WriteNear(IVirtualMemoryManager memoryManager, ulong textAddress, out ulong patchAddress)
+        private void WriteIndirectJump(IVirtualMemoryManager memoryManager, ulong fromAddress, ulong toAddress)
         {
-            patchAddress = 0;
+            // LDR X17, [PC, #8] + BR X17 + 目标地址
+            uint ldrInstr = 0x58000051u; // LDR X17, [PC, #8]
+            uint brInstr = 0xD61F0220u;  // BR X17
             
-            // 尝试在textAddress附近分配补丁代码
-            const ulong maxDistance = 0x8000000; // 128MB
-            const ulong searchStep = 0x1000; // 4KB
+            memoryManager.Write(fromAddress, ldrInstr);
+            memoryManager.Write(fromAddress + 4, brInstr);
+            memoryManager.Write(fromAddress + 8, toAddress);
             
-            // 向上搜索
-            for (ulong addr = textAddress; addr < textAddress + maxDistance; addr += searchStep)
-            {
-                if (TryWriteAtAddress(memoryManager, addr, textAddress))
-                {
-                    patchAddress = addr;
-                    return true;
-                }
-            }
-            
-            // 向下搜索
-            for (ulong addr = textAddress > maxDistance ? textAddress - maxDistance : 0; 
-                 addr < textAddress; 
-                 addr += searchStep)
-            {
-                if (TryWriteAtAddress(memoryManager, addr, textAddress))
-                {
-                    patchAddress = addr;
-                    return true;
-                }
-            }
-            
-            return false;
+            // 确保这段内存可执行
+            memoryManager.Reprotect(fromAddress, 12, MemoryPermission.ReadAndExecute);
         }
-        
-        private bool TryWriteAtAddress(IVirtualMemoryManager memoryManager, ulong patchAddress, ulong textAddress)
+
+        /// <summary>
+        /// 在补丁代码中生成间接跳转指令
+        /// </summary>
+        private void WriteIndirectJumpInCode(uint[] code, int patchBranchIndex, ulong fromAddress, ulong toAddress)
         {
-            try
-            {
-                // 检查该地址区域是否可用
-                for (ulong i = 0; i < Size; i += 0x1000)
-                {
-                    if (memoryManager.IsRangeMapped(patchAddress + i, 0x1000))
-                    {
-                        return false;
-                    }
-                }
-                
-                Write(memoryManager, patchAddress, textAddress);
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-        
-        private uint[] CreateTrampoline(ulong targetAddress, ulong trampolineAddress)
-        {
-            // 创建跳板代码：跳转到目标地址
-            long offset = (long)targetAddress - (long)trampolineAddress;
+            // 计算偏移到内联数据
+            ulong dataAddress = fromAddress + 8; // 跳过LDR和BR指令（各4字节）
+            long offset = (long)toAddress - (long)dataAddress;
             
-            if (Math.Abs(offset) < (1 << 27))
+            // 编码LDR指令：LDR X17, [PC, #imm]
+            int imm19 = (int)(offset >> 2);
+            uint ldrInstr = 0x58000000u | (0x11u << 5) | ((uint)imm19 & 0x7FFFFu);
+            uint brInstr = 0xD61F0220u; // BR X17
+            
+            // 将指令写入补丁代码
+            code[patchBranchIndex] = ldrInstr;
+            
+            // 确保有空间存储BR指令和目标地址
+            if (patchBranchIndex + 3 < code.Length)
             {
-                // 直接跳转
-                return new uint[] 
-                { 
-                    0x14000000u | EncodeSImm26_2(checked((int)offset))
-                };
+                code[patchBranchIndex + 1] = brInstr;
+                code[patchBranchIndex + 2] = (uint)(toAddress & 0xFFFFFFFF);
+                code[patchBranchIndex + 3] = (uint)(toAddress >> 32);
             }
-            else
-            {
-                // 间接跳转
-                return new uint[]
-                {
-                    0x58000051u, // LDR X17, [PC, #8]
-                    0xD61F0220u, // BR X17
-                    (uint)(targetAddress & 0xFFFFFFFF),
-                    (uint)(targetAddress >> 32)
-                };
-            }
-        }
-        
-        private uint CreateIndirectJump(ulong fromAddress, ulong toAddress)
-        {
-            // LDR X17, [PC, #8] + BR X17 + target address
-            return 0x58000051u; // LDR X17, [PC, #8]
         }
 
         private static uint EncodeSImm26_2(int value)
