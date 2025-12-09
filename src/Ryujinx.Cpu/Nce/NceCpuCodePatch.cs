@@ -48,15 +48,6 @@ namespace Ryujinx.Cpu.Nce
         /// <inheritdoc/>
         public void Write(IVirtualMemoryManager memoryManager, ulong patchAddress, ulong textAddress)
         {
-            // 首先检查patchAddress是否已映射且可写
-            if (!memoryManager.IsRangeMapped(patchAddress, Size))
-            {
-                // 尝试映射内存
-                throw new InvalidOperationException($"Patch address 0x{patchAddress:X} is not mapped or invalid. Size: 0x{Size:X}");
-            }
-
-            uint[] code = _code.ToArray();
-
             // 首先确保patchAddress区域可写
             try
             {
@@ -66,6 +57,8 @@ namespace Ryujinx.Cpu.Nce
             {
                 // 如果已经可写，忽略错误
             }
+
+            uint[] code = _code.ToArray();
 
             try
             {
@@ -148,9 +141,6 @@ namespace Ryujinx.Cpu.Nce
             memoryManager.Write(fromAddress, ldrInstr);
             memoryManager.Write(fromAddress + 4, brInstr);
             memoryManager.Write(fromAddress + 8, toAddress);
-            
-            // 确保这段内存可执行
-            memoryManager.Reprotect(fromAddress, 12, MemoryPermission.ReadAndExecute);
         }
 
         /// <summary>
