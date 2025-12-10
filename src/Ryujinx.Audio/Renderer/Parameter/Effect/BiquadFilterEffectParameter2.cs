@@ -23,7 +23,7 @@ namespace Ryujinx.Audio.Renderer.Parameter.Effect
         /// <summary>
         /// Reserved/unused.
         /// </summary>
-        private readonly uint _padding;
+       // private readonly uint _padding;
 
         /// <summary>
         /// Biquad filter numerator (b0, b1, b2).
