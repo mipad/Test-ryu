@@ -60,22 +60,14 @@ public:
     float GetVolume() const { return m_volume.load(); }
 
     void Reset();
-    void Flush();  // 新增：清空所有缓冲数据
 
 private:
     class AAudioExclusiveCallback : public oboe::AudioStreamDataCallback {
     public:
         explicit AAudioExclusiveCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
         oboe::DataCallbackResult onAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) override;
-    private:
-        OboeAudioRenderer* m_renderer;
-    };
-
-    class AAudioExclusiveErrorCallback : public oboe::AudioStreamErrorCallback {
-    public:
-        explicit AAudioExclusiveErrorCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
-        void onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) override;
         void onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) override;
+        void onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) override;
     private:
         OboeAudioRenderer* m_renderer;
     };
@@ -88,6 +80,8 @@ private:
     oboe::DataCallbackResult OnAudioReadyMultiFormat(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames);
     void OnStreamErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error);
     void OnStreamErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error);
+    
+    void HandleStreamError(oboe::Result error);
 
     oboe::AudioFormat MapSampleFormat(int32_t format);
     static size_t GetBytesPerSample(int32_t format);
@@ -99,17 +93,18 @@ private:
     void StartCleanupThread();
     void StopCleanupThread();
     
-    // 辅助函数
-    bool IsFrameAligned(size_t bytes, int32_t channels, int32_t format) const;
-    size_t AlignToFrameBoundary(size_t bytes, int32_t channels, int32_t format) const;
+    // 状态检查函数
+    bool CheckStreamState();
+    void ForceRestartStream();
 
     std::shared_ptr<oboe::AudioStream> m_stream;
     std::unique_ptr<AAudioExclusiveCallback> m_audio_callback;
-    std::unique_ptr<AAudioExclusiveErrorCallback> m_error_callback;
     
     std::mutex m_stream_mutex;
     std::atomic<bool> m_initialized{false};
     std::atomic<bool> m_stream_started{false};
+    std::atomic<bool> m_stream_error{false};
+    std::atomic<int32_t> m_error_count{0};
     
     std::atomic<int32_t> m_sample_rate{48000};
     std::atomic<int32_t> m_channel_count{2};
@@ -133,6 +128,9 @@ private:
     std::thread m_cleanup_thread;
     
     std::unique_ptr<AudioBlock> m_current_block;
+    
+    // 防止多次重试
+    std::chrono::steady_clock::time_point m_last_error_time;
 };
 
 } // namespace RyujinxOboe
