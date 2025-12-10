@@ -27,11 +27,8 @@ struct AudioBlock {
     bool consumed = true;
     
     void clear() {
-        // 清空整个数据缓冲区，避免残留的旧数据导致杂音
-        std::memset(data, 0, BLOCK_SIZE);
         data_size = 0;
         data_played = 0;
-        sample_format = PCM_INT16;
         consumed = true;
     }
     
