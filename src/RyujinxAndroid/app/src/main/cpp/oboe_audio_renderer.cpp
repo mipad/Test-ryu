@@ -1,56 +1,54 @@
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
+#include <thread>
 #include <chrono>
 
 namespace RyujinxOboe {
 
 OboeAudioRenderer::OboeAudioRenderer() {
-    m_audio_callback = std::make_unique<AAudioExclusiveCallback>(this);
-    StartCleanupThread();
-    m_last_error_time = std::chrono::steady_clock::now();
+    m_audio_callback = std::make_unique<SimpleAudioCallback>(this);
+    m_error_callback = std::make_unique<SimpleErrorCallback>(this);
+    InitializePool();
 }
 
 OboeAudioRenderer::~OboeAudioRenderer() {
     Shutdown();
 }
 
-void OboeAudioRenderer::StartCleanupThread() {
-    m_cleanup_running = true;
-    m_cleanup_thread = std::thread(&OboeAudioRenderer::CleanupThreadFunc, this);
-}
-
-void OboeAudioRenderer::StopCleanupThread() {
-    m_cleanup_running = false;
-    m_release_cv.notify_all();
-    if (m_cleanup_thread.joinable()) {
-        m_cleanup_thread.join();
+void OboeAudioRenderer::InitializePool() {
+    std::lock_guard<std::mutex> lock(m_pool_mutex);
+    const size_t POOL_SIZE = 64;
+    m_block_pool.reserve(POOL_SIZE);
+    
+    for (size_t i = 0; i < POOL_SIZE; ++i) {
+        auto block = std::make_unique<AudioBlock>();
+        block->clear();
+        m_block_pool.push_back(std::move(block));
     }
 }
 
-void OboeAudioRenderer::CleanupThreadFunc() {
-    while (m_cleanup_running) {
-        std::unique_lock<std::mutex> lock(m_release_mutex);
-        
-        m_release_cv.wait_for(lock, std::chrono::milliseconds(10), [this]() {
-            return !m_release_queue.empty() || !m_cleanup_running;
-        });
-        
-        if (!m_cleanup_running) {
-            break;
-        }
-        
-        std::deque<std::unique_ptr<AudioBlock>> blocks_to_release;
-        blocks_to_release.swap(m_release_queue);
-        
-        lock.unlock();
-        
-        for (auto& block : blocks_to_release) {
-            if (block) {
-                m_object_pool.release(std::move(block));
-            }
-        }
+std::unique_ptr<AudioBlock> OboeAudioRenderer::AcquireBlock() {
+    std::lock_guard<std::mutex> lock(m_pool_mutex);
+    
+    if (!m_block_pool.empty()) {
+        auto block = std::move(m_block_pool.back());
+        m_block_pool.pop_back();
+        return block;
     }
+    
+    // 池空了，创建新块
+    auto block = std::make_unique<AudioBlock>();
+    block->clear();
+    return block;
+}
+
+void OboeAudioRenderer::ReleaseBlock(std::unique_ptr<AudioBlock> block) {
+    if (!block) return;
+    
+    std::lock_guard<std::mutex> lock(m_pool_mutex);
+    block->clear();
+    m_block_pool.push_back(std::move(block));
 }
 
 bool OboeAudioRenderer::Initialize(int32_t sampleRate, int32_t channelCount) {
@@ -75,15 +73,11 @@ bool OboeAudioRenderer::InitializeWithFormat(int32_t sampleRate, int32_t channel
     m_sample_format.store(sampleFormat);
     m_oboe_format = MapSampleFormat(sampleFormat);
     
-    m_stream_error.store(false);
-    m_error_count.store(0);
-    
-    if (!TryOpenStreamWithRetry(3)) {
+    if (!ConfigureAndOpenStream()) {
         return false;
     }
     
     m_initialized.store(true);
-    m_stream_started.store(true);
     return true;
 }
 
@@ -91,22 +85,28 @@ void OboeAudioRenderer::Shutdown() {
     std::lock_guard<std::mutex> lock(m_stream_mutex);
     
     CloseStream();
-    m_audio_queue.clear();
+    ClearAllBuffers();
     
-    {
-        std::lock_guard<std::mutex> release_lock(m_release_mutex);
-        m_release_queue.clear();
-    }
-    
-    m_current_block.reset();
     m_initialized.store(false);
     m_stream_started.store(false);
-    m_stream_error.store(false);
-    
-    StopCleanupThread();
+    m_needs_restart.store(false);
 }
 
-void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& builder) {
+void OboeAudioRenderer::ClearAllBuffers() {
+    m_audio_queue.clear();
+    
+    if (m_current_block) {
+        ReleaseBlock(std::move(m_current_block));
+    }
+    
+    // 清理队列中的所有块
+    std::unique_ptr<AudioBlock> block;
+    while (m_audio_queue.pop(block)) {
+        ReleaseBlock(std::move(block));
+    }
+}
+
+void OboeAudioRenderer::ConfigureForAAudio(oboe::AudioStreamBuilder& builder) {
     builder.setPerformanceMode(oboe::PerformanceMode::LowLatency)
            ->setAudioApi(oboe::AudioApi::AAudio)
            ->setSharingMode(oboe::SharingMode::Shared)
@@ -133,24 +133,12 @@ void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& bu
            ->setChannelConversionAllowed(true);
 }
 
-bool OboeAudioRenderer::TryOpenStreamWithRetry(int maxRetryCount) {
-    for (int attempt = 0; attempt < maxRetryCount; ++attempt) {
-        if (ConfigureAndOpenStream()) {
-            return true;
-        }
-        
-        if (attempt < maxRetryCount - 1) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(50 * (1 << attempt)));
-        }
-    }
-    return false;
-}
-
 bool OboeAudioRenderer::ConfigureAndOpenStream() {
     oboe::AudioStreamBuilder builder;
     
-    ConfigureForAAudioExclusive(builder);
-    builder.setDataCallback(m_audio_callback.get());
+    ConfigureForAAudio(builder);
+    builder.setDataCallback(m_audio_callback.get())
+           ->setErrorCallback(m_error_callback.get());
     
     auto result = builder.openStream(m_stream);
     
@@ -164,7 +152,6 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() {
             result = builder.openStream(m_stream);
             
             if (result != oboe::Result::OK) {
-                m_stream_error.store(true);
                 return false;
             }
         }
@@ -172,7 +159,6 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() {
     
     if (!OptimizeBufferSize()) {
         CloseStream();
-        m_stream_error.store(true);
         return false;
     }
     
@@ -181,13 +167,11 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() {
     result = m_stream->requestStart();
     if (result != oboe::Result::OK) {
         CloseStream();
-        m_stream_error.store(true);
         return false;
     }
     
     m_stream_started.store(true);
-    m_stream_error.store(false);
-    m_error_count.store(0);
+    m_needs_restart.store(false);
     return true;
 }
 
@@ -216,53 +200,26 @@ void OboeAudioRenderer::CloseStream() {
     }
 }
 
-bool OboeAudioRenderer::CheckStreamState() {
-    if (!m_stream) {
-        return false;
-    }
-    
-    auto state = m_stream->getState();
-    return state == oboe::StreamState::Started || state == oboe::StreamState::Starting;
-}
-
-void OboeAudioRenderer::ForceRestartStream() {
+bool OboeAudioRenderer::TryRestartStream() {
     std::lock_guard<std::mutex> lock(m_stream_mutex);
     
     if (!m_initialized.load()) {
-        return;
+        return false;
     }
-    
-    auto now = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_last_error_time);
-    
-    // 防止频繁重启
-    if (elapsed.count() < 1000) {
-        return;
-    }
-    
-    m_last_error_time = now;
     
     CloseStream();
+    ClearAllBuffers();
     
-    m_audio_queue.clear();
-    {
-        std::lock_guard<std::mutex> release_lock(m_release_mutex);
-        m_release_queue.clear();
+    // 等待一小段时间，让系统有机会恢复
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    
+    bool success = ConfigureAndOpenStream();
+    
+    if (success) {
+        m_needs_restart.store(false);
     }
     
-    if (m_current_block) {
-        m_object_pool.release(std::move(m_current_block));
-    }
-    
-    m_error_count.fetch_add(1);
-    
-    if (m_error_count.load() > 5) {
-        m_initialized.store(false);
-        m_stream_error.store(true);
-        return;
-    }
-    
-    ConfigureAndOpenStream();
+    return success;
 }
 
 bool OboeAudioRenderer::WriteAudio(const int16_t* data, int32_t num_frames) {
@@ -276,14 +233,14 @@ bool OboeAudioRenderer::WriteAudio(const int16_t* data, int32_t num_frames) {
 bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int32_t sampleFormat) {
     if (!m_initialized.load() || !data || num_frames <= 0) return false;
     
-    // 检查流状态，如果出错则尝试恢复
-    if (m_stream_error.load() || !CheckStreamState()) {
-        ForceRestartStream();
-        if (m_stream_error.load()) {
+    // 检查是否需要重启流
+    if (m_needs_restart.load()) {
+        if (!TryRestartStream()) {
             return false;
         }
     }
     
+    // 检查格式是否匹配
     if (sampleFormat != m_sample_format.load()) {
         return false;
     }
@@ -297,12 +254,8 @@ bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int3
     size_t bytes_processed = 0;
     
     while (bytes_remaining > 0) {
-        auto block = m_object_pool.acquire();
-        if (!block) {
-            // 对象池耗尽，可能是清理线程有问题
-            ForceRestartStream();
-            return false;
-        }
+        auto block = AcquireBlock();
+        if (!block) return false;
         
         size_t copy_size = std::min(bytes_remaining, AudioBlock::BLOCK_SIZE);
         std::memcpy(block->data, byte_data + bytes_processed, copy_size);
@@ -313,8 +266,8 @@ bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int3
         block->consumed = false;
         
         if (!m_audio_queue.push(std::move(block))) {
-            // 队列满，可能是流停止消费
-            ForceRestartStream();
+            // 队列满了，尝试重启
+            m_needs_restart.store(true);
             return false;
         }
         
@@ -352,16 +305,7 @@ void OboeAudioRenderer::SetVolume(float volume) {
 void OboeAudioRenderer::Reset() {
     std::lock_guard<std::mutex> lock(m_stream_mutex);
     
-    m_audio_queue.clear();
-    
-    {
-        std::lock_guard<std::mutex> release_lock(m_release_mutex);
-        m_release_queue.clear();
-    }
-    
-    if (m_current_block) {
-        m_object_pool.release(std::move(m_current_block));
-    }
+    ClearAllBuffers();
     
     CloseStream();
     ConfigureAndOpenStream();
@@ -387,45 +331,29 @@ size_t OboeAudioRenderer::GetBytesPerSample(int32_t format) {
     }
 }
 
-oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) {
-    if (!m_initialized.load()) {
-        int32_t channels = m_device_channels;
-        size_t bytes_per_sample = GetBytesPerSample(m_sample_format.load());
-        size_t bytes_requested = num_frames * channels * bytes_per_sample;
-        std::memset(audioData, 0, bytes_requested);
+oboe::DataCallbackResult OboeAudioRenderer::OnAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) {
+    if (!m_initialized.load() || !audioStream || !audioData) {
         return oboe::DataCallbackResult::Continue;
     }
     
-    // 检查流状态
-    if (!CheckStreamState()) {
-        // 流不在运行状态，返回静音
-        int32_t channels = m_device_channels;
-        size_t bytes_per_sample = GetBytesPerSample(m_sample_format.load());
-        size_t bytes_requested = num_frames * channels * bytes_per_sample;
-        std::memset(audioData, 0, bytes_requested);
-        
-        // 标记错误，让写入线程尝试恢复
-        m_stream_error.store(true);
-        return oboe::DataCallbackResult::Continue;
-    }
-    
-    uint8_t* output = static_cast<uint8_t*>(audioData);
-    size_t bytes_remaining = num_frames * m_device_channels * GetBytesPerSample(m_sample_format.load());
-    size_t bytes_copied = 0;
+    int32_t device_channels = m_device_channels;
+    size_t bytes_per_sample = GetBytesPerSample(m_sample_format.load());
+    size_t bytes_needed = num_frames * device_channels * bytes_per_sample;
     
     // 先清空输出缓冲区
-    std::memset(output, 0, bytes_remaining);
+    std::memset(audioData, 0, bytes_needed);
     
-    while (bytes_remaining > 0) {
+    uint8_t* output = static_cast<uint8_t*>(audioData);
+    size_t bytes_copied = 0;
+    
+    while (bytes_copied < bytes_needed) {
         if (!m_current_block || m_current_block->consumed || m_current_block->available() == 0) {
             if (m_current_block) {
-                std::lock_guard<std::mutex> lock(m_release_mutex);
-                m_release_queue.push_back(std::move(m_current_block));
-                m_release_cv.notify_one();
+                ReleaseBlock(std::move(m_current_block));
             }
             
             if (!m_audio_queue.pop(m_current_block)) {
-                // 没有数据了，跳出循环（剩余部分已经是静音）
+                // 没有更多数据了，跳出循环（剩余部分已经是静音）
                 break;
             }
         }
@@ -433,21 +361,22 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioS
         // 检查格式是否匹配
         if (m_current_block->sample_format != m_sample_format.load()) {
             // 格式不匹配，跳过这个块
-            std::lock_guard<std::mutex> lock(m_release_mutex);
-            m_release_queue.push_back(std::move(m_current_block));
-            m_release_cv.notify_one();
+            ReleaseBlock(std::move(m_current_block));
             m_current_block.reset();
             continue;
         }
         
-        size_t bytes_to_copy = std::min(m_current_block->available(), bytes_remaining);
+        size_t bytes_to_copy = std::min(m_current_block->available(), bytes_needed - bytes_copied);
+        
+        if (bytes_to_copy == 0) {
+            break;
+        }
         
         std::memcpy(output + bytes_copied, 
                    m_current_block->data + m_current_block->data_played,
                    bytes_to_copy);
         
         bytes_copied += bytes_to_copy;
-        bytes_remaining -= bytes_to_copy;
         m_current_block->data_played += bytes_to_copy;
         
         if (m_current_block->available() == 0) {
@@ -459,37 +388,25 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioS
 }
 
 void OboeAudioRenderer::OnStreamErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) {
-    HandleStreamError(error);
+    // 标记需要重启流
+    m_needs_restart.store(true);
 }
 
 void OboeAudioRenderer::OnStreamErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) {
-    HandleStreamError(error);
-}
-
-void OboeAudioRenderer::HandleStreamError(oboe::Result error) {
-    m_stream_error.store(true);
     m_stream_started.store(false);
-    
-    // 延迟重启，避免频繁尝试
-    auto now = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_last_error_time);
-    
-    if (elapsed.count() > 1000) { // 至少间隔1秒
-        m_last_error_time = now;
-        ForceRestartStream();
-    }
+    m_needs_restart.store(true);
 }
 
-oboe::DataCallbackResult OboeAudioRenderer::AAudioExclusiveCallback::onAudioReady(
+oboe::DataCallbackResult OboeAudioRenderer::SimpleAudioCallback::onAudioReady(
     oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) {
-    return m_renderer->OnAudioReadyMultiFormat(audioStream, audioData, num_frames);
+    return m_renderer->OnAudioReady(audioStream, audioData, num_frames);
 }
 
-void OboeAudioRenderer::AAudioExclusiveCallback::onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) {
+void OboeAudioRenderer::SimpleErrorCallback::onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) {
     m_renderer->OnStreamErrorAfterClose(audioStream, error);
 }
 
-void OboeAudioRenderer::AAudioExclusiveCallback::onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) {
+void OboeAudioRenderer::SimpleErrorCallback::onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) {
     m_renderer->OnStreamErrorBeforeClose(audioStream, error);
 }
 
