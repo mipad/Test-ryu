@@ -60,6 +60,7 @@ public:
     float GetVolume() const { return m_volume.load(); }
 
     void Reset();
+    void Flush();  // 新增：清空所有缓冲数据
 
 private:
     class AAudioExclusiveCallback : public oboe::AudioStreamDataCallback {
@@ -97,6 +98,10 @@ private:
     void CleanupThreadFunc();
     void StartCleanupThread();
     void StopCleanupThread();
+    
+    // 辅助函数
+    bool IsFrameAligned(size_t bytes, int32_t channels, int32_t format) const;
+    size_t AlignToFrameBoundary(size_t bytes, int32_t channels, int32_t format) const;
 
     std::shared_ptr<oboe::AudioStream> m_stream;
     std::unique_ptr<AAudioExclusiveCallback> m_audio_callback;
