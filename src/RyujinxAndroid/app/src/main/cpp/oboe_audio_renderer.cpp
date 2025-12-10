@@ -157,9 +157,15 @@ bool OboeAudioRenderer::WriteAudio(const int16_t* data, int32_t num_frames) {
 bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int32_t sampleFormat) {
     if (!m_initialized.load() || !data || num_frames <= 0) return false;
     
+    // 检查格式是否匹配
+    if (sampleFormat != m_sample_format.load()) {
+        return false;
+    }
+    
     int32_t system_channels = m_channel_count.load();
     size_t bytes_per_sample = GetBytesPerSample(sampleFormat);
-    size_t total_bytes = num_frames * system_channels * bytes_per_sample;
+    size_t frame_size = system_channels * bytes_per_sample;
+    size_t total_bytes = num_frames * frame_size;
     
     const uint8_t* byte_data = static_cast<const uint8_t*>(data);
     size_t bytes_remaining = total_bytes;
@@ -167,16 +173,29 @@ bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int3
     
     while (bytes_remaining > 0) {
         auto block = m_object_pool.acquire();
-        if (!block) return false;
+        if (!block) {
+            return false;
+        }
         
-        size_t copy_size = std::min(bytes_remaining, AudioBlock::BLOCK_SIZE);
+        // 确保数据大小是帧大小的整数倍
+        size_t max_copy = (AudioBlock::BLOCK_SIZE / frame_size) * frame_size;
+        size_t copy_size = std::min(bytes_remaining, max_copy);
+        
+        if (copy_size == 0) {
+            // 如果单个块太小无法容纳一个完整的帧，释放块并返回失败
+            m_object_pool.release(std::move(block));
+            return false;
+        }
+        
         std::memcpy(block->data, byte_data + bytes_processed, copy_size);
         block->data_size = copy_size;
         block->data_played = 0;
         block->sample_format = sampleFormat;
         block->consumed = false;
         
-        if (!m_audio_queue.push(std::move(block))) return false;
+        if (!m_audio_queue.push(std::move(block))) {
+            return false;
+        }
         
         bytes_processed += copy_size;
         bytes_remaining -= copy_size;
@@ -189,17 +208,23 @@ int32_t OboeAudioRenderer::GetBufferedFrames() const {
     if (!m_initialized.load()) return 0;
     
     int32_t total_frames = 0;
-    int32_t device_channels = m_device_channels;
+    int32_t system_channels = m_channel_count.load();
+    size_t bytes_per_sample = GetBytesPerSample(m_sample_format.load());
+    size_t bytes_per_frame = system_channels * bytes_per_sample;
     
-    if (m_current_block && !m_current_block->consumed) {
-        size_t bytes_remaining = m_current_block->available();
-        size_t bytes_per_sample = GetBytesPerSample(m_current_block->sample_format);
-        total_frames += static_cast<int32_t>(bytes_remaining / (device_channels * bytes_per_sample));
+    if (bytes_per_frame == 0) {
+        return 0;
     }
     
+    // 计算当前块中的剩余帧数
+    if (m_current_block && !m_current_block->consumed) {
+        size_t bytes_remaining = m_current_block->available();
+        total_frames += static_cast<int32_t>(bytes_remaining / bytes_per_frame);
+    }
+    
+    // 计算队列中块的总帧数
     uint32_t queue_size = m_audio_queue.size();
-    size_t bytes_per_sample = GetBytesPerSample(m_sample_format.load());
-    int32_t frames_per_block = static_cast<int32_t>(AudioBlock::BLOCK_SIZE / (device_channels * bytes_per_sample));
+    int32_t frames_per_block = static_cast<int32_t>(AudioBlock::BLOCK_SIZE / bytes_per_frame);
     total_frames += queue_size * frames_per_block;
     
     return total_frames;
@@ -242,39 +267,87 @@ size_t OboeAudioRenderer::GetBytesPerSample(int32_t format) {
 }
 
 oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) {
-    if (!m_initialized.load()) {
-        int32_t channels = m_device_channels;
-        size_t bytes_per_sample = GetBytesPerSample(m_sample_format.load());
-        size_t bytes_requested = num_frames * channels * bytes_per_sample;
-        std::memset(audioData, 0, bytes_requested);
+    if (!m_initialized.load() || !audioStream || !audioData) {
+        // 返回静音，而不是Stop，避免流停止
+        if (audioData && num_frames > 0) {
+            size_t bytes_per_sample = GetBytesPerSample(m_sample_format.load());
+            int32_t channels = m_stream ? m_stream->getChannelCount() : m_channel_count.load();
+            std::memset(audioData, 0, num_frames * channels * bytes_per_sample);
+        }
         return oboe::DataCallbackResult::Continue;
     }
     
-    uint8_t* output = static_cast<uint8_t*>(audioData);
-    size_t bytes_remaining = num_frames * m_device_channels * GetBytesPerSample(m_sample_format.load());
-    size_t bytes_copied = 0;
+    // 检查流状态
+    if (m_stream->getState() != oboe::StreamState::Started) {
+        return oboe::DataCallbackResult::Continue;
+    }
     
-    while (bytes_remaining > 0) {
+    int32_t device_channels = m_stream->getChannelCount();
+    int32_t system_channels = m_channel_count.load();
+    int32_t sample_format = m_sample_format.load();
+    size_t bytes_per_sample = GetBytesPerSample(sample_format);
+    
+    // 清空输出缓冲区（必须做！）
+    size_t total_bytes = static_cast<size_t>(num_frames) * device_channels * bytes_per_sample;
+    std::memset(audioData, 0, total_bytes);
+    
+    uint8_t* output = static_cast<uint8_t*>(audioData);
+    size_t bytes_copied = 0;
+    size_t frames_processed = 0;
+    
+    while (frames_processed < static_cast<size_t>(num_frames)) {
+        // 获取当前音频块
         if (!m_current_block || m_current_block->consumed || m_current_block->available() == 0) {
             if (m_current_block) {
+                // 重要：释放当前块回对象池
                 m_object_pool.release(std::move(m_current_block));
+                m_current_block.reset();
             }
             
+            // 从队列获取新块
             if (!m_audio_queue.pop(m_current_block)) {
-                std::memset(output + bytes_copied, 0, bytes_remaining);
+                // 队列为空，跳出循环，剩余部分已经是静音
                 break;
             }
         }
         
-        size_t bytes_to_copy = std::min(m_current_block->available(), bytes_remaining);
-        std::memcpy(output + bytes_copied, 
+        // 检查格式是否匹配
+        if (m_current_block->sample_format != sample_format) {
+            // 格式不匹配，丢弃这个块
+            m_object_pool.release(std::move(m_current_block));
+            m_current_block.reset();
+            continue;
+        }
+        
+        // 计算这个块还能提供多少数据
+        size_t block_available = m_current_block->available();
+        if (block_available == 0) {
+            m_current_block->consumed = true;
+            continue;
+        }
+        
+        // 计算本次需要的数据量
+        size_t remaining_frames = static_cast<size_t>(num_frames) - frames_processed;
+        size_t remaining_bytes = remaining_frames * device_channels * bytes_per_sample - bytes_copied;
+        size_t bytes_to_copy = std::min(block_available, remaining_bytes);
+        
+        if (bytes_to_copy == 0) {
+            break;
+        }
+        
+        // 直接内存拷贝（Oboe会自动处理通道转换）
+        std::memcpy(output + bytes_copied,
                    m_current_block->data + m_current_block->data_played,
                    bytes_to_copy);
         
+        // 更新计数
         bytes_copied += bytes_to_copy;
-        bytes_remaining -= bytes_to_copy;
         m_current_block->data_played += bytes_to_copy;
         
+        // 重新计算已处理的帧数
+        frames_processed = bytes_copied / (device_channels * bytes_per_sample);
+        
+        // 如果这个块用完了，标记为已消费
         if (m_current_block->available() == 0) {
             m_current_block->consumed = true;
         }
@@ -288,6 +361,16 @@ void OboeAudioRenderer::OnStreamErrorAfterClose(oboe::AudioStream* audioStream, 
     
     if (m_initialized.load()) {
         CloseStream();
+        
+        // 清空音频队列
+        m_audio_queue.clear();
+        if (m_current_block) {
+            m_object_pool.release(std::move(m_current_block));
+        }
+        
+        // 延迟重启以避免频繁重试
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        
         ConfigureAndOpenStream();
     }
 }
