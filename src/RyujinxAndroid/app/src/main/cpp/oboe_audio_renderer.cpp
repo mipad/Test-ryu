@@ -50,7 +50,6 @@ void OboeAudioRenderer::Shutdown() {
     
     CloseStream();
     m_audio_queue.clear();
-    m_buffered_frames.store(0);
     m_current_block.reset();
     m_initialized.store(false);
     m_stream_started.store(false);
@@ -173,13 +172,10 @@ bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int3
     const uint8_t* byte_data = static_cast<const uint8_t*>(data);
     size_t bytes_remaining = total_bytes;
     size_t bytes_processed = 0;
-    int32_t total_frames_written = 0;
     
     while (bytes_remaining > 0) {
         auto block = m_object_pool.acquire();
         if (!block) {
-            // 如果获取块失败，减去已写入的帧数
-            m_buffered_frames.fetch_sub(total_frames_written);
             return false;
         }
         
@@ -188,13 +184,10 @@ bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int3
         size_t copy_size = std::min(bytes_remaining, max_copy);
         
         if (copy_size == 0) {
+            // 如果单个块太小无法容纳一个完整的帧，释放块并返回失败
             m_object_pool.release(std::move(block));
-            m_buffered_frames.fetch_sub(total_frames_written);
             return false;
         }
-        
-        int32_t frames_in_block = static_cast<int32_t>(copy_size / frame_size);
-        total_frames_written += frames_in_block;
         
         std::memcpy(block->data, byte_data + bytes_processed, copy_size);
         block->data_size = copy_size;
@@ -203,7 +196,6 @@ bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int3
         block->consumed = false;
         
         if (!m_audio_queue.push(std::move(block))) {
-            m_buffered_frames.fetch_sub(total_frames_written);
             return false;
         }
         
@@ -211,13 +203,33 @@ bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int3
         bytes_remaining -= copy_size;
     }
     
-    // 更新缓冲帧数
-    m_buffered_frames.fetch_add(total_frames_written);
     return true;
 }
 
 int32_t OboeAudioRenderer::GetBufferedFrames() const {
-    return static_cast<int32_t>(m_buffered_frames.load());
+    if (!m_initialized.load()) return 0;
+    
+    int32_t total_frames = 0;
+    int32_t system_channels = m_channel_count.load();
+    size_t bytes_per_sample = GetBytesPerSample(m_sample_format.load());
+    size_t bytes_per_frame = system_channels * bytes_per_sample;
+    
+    if (bytes_per_frame == 0) {
+        return 0;
+    }
+    
+    // 计算当前块中的剩余帧数
+    if (m_current_block && !m_current_block->consumed) {
+        size_t bytes_remaining = m_current_block->available();
+        total_frames += static_cast<int32_t>(bytes_remaining / bytes_per_frame);
+    }
+    
+    // 计算队列中块的总帧数
+    uint32_t queue_size = m_audio_queue.size();
+    int32_t frames_per_block = static_cast<int32_t>(AudioBlock::BLOCK_SIZE / bytes_per_frame);
+    total_frames += queue_size * frames_per_block;
+    
+    return total_frames;
 }
 
 void OboeAudioRenderer::SetVolume(float volume) {
@@ -228,8 +240,6 @@ void OboeAudioRenderer::Reset() {
     std::lock_guard<std::mutex> lock(m_stream_mutex);
     
     m_audio_queue.clear();
-    m_buffered_frames.store(0);
-    
     if (m_current_block) {
         m_object_pool.release(std::move(m_current_block));
     }
@@ -259,16 +269,14 @@ size_t OboeAudioRenderer::GetBytesPerSample(int32_t format) {
 }
 
 oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) {
+    // 关键修复：简化回调逻辑，确保数据连续性
+    
     if (!m_initialized.load() || !audioStream || !audioData) {
-        if (audioData && num_frames > 0) {
-            size_t bytes_per_sample = GetBytesPerSample(m_sample_format.load());
-            int32_t channels = m_stream ? m_stream->getChannelCount() : m_channel_count.load();
-            std::memset(audioData, 0, num_frames * channels * bytes_per_sample);
-        }
         return oboe::DataCallbackResult::Continue;
     }
     
-    if (m_stream->getState() != oboe::StreamState::Started) {
+    // 检查流状态
+    if (!m_stream || m_stream->getState() != oboe::StreamState::Started) {
         return oboe::DataCallbackResult::Continue;
     }
     
@@ -282,74 +290,67 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioS
     
     uint8_t* output = static_cast<uint8_t*>(audioData);
     size_t bytes_copied = 0;
-    size_t frames_processed = 0;
+    size_t frames_copied = 0;
     
-    while (frames_processed < static_cast<size_t>(num_frames)) {
+    // 持续处理直到满足请求的帧数
+    while (frames_copied < static_cast<size_t>(num_frames)) {
+        // 获取当前块
         if (!m_current_block || m_current_block->consumed || m_current_block->available() == 0) {
+            // 如果有旧块，释放它
             if (m_current_block) {
-                // 计算这个块中未播放的帧数并减去
-                if (m_current_block->data_size > m_current_block->data_played) {
-                    size_t bytes_remaining = m_current_block->available();
-                    int32_t system_channels = m_channel_count.load();
-                    size_t frame_size = system_channels * bytes_per_sample;
-                    int32_t frames_remaining = frame_size > 0 ? 
-                        static_cast<int32_t>(bytes_remaining / frame_size) : 0;
-                    m_buffered_frames.fetch_sub(frames_remaining);
-                }
-                
                 m_object_pool.release(std::move(m_current_block));
                 m_current_block.reset();
             }
             
+            // 尝试从队列获取新块
             if (!m_audio_queue.pop(m_current_block)) {
-                break; // 队列为空
+                // 没有更多数据，跳出循环
+                break;
             }
         }
         
+        // 检查格式匹配
         if (m_current_block->sample_format != sample_format) {
-            // 格式不匹配，丢弃整个块并减去对应的帧数
-            size_t bytes_remaining = m_current_block->available();
-            int32_t system_channels = m_channel_count.load();
-            size_t frame_size = system_channels * bytes_per_sample;
-            int32_t frames_remaining = frame_size > 0 ? 
-                static_cast<int32_t>(bytes_remaining / frame_size) : 0;
-            m_buffered_frames.fetch_sub(frames_remaining);
-            
+            // 格式不匹配，跳过这个块
             m_object_pool.release(std::move(m_current_block));
             m_current_block.reset();
             continue;
         }
         
+        // 计算这个块中还有多少可用数据
         size_t block_available = m_current_block->available();
         if (block_available == 0) {
             m_current_block->consumed = true;
             continue;
         }
         
-        size_t remaining_frames = static_cast<size_t>(num_frames) - frames_processed;
-        size_t remaining_bytes = remaining_frames * device_channels * bytes_per_sample - bytes_copied;
+        // 计算还需要多少数据
+        size_t remaining_bytes = total_bytes - bytes_copied;
         size_t bytes_to_copy = std::min(block_available, remaining_bytes);
         
         if (bytes_to_copy == 0) {
             break;
         }
         
+        // 直接从当前块拷贝数据到输出
         std::memcpy(output + bytes_copied,
                    m_current_block->data + m_current_block->data_played,
                    bytes_to_copy);
         
+        // 更新计数器
         bytes_copied += bytes_to_copy;
         m_current_block->data_played += bytes_to_copy;
         
-        frames_processed = bytes_copied / (device_channels * bytes_per_sample);
+        // 重新计算已拷贝的帧数
+        frames_copied = bytes_copied / (device_channels * bytes_per_sample);
         
+        // 如果当前块已用完，标记为已消费
         if (m_current_block->available() == 0) {
             m_current_block->consumed = true;
         }
     }
     
-    // 减去已播放的帧数
-    m_buffered_frames.fetch_sub(static_cast<int32_t>(frames_processed));
+    // 如果拷贝的数据少于请求，剩余部分已经由memset设置为0（静音）
     
     return oboe::DataCallbackResult::Continue;
 }
@@ -360,10 +361,8 @@ void OboeAudioRenderer::OnStreamErrorAfterClose(oboe::AudioStream* audioStream, 
     if (m_initialized.load()) {
         CloseStream();
         
-        // 清空音频队列并重置计数器
+        // 清空音频队列
         m_audio_queue.clear();
-        m_buffered_frames.store(0);
-        
         if (m_current_block) {
             m_object_pool.release(std::move(m_current_block));
         }
