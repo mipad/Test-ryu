@@ -7,8 +7,8 @@
 #include <memory>
 #include <cstdint>
 #include <condition_variable>
-#include <vector>
 #include <deque>
+#include <thread>
 #include "LockFreeQueue.h"
 
 namespace RyujinxOboe {
