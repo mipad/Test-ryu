@@ -6,8 +6,6 @@
 #include <atomic>
 #include <memory>
 #include <cstdint>
-#include <thread>
-#include <chrono>
 #include "LockFreeQueue.h"
 
 namespace RyujinxOboe {

@@ -2,6 +2,7 @@
 #include <cstring>
 #include <algorithm>
 #include <thread>
+#include <chrono>
 
 namespace RyujinxOboe {
 
@@ -58,10 +59,10 @@ void OboeAudioRenderer::Shutdown() {
 void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& builder) {
     builder.setPerformanceMode(oboe::PerformanceMode::LowLatency)
            ->setAudioApi(oboe::AudioApi::AAudio)
-           ->setSharingMode(oboe::SharingMode::Shared)
+           ->setSharingMode(oboe::SharingMode::Exclusive)
            ->setDirection(oboe::Direction::Output)
            ->setSampleRate(m_sample_rate.load())
-           ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::High)
+           ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium)
            ->setFormat(m_oboe_format)
            ->setFormatConversionAllowed(true)
            ->setUsage(oboe::Usage::Game)
@@ -252,26 +253,6 @@ void OboeAudioRenderer::PreallocateBlocks(size_t count) {
     m_object_pool.preallocate(count);
 }
 
-oboe::AudioFormat OboeAudioRenderer::MapSampleFormat(int32_t format) {
-    switch (format) {
-        case PCM_INT16:  return oboe::AudioFormat::I16;
-        case PCM_INT24:  return oboe::AudioFormat::I24;
-        case PCM_INT32:  return oboe::AudioFormat::I32;
-        case PCM_FLOAT:  return oboe::AudioFormat::Float;
-        default:         return oboe::AudioFormat::I16;
-    }
-}
-
-size_t OboeAudioRenderer::GetBytesPerSample(int32_t format) {
-    switch (format) {
-        case PCM_INT16:  return 2;
-        case PCM_INT24:  return 3;
-        case PCM_INT32:  return 4;
-        case PCM_FLOAT:  return 4;
-        default:         return 2;
-    }
-}
-
 oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) {
     if (!m_initialized.load()) {
         int32_t channels = m_device_channels;
@@ -339,6 +320,26 @@ void OboeAudioRenderer::AAudioExclusiveErrorCallback::onErrorAfterClose(oboe::Au
 
 void OboeAudioRenderer::AAudioExclusiveErrorCallback::onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) {
     m_renderer->OnStreamErrorBeforeClose(audioStream, error);
+}
+
+oboe::AudioFormat OboeAudioRenderer::MapSampleFormat(int32_t format) {
+    switch (format) {
+        case PCM_INT16:  return oboe::AudioFormat::I16;
+        case PCM_INT24:  return oboe::AudioFormat::I24;
+        case PCM_INT32:  return oboe::AudioFormat::I32;
+        case PCM_FLOAT:  return oboe::AudioFormat::Float;
+        default:         return oboe::AudioFormat::I16;
+    }
+}
+
+size_t OboeAudioRenderer::GetBytesPerSample(int32_t format) {
+    switch (format) {
+        case PCM_INT16:  return 2;
+        case PCM_INT24:  return 3;
+        case PCM_INT32:  return 4;
+        case PCM_FLOAT:  return 4;
+        default:         return 2;
+    }
 }
 
 } // namespace RyujinxOboe
