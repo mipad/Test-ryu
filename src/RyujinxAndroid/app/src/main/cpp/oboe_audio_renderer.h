@@ -105,6 +105,9 @@ private:
     std::atomic<int32_t> m_sample_format{PCM_INT16};
     std::atomic<float> m_volume{1.0f};
     
+    // 添加原子计数器来准确跟踪缓冲帧数
+    std::atomic<int64_t> m_buffered_frames{0};
+    
     int32_t m_device_channels = 2;
     oboe::AudioFormat m_oboe_format{oboe::AudioFormat::I16};
     
