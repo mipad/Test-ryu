@@ -1,6 +1,8 @@
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
+#include <thread>
+#include <chrono>
 
 namespace RyujinxOboe {
 
