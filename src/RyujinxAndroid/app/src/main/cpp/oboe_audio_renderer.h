@@ -6,6 +6,7 @@
 #include <atomic>
 #include <memory>
 #include <cstdint>
+#include <vector>
 #include "LockFreeQueue.h"
 
 namespace RyujinxOboe {
@@ -27,8 +28,11 @@ struct AudioBlock {
     bool consumed = true;
     
     void clear() {
+        // 清空整个数据缓冲区，避免残留的旧数据导致杂音
+        std::memset(data, 0, BLOCK_SIZE);
         data_size = 0;
         data_played = 0;
+        sample_format = PCM_INT16;
         consumed = true;
     }
     
@@ -58,6 +62,11 @@ public:
 
     void Reset();
 
+    // 添加效果器相关函数
+    bool SetBiquadFilterParameters(const uint8_t* param_data);
+    void EnableBiquadFilter(bool enable);
+    void ClearBiquadFilters();
+
 private:
     class AAudioExclusiveCallback : public oboe::AudioStreamDataCallback {
     public:
@@ -76,6 +85,33 @@ private:
         OboeAudioRenderer* m_renderer;
     };
 
+    // Biquad 滤波器状态结构
+    struct BiquadFilterState {
+        float b0 = 1.0f;      // 分子系数 b0
+        float b1 = 0.0f;      // 分子系数 b1
+        float b2 = 0.0f;      // 分子系数 b2
+        float a1 = 0.0f;      // 分母系数 a1
+        float a2 = 0.0f;      // 分母系数 a2
+        
+        // 滤波器历史状态（支持最多6声道）
+        float x1[6] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};  // 输入历史 n-1
+        float x2[6] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};  // 输入历史 n-2
+        float y1[6] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};  // 输出历史 n-1
+        float y2[6] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};  // 输出历史 n-2
+        
+        bool enabled = false;
+        int32_t channelCount = 2;
+        
+        void reset() {
+            for (int i = 0; i < 6; i++) {
+                x1[i] = 0.0f;
+                x2[i] = 0.0f;
+                y1[i] = 0.0f;
+                y2[i] = 0.0f;
+            }
+        }
+    };
+
     bool OpenStream();
     void CloseStream();
     bool ConfigureAndOpenStream();
@@ -89,11 +125,21 @@ private:
     static size_t GetBytesPerSample(int32_t format);
     bool OptimizeBufferSize();
 
+    // 效果器处理函数
+    void ApplyBiquadFilterInt16(int16_t* audio_data, int32_t num_frames, int32_t channels);
+    void ApplyBiquadFilterFloat(float* audio_data, int32_t num_frames, int32_t channels);
+    void ApplyBiquadFilterInt32(int32_t* audio_data, int32_t num_frames, int32_t channels);
+    void ApplyVolumeInt16(int16_t* audio_data, int32_t num_frames, int32_t channels, float volume);
+    void ApplyVolumeFloat(float* audio_data, int32_t num_frames, int32_t channels, float volume);
+    void ApplyVolumeInt32(int32_t* audio_data, int32_t num_frames, int32_t channels, float volume);
+
     std::shared_ptr<oboe::AudioStream> m_stream;
     std::unique_ptr<AAudioExclusiveCallback> m_audio_callback;
     std::unique_ptr<AAudioExclusiveErrorCallback> m_error_callback;
     
     std::mutex m_stream_mutex;
+    std::mutex m_filter_mutex;  // 用于保护效果器状态
+    
     std::atomic<bool> m_initialized{false};
     std::atomic<bool> m_stream_started{false};
     
@@ -101,6 +147,9 @@ private:
     std::atomic<int32_t> m_channel_count{2};
     std::atomic<int32_t> m_sample_format{PCM_INT16};
     std::atomic<float> m_volume{1.0f};
+    
+    // 添加原子计数器来准确跟踪缓冲帧数
+    std::atomic<int64_t> m_buffered_frames{0};
     
     int32_t m_device_channels = 2;
     oboe::AudioFormat m_oboe_format{oboe::AudioFormat::I16};
@@ -112,6 +161,10 @@ private:
     LockFreeObjectPool<AudioBlock, OBJECT_POOL_SIZE> m_object_pool;
     
     std::unique_ptr<AudioBlock> m_current_block;
+    
+    // 效果器状态
+    std::vector<BiquadFilterState> m_biquad_filters;
+    bool m_biquad_enabled = false;
 };
 
 } // namespace RyujinxOboe
