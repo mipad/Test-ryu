@@ -8,7 +8,7 @@ namespace RyujinxOboe {
 OboeAudioRenderer::OboeAudioRenderer() {
     m_audio_callback = std::make_unique<AAudioExclusiveCallback>(this);
     m_error_callback = std::make_unique<AAudioExclusiveErrorCallback>(this);
-    PreallocateBlocks(16);  // 预分配16个块，减少到16
+    PreallocateBlocks(16);
 }
 
 OboeAudioRenderer::~OboeAudioRenderer() {
@@ -139,12 +139,12 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() {
 bool OboeAudioRenderer::OptimizeBufferSize() {
     if (!m_stream) return false;
     
-    int32_t framesPerBurst = 0;
-    oboe::Result result = m_stream->getFramesPerBurst(&framesPerBurst);
+    // getFramesPerBurst() 直接返回 int32_t，没有参数
+    int32_t framesPerBurst = m_stream->getFramesPerBurst();
     
     int32_t desired_buffer_size;
     
-    if (result == oboe::Result::OK && framesPerBurst > 0) {
+    if (framesPerBurst > 0) {
         // 使用脉冲帧数的2倍
         desired_buffer_size = framesPerBurst * 2;
         
@@ -181,7 +181,7 @@ bool OboeAudioRenderer::OptimizeBufferSize() {
     // 确保缓冲区大小是2的倍数（一些硬件要求）
     desired_buffer_size = (desired_buffer_size + 1) & ~1;
     
-    result = m_stream->setBufferSizeInFrames(desired_buffer_size);
+    auto result = m_stream->setBufferSizeInFrames(desired_buffer_size);
     
     return result == oboe::Result::OK;
 }
