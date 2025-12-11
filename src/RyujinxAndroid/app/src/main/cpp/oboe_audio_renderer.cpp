@@ -310,7 +310,7 @@ void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& bu
            ->setDirection(oboe::Direction::Output)
            ->setSampleRate(m_sample_rate.load())
            ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::High)
-           ->setFormat(m_oboe_format)
+           ->setFormat(oboe::AudioFormat::I16)
            ->setFormatConversionAllowed(true)
            ->setUsage(oboe::Usage::Game)
            ->setFramesPerCallback(240);
