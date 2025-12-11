@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <thread>
 #include <chrono>
+#include <deque>
 #include <vector>
 
 namespace RyujinxOboe {
@@ -42,88 +43,91 @@ struct AudioBlock {
     
     void ensure_capacity(size_t required_size) {
         if (data.size() < required_size) {
-            data.resize(required_size);
+            // 扩容到所需大小的下一个2的幂次方
+            size_t new_size = 1;
+            while (new_size < required_size) {
+                new_size <<= 1;
+            }
+            data.resize(new_size);
         }
     }
 };
 
-// 简单的动态队列实现
+// 简化的动态音频队列
 class DynamicAudioQueue {
 private:
-    struct Node {
-        std::unique_ptr<AudioBlock> block;
-        std::unique_ptr<Node> next;
-    };
+    std::deque<std::unique_ptr<AudioBlock>> m_queue;
+    mutable std::mutex m_mutex;
     
-    std::unique_ptr<Node> m_head;
-    std::unique_ptr<Node> m_tail;
-    Node* m_head_ptr = nullptr;
-    Node* m_tail_ptr = nullptr;
-    
-    std::atomic<size_t> m_size{0};
-    std::mutex m_mutex;
-    
-    std::unique_ptr<Node> create_node() {
-        return std::make_unique<Node>();
-    }
+    // 统计信息
+    std::atomic<size_t> m_total_pushed{0};
+    std::atomic<size_t> m_total_popped{0};
+    std::atomic<size_t> m_max_size{0};
+    std::atomic<size_t> m_dropped_blocks{0};
     
 public:
-    DynamicAudioQueue() {
-        m_head = create_node();
-        m_tail = m_head.get();
-        m_head_ptr = m_head.get();
-        m_tail_ptr = m_head.get();
-    }
+    DynamicAudioQueue() = default;
     
     bool push(std::unique_ptr<AudioBlock> block) {
         std::lock_guard<std::mutex> lock(m_mutex);
         
-        // 写入数据到尾部节点
-        std::swap(m_tail_ptr->block, block);
+        // 更新统计信息
+        m_queue.push_back(std::move(block));
+        m_total_pushed.fetch_add(1);
         
-        // 创建新节点作为下一个
-        m_tail_ptr->next = create_node();
-        m_tail_ptr = m_tail_ptr->next.get();
+        // 更新最大队列大小
+        size_t current_size = m_queue.size();
+        size_t max_size = m_max_size.load();
+        while (current_size > max_size) {
+            if (m_max_size.compare_exchange_weak(max_size, current_size)) {
+                break;
+            }
+        }
         
-        m_size.fetch_add(1);
         return true;
     }
     
     bool pop(std::unique_ptr<AudioBlock>& block) {
         std::lock_guard<std::mutex> lock(m_mutex);
         
-        if (!m_head_ptr->block) {
+        if (m_queue.empty()) {
             return false;
         }
         
-        std::swap(m_head_ptr->block, block);
-        
-        // 移动到下一个节点
-        if (m_head_ptr->next) {
-            m_head_ptr = m_head_ptr->next.get();
-        } else {
-            // 如果没有下一个节点，创建一个新的
-            m_head_ptr->next = create_node();
-            m_head_ptr = m_head_ptr->next.get();
-        }
-        
-        m_size.fetch_sub(1);
+        block = std::move(m_queue.front());
+        m_queue.pop_front();
+        m_total_popped.fetch_add(1);
         return true;
     }
     
+    bool empty() const {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_queue.empty();
+    }
+    
     size_t size() const {
-        return m_size.load();
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_queue.size();
     }
     
     void clear() {
         std::lock_guard<std::mutex> lock(m_mutex);
-        
-        // 重置队列
-        m_head = create_node();
-        m_tail = m_head.get();
-        m_head_ptr = m_head.get();
-        m_tail_ptr = m_head.get();
-        m_size.store(0);
+        m_queue.clear();
+    }
+    
+    // 统计信息获取
+    size_t get_total_pushed() const { return m_total_pushed.load(); }
+    size_t get_total_popped() const { return m_total_popped.load(); }
+    size_t get_max_size() const { return m_max_size.load(); }
+    size_t get_dropped_blocks() const { return m_dropped_blocks.load(); }
+    
+    void enable_dynamic_growth(bool enable) {
+        // 对于std::deque，总是动态增长
+    }
+    
+    void reserve(size_t capacity) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_queue.reserve(capacity);
     }
 };
 
@@ -147,6 +151,12 @@ public:
     float GetVolume() const { return m_volume.load(); }
 
     void Reset();
+    
+    // 队列统计
+    size_t GetQueueSize() const { return m_audio_queue.size(); }
+    size_t GetMaxQueueSize() const { return m_audio_queue.get_max_size(); }
+    size_t GetTotalPushedBlocks() const { return m_audio_queue.get_total_pushed(); }
+    size_t GetTotalPoppedBlocks() const { return m_audio_queue.get_total_popped(); }
 
 private:
     class AAudioExclusiveCallback : public oboe::AudioStreamDataCallback {
