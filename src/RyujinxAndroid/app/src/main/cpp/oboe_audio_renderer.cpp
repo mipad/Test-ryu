@@ -8,7 +8,6 @@ namespace RyujinxOboe {
 OboeAudioRenderer::OboeAudioRenderer() {
     m_audio_callback = std::make_unique<AAudioExclusiveCallback>(this);
     m_error_callback = std::make_unique<AAudioExclusiveErrorCallback>(this);
-    PreallocateBlocks(64);
 }
 
 OboeAudioRenderer::~OboeAudioRenderer() {
@@ -61,11 +60,11 @@ void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& bu
            ->setSharingMode(oboe::SharingMode::Exclusive)
            ->setDirection(oboe::Direction::Output)
            ->setSampleRate(m_sample_rate.load())
-           ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium)
+           ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::High)
            ->setFormat(m_oboe_format)
            ->setFormatConversionAllowed(true)
            ->setUsage(oboe::Usage::Game)
-           ->setFramesPerCallback(240);
+           ->setFramesPerCallback(256);
     
     auto channel_count = m_channel_count.load();
     auto channel_mask = [&]() {
