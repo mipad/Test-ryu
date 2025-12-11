@@ -65,6 +65,9 @@ private:
     std::atomic<size_t> m_max_size{0};
     std::atomic<size_t> m_dropped_blocks{0};
     
+    // 容量限制（用于统计）
+    size_t m_capacity_hint{0};
+    
 public:
     DynamicAudioQueue() = default;
     
@@ -126,8 +129,8 @@ public:
     }
     
     void reserve(size_t capacity) {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_queue.reserve(capacity);
+        // std::deque 不支持 reserve，我们只记录容量提示
+        m_capacity_hint = capacity;
     }
 };
 
