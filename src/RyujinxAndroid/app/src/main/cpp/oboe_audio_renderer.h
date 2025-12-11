@@ -55,13 +55,13 @@ struct AudioBlock {
 };
 
 struct PerformanceStats {
-    int64_t xrun_count = 0;
-    int64_t total_frames_played = 0;
-    int64_t total_frames_written = 0;
-    double average_latency_ms = 0.0;
-    double max_latency_ms = 0.0;
-    double min_latency_ms = 1000.0;
-    int64_t error_count = 0;
+    std::atomic<int64_t> xrun_count{0};
+    std::atomic<int64_t> total_frames_played{0};
+    std::atomic<int64_t> total_frames_written{0};
+    std::atomic<double> average_latency_ms{0.0};
+    std::atomic<double> max_latency_ms{0.0};
+    std::atomic<double> min_latency_ms{1000.0};
+    std::atomic<int64_t> error_count{0};
     std::chrono::steady_clock::time_point last_error_time;
 };
 
@@ -88,7 +88,7 @@ public:
     }
     
     int32_t GetBufferedFrames() const;
-    StreamState GetState() const;
+    StreamState GetState() const { return m_current_state.load(); }
     PerformanceStats GetPerformanceStats() const;
     
     void SetVolume(float volume);
@@ -172,7 +172,7 @@ private:
     std::unique_ptr<AAudioExclusiveErrorCallback> m_error_callback;
     
     std::mutex m_stream_mutex;
-    std::mutex m_stats_mutex;
+    mutable std::mutex m_stats_mutex;
     std::atomic<bool> m_initialized{false};
     std::atomic<bool> m_stream_started{false};
     std::atomic<bool> m_performance_hint_enabled{true};
@@ -181,12 +181,12 @@ private:
     std::atomic<int32_t> m_channel_count{2};
     std::atomic<int32_t> m_sample_format{PCM_INT16};
     std::atomic<float> m_volume{1.0f};
+    std::atomic<StreamState> m_current_state{StreamState::Uninitialized};
     
     int32_t m_device_channels = 2;
     oboe::AudioFormat m_oboe_format{oboe::AudioFormat::I16};
     oboe::AudioApi m_current_api{oboe::AudioApi::Unspecified};
     
-    StreamState m_current_state{StreamState::Uninitialized};
     PerformanceStats m_performance_stats;
     
     ErrorCallback m_error_callback_user;

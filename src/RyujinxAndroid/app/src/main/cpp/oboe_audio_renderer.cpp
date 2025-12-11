@@ -155,7 +155,7 @@ void OboeAudioRenderer::DumpAllInstancesInfo() {
     for (auto* instance : s_active_instances) {
         LOGI("Instance %d:", i++);
         LOGI("  Initialized: %s", instance->m_initialized.load() ? "Yes" : "No");
-        LOGI("  State: %d", static_cast<int>(instance->m_current_state));
+        LOGI("  State: %d", static_cast<int>(instance->m_current_state.load()));
         LOGI("  Sample Rate: %d", instance->m_sample_rate.load());
         LOGI("  Channels: %d", instance->m_channel_count.load());
         LOGI("  Volume: %.2f", instance->m_volume.load());
@@ -164,8 +164,8 @@ void OboeAudioRenderer::DumpAllInstancesInfo() {
 }
 
 void OboeAudioRenderer::UpdateState(StreamState newState) {
-    StreamState oldState = m_current_state;
-    m_current_state = newState;
+    StreamState oldState = m_current_state.load();
+    m_current_state.store(newState);
     
     if (m_state_callback_user) {
         m_state_callback_user(oldState, newState);
@@ -529,7 +529,6 @@ bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int3
     size_t bytes_remaining = total_bytes;
     size_t bytes_processed = 0;
     
-    std::lock_guard<std::mutex> lock(m_stats_mutex);
     m_performance_stats.total_frames_written += num_frames;
     
     while (bytes_remaining > 0) {
@@ -596,17 +595,13 @@ int32_t OboeAudioRenderer::GetBufferedFrames() const {
     return total_frames;
 }
 
-StreamState OboeAudioRenderer::GetState() const {
-    return m_current_state;
-}
-
-PerformanceStats OboeAudioRenderer::GetPerformanceStats() const {
+OboeAudioRenderer::PerformanceStats OboeAudioRenderer::GetPerformanceStats() const {
     std::lock_guard<std::mutex> lock(m_stats_mutex);
     return m_performance_stats;
 }
 
 double OboeAudioRenderer::CalculateLatencyMillis() const {
-    if (!m_stream || m_current_state != StreamState::Started) {
+    if (!m_stream || m_current_state.load() != StreamState::Started) {
         return 0.0;
     }
     
@@ -639,14 +634,21 @@ double OboeAudioRenderer::CalculateLatencyMillis() const {
         double latencyNanos = static_cast<double>(appFrameHardwareTime - appFrameAppTime);
         double latencyMillis = latencyNanos / 1000000.0;
         
-        // 更新统计
-        std::lock_guard<std::mutex> lock(m_stats_mutex);
-        m_performance_stats.average_latency_ms = 
-            (m_performance_stats.average_latency_ms * 0.9) + (latencyMillis * 0.1);
-        m_performance_stats.max_latency_ms = 
-            std::max(m_performance_stats.max_latency_ms, latencyMillis);
-        m_performance_stats.min_latency_ms = 
-            std::min(m_performance_stats.min_latency_ms, latencyMillis);
+        // 使用原子操作更新统计，无需锁
+        double currentAvg = m_performance_stats.average_latency_ms.load();
+        m_performance_stats.average_latency_ms.store(
+            (currentAvg * 0.9) + (latencyMillis * 0.1)
+        );
+        
+        double currentMax = m_performance_stats.max_latency_ms.load();
+        if (latencyMillis > currentMax) {
+            m_performance_stats.max_latency_ms.store(latencyMillis);
+        }
+        
+        double currentMin = m_performance_stats.min_latency_ms.load();
+        if (latencyMillis < currentMin) {
+            m_performance_stats.min_latency_ms.store(latencyMillis);
+        }
         
         return latencyMillis;
         
@@ -661,8 +663,8 @@ int32_t OboeAudioRenderer::GetXRunCount() const {
     try {
         auto result = m_stream->getXRunCount();
         if (result) {
-            std::lock_guard<std::mutex> lock(m_stats_mutex);
-            m_performance_stats.xrun_count = result.value();
+            // 直接使用原子操作，无需锁
+            m_performance_stats.xrun_count.store(result.value());
             return result.value();
         }
     } catch (...) {
@@ -701,7 +703,15 @@ void OboeAudioRenderer::Reset() {
     }
     
     std::lock_guard<std::mutex> stats_lock(m_stats_mutex);
-    m_performance_stats = PerformanceStats();
+    // 重置性能统计
+    m_performance_stats.xrun_count.store(0);
+    m_performance_stats.total_frames_played.store(0);
+    m_performance_stats.total_frames_written.store(0);
+    m_performance_stats.average_latency_ms.store(0.0);
+    m_performance_stats.max_latency_ms.store(0.0);
+    m_performance_stats.min_latency_ms.store(1000.0);
+    m_performance_stats.error_count.store(0);
+    m_performance_stats.last_error_time = std::chrono::steady_clock::time_point();
     
     CloseStream();
     
@@ -753,10 +763,7 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(
     BeginPerformanceHint();
     
     // 更新性能统计
-    {
-        std::lock_guard<std::mutex> lock(m_stats_mutex);
-        m_performance_stats.total_frames_played += num_frames;
-    }
+    m_performance_stats.total_frames_played += num_frames;
     
     uint8_t* output = static_cast<uint8_t*>(audioData);
     size_t bytes_remaining = num_frames * m_device_channels * GetBytesPerSample(m_sample_format.load());
@@ -813,7 +820,6 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(
     
     // 记录underrun
     if (underrun) {
-        std::lock_guard<std::mutex> lock(m_stats_mutex);
         m_performance_stats.xrun_count++;
         LOGW("Audio underrun: %d frames of silence inserted", num_frames);
     }
