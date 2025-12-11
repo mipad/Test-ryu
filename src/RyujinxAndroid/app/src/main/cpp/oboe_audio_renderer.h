@@ -35,7 +35,7 @@ enum class StreamState {
 };
 
 struct AudioBlock {
-    static constexpr size_t BLOCK_SIZE = 4096;
+    static constexpr size_t BLOCK_SIZE = 5076;
     
     uint8_t data[BLOCK_SIZE];
     size_t data_size = 0;
