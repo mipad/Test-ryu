@@ -6,6 +6,8 @@
 #include <atomic>
 #include <memory>
 #include <cstdint>
+#include <thread>
+#include <chrono>
 #include "LockFreeQueue.h"
 
 namespace RyujinxOboe {
@@ -18,7 +20,7 @@ enum SampleFormat {
 };
 
 struct AudioBlock {
-    static constexpr size_t BLOCK_SIZE = 8192;  // 增大块大小
+    static constexpr size_t BLOCK_SIZE = 4096;
     
     uint8_t data[BLOCK_SIZE];
     size_t data_size = 0;
@@ -57,20 +59,20 @@ public:
     float GetVolume() const { return m_volume.load(); }
 
     void Reset();
-    void Flush();  // 新增：立即清空所有缓冲区
+    void PreallocateBlocks(size_t count);
 
 private:
-    class SimpleAudioCallback : public oboe::AudioStreamDataCallback {
+    class AAudioExclusiveCallback : public oboe::AudioStreamDataCallback {
     public:
-        explicit SimpleAudioCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
+        explicit AAudioExclusiveCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
         oboe::DataCallbackResult onAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) override;
     private:
         OboeAudioRenderer* m_renderer;
     };
 
-    class SimpleErrorCallback : public oboe::AudioStreamErrorCallback {
+    class AAudioExclusiveErrorCallback : public oboe::AudioStreamErrorCallback {
     public:
-        explicit SimpleErrorCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
+        explicit AAudioExclusiveErrorCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
         void onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) override;
         void onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) override;
     private:
@@ -80,32 +82,24 @@ private:
     bool OpenStream();
     void CloseStream();
     bool ConfigureAndOpenStream();
-    void ConfigureForAAudio(oboe::AudioStreamBuilder& builder);
+    void ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& builder);
 
-    oboe::DataCallbackResult OnAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames);
+    oboe::DataCallbackResult OnAudioReadyMultiFormat(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames);
     void OnStreamErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error);
     void OnStreamErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error);
 
     oboe::AudioFormat MapSampleFormat(int32_t format);
     static size_t GetBytesPerSample(int32_t format);
     bool OptimizeBufferSize();
-    
-    bool TryRestartStream();
-    void ClearAllBuffers();
-    
-    // 新增：音频时钟跟踪
-    void UpdateAudioClock(int32_t frames_played);
-    int64_t GetCurrentAudioPosition() const;
+    bool TryOpenStreamWithRetry(int maxRetryCount = 3);
 
     std::shared_ptr<oboe::AudioStream> m_stream;
-    std::unique_ptr<SimpleAudioCallback> m_audio_callback;
-    std::unique_ptr<SimpleErrorCallback> m_error_callback;
+    std::unique_ptr<AAudioExclusiveCallback> m_audio_callback;
+    std::unique_ptr<AAudioExclusiveErrorCallback> m_error_callback;
     
     std::mutex m_stream_mutex;
-    std::mutex m_clock_mutex;
     std::atomic<bool> m_initialized{false};
     std::atomic<bool> m_stream_started{false};
-    std::atomic<bool> m_needs_restart{false};
     
     std::atomic<int32_t> m_sample_rate{48000};
     std::atomic<int32_t> m_channel_count{2};
@@ -115,25 +109,13 @@ private:
     int32_t m_device_channels = 2;
     oboe::AudioFormat m_oboe_format{oboe::AudioFormat::I16};
     
-    static constexpr uint32_t AUDIO_QUEUE_SIZE = 128;  // 减小队列大小
+    static constexpr uint32_t AUDIO_QUEUE_SIZE = 512;
+    static constexpr uint32_t OBJECT_POOL_SIZE = 1024;
     
     LockFreeQueue<std::unique_ptr<AudioBlock>, AUDIO_QUEUE_SIZE> m_audio_queue;
+    LockFreeObjectPool<AudioBlock, OBJECT_POOL_SIZE> m_object_pool;
     
     std::unique_ptr<AudioBlock> m_current_block;
-    
-    // 简单对象池
-    std::vector<std::unique_ptr<AudioBlock>> m_block_pool;
-    std::mutex m_pool_mutex;
-    
-    std::unique_ptr<AudioBlock> AcquireBlock();
-    void ReleaseBlock(std::unique_ptr<AudioBlock> block);
-    void InitializePool();
-    
-    // 音频时钟跟踪
-    std::atomic<int64_t> m_total_frames_played{0};
-    std::atomic<int64_t> m_total_frames_written{0};
-    std::chrono::steady_clock::time_point m_last_clock_update;
-    int32_t m_clock_drift_correction{0};
 };
 
 } // namespace RyujinxOboe
