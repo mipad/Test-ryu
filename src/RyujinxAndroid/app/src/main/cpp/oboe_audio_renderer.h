@@ -100,6 +100,9 @@ private:
     void ReleaseBlock(std::unique_ptr<AudioBlock> block);
     void InitializePool(size_t size);
     
+    // 音量应用方法
+    void ApplyVolumeToBuffer(uint8_t* buffer, size_t bytes, float volume);
+    
     // 成员变量
     std::shared_ptr<oboe::AudioStream> m_stream;
     std::unique_ptr<SimpleAudioCallback> m_audio_callback;
@@ -118,7 +121,7 @@ private:
     std::atomic<float> m_volume{1.0f};
     
     // 音频队列
-    static constexpr uint32_t AUDIO_QUEUE_SIZE = 64; // 更小的队列，降低延迟
+    static constexpr uint32_t AUDIO_QUEUE_SIZE = 64;
     
     LockFreeQueue<std::unique_ptr<AudioBlock>, AUDIO_QUEUE_SIZE> m_audio_queue;
     
