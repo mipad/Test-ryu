@@ -10,23 +10,6 @@
 
 namespace RyujinxOboe {
 
-// ========== 音频调试宏 ==========
-#ifdef ANDROID
-#include <android/log.h>
-#define OBOE_LOG_TAG "RyujinxOboe"
-#define OBOE_LOGV(...) __android_log_print(ANDROID_LOG_VERBOSE, OBOE_LOG_TAG, __VA_ARGS__)
-#define OBOE_LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, OBOE_LOG_TAG, __VA_ARGS__)
-#define OBOE_LOGI(...) __android_log_print(ANDROID_LOG_INFO, OBOE_LOG_TAG, __VA_ARGS__)
-#define OBOE_LOGW(...) __android_log_print(ANDROID_LOG_WARN, OBOE_LOG_TAG, __VA_ARGS__)
-#define OBOE_LOGE(...) __android_log_print(ANDROID_LOG_ERROR, OBOE_LOG_TAG, __VA_ARGS__)
-#else
-#define OBOE_LOGV(...) 
-#define OBOE_LOGD(...)
-#define OBOE_LOGI(...)
-#define OBOE_LOGW(...)
-#define OBOE_LOGE(...)
-#endif
-
 enum SampleFormat {
     PCM_INT16 = 1,
     PCM_INT24 = 2,
@@ -55,11 +38,8 @@ struct AudioBlock {
 };
 
 // 前向声明
-template <typename T, uint32_t CAPACITY, typename INDEX_TYPE = uint32_t>
+template <typename T, uint32_t CAPACITY>
 class LockFreeQueue;
-
-template<typename T, uint32_t POOL_SIZE>
-class LockFreeObjectPool;
 
 class OboeAudioRenderer {
 public:
@@ -114,7 +94,7 @@ private:
     
     std::unique_ptr<AudioBlock> AcquireBlock();
     void ReleaseBlock(std::unique_ptr<AudioBlock> block);
-    void InitializePool(uint32_t pool_size = 64);
+    void InitializePool(uint32_t pool_size);
     
     std::shared_ptr<oboe::AudioStream> m_stream;
     std::unique_ptr<AudioStreamCallback> m_callback;
