@@ -9,6 +9,7 @@
 #include <thread>
 #include <chrono>
 #include "LockFreeQueue.h"
+#include "stabilized_audio_callback.h"
 
 namespace RyujinxOboe {
 
@@ -20,11 +21,7 @@ enum SampleFormat {
 };
 
 struct AudioBlock {
-    // 重新计算块大小，使其更加合理
-    // 对于最坏情况（6声道、32位浮点），每个回调240帧需要：
-    // 240帧 × 6声道 × 4字节 = 5760字节
-    // 取整到8192字节（8KB），保证足够空间且是2的幂次
-    static constexpr size_t BLOCK_SIZE = 8192;
+    static constexpr size_t BLOCK_SIZE = 4096;
     
     uint8_t data[BLOCK_SIZE];
     size_t data_size = 0;
@@ -65,6 +62,18 @@ public:
     void Reset();
     void PreallocateBlocks(size_t count);
 
+    void SetStabilizationEnabled(bool enabled) { 
+        if (m_stabilized_callback) {
+            m_stabilized_callback->setEnabled(enabled);
+        }
+    }
+    
+    void SetLoadIntensity(float intensity) { 
+        if (m_stabilized_callback) {
+            m_stabilized_callback->setLoadIntensity(intensity);
+        }
+    }
+
 private:
     class AAudioExclusiveCallback : public oboe::AudioStreamDataCallback {
     public:
@@ -98,8 +107,9 @@ private:
     bool TryOpenStreamWithRetry(int maxRetryCount = 3);
 
     std::shared_ptr<oboe::AudioStream> m_stream;
-    std::unique_ptr<AAudioExclusiveCallback> m_audio_callback;
-    std::unique_ptr<AAudioExclusiveErrorCallback> m_error_callback;
+    std::shared_ptr<AAudioExclusiveCallback> m_audio_callback;
+    std::shared_ptr<AAudioExclusiveErrorCallback> m_error_callback;
+    std::shared_ptr<StabilizedAudioCallback> m_stabilized_callback;
     
     std::mutex m_stream_mutex;
     std::atomic<bool> m_initialized{false};
@@ -113,9 +123,8 @@ private:
     int32_t m_device_channels = 2;
     oboe::AudioFormat m_oboe_format{oboe::AudioFormat::I16};
     
-    // 减小队列容量以降低延迟
-    static constexpr uint32_t AUDIO_QUEUE_SIZE = 32;  // 从512减少到32
-    static constexpr uint32_t OBJECT_POOL_SIZE = 64;  // 从1024减少到64
+    static constexpr uint32_t AUDIO_QUEUE_SIZE = 512;
+    static constexpr uint32_t OBJECT_POOL_SIZE = 1024;
     
     LockFreeQueue<std::unique_ptr<AudioBlock>, AUDIO_QUEUE_SIZE> m_audio_queue;
     LockFreeObjectPool<AudioBlock, OBJECT_POOL_SIZE> m_object_pool;

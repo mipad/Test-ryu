@@ -6,9 +6,10 @@
 namespace RyujinxOboe {
 
 OboeAudioRenderer::OboeAudioRenderer() {
-    m_audio_callback = std::make_unique<AAudioExclusiveCallback>(this);
-    m_error_callback = std::make_unique<AAudioExclusiveErrorCallback>(this);
-    PreallocateBlocks(16);  // 预分配16个块，减少到16
+    m_audio_callback = std::make_shared<AAudioExclusiveCallback>(this);
+    m_error_callback = std::make_shared<AAudioExclusiveErrorCallback>(this);
+    m_stabilized_callback = std::make_shared<StabilizedAudioCallback>(m_audio_callback, m_error_callback);
+    PreallocateBlocks(64);
 }
 
 OboeAudioRenderer::~OboeAudioRenderer() {
@@ -99,8 +100,8 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() {
     oboe::AudioStreamBuilder builder;
     
     ConfigureForAAudioExclusive(builder);
-    builder.setDataCallback(m_audio_callback.get())
-           ->setErrorCallback(m_error_callback.get());
+    builder.setDataCallback(m_stabilized_callback.get())
+           ->setErrorCallback(m_stabilized_callback.get());
     
     auto result = builder.openStream(m_stream);
     
@@ -139,51 +140,11 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() {
 bool OboeAudioRenderer::OptimizeBufferSize() {
     if (!m_stream) return false;
     
-    int32_t framesPerBurst = 0;
-    oboe::Result result = m_stream->getFramesPerBurst(&framesPerBurst);
+    int32_t framesPerBurst = m_stream->getFramesPerBurst();
+    int32_t desired_buffer_size = framesPerBurst > 0 ? framesPerBurst * 2 : 960;
     
-    int32_t desired_buffer_size;
-    
-    if (result == oboe::Result::OK && framesPerBurst > 0) {
-        // 使用脉冲帧数的2倍
-        desired_buffer_size = framesPerBurst * 2;
-        
-        // 确保至少有一个合理的缓冲区（10ms）
-        int32_t sample_rate = m_sample_rate.load();
-        int32_t min_frames = sample_rate / 100;  // 10ms
-        
-        if (desired_buffer_size < min_frames) {
-            desired_buffer_size = min_frames;
-            
-            // 确保是脉冲帧数的整数倍
-            if (desired_buffer_size % framesPerBurst != 0) {
-                desired_buffer_size = ((desired_buffer_size / framesPerBurst) + 1) * framesPerBurst;
-            }
-        }
-    } else {
-        // 基于采样率计算回退值
-        int32_t sample_rate = m_sample_rate.load();
-        
-        // 目标20ms延迟
-        desired_buffer_size = sample_rate / 50;
-        
-        // 确保在合理范围内
-        int32_t max_frames = sample_rate / 10;    // 100ms最大
-        int32_t min_frames = sample_rate / 200;   // 5ms最小
-        
-        if (desired_buffer_size < min_frames) {
-            desired_buffer_size = min_frames;
-        } else if (desired_buffer_size > max_frames) {
-            desired_buffer_size = max_frames;
-        }
-    }
-    
-    // 确保缓冲区大小是2的倍数（一些硬件要求）
-    desired_buffer_size = (desired_buffer_size + 1) & ~1;
-    
-    result = m_stream->setBufferSizeInFrames(desired_buffer_size);
-    
-    return result == oboe::Result::OK;
+    m_stream->setBufferSizeInFrames(desired_buffer_size);
+    return true;
 }
 
 bool OboeAudioRenderer::OpenStream() {
