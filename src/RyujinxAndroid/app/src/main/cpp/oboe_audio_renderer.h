@@ -20,10 +20,7 @@ enum SampleFormat {
 };
 
 struct AudioBlock {
-    // 保持8192字节（8KB），能容纳至少一个完整的音频块
-    // 计算：240帧 × 6声道 × 4字节 × 2（安全系数）= 11520字节
-    // 我们使用8192，因为实际6声道使用较少，但保持足够空间
-    static constexpr size_t BLOCK_SIZE = 8192;
+    static constexpr size_t BLOCK_SIZE = 4096;
     
     uint8_t data[BLOCK_SIZE];
     size_t data_size = 0;
@@ -112,10 +109,9 @@ private:
     int32_t m_device_channels = 2;
     oboe::AudioFormat m_oboe_format{oboe::AudioFormat::I16};
     
-    // 增大队列容量以解决电音问题
-    // 原来512太大，但32太小，现在使用中等大小
-    static constexpr uint32_t AUDIO_QUEUE_SIZE = 128;  // 中等大小
-    static constexpr uint32_t OBJECT_POOL_SIZE = 256;  // 中等大小
+    // 增大队列和对象池大小，提供更多缓冲
+    static constexpr uint32_t AUDIO_QUEUE_SIZE = 2048;  // 增加到2048
+    static constexpr uint32_t OBJECT_POOL_SIZE = 4096;  // 增加到4096
     
     LockFreeQueue<std::unique_ptr<AudioBlock>, AUDIO_QUEUE_SIZE> m_audio_queue;
     LockFreeObjectPool<AudioBlock, OBJECT_POOL_SIZE> m_object_pool;
