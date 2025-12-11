@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <thread>
 #include <chrono>
-#include "LockFreeQueue.h"
+#include <vector>
 
 namespace RyujinxOboe {
 
@@ -20,16 +20,15 @@ enum SampleFormat {
 };
 
 struct AudioBlock {
-    // 保持8192字节（8KB），能容纳至少一个完整的音频块
-    // 计算：240帧 × 6声道 × 4字节 × 2（安全系数）= 11520字节
-    // 我们使用8192，因为实际6声道使用较少，但保持足够空间
-    static constexpr size_t BLOCK_SIZE = 8192;
+    static constexpr size_t DEFAULT_BLOCK_SIZE = 4096;
     
-    uint8_t data[BLOCK_SIZE];
+    std::vector<uint8_t> data;
     size_t data_size = 0;
     size_t data_played = 0;
     int32_t sample_format = PCM_INT16;
     bool consumed = true;
+    
+    AudioBlock() : data(DEFAULT_BLOCK_SIZE) {}
     
     void clear() {
         data_size = 0;
@@ -39,6 +38,92 @@ struct AudioBlock {
     
     size_t available() const {
         return data_size - data_played;
+    }
+    
+    void ensure_capacity(size_t required_size) {
+        if (data.size() < required_size) {
+            data.resize(required_size);
+        }
+    }
+};
+
+// 简单的动态队列实现
+class DynamicAudioQueue {
+private:
+    struct Node {
+        std::unique_ptr<AudioBlock> block;
+        std::unique_ptr<Node> next;
+    };
+    
+    std::unique_ptr<Node> m_head;
+    std::unique_ptr<Node> m_tail;
+    Node* m_head_ptr = nullptr;
+    Node* m_tail_ptr = nullptr;
+    
+    std::atomic<size_t> m_size{0};
+    std::mutex m_mutex;
+    
+    std::unique_ptr<Node> create_node() {
+        return std::make_unique<Node>();
+    }
+    
+public:
+    DynamicAudioQueue() {
+        m_head = create_node();
+        m_tail = m_head.get();
+        m_head_ptr = m_head.get();
+        m_tail_ptr = m_head.get();
+    }
+    
+    bool push(std::unique_ptr<AudioBlock> block) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        
+        // 写入数据到尾部节点
+        std::swap(m_tail_ptr->block, block);
+        
+        // 创建新节点作为下一个
+        m_tail_ptr->next = create_node();
+        m_tail_ptr = m_tail_ptr->next.get();
+        
+        m_size.fetch_add(1);
+        return true;
+    }
+    
+    bool pop(std::unique_ptr<AudioBlock>& block) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        
+        if (!m_head_ptr->block) {
+            return false;
+        }
+        
+        std::swap(m_head_ptr->block, block);
+        
+        // 移动到下一个节点
+        if (m_head_ptr->next) {
+            m_head_ptr = m_head_ptr->next.get();
+        } else {
+            // 如果没有下一个节点，创建一个新的
+            m_head_ptr->next = create_node();
+            m_head_ptr = m_head_ptr->next.get();
+        }
+        
+        m_size.fetch_sub(1);
+        return true;
+    }
+    
+    size_t size() const {
+        return m_size.load();
+    }
+    
+    void clear() {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        
+        // 重置队列
+        m_head = create_node();
+        m_tail = m_head.get();
+        m_head_ptr = m_head.get();
+        m_tail_ptr = m_head.get();
+        m_size.store(0);
     }
 };
 
@@ -62,7 +147,6 @@ public:
     float GetVolume() const { return m_volume.load(); }
 
     void Reset();
-    void PreallocateBlocks(size_t count);
 
 private:
     class AAudioExclusiveCallback : public oboe::AudioStreamDataCallback {
@@ -95,6 +179,10 @@ private:
     static size_t GetBytesPerSample(int32_t format);
     bool OptimizeBufferSize();
     bool TryOpenStreamWithRetry(int maxRetryCount = 3);
+    
+    // 辅助函数
+    std::unique_ptr<AudioBlock> create_audio_block();
+    void return_audio_block(std::unique_ptr<AudioBlock> block);
 
     std::shared_ptr<oboe::AudioStream> m_stream;
     std::unique_ptr<AAudioExclusiveCallback> m_audio_callback;
@@ -112,15 +200,15 @@ private:
     int32_t m_device_channels = 2;
     oboe::AudioFormat m_oboe_format{oboe::AudioFormat::I16};
     
-    // 增大队列容量以解决电音问题
-    // 原来512太大，但32太小，现在使用中等大小
-    static constexpr uint32_t AUDIO_QUEUE_SIZE = 128;  // 中等大小
-    static constexpr uint32_t OBJECT_POOL_SIZE = 256;  // 中等大小
-    
-    LockFreeQueue<std::unique_ptr<AudioBlock>, AUDIO_QUEUE_SIZE> m_audio_queue;
-    LockFreeObjectPool<AudioBlock, OBJECT_POOL_SIZE> m_object_pool;
+    // 动态音频队列
+    DynamicAudioQueue m_audio_queue;
     
     std::unique_ptr<AudioBlock> m_current_block;
+    
+    // 对象池
+    static constexpr size_t BLOCK_POOL_SIZE = 256;
+    std::vector<std::unique_ptr<AudioBlock>> m_block_pool;
+    std::atomic<size_t> m_block_pool_used{0};
 };
 
 } // namespace RyujinxOboe
