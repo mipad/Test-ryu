@@ -18,7 +18,7 @@ enum SampleFormat {
 };
 
 struct AudioBlock {
-    static constexpr size_t BLOCK_SIZE = 4096;
+    static constexpr size_t BLOCK_SIZE = 8192;  // 增大块大小
     
     uint8_t data[BLOCK_SIZE];
     size_t data_size = 0;
@@ -57,6 +57,7 @@ public:
     float GetVolume() const { return m_volume.load(); }
 
     void Reset();
+    void Flush();  // 新增：立即清空所有缓冲区
 
 private:
     class SimpleAudioCallback : public oboe::AudioStreamDataCallback {
@@ -91,12 +92,17 @@ private:
     
     bool TryRestartStream();
     void ClearAllBuffers();
+    
+    // 新增：音频时钟跟踪
+    void UpdateAudioClock(int32_t frames_played);
+    int64_t GetCurrentAudioPosition() const;
 
     std::shared_ptr<oboe::AudioStream> m_stream;
     std::unique_ptr<SimpleAudioCallback> m_audio_callback;
     std::unique_ptr<SimpleErrorCallback> m_error_callback;
     
     std::mutex m_stream_mutex;
+    std::mutex m_clock_mutex;
     std::atomic<bool> m_initialized{false};
     std::atomic<bool> m_stream_started{false};
     std::atomic<bool> m_needs_restart{false};
@@ -109,7 +115,7 @@ private:
     int32_t m_device_channels = 2;
     oboe::AudioFormat m_oboe_format{oboe::AudioFormat::I16};
     
-    static constexpr uint32_t AUDIO_QUEUE_SIZE = 256;
+    static constexpr uint32_t AUDIO_QUEUE_SIZE = 128;  // 减小队列大小
     
     LockFreeQueue<std::unique_ptr<AudioBlock>, AUDIO_QUEUE_SIZE> m_audio_queue;
     
@@ -122,6 +128,12 @@ private:
     std::unique_ptr<AudioBlock> AcquireBlock();
     void ReleaseBlock(std::unique_ptr<AudioBlock> block);
     void InitializePool();
+    
+    // 音频时钟跟踪
+    std::atomic<int64_t> m_total_frames_played{0};
+    std::atomic<int64_t> m_total_frames_written{0};
+    std::chrono::steady_clock::time_point m_last_clock_update;
+    int32_t m_clock_drift_correction{0};
 };
 
 } // namespace RyujinxOboe
