@@ -305,7 +305,7 @@ void OboeAudioRenderer::Shutdown() {
 void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& builder) {
     builder.setPerformanceMode(oboe::PerformanceMode::LowLatency)
            ->setAudioApi(oboe::AudioApi::AAudio)
-           ->setChannelCount(device_channels_)
+           ->setChannelCount(2)  
            ->setSharingMode(oboe::SharingMode::Exclusive)
            ->setDirection(oboe::Direction::Output)
            ->setSampleRate(m_sample_rate.load())
