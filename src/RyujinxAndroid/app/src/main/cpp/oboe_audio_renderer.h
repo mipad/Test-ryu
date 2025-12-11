@@ -35,7 +35,7 @@ enum class StreamState {
 };
 
 struct AudioBlock {
-    static constexpr size_t BLOCK_SIZE = 5076;
+    static constexpr size_t BLOCK_SIZE = 5760;
     
     uint8_t data[BLOCK_SIZE];
     size_t data_size = 0;
@@ -248,7 +248,7 @@ private:
     AdpfWrapper m_adpf_wrapper;
     
     static constexpr uint32_t AUDIO_QUEUE_SIZE = 256;
-    static constexpr uint32_t OBJECT_POOL_SIZE = 1024;
+    static constexpr uint32_t OBJECT_POOL_SIZE = 512;
     
     LockFreeQueue<std::unique_ptr<AudioBlock>, AUDIO_QUEUE_SIZE> m_audio_queue;
     LockFreeObjectPool<AudioBlock, OBJECT_POOL_SIZE> m_object_pool;
