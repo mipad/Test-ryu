@@ -595,12 +595,12 @@ int32_t OboeAudioRenderer::GetBufferedFrames() const {
     return total_frames;
 }
 
-OboeAudioRenderer::PerformanceStats OboeAudioRenderer::GetPerformanceStats() const {
+PerformanceStats OboeAudioRenderer::GetPerformanceStats() const {
     std::lock_guard<std::mutex> lock(m_stats_mutex);
     return m_performance_stats;
 }
 
-double OboeAudioRenderer::CalculateLatencyMillis() const {
+double OboeAudioRenderer::CalculateLatencyMillis() {
     if (!m_stream || m_current_state.load() != StreamState::Started) {
         return 0.0;
     }
@@ -657,7 +657,7 @@ double OboeAudioRenderer::CalculateLatencyMillis() const {
     }
 }
 
-int32_t OboeAudioRenderer::GetXRunCount() const {
+int32_t OboeAudioRenderer::GetXRunCount() {
     if (!m_stream) return 0;
     
     try {

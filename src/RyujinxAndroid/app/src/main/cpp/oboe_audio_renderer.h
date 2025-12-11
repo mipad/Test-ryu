@@ -103,8 +103,8 @@ public:
     void SetPerformanceHintEnabled(bool enabled) { m_performance_hint_enabled = enabled; }
     bool IsPerformanceHintEnabled() const { return m_performance_hint_enabled; }
     
-    double CalculateLatencyMillis() const;
-    int32_t GetXRunCount() const;
+    double CalculateLatencyMillis();
+    int32_t GetXRunCount();
     
     static size_t GetActiveInstanceCount();
     static void DumpAllInstancesInfo();
