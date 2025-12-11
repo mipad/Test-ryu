@@ -7,7 +7,6 @@
 #include <memory>
 #include <cstdint>
 #include <vector>
-#include "LockFreeQueue.h"
 
 namespace RyujinxOboe {
 
@@ -36,7 +35,7 @@ enum SampleFormat {
 };
 
 struct AudioBlock {
-    static constexpr size_t BLOCK_SIZE = 8192;  // 增加块大小，减少碎片化
+    static constexpr size_t BLOCK_SIZE = 8192;
     
     uint8_t data[BLOCK_SIZE];
     size_t data_size = 0;
@@ -54,6 +53,13 @@ struct AudioBlock {
         return data_size > data_played ? data_size - data_played : 0;
     }
 };
+
+// 前向声明
+template <typename T, uint32_t CAPACITY, typename INDEX_TYPE = uint32_t>
+class LockFreeQueue;
+
+template<typename T, uint32_t POOL_SIZE>
+class LockFreeObjectPool;
 
 class OboeAudioRenderer {
 public:
@@ -74,15 +80,10 @@ public:
     void SetVolume(float volume);
     float GetVolume() const { return m_volume.load(); }
     
-    float GetLatencyMs() const;
-    int32_t GetUnderrunCount() const { return m_underrun_count.load(); }
-    int32_t GetOverrunCount() const { return m_overrun_count.load(); }
-    
     void Reset();
-    bool RestartStream();
 
 private:
-    class AudioStreamCallback : public oboe::AudioStreamDataCallback {
+    class AudioStreamCallback : public oboe::AudioStreamCallback {
     public:
         explicit AudioStreamCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
         oboe::DataCallbackResult onAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) override;
@@ -113,7 +114,7 @@ private:
     
     std::unique_ptr<AudioBlock> AcquireBlock();
     void ReleaseBlock(std::unique_ptr<AudioBlock> block);
-    void InitializePool(size_t pool_size = 128);
+    void InitializePool(uint32_t pool_size = 64);
     
     std::shared_ptr<oboe::AudioStream> m_stream;
     std::unique_ptr<AudioStreamCallback> m_callback;
@@ -124,36 +125,28 @@ private:
     std::atomic<bool> m_initialized{false};
     std::atomic<bool> m_stream_active{false};
     std::atomic<bool> m_recovery_pending{false};
-    std::atomic<int32_t> m_error_count{0};
-    std::atomic<int32_t> m_underrun_count{0};
-    std::atomic<int32_t> m_overrun_count{0};
     
     std::atomic<int32_t> m_sample_rate{48000};
     std::atomic<int32_t> m_channel_count{2};
     std::atomic<int32_t> m_sample_format{PCM_INT16};
     std::atomic<float> m_volume{1.0f};
-    std::atomic<float> m_target_volume{1.0f};
     
     int32_t m_device_channels = 2;
     oboe::AudioFormat m_oboe_format{oboe::AudioFormat::I16};
     
     // 音频队列和对象池
-    static constexpr uint32_t AUDIO_QUEUE_SIZE = 512;
-    static constexpr uint32_t MAX_POOL_SIZE = 256;
+    static constexpr uint32_t AUDIO_QUEUE_SIZE = 256;
+    static constexpr uint32_t MAX_POOL_SIZE = 128;
     
-    LockFreeQueue<std::unique_ptr<AudioBlock>, AUDIO_QUEUE_SIZE> m_audio_queue;
+    std::unique_ptr<LockFreeQueue<std::unique_ptr<AudioBlock>, AUDIO_QUEUE_SIZE>> m_audio_queue;
     std::vector<std::unique_ptr<AudioBlock>> m_block_pool;
     
     std::unique_ptr<AudioBlock> m_current_block;
     
     // 用于音量平滑过渡
     float m_current_volume = 1.0f;
+    float m_target_volume = 1.0f;
     static constexpr float VOLUME_RAMP_SPEED = 0.05f;
-    
-    // 性能监控
-    std::chrono::steady_clock::time_point m_last_buffer_time;
-    std::atomic<int32_t> m_total_written_frames{0};
-    std::atomic<int32_t> m_total_played_frames{0};
 };
 
 } // namespace RyujinxOboe
