@@ -2,9 +2,9 @@ name: Android CI Fixed
 
 on:
   push:
-    branches: [ "bas1" ]  
+    branches: [ "bas112" ]  
   pull_request:
-    branches: [ "bas1" ]
+    branches: [ "bas112" ]
 
 jobs:
   build:
@@ -27,7 +27,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: bas1
+        ref: bas112
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
