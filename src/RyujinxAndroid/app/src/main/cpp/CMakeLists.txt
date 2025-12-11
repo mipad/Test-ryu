@@ -56,7 +56,7 @@ FetchContent_Declare(
 )
 
 # 设置 Oboe 构建选项，禁用格式转换以减少代码大小
-set(OBOE_DISABLE_CONVERSION ON CACHE BOOL "Disable format conversion in Oboe")
+#(OBOE_DISABLE_CONVERSION ON CACHE BOOL "Disable format conversion in Oboe")
 
 FetchContent_MakeAvailable(oboe)
 
