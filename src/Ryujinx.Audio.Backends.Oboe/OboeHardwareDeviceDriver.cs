@@ -516,7 +516,8 @@ namespace Ryujinx.Audio.Backends.Oboe
                         $"FramesPlayed={_sessionStats.TotalFramesPlayed}");
                 }
                 
-                base.Dispose();
+                // 注意：基类HardwareDeviceSessionOutputBase的Dispose是抽象的，不能调用base.Dispose()
+                // 已移除base.Dispose()调用
             }
 
             public override void PrepareToClose() 
