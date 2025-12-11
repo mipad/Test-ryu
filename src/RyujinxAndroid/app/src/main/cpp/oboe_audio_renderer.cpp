@@ -118,7 +118,7 @@ void OboeAudioRenderer::AdpfWrapper::onEndCallback(double durationScaler) {
 OboeAudioRenderer::OboeAudioRenderer() {
     m_audio_callback = std::make_unique<AAudioExclusiveCallback>(this);
     m_error_callback = std::make_unique<AAudioExclusiveErrorCallback>(this);
-    PreallocateBlocks(64);
+    PreallocateBlocks(256);
     RegisterInstance();
     UpdateState(StreamState::Uninitialized);
 }
