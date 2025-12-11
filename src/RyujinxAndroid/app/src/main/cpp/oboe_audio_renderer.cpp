@@ -597,7 +597,8 @@ int32_t OboeAudioRenderer::GetBufferedFrames() const {
 
 PerformanceStats OboeAudioRenderer::GetPerformanceStats() const {
     std::lock_guard<std::mutex> lock(m_stats_mutex);
-    return m_performance_stats;
+    // 使用自定义拷贝构造函数返回副本
+    return PerformanceStats(m_performance_stats);
 }
 
 double OboeAudioRenderer::CalculateLatencyMillis() {

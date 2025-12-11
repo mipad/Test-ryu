@@ -63,6 +63,59 @@ struct PerformanceStats {
     std::atomic<double> min_latency_ms{1000.0};
     std::atomic<int64_t> error_count{0};
     std::chrono::steady_clock::time_point last_error_time;
+    
+    // 自定义拷贝构造函数，用于复制atomic成员的值
+    PerformanceStats() = default;
+    PerformanceStats(const PerformanceStats& other) {
+        xrun_count.store(other.xrun_count.load());
+        total_frames_played.store(other.total_frames_played.load());
+        total_frames_written.store(other.total_frames_written.load());
+        average_latency_ms.store(other.average_latency_ms.load());
+        max_latency_ms.store(other.max_latency_ms.load());
+        min_latency_ms.store(other.min_latency_ms.load());
+        error_count.store(other.error_count.load());
+        last_error_time = other.last_error_time;
+    }
+    
+    PerformanceStats& operator=(const PerformanceStats& other) {
+        if (this != &other) {
+            xrun_count.store(other.xrun_count.load());
+            total_frames_played.store(other.total_frames_played.load());
+            total_frames_written.store(other.total_frames_written.load());
+            average_latency_ms.store(other.average_latency_ms.load());
+            max_latency_ms.store(other.max_latency_ms.load());
+            min_latency_ms.store(other.min_latency_ms.load());
+            error_count.store(other.error_count.load());
+            last_error_time = other.last_error_time;
+        }
+        return *this;
+    }
+    
+    // 移动构造函数
+    PerformanceStats(PerformanceStats&& other) noexcept {
+        xrun_count.store(other.xrun_count.load());
+        total_frames_played.store(other.total_frames_played.load());
+        total_frames_written.store(other.total_frames_written.load());
+        average_latency_ms.store(other.average_latency_ms.load());
+        max_latency_ms.store(other.max_latency_ms.load());
+        min_latency_ms.store(other.min_latency_ms.load());
+        error_count.store(other.error_count.load());
+        last_error_time = other.last_error_time;
+    }
+    
+    PerformanceStats& operator=(PerformanceStats&& other) noexcept {
+        if (this != &other) {
+            xrun_count.store(other.xrun_count.load());
+            total_frames_played.store(other.total_frames_played.load());
+            total_frames_written.store(other.total_frames_written.load());
+            average_latency_ms.store(other.average_latency_ms.load());
+            max_latency_ms.store(other.max_latency_ms.load());
+            min_latency_ms.store(other.min_latency_ms.load());
+            error_count.store(other.error_count.load());
+            last_error_time = other.last_error_time;
+        }
+        return *this;
+    }
 };
 
 class OboeAudioRenderer {
