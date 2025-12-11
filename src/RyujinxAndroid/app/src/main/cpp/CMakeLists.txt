@@ -56,7 +56,7 @@ FetchContent_Declare(
 )
 
 # 设置 Oboe 构建选项，禁用格式转换以减少代码大小
-#(OBOE_DISABLE_CONVERSION ON CACHE BOOL "Disable format conversion in Oboe")
+set(OBOE_DISABLE_CONVERSION ON CACHE BOOL "Disable format conversion in Oboe")
 
 FetchContent_MakeAvailable(oboe)
 
@@ -95,7 +95,7 @@ target_compile_definitions(ryujinxjni PRIVATE
 # 为音频渲染器文件单独启用激进优化
 # 注意：如果某些游戏出现杂音，可以回退到 "-O3" 或 "-O3 -ffast-math"
 set_source_files_properties(oboe_audio_renderer.cpp PROPERTIES
-    COMPILE_FLAGS "-O3"
+    COMPILE_FLAGS "-Ofast"
 )
 
 # 为主目标添加编译选项（其他文件保持 -O3，不包含 -ffast-math）
