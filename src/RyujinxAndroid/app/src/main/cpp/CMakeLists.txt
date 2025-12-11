@@ -85,6 +85,7 @@ add_library(
     vulkan_wrapper.cpp
     ryujinx.cpp
     oboe_audio_renderer.cpp
+    DynamicAudioQueue.cpp
 )
 
 # 添加编译定义以优化音频处理
