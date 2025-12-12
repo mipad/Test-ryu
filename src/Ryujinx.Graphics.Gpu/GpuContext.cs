@@ -400,6 +400,8 @@ namespace Ryujinx.Graphics.Gpu
                     if (SyncActions[i].SyncPreAction(syncPoint))
                     {
                         SyncActions.RemoveAt(i--);
+                    }
+                    
                 }
 
                 foreach (var action in SyncpointActions)
