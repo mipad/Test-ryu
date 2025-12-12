@@ -20,7 +20,6 @@
 #include <cstdint>
 #include <atomic>
 #include <memory>
-#include <cassert>
 
 template <typename T, uint32_t CAPACITY, typename INDEX_TYPE = uint32_t>
 class LockFreeQueue {
@@ -28,16 +27,6 @@ public:
     static constexpr bool isPowerOfTwo(uint32_t n) { return (n & (n - 1)) == 0; }
     static_assert(isPowerOfTwo(CAPACITY), "Capacity must be a power of 2");
     static_assert(std::is_unsigned<INDEX_TYPE>::value, "Index type must be unsigned");
-    
-    LockFreeQueue() : writeCounter(0), readCounter(0) {
-        for (uint32_t i = 0; i < CAPACITY; ++i) {
-            buffer[i] = T();
-        }
-    }
-    
-    ~LockFreeQueue() {
-        clear();
-    }
 
     bool pop(T &val) {
         INDEX_TYPE currentRead = readCounter.load(std::memory_order_relaxed);
@@ -111,28 +100,14 @@ public:
     void clear() {
         INDEX_TYPE currentWrite = writeCounter.load(std::memory_order_acquire);
         readCounter.store(currentWrite, std::memory_order_release);
-        
-        for (INDEX_TYPE i = 0; i < CAPACITY; ++i) {
-            buffer[i] = T();
-        }
-    }
-    
-    uint32_t capacity() const {
-        return CAPACITY;
-    }
-    
-    float load_factor() const {
-        return static_cast<float>(size()) / CAPACITY;
     }
 
 private:
-    INDEX_TYPE mask(INDEX_TYPE n) const { 
-        return static_cast<INDEX_TYPE>(n & (CAPACITY - 1)); 
-    }
+    INDEX_TYPE mask(INDEX_TYPE n) const { return static_cast<INDEX_TYPE>(n & (CAPACITY - 1)); }
 
     T buffer[CAPACITY];
-    alignas(64) std::atomic<INDEX_TYPE> writeCounter;
-    alignas(64) std::atomic<INDEX_TYPE> readCounter;
+    std::atomic<INDEX_TYPE> writeCounter { 0 };
+    std::atomic<INDEX_TYPE> readCounter { 0 };
 };
 
 template<typename T, uint32_t POOL_SIZE>
@@ -143,10 +118,6 @@ public:
             objects[i] = std::make_unique<T>();
             pool.push(std::move(objects[i]));
         }
-    }
-    
-    ~LockFreeObjectPool() {
-        clear();
     }
 
     std::unique_ptr<T> acquire() {
@@ -168,26 +139,11 @@ public:
     uint32_t available() const {
         return pool.size();
     }
-    
-    uint32_t capacity() const {
-        return POOL_SIZE;
-    }
-    
-    float usage() const {
-        return static_cast<float>(available()) / POOL_SIZE;
-    }
 
     void preallocate(uint32_t count) {
         for (uint32_t i = 0; i < count && available() < POOL_SIZE; ++i) {
             auto obj = std::make_unique<T>();
             pool.push(std::move(obj));
-        }
-    }
-    
-    void clear() {
-        pool.clear();
-        for (uint32_t i = 0; i < POOL_SIZE; ++i) {
-            objects[i].reset();
         }
     }
 
