@@ -18,17 +18,14 @@
 
 namespace RyujinxOboe {
 
-// 静态成员初始化
 std::mutex OboeAudioRenderer::s_instances_mutex;
 std::set<OboeAudioRenderer*> OboeAudioRenderer::s_active_instances;
 
-// ADPF函数指针类型
 typedef int (*AdpfCreateFn)(pid_t, int64_t);
 typedef void (*AdpfCloseFn)(void*);
 typedef void (*AdpfBeginFn)(void*);
 typedef void (*AdpfEndFn)(void*, double);
 
-// ADPF包装器实现
 bool OboeAudioRenderer::AdpfWrapper::open(pid_t tid, int64_t targetDurationNanos) {
 #ifdef __ANDROID__
     void* lib = dlopen("libadpf.so", RTLD_NOW);
@@ -44,7 +41,6 @@ bool OboeAudioRenderer::AdpfWrapper::open(pid_t tid, int64_t targetDurationNanos
                 handle = reinterpret_cast<void*>(result);
                 isOpen = true;
                 attempted = true;
-                LOGI("ADPF session created successfully");
                 return true;
             }
         }
@@ -52,7 +48,6 @@ bool OboeAudioRenderer::AdpfWrapper::open(pid_t tid, int64_t targetDurationNanos
     }
 #endif
     attempted = true;
-    LOGW("ADPF not available on this device");
     return false;
 }
 
@@ -146,19 +141,11 @@ size_t OboeAudioRenderer::GetActiveInstanceCount() {
 
 void OboeAudioRenderer::DumpAllInstancesInfo() {
     std::lock_guard<std::mutex> lock(s_instances_mutex);
-    LOGI("=== OboeAudioRenderer Instances Dump ===");
-    LOGI("Total instances: %zu", s_active_instances.size());
     
     int i = 0;
     for (auto* instance : s_active_instances) {
-        LOGI("Instance %d:", i++);
-        LOGI("  Initialized: %s", instance->m_initialized.load() ? "Yes" : "No");
-        LOGI("  State: %d", static_cast<int>(instance->m_current_state.load()));
-        LOGI("  Sample Rate: %d", instance->m_sample_rate.load());
-        LOGI("  Channels: %d", instance->m_channel_count.load());
-        LOGI("  Volume: %.2f", instance->m_volume.load());
+        i++;
     }
-    LOGI("=== End Dump ===");
 }
 
 void OboeAudioRenderer::UpdateState(StreamState newState) {
@@ -175,11 +162,8 @@ void OboeAudioRenderer::HandleError(oboe::Result error, const std::string& conte
     m_performance_stats.error_count++;
     m_performance_stats.last_error_time = std::chrono::steady_clock::now();
     
-    std::string errorMsg = context + ": " + oboe::convertToText(error);
-    LOGE("%s", errorMsg.c_str());
-    
     if (m_error_callback_user) {
-        m_error_callback_user(errorMsg, error);
+        m_error_callback_user(context, error);
     }
     
     UpdateState(StreamState::Error);
@@ -200,9 +184,6 @@ bool OboeAudioRenderer::RecoverFromError(oboe::Result error) {
                 m_current_api = oboe::AudioApi::OpenSLES;
                 return true;
             }
-            break;
-            
-        case oboe::Result::ErrorInternal:
             break;
             
         default:
@@ -279,25 +260,16 @@ void OboeAudioRenderer::Shutdown() {
 }
 
 void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& builder) {
-    int32_t frames_per_callback = 240;
-    
-    if (m_sample_rate.load() > 48000) {
-        frames_per_callback = 480;
-    } else if (m_sample_rate.load() < 32000) {
-        frames_per_callback = 120;
-    }
-    
     builder.setPerformanceMode(oboe::PerformanceMode::LowLatency)
            ->setAudioApi(oboe::AudioApi::AAudio)
            ->setSharingMode(oboe::SharingMode::Exclusive)
            ->setDirection(oboe::Direction::Output)
            ->setSampleRate(m_sample_rate.load())
-           ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium)
+           ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::High)
            ->setFormat(m_oboe_format)
            ->setFormatConversionAllowed(true)
            ->setUsage(oboe::Usage::Game)
-           ->setFramesPerCallback(frames_per_callback)
-           ->setInputPreset(oboe::InputPreset::Generic);
+           ->setFramesPerCallback(240);
     
     auto channel_count = m_channel_count.load();
     auto channel_mask = [&]() {
@@ -478,35 +450,48 @@ bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int3
         return false;
     }
     
+    int32_t buffered_frames = GetBufferedFrames();
+    if (buffered_frames > m_max_queue_frames.load()) {
+        m_need_throttle.store(true);
+        m_performance_stats.xrun_count++;
+        return false;
+    } else if (buffered_frames < m_max_queue_frames.load() / 2) {
+        m_need_throttle.store(false);
+    }
+    
     int32_t system_channels = m_channel_count.load();
     size_t bytes_per_sample = GetBytesPerSample(sampleFormat);
     size_t total_bytes = num_frames * system_channels * bytes_per_sample;
     
     const uint8_t* byte_data = static_cast<const uint8_t*>(data);
-    size_t total_bytes_processed = 0;
-    const size_t max_blocks_to_acquire = std::min<size_t>(8, total_bytes / AudioBlock::BLOCK_SIZE + 1);
+    size_t bytes_remaining = total_bytes;
+    size_t bytes_processed = 0;
     
-    std::vector<std::unique_ptr<AudioBlock>> blocks;
-    blocks.reserve(max_blocks_to_acquire);
+    m_performance_stats.total_frames_written += num_frames;
     
-    for (size_t i = 0; i < max_blocks_to_acquire; ++i) {
+    while (bytes_remaining > 0) {
         auto block = m_object_pool.acquire();
-        if (block) {
-            blocks.push_back(std::move(block));
+        if (!block) {
+            return false;
+        }
+        
+        size_t copy_size = std::min(bytes_remaining, AudioBlock::BLOCK_SIZE);
+        
+        if (sampleFormat == PCM_INT16) {
+            const int16_t* src = reinterpret_cast<const int16_t*>(byte_data + bytes_processed);
+            int16_t* dst = reinterpret_cast<int16_t*>(block->data);
+            std::memcpy(dst, src, copy_size);
+        } else if (sampleFormat == PCM_FLOAT) {
+            const float* src = reinterpret_cast<const float*>(byte_data + bytes_processed);
+            float* dst = reinterpret_cast<float*>(block->data);
+            std::memcpy(dst, src, copy_size);
+        } else if (sampleFormat == PCM_INT32) {
+            const int32_t* src = reinterpret_cast<const int32_t*>(byte_data + bytes_processed);
+            int32_t* dst = reinterpret_cast<int32_t*>(block->data);
+            std::memcpy(dst, src, copy_size);
         } else {
-            break;
+            std::memcpy(block->data, byte_data + bytes_processed, copy_size);
         }
-    }
-    
-    for (auto& block : blocks) {
-        if (total_bytes_processed >= total_bytes) {
-            m_object_pool.release(std::move(block));
-            continue;
-        }
-        
-        size_t copy_size = std::min(total_bytes - total_bytes_processed, AudioBlock::BLOCK_SIZE);
-        
-        std::memcpy(block->data, byte_data + total_bytes_processed, copy_size);
         
         block->data_size = copy_size;
         block->data_played = 0;
@@ -515,18 +500,13 @@ bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int3
         
         if (!m_audio_queue.push(std::move(block))) {
             m_performance_stats.xrun_count++;
-            if (m_audio_queue.size() > m_audio_queue.capacity() * 3 / 4) {
-                std::unique_ptr<AudioBlock> discarded;
-                m_audio_queue.pop(discarded);
-                m_audio_queue.push(std::move(block));
-            }
             return false;
         }
         
-        total_bytes_processed += copy_size;
+        bytes_processed += copy_size;
+        bytes_remaining -= copy_size;
     }
     
-    m_performance_stats.total_frames_written += num_frames;
     return true;
 }
 
@@ -686,6 +666,50 @@ size_t OboeAudioRenderer::GetBytesPerSample(int32_t format) {
     }
 }
 
+float OboeAudioRenderer::CalculateQueueLoad() const {
+    uint32_t queue_size = m_audio_queue.size();
+    return static_cast<float>(queue_size) / AUDIO_QUEUE_SIZE;
+}
+
+bool OboeAudioRenderer::SetWriteBlockingEnabled(bool enabled) {
+    bool old = m_write_blocking.load();
+    m_write_blocking.store(enabled);
+    return old;
+}
+
+int32_t OboeAudioRenderer::GetRecommendedWriteFrames(int32_t desired_frames) {
+    float load = CalculateQueueLoad();
+    
+    if (load > 0.8f) {
+        return std::max(64, desired_frames / 2);
+    } else if (load > 0.5f) {
+        return desired_frames;
+    } else {
+        return std::min(480, desired_frames * 2);
+    }
+}
+
+float OboeAudioRenderer::GetQueueLoadFactor() const {
+    return CalculateQueueLoad();
+}
+
+int32_t OboeAudioRenderer::GetAverageCallbackInterval() const {
+    return static_cast<int32_t>(m_average_callback_interval.load() / 1000000);
+}
+
+void OboeAudioRenderer::AdjustQueueSize() {
+    int32_t buffered_frames = GetBufferedFrames();
+    int32_t current_max = m_max_queue_frames.load();
+    
+    int32_t xrun_count = m_performance_stats.xrun_count.load();
+    
+    if (xrun_count > 10) {
+        m_max_queue_frames.store(current_max * 120 / 100);
+    } else if (buffered_frames < current_max / 4 && xrun_count < 2) {
+        m_max_queue_frames.store(std::max(480, current_max * 80 / 100));
+    }
+}
+
 oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(
     oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) {
     
@@ -697,7 +721,32 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(
         return oboe::DataCallbackResult::Continue;
     }
     
+    auto now = std::chrono::steady_clock::now();
+    auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        now.time_since_epoch()).count();
+    
+    {
+        std::lock_guard<std::mutex> lock(m_callback_times_mutex);
+        m_callback_timestamps.push_back(now_ns);
+        
+        if (m_callback_timestamps.size() > 100) {
+            m_callback_timestamps.pop_front();
+        }
+        
+        if (m_callback_timestamps.size() >= 2) {
+            int64_t total_interval = 0;
+            for (size_t i = 1; i < m_callback_timestamps.size(); i++) {
+                total_interval += (m_callback_timestamps[i] - m_callback_timestamps[i-1]);
+            }
+            m_average_callback_interval.store(
+                total_interval / (m_callback_timestamps.size() - 1));
+        }
+    }
+    
+    m_last_callback_time.store(now_ns);
+    
     BeginPerformanceHint();
+    
     m_performance_stats.total_frames_played += num_frames;
     
     uint8_t* output = static_cast<uint8_t*>(audioData);
@@ -705,78 +754,46 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(
     size_t bytes_copied = 0;
     bool underrun = false;
     
-    int32_t blocks_to_pop = std::min(static_cast<int32_t>(m_audio_queue.size() / 2), 4);
-    std::vector<std::unique_ptr<AudioBlock>> blocks;
-    blocks.reserve(blocks_to_pop);
-    
-    for (int32_t i = 0; i < blocks_to_pop; ++i) {
-        std::unique_ptr<AudioBlock> block;
-        if (m_audio_queue.pop(block)) {
-            blocks.push_back(std::move(block));
-        }
-    }
-    
-    auto process_blocks = [&](std::vector<std::unique_ptr<AudioBlock>>& block_list) {
-        for (auto& block : block_list) {
-            if (bytes_remaining == 0) {
-                m_current_block = std::move(block);
+    while (bytes_remaining > 0) {
+        if (!m_current_block || m_current_block->consumed || m_current_block->available() == 0) {
+            if (m_current_block) {
+                m_object_pool.release(std::move(m_current_block));
+            }
+            
+            if (!m_audio_queue.pop(m_current_block)) {
+                std::memset(output + bytes_copied, 0, bytes_remaining);
+                underrun = true;
                 break;
             }
-            
-            size_t bytes_to_copy = std::min(block->available(), bytes_remaining);
-            std::memcpy(output + bytes_copied, 
-                       block->data + block->data_played,
-                       bytes_to_copy);
-            
-            if (m_volume.load() < 1.0f) {
-                if (block->sample_format == PCM_INT16) {
-                    int16_t* samples = reinterpret_cast<int16_t*>(output + bytes_copied);
-                    size_t sample_count = bytes_to_copy / sizeof(int16_t);
-                    float volume = m_volume.load();
-                    for (size_t i = 0; i < sample_count; ++i) {
-                        samples[i] = static_cast<int16_t>(samples[i] * volume);
-                    }
-                } else if (block->sample_format == PCM_FLOAT) {
-                    float* samples = reinterpret_cast<float*>(output + bytes_copied);
-                    size_t sample_count = bytes_to_copy / sizeof(float);
-                    float volume = m_volume.load();
-                    for (size_t i = 0; i < sample_count; ++i) {
-                        samples[i] *= volume;
-                    }
+        }
+        
+        size_t bytes_to_copy = std::min(m_current_block->available(), bytes_remaining);
+        std::memcpy(output + bytes_copied, 
+                   m_current_block->data + m_current_block->data_played,
+                   bytes_to_copy);
+        
+        if (m_volume.load() < 1.0f) {
+            if (m_current_block->sample_format == PCM_INT16) {
+                int16_t* samples = reinterpret_cast<int16_t*>(output + bytes_copied);
+                size_t sample_count = bytes_to_copy / sizeof(int16_t);
+                for (size_t i = 0; i < sample_count; i++) {
+                    samples[i] = static_cast<int16_t>(samples[i] * m_volume.load());
+                }
+            } else if (m_current_block->sample_format == PCM_FLOAT) {
+                float* samples = reinterpret_cast<float*>(output + bytes_copied);
+                size_t sample_count = bytes_to_copy / sizeof(float);
+                for (size_t i = 0; i < sample_count; i++) {
+                    samples[i] *= m_volume.load();
                 }
             }
-            
-            bytes_copied += bytes_to_copy;
-            bytes_remaining -= bytes_to_copy;
-            block->data_played += bytes_to_copy;
-            
-            if (block->available() == 0) {
-                m_object_pool.release(std::move(block));
-            } else {
-                std::unique_ptr<AudioBlock> temp = std::move(block);
-                m_audio_queue.push_front(std::move(temp));
-            }
         }
-    };
-    
-    if (m_current_block && !m_current_block->consumed) {
-        std::unique_ptr<AudioBlock> temp = std::move(m_current_block);
-        std::vector<std::unique_ptr<AudioBlock>> temp_vec;
-        temp_vec.push_back(std::move(temp));
-        process_blocks(temp_vec);
-    }
-    
-    process_blocks(blocks);
-    
-    if (bytes_remaining > 0) {
-        std::unique_ptr<AudioBlock> block;
-        if (m_audio_queue.pop(block)) {
-            std::vector<std::unique_ptr<AudioBlock>> single_block;
-            single_block.push_back(std::move(block));
-            process_blocks(single_block);
-        } else {
-            std::memset(output + bytes_copied, 0, bytes_remaining);
-            underrun = true;
+        
+        bytes_copied += bytes_to_copy;
+        bytes_remaining -= bytes_to_copy;
+        m_current_block->data_played += bytes_to_copy;
+        
+        if (m_current_block->available() == 0) {
+            m_current_block->consumed = true;
         }
     }
     

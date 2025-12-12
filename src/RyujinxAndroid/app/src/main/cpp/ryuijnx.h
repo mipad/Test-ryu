@@ -18,7 +18,7 @@
 #include "native_window.h"
 #include <pthread.h>
 
-#define CALL_VK(func) if (VK_SUCCESS != (func)) { __android_log_print(ANDROID_LOG_ERROR, "Ryujinx", "Vulkan error in %s", #func); }
+#define CALL_VK(func) if (VK_SUCCESS != (func)) { }
 #define VK_CHECK(x) CALL_VK(x)
 #define LoadLib(a) dlopen(a, RTLD_NOW)
 
@@ -32,7 +32,6 @@ extern jclass _mainActivityClass;
 extern pthread_t _renderingThreadIdNative;
 
 extern "C" {
-    // 多实例接口
     void* createOboeRenderer();
     void destroyOboeRenderer(void* renderer);
     bool initOboeRenderer(void* renderer, int sample_rate, int channel_count, int sample_format);
@@ -50,6 +49,9 @@ extern "C" {
     void setOboeRendererPerformanceHint(void* renderer, bool enabled);
     size_t getActiveOboeRendererCount();
     void dumpOboeRendererInfo();
+    
+    float getOboeRendererQueueLoad(void* renderer);
+    int32_t getOboeRendererCallbackInterval(void* renderer);
 
     const char* GetAndroidDeviceModel();
     const char* GetAndroidDeviceBrand();

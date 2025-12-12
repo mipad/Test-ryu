@@ -1,3 +1,19 @@
+/*
+ * Copyright 2018 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #ifndef RHYTHMGAME_LOCKFREEQUEUE_H
 #define RHYTHMGAME_LOCKFREEQUEUE_H
 
@@ -108,71 +124,6 @@ public:
     float load_factor() const {
         return static_cast<float>(size()) / CAPACITY;
     }
-    
-    bool pop_batch(T* output, uint32_t count, uint32_t* actual_count) {
-        INDEX_TYPE currentRead = readCounter.load(std::memory_order_relaxed);
-        INDEX_TYPE currentWrite = writeCounter.load(std::memory_order_acquire);
-        
-        INDEX_TYPE available = currentWrite - currentRead;
-        if (available == 0) {
-            *actual_count = 0;
-            return false;
-        }
-        
-        uint32_t to_pop = std::min(static_cast<uint32_t>(available), count);
-        for (uint32_t i = 0; i < to_pop; ++i) {
-            output[i] = std::move(buffer[mask(currentRead + i)]);
-        }
-        
-        readCounter.store(currentRead + to_pop, std::memory_order_release);
-        *actual_count = to_pop;
-        return true;
-    }
-    
-    bool push_batch(const T* items, uint32_t count) {
-        INDEX_TYPE currentWrite = writeCounter.load(std::memory_order_relaxed);
-        INDEX_TYPE currentRead = readCounter.load(std::memory_order_acquire);
-        
-        INDEX_TYPE available_space = CAPACITY - (currentWrite - currentRead);
-        if (available_space < count) {
-            return false;
-        }
-        
-        for (uint32_t i = 0; i < count; ++i) {
-            buffer[mask(currentWrite + i)] = items[i];
-        }
-        
-        writeCounter.store(currentWrite + count, std::memory_order_release);
-        return true;
-    }
-    
-    bool push_front(T&& item) {
-        INDEX_TYPE currentRead = readCounter.load(std::memory_order_relaxed);
-        INDEX_TYPE currentWrite = writeCounter.load(std::memory_order_acquire);
-        
-        if (currentRead == 0) {
-            return false;
-        }
-        
-        INDEX_TYPE newRead = currentRead - 1;
-        buffer[mask(newRead)] = std::move(item);
-        readCounter.store(newRead, std::memory_order_release);
-        return true;
-    }
-    
-    bool push_front(const T& item) {
-        INDEX_TYPE currentRead = readCounter.load(std::memory_order_relaxed);
-        INDEX_TYPE currentWrite = writeCounter.load(std::memory_order_acquire);
-        
-        if (currentRead == 0) {
-            return false;
-        }
-        
-        INDEX_TYPE newRead = currentRead - 1;
-        buffer[mask(newRead)] = item;
-        readCounter.store(newRead, std::memory_order_release);
-        return true;
-    }
 
 private:
     INDEX_TYPE mask(INDEX_TYPE n) const { 
@@ -238,33 +189,6 @@ public:
         for (uint32_t i = 0; i < POOL_SIZE; ++i) {
             objects[i].reset();
         }
-    }
-    
-    bool acquire_batch(std::unique_ptr<T>* output, uint32_t count, uint32_t* actual_count) {
-        uint32_t acquired = 0;
-        for (uint32_t i = 0; i < count; ++i) {
-            std::unique_ptr<T> obj;
-            if (pool.pop(obj)) {
-                output[acquired++] = std::move(obj);
-            } else {
-                break;
-            }
-        }
-        
-        *actual_count = acquired;
-        return acquired > 0;
-    }
-    
-    bool release_batch(std::unique_ptr<T>* items, uint32_t count) {
-        for (uint32_t i = 0; i < count; ++i) {
-            if (items[i]) {
-                items[i]->clear();
-                if (!pool.push(std::move(items[i]))) {
-                    return false;
-                }
-            }
-        }
-        return true;
     }
 
 private:
