@@ -15,6 +15,12 @@ namespace RyujinxOboe {
 std::mutex OboeAudioRenderer::s_instances_mutex;
 std::set<OboeAudioRenderer*> OboeAudioRenderer::s_active_instances;
 
+// ADPF函数指针类型（需要保留这些类型定义）
+typedef int (*AdpfCreateFn)(pid_t, int64_t);
+typedef void (*AdpfCloseFn)(void*);
+typedef void (*AdpfBeginFn)(void*);
+typedef void (*AdpfEndFn)(void*, double);
+
 // ADPF包装器实现
 bool OboeAudioRenderer::AdpfWrapper::open(pid_t tid, int64_t targetDurationNanos) {
 #ifdef __ANDROID__
