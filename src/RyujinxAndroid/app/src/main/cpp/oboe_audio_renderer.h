@@ -10,7 +10,6 @@
 #include <chrono>
 #include <set>
 #include <functional>
-#include <deque>
 #include "LockFreeQueue.h"
 
 namespace RyujinxOboe {
@@ -160,14 +159,7 @@ public:
     
     static size_t GetActiveInstanceCount();
     static void DumpAllInstancesInfo();
-    
-    bool SetWriteBlockingEnabled(bool enabled);
-    int32_t GetRecommendedWriteFrames(int32_t desired_frames);
-    float GetQueueLoadFactor() const;
-    int32_t GetAverageCallbackInterval() const;
-    int32_t GetMaxQueueFrames() const { return m_max_queue_frames.load(); }
-    void SetMaxQueueFrames(int32_t frames) { m_max_queue_frames.store(frames); }
-    
+
 private:
     class AAudioExclusiveCallback : public oboe::AudioStreamDataCallback {
     public:
@@ -225,9 +217,6 @@ private:
     
     void RegisterInstance();
     void UnregisterInstance();
-    
-    float CalculateQueueLoad() const;
-    void AdjustQueueSize();
 
     std::shared_ptr<oboe::AudioStream> m_stream;
     std::unique_ptr<AAudioExclusiveCallback> m_audio_callback;
@@ -256,7 +245,7 @@ private:
     
     AdpfWrapper m_adpf_wrapper;
     
-    static constexpr uint32_t AUDIO_QUEUE_SIZE = 1024;
+    static constexpr uint32_t AUDIO_QUEUE_SIZE = 512;
     static constexpr uint32_t OBJECT_POOL_SIZE = 1024;
     
     LockFreeQueue<std::unique_ptr<AudioBlock>, AUDIO_QUEUE_SIZE> m_audio_queue;
@@ -266,16 +255,6 @@ private:
     
     static std::mutex s_instances_mutex;
     static std::set<OboeAudioRenderer*> s_active_instances;
-    
-    std::atomic<bool> m_write_blocking{false};
-    std::atomic<int32_t> m_recommended_write_frames{240};
-    std::atomic<int64_t> m_last_callback_time{0};
-    std::atomic<int64_t> m_average_callback_interval{0};
-    std::atomic<int32_t> m_max_queue_frames{4800};
-    std::atomic<bool> m_need_throttle{false};
-    
-    std::deque<int64_t> m_callback_timestamps;
-    std::mutex m_callback_times_mutex;
 };
 
 } // namespace RyujinxOboe

@@ -450,15 +450,6 @@ bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int3
         return false;
     }
     
-    int32_t buffered_frames = GetBufferedFrames();
-    if (buffered_frames > m_max_queue_frames.load()) {
-        m_need_throttle.store(true);
-        m_performance_stats.xrun_count++;
-        return false;
-    } else if (buffered_frames < m_max_queue_frames.load() / 2) {
-        m_need_throttle.store(false);
-    }
-    
     int32_t system_channels = m_channel_count.load();
     size_t bytes_per_sample = GetBytesPerSample(sampleFormat);
     size_t total_bytes = num_frames * system_channels * bytes_per_sample;
@@ -666,50 +657,6 @@ size_t OboeAudioRenderer::GetBytesPerSample(int32_t format) {
     }
 }
 
-float OboeAudioRenderer::CalculateQueueLoad() const {
-    uint32_t queue_size = m_audio_queue.size();
-    return static_cast<float>(queue_size) / AUDIO_QUEUE_SIZE;
-}
-
-bool OboeAudioRenderer::SetWriteBlockingEnabled(bool enabled) {
-    bool old = m_write_blocking.load();
-    m_write_blocking.store(enabled);
-    return old;
-}
-
-int32_t OboeAudioRenderer::GetRecommendedWriteFrames(int32_t desired_frames) {
-    float load = CalculateQueueLoad();
-    
-    if (load > 0.8f) {
-        return std::max(64, desired_frames / 2);
-    } else if (load > 0.5f) {
-        return desired_frames;
-    } else {
-        return std::min(480, desired_frames * 2);
-    }
-}
-
-float OboeAudioRenderer::GetQueueLoadFactor() const {
-    return CalculateQueueLoad();
-}
-
-int32_t OboeAudioRenderer::GetAverageCallbackInterval() const {
-    return static_cast<int32_t>(m_average_callback_interval.load() / 1000000);
-}
-
-void OboeAudioRenderer::AdjustQueueSize() {
-    int32_t buffered_frames = GetBufferedFrames();
-    int32_t current_max = m_max_queue_frames.load();
-    
-    int32_t xrun_count = m_performance_stats.xrun_count.load();
-    
-    if (xrun_count > 10) {
-        m_max_queue_frames.store(current_max * 120 / 100);
-    } else if (buffered_frames < current_max / 4 && xrun_count < 2) {
-        m_max_queue_frames.store(std::max(480, current_max * 80 / 100));
-    }
-}
-
 oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(
     oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) {
     
@@ -720,30 +667,6 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(
         std::memset(audioData, 0, bytes_requested);
         return oboe::DataCallbackResult::Continue;
     }
-    
-    auto now = std::chrono::steady_clock::now();
-    auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-        now.time_since_epoch()).count();
-    
-    {
-        std::lock_guard<std::mutex> lock(m_callback_times_mutex);
-        m_callback_timestamps.push_back(now_ns);
-        
-        if (m_callback_timestamps.size() > 100) {
-            m_callback_timestamps.pop_front();
-        }
-        
-        if (m_callback_timestamps.size() >= 2) {
-            int64_t total_interval = 0;
-            for (size_t i = 1; i < m_callback_timestamps.size(); i++) {
-                total_interval += (m_callback_timestamps[i] - m_callback_timestamps[i-1]);
-            }
-            m_average_callback_interval.store(
-                total_interval / (m_callback_timestamps.size() - 1));
-        }
-    }
-    
-    m_last_callback_time.store(now_ns);
     
     BeginPerformanceHint();
     
