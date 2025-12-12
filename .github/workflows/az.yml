@@ -2,9 +2,9 @@ name: Android CI Fixed
 
 on:
   push:
-    branches: [ "匹配消费" ]  
+    branches: [ "最新1" ]  
   pull_request:
-    branches: [ "匹配消费" ]
+    branches: [ "最新1" ]
 
 jobs:
   build:
@@ -27,7 +27,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: 匹配消费
+        ref: 最新1
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
