@@ -71,7 +71,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 {
                     try
                     {
-                        Thread.Sleep(10); // 10ms更新频率
+                        Thread.Sleep(15); // 10ms更新频率
                         
                         foreach (var session in _sessions.Keys)
                         {
