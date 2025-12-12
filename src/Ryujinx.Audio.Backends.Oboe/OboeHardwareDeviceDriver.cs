@@ -61,6 +61,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         public OboeHardwareDeviceDriver()
         {
             StartUpdateThread();
+            Logger.Info?.Print(LogClass.Audio, "OboeHardwareDeviceDriver initialized (多实例架构)");
         }
 
         private void StartUpdateThread()
@@ -108,6 +109,8 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 if (disposing)
                 {
+                    Logger.Info?.Print(LogClass.Audio, "Disposing OboeHardwareDeviceDriver");
+                    
                     _stillRunning = false;
                     _updateThread?.Join(100);
                     
@@ -157,6 +160,8 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 sampleRate = 48000;
             }
+
+            Logger.Info?.Print(LogClass.Audio, $"Opening Oboe device session: Format={sampleFormat}, Rate={sampleRate}Hz, Channels={channelCount}");
 
             var session = new OboeAudioSession(this, memoryManager, sampleFormat, sampleRate, channelCount);
             _sessions.TryAdd(session, 0);
@@ -215,6 +220,8 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
 
                 setOboeRendererVolume(_rendererPtr, _volume);
+                
+                Logger.Debug?.Print(LogClass.Audio, $"OboeAudioSession created: Format={sampleFormat}, Rate={sampleRate}Hz, Channels={channelCount}");
             }
 
             public int GetBufferedFrames()
@@ -273,6 +280,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
                 
                 _driver.Unregister(this);
+                Logger.Debug?.Print(LogClass.Audio, "OboeAudioSession disposed");
             }
 
             public override void PrepareToClose() 
@@ -285,6 +293,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 if (!_active)
                 {
                     _active = true;
+                    Logger.Debug?.Print(LogClass.Audio, "OboeAudioSession started");
                 }
             }
 
@@ -294,6 +303,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 {
                     _active = false;
                     _queuedBuffers.Clear();
+                    Logger.Debug?.Print(LogClass.Audio, "OboeAudioSession stopped");
                 }
             }
 
@@ -302,6 +312,13 @@ namespace Ryujinx.Audio.Backends.Oboe
                 if (!_active) Start();
 
                 if (buffer.Data == null || buffer.Data.Length == 0) return;
+
+                Logger.Debug?.Print(LogClass.Audio, 
+                    $"QueueBuffer - " +
+                    $"Format: {_sampleFormat}, " +
+                    $"Data Size: {buffer.Data.Length} bytes, " +
+                    $"Channels: {_channelCount}, " +
+                    $"SampleRate: {_sampleRate}");
 
                 // 计算帧数
                 int bytesPerSample = GetBytesPerSample(_sampleFormat);
@@ -316,6 +333,9 @@ namespace Ryujinx.Audio.Backends.Oboe
                     ulong sampleCount = (ulong)(frameCount * _channelCount);
                     _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, sampleCount));
                     _totalWrittenSamples += sampleCount;
+                    
+                    Logger.Debug?.Print(LogClass.Audio, 
+                        $"Queued audio buffer: {frameCount} frames, {sampleCount} samples, Format={_sampleFormat}, Rate={_sampleRate}Hz");
                 }
                 else
                 {
@@ -364,6 +384,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 {
                     setOboeRendererVolume(_rendererPtr, _volume);
                 }
+                Logger.Debug?.Print(LogClass.Audio, $"Session volume set to {_volume:F2}");
             }
 
             public override float GetVolume() => _volume;
