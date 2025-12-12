@@ -105,8 +105,8 @@ private:
     int32_t m_device_channels = 2;
     oboe::AudioFormat m_oboe_format{oboe::AudioFormat::I16};
     
-    static constexpr uint32_t AUDIO_QUEUE_SIZE = 256;
-    static constexpr uint32_t OBJECT_POOL_SIZE = 512;
+    static constexpr uint32_t AUDIO_QUEUE_SIZE = 512;
+    static constexpr uint32_t OBJECT_POOL_SIZE = 1024;
     
     LockFreeQueue<std::unique_ptr<AudioBlock>, AUDIO_QUEUE_SIZE> m_audio_queue;
     LockFreeObjectPool<AudioBlock, OBJECT_POOL_SIZE> m_object_pool;
