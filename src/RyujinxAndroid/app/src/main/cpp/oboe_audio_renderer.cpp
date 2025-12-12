@@ -132,13 +132,11 @@ OboeAudioRenderer::~OboeAudioRenderer() {
 void OboeAudioRenderer::RegisterInstance() {
     std::lock_guard<std::mutex> lock(s_instances_mutex);
     s_active_instances.insert(this);
-    LOGD("OboeAudioRenderer instance created. Total instances: %zu", s_active_instances.size());
 }
 
 void OboeAudioRenderer::UnregisterInstance() {
     std::lock_guard<std::mutex> lock(s_instances_mutex);
     s_active_instances.erase(this);
-    LOGD("OboeAudioRenderer instance destroyed. Remaining instances: %zu", s_active_instances.size());
 }
 
 size_t OboeAudioRenderer::GetActiveInstanceCount() {
@@ -170,10 +168,6 @@ void OboeAudioRenderer::UpdateState(StreamState newState) {
     if (m_state_callback_user) {
         m_state_callback_user(oldState, newState);
     }
-    
-    LOGD("Stream state changed: %d -> %d", 
-         static_cast<int>(oldState), 
-         static_cast<int>(newState));
 }
 
 void OboeAudioRenderer::HandleError(oboe::Result error, const std::string& context) {
@@ -192,38 +186,29 @@ void OboeAudioRenderer::HandleError(oboe::Result error, const std::string& conte
 }
 
 bool OboeAudioRenderer::RecoverFromError(oboe::Result error) {
-    LOGW("Attempting to recover from error: %s", oboe::convertToText(error));
-    
     switch (error) {
         case oboe::Result::ErrorDisconnected:
-            // 设备断开，等待100ms后重连
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             break;
             
         case oboe::Result::ErrorInvalidState:
-            // 无效状态，完全重置
             Reset();
             return true;
             
         case oboe::Result::ErrorUnavailable:
-            // AAudio不可用，尝试降级到OpenSL ES
             if (m_current_api == oboe::AudioApi::AAudio) {
-                LOGW("AAudio unavailable, attempting OpenSL ES fallback");
                 m_current_api = oboe::AudioApi::OpenSLES;
                 return true;
             }
             break;
             
         case oboe::Result::ErrorInternal:
-            // 内部错误，可能是权限问题
-            LOGW("Internal error, checking permissions");
             break;
             
         default:
             break;
     }
     
-    // 通用恢复：关闭并重新打开流
     std::lock_guard<std::mutex> lock(m_stream_mutex);
     CloseStream();
     if (ConfigureAndOpenStream()) {
@@ -235,11 +220,8 @@ bool OboeAudioRenderer::RecoverFromError(oboe::Result error) {
 }
 
 bool OboeAudioRenderer::TryFallbackApi() {
-    LOGD("Attempting API fallback");
-    
     if (m_current_api == oboe::AudioApi::AAudio) {
         m_current_api = oboe::AudioApi::OpenSLES;
-        LOGD("Falling back to OpenSL ES");
         return true;
     }
     
@@ -270,7 +252,6 @@ bool OboeAudioRenderer::InitializeWithFormat(int32_t sampleRate, int32_t channel
     
     UpdateState(StreamState::Opening);
     
-    // 首选AAudio，性能更好
     m_current_api = oboe::AudioApi::AAudio;
     
     if (!TryOpenStreamWithRetry(3)) {
@@ -281,9 +262,6 @@ bool OboeAudioRenderer::InitializeWithFormat(int32_t sampleRate, int32_t channel
     
     m_initialized.store(true);
     UpdateState(StreamState::Started);
-    
-    LOGI("OboeAudioRenderer initialized: %dHz, %d channels, format %d", 
-         sampleRate, channelCount, sampleFormat);
     
     return true;
 }
@@ -298,21 +276,29 @@ void OboeAudioRenderer::Shutdown() {
     m_initialized.store(false);
     m_stream_started.store(false);
     UpdateState(StreamState::Closed);
-    
-    LOGD("OboeAudioRenderer shutdown complete");
 }
 
 void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& builder) {
+    int32_t frames_per_callback = 240;
+    
+    if (m_sample_rate.load() > 48000) {
+        frames_per_callback = 480;
+    } else if (m_sample_rate.load() < 32000) {
+        frames_per_callback = 120;
+    }
+    
     builder.setPerformanceMode(oboe::PerformanceMode::LowLatency)
            ->setAudioApi(oboe::AudioApi::AAudio)
            ->setSharingMode(oboe::SharingMode::Exclusive)
            ->setDirection(oboe::Direction::Output)
            ->setSampleRate(m_sample_rate.load())
-           ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::High)
+           ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium)
            ->setFormat(m_oboe_format)
            ->setFormatConversionAllowed(true)
            ->setUsage(oboe::Usage::Game)
-           ->setFramesPerCallback(240);
+           ->setFramesPerCallback(frames_per_callback)
+           ->setContentType(oboe::ContentType::Game)
+           ->setInputPreset(oboe::InputPreset::Generic);
     
     auto channel_count = m_channel_count.load();
     auto channel_mask = [&]() {
@@ -349,9 +335,7 @@ bool OboeAudioRenderer::TryOpenStreamWithRetry(int maxRetryCount) {
         }
         
         if (attempt < maxRetryCount - 1) {
-            int delay = 50 * (1 << attempt); // 指数退避：50, 100, 200ms
-            LOGD("Open stream failed, retry %d/%d after %dms", 
-                 attempt + 1, maxRetryCount, delay);
+            int delay = 50 * (1 << attempt);
             std::this_thread::sleep_for(std::chrono::milliseconds(delay));
         }
     }
@@ -373,17 +357,13 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() {
     auto result = builder.openStream(m_stream);
     
     if (result != oboe::Result::OK) {
-        // 如果独占模式失败，尝试共享模式
         if (m_current_api == oboe::AudioApi::AAudio) {
-            LOGW("AAudio exclusive mode failed, trying shared mode");
             builder.setSharingMode(oboe::SharingMode::Shared);
             result = builder.openStream(m_stream);
         }
         
         if (result != oboe::Result::OK) {
-            // 如果AAudio失败，尝试OpenSL ES
             if (m_current_api == oboe::AudioApi::AAudio) {
-                LOGW("AAudio failed, trying OpenSL ES");
                 m_current_api = oboe::AudioApi::OpenSLES;
                 ConfigureForOpenSLES(builder);
                 result = builder.openStream(m_stream);
@@ -412,15 +392,6 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() {
     
     m_stream_started.store(true);
     
-    LOGI("Stream opened successfully:");
-    LOGI("  API: %s", oboe::convertToText(m_stream->getAudioApi()));
-    LOGI("  Sample Rate: %d", m_stream->getSampleRate());
-    LOGI("  Channels: %d", m_stream->getChannelCount());
-    LOGI("  Format: %s", oboe::convertToText(m_stream->getFormat()));
-    LOGI("  Buffer Size: %d frames", m_stream->getBufferSizeInFrames());
-    LOGI("  Frames Per Burst: %d", m_stream->getFramesPerBurst());
-    LOGI("  Performance Mode: %s", oboe::convertToText(m_stream->getPerformanceMode()));
-    
     return true;
 }
 
@@ -430,37 +401,26 @@ bool OboeAudioRenderer::OptimizeBufferSize() {
     int32_t framesPerBurst = m_stream->getFramesPerBurst();
     int32_t sampleRate = m_stream->getSampleRate();
     
-    // 根据设备和采样率优化缓冲区大小
     int32_t desired_buffer_size = framesPerBurst;
     
-    // 针对不同场景调整
     if (m_current_api == oboe::AudioApi::AAudio) {
-        // AAudio：低延迟模式
         if (sampleRate <= 48000) {
-            desired_buffer_size = framesPerBurst * 2; // 标准低延迟
+            desired_buffer_size = framesPerBurst * 2;
         } else {
-            desired_buffer_size = framesPerBurst * 4; // 高采样率需要更大缓冲区
+            desired_buffer_size = framesPerBurst * 4;
         }
     } else {
-        // OpenSL ES：需要更大的缓冲区
         desired_buffer_size = framesPerBurst * 4;
     }
     
-    // 设置合理的限制
     desired_buffer_size = std::max(desired_buffer_size, framesPerBurst);
     desired_buffer_size = std::min(desired_buffer_size, framesPerBurst * 8);
     
     auto result = m_stream->setBufferSizeInFrames(desired_buffer_size);
     if (result != oboe::Result::OK) {
-        LOGW("Failed to set buffer size to %d, using default", desired_buffer_size);
-        // 使用默认值
         desired_buffer_size = framesPerBurst * 2;
         m_stream->setBufferSizeInFrames(desired_buffer_size);
     }
-    
-    LOGD("Buffer size optimized to %d frames (%.1f ms)", 
-         desired_buffer_size, 
-         (desired_buffer_size * 1000.0) / sampleRate);
     
     return true;
 }
@@ -498,7 +458,7 @@ void OboeAudioRenderer::BeginPerformanceHint() {
 void OboeAudioRenderer::EndPerformanceHint(int32_t num_frames) {
     if (m_adpf_wrapper.isOpen && m_stream) {
         double durationScaler = static_cast<double>(m_stream->getFramesPerBurst()) / num_frames;
-        if (durationScaler >= 0.1 && durationScaler <= 10.0) { // 合理的范围
+        if (durationScaler >= 0.1 && durationScaler <= 10.0) {
             m_adpf_wrapper.onEndCallback(durationScaler);
         }
     }
@@ -506,7 +466,6 @@ void OboeAudioRenderer::EndPerformanceHint(int32_t num_frames) {
 
 bool OboeAudioRenderer::WriteAudio(const int16_t* data, int32_t num_frames) {
     if (!m_initialized.load() || !data || num_frames <= 0) {
-        LOGE("WriteAudio: Invalid parameters or not initialized");
         return false;
     }
     
@@ -517,7 +476,6 @@ bool OboeAudioRenderer::WriteAudio(const int16_t* data, int32_t num_frames) {
 
 bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int32_t sampleFormat) {
     if (!m_initialized.load() || !data || num_frames <= 0) {
-        LOGE("WriteAudioRaw: Invalid parameters or not initialized");
         return false;
     }
     
@@ -526,35 +484,30 @@ bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int3
     size_t total_bytes = num_frames * system_channels * bytes_per_sample;
     
     const uint8_t* byte_data = static_cast<const uint8_t*>(data);
-    size_t bytes_remaining = total_bytes;
-    size_t bytes_processed = 0;
+    size_t total_bytes_processed = 0;
+    const size_t max_blocks_to_acquire = std::min<size_t>(8, total_bytes / AudioBlock::BLOCK_SIZE + 1);
     
-    m_performance_stats.total_frames_written += num_frames;
+    std::vector<std::unique_ptr<AudioBlock>> blocks;
+    blocks.reserve(max_blocks_to_acquire);
     
-    while (bytes_remaining > 0) {
+    for (size_t i = 0; i < max_blocks_to_acquire; ++i) {
         auto block = m_object_pool.acquire();
-        if (!block) {
-            LOGE("Failed to acquire audio block from pool");
-            return false;
-        }
-        
-        size_t copy_size = std::min(bytes_remaining, AudioBlock::BLOCK_SIZE);
-        
-        if (sampleFormat == PCM_INT16) {
-            const int16_t* src = reinterpret_cast<const int16_t*>(byte_data + bytes_processed);
-            int16_t* dst = reinterpret_cast<int16_t*>(block->data);
-            std::memcpy(dst, src, copy_size);
-        } else if (sampleFormat == PCM_FLOAT) {
-            const float* src = reinterpret_cast<const float*>(byte_data + bytes_processed);
-            float* dst = reinterpret_cast<float*>(block->data);
-            std::memcpy(dst, src, copy_size);
-        } else if (sampleFormat == PCM_INT32) {
-            const int32_t* src = reinterpret_cast<const int32_t*>(byte_data + bytes_processed);
-            int32_t* dst = reinterpret_cast<int32_t*>(block->data);
-            std::memcpy(dst, src, copy_size);
+        if (block) {
+            blocks.push_back(std::move(block));
         } else {
-            std::memcpy(block->data, byte_data + bytes_processed, copy_size);
+            break;
         }
+    }
+    
+    for (auto& block : blocks) {
+        if (total_bytes_processed >= total_bytes) {
+            m_object_pool.release(std::move(block));
+            continue;
+        }
+        
+        size_t copy_size = std::min(total_bytes - total_bytes_processed, AudioBlock::BLOCK_SIZE);
+        
+        std::memcpy(block->data, byte_data + total_bytes_processed, copy_size);
         
         block->data_size = copy_size;
         block->data_played = 0;
@@ -562,16 +515,19 @@ bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int3
         block->consumed = false;
         
         if (!m_audio_queue.push(std::move(block))) {
-            LOGE("Audio queue is full, dropping %zu bytes", copy_size);
-            // 队列满时丢弃数据，但记录XRun
             m_performance_stats.xrun_count++;
+            if (m_audio_queue.size() > m_audio_queue.capacity() * 3 / 4) {
+                std::unique_ptr<AudioBlock> discarded;
+                m_audio_queue.pop(discarded);
+                m_audio_queue.push(std::move(block));
+            }
             return false;
         }
         
-        bytes_processed += copy_size;
-        bytes_remaining -= copy_size;
+        total_bytes_processed += copy_size;
     }
     
+    m_performance_stats.total_frames_written += num_frames;
     return true;
 }
 
@@ -597,7 +553,6 @@ int32_t OboeAudioRenderer::GetBufferedFrames() const {
 
 PerformanceStats OboeAudioRenderer::GetPerformanceStats() const {
     std::lock_guard<std::mutex> lock(m_stats_mutex);
-    // 使用自定义拷贝构造函数返回副本
     return PerformanceStats(m_performance_stats);
 }
 
@@ -607,7 +562,6 @@ double OboeAudioRenderer::CalculateLatencyMillis() {
     }
     
     try {
-        // 获取硬件时间戳
         int64_t hardwareFrameIndex;
         int64_t hardwareFrameHardwareTime;
         auto result = m_stream->getTimestamp(CLOCK_MONOTONIC,
@@ -618,24 +572,19 @@ double OboeAudioRenderer::CalculateLatencyMillis() {
             return 0.0;
         }
         
-        // 获取应用帧位置
         int64_t appFrameIndex = m_stream->getFramesWritten();
         
-        // 计算当前时间
         auto now = std::chrono::steady_clock::now();
         int64_t appFrameAppTime = std::chrono::duration_cast<std::chrono::nanoseconds>(
             now.time_since_epoch()).count();
         
-        // 计算帧数差和时间差
         int64_t frameIndexDelta = appFrameIndex - hardwareFrameIndex;
         int64_t frameTimeDelta = (frameIndexDelta * 1000000000LL) / m_stream->getSampleRate();
         int64_t appFrameHardwareTime = hardwareFrameHardwareTime + frameTimeDelta;
         
-        // 计算延迟
         double latencyNanos = static_cast<double>(appFrameHardwareTime - appFrameAppTime);
         double latencyMillis = latencyNanos / 1000000.0;
         
-        // 使用原子操作更新统计，无需锁
         double currentAvg = m_performance_stats.average_latency_ms.load();
         m_performance_stats.average_latency_ms.store(
             (currentAvg * 0.9) + (latencyMillis * 0.1)
@@ -664,12 +613,10 @@ int32_t OboeAudioRenderer::GetXRunCount() {
     try {
         auto result = m_stream->getXRunCount();
         if (result) {
-            // 直接使用原子操作，无需锁
             m_performance_stats.xrun_count.store(result.value());
             return result.value();
         }
     } catch (...) {
-        // 忽略异常
     }
     
     return 0;
@@ -686,17 +633,10 @@ void OboeAudioRenderer::UpdateXRunCount() {
 void OboeAudioRenderer::SetVolume(float volume) {
     float clampedVolume = std::max(0.0f, std::min(volume, 1.0f));
     m_volume.store(clampedVolume);
-    
-    if (m_stream) {
-        // 注意：Oboe没有直接的音量设置API，需要在回调中应用
-        LOGD("Volume set to %.2f (applied in audio callback)", clampedVolume);
-    }
 }
 
 void OboeAudioRenderer::Reset() {
     std::lock_guard<std::mutex> lock(m_stream_mutex);
-    
-    LOGD("Resetting audio renderer");
     
     m_audio_queue.clear();
     if (m_current_block) {
@@ -704,7 +644,6 @@ void OboeAudioRenderer::Reset() {
     }
     
     std::lock_guard<std::mutex> stats_lock(m_stats_mutex);
-    // 重置性能统计
     m_performance_stats.xrun_count.store(0);
     m_performance_stats.total_frames_played.store(0);
     m_performance_stats.total_frames_written.store(0);
@@ -726,7 +665,6 @@ void OboeAudioRenderer::Reset() {
 
 void OboeAudioRenderer::PreallocateBlocks(size_t count) {
     m_object_pool.preallocate(count);
-    LOGD("Preallocated %zu audio blocks", count);
 }
 
 oboe::AudioFormat OboeAudioRenderer::MapSampleFormat(int32_t format) {
@@ -760,10 +698,7 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(
         return oboe::DataCallbackResult::Continue;
     }
     
-    // 开始性能提示
     BeginPerformanceHint();
-    
-    // 更新性能统计
     m_performance_stats.total_frames_played += num_frames;
     
     uint8_t* output = static_cast<uint8_t*>(audioData);
@@ -771,63 +706,89 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(
     size_t bytes_copied = 0;
     bool underrun = false;
     
-    while (bytes_remaining > 0) {
-        if (!m_current_block || m_current_block->consumed || m_current_block->available() == 0) {
-            if (m_current_block) {
-                m_object_pool.release(std::move(m_current_block));
-            }
-            
-            if (!m_audio_queue.pop(m_current_block)) {
-                // 缓冲区不足，产生静音
-                std::memset(output + bytes_copied, 0, bytes_remaining);
-                underrun = true;
+    int32_t blocks_to_pop = std::min(static_cast<int32_t>(m_audio_queue.size() / 2), 4);
+    std::vector<std::unique_ptr<AudioBlock>> blocks;
+    blocks.reserve(blocks_to_pop);
+    
+    for (int32_t i = 0; i < blocks_to_pop; ++i) {
+        std::unique_ptr<AudioBlock> block;
+        if (m_audio_queue.pop(block)) {
+            blocks.push_back(std::move(block));
+        }
+    }
+    
+    auto process_blocks = [&](std::vector<std::unique_ptr<AudioBlock>>& block_list) {
+        for (auto& block : block_list) {
+            if (bytes_remaining == 0) {
+                m_current_block = std::move(block);
                 break;
             }
-        }
-        
-        size_t bytes_to_copy = std::min(m_current_block->available(), bytes_remaining);
-        std::memcpy(output + bytes_copied, 
-                   m_current_block->data + m_current_block->data_played,
-                   bytes_to_copy);
-        
-        // 应用音量
-        if (m_volume.load() < 1.0f) {
-            if (m_current_block->sample_format == PCM_INT16) {
-                int16_t* samples = reinterpret_cast<int16_t*>(output + bytes_copied);
-                size_t sample_count = bytes_to_copy / sizeof(int16_t);
-                for (size_t i = 0; i < sample_count; i++) {
-                    samples[i] = static_cast<int16_t>(samples[i] * m_volume.load());
-                }
-            } else if (m_current_block->sample_format == PCM_FLOAT) {
-                float* samples = reinterpret_cast<float*>(output + bytes_copied);
-                size_t sample_count = bytes_to_copy / sizeof(float);
-                for (size_t i = 0; i < sample_count; i++) {
-                    samples[i] *= m_volume.load();
+            
+            size_t bytes_to_copy = std::min(block->available(), bytes_remaining);
+            std::memcpy(output + bytes_copied, 
+                       block->data + block->data_played,
+                       bytes_to_copy);
+            
+            if (m_volume.load() < 1.0f) {
+                if (block->sample_format == PCM_INT16) {
+                    int16_t* samples = reinterpret_cast<int16_t*>(output + bytes_copied);
+                    size_t sample_count = bytes_to_copy / sizeof(int16_t);
+                    float volume = m_volume.load();
+                    for (size_t i = 0; i < sample_count; ++i) {
+                        samples[i] = static_cast<int16_t>(samples[i] * volume);
+                    }
+                } else if (block->sample_format == PCM_FLOAT) {
+                    float* samples = reinterpret_cast<float*>(output + bytes_copied);
+                    size_t sample_count = bytes_to_copy / sizeof(float);
+                    float volume = m_volume.load();
+                    for (size_t i = 0; i < sample_count; ++i) {
+                        samples[i] *= volume;
+                    }
                 }
             }
+            
+            bytes_copied += bytes_to_copy;
+            bytes_remaining -= bytes_to_copy;
+            block->data_played += bytes_to_copy;
+            
+            if (block->available() == 0) {
+                m_object_pool.release(std::move(block));
+            } else {
+                std::unique_ptr<AudioBlock> temp = std::move(block);
+                m_audio_queue.push_front(std::move(temp));
+            }
         }
-        
-        bytes_copied += bytes_to_copy;
-        bytes_remaining -= bytes_to_copy;
-        m_current_block->data_played += bytes_to_copy;
-        
-        if (m_current_block->available() == 0) {
-            m_current_block->consumed = true;
+    };
+    
+    if (m_current_block && !m_current_block->consumed) {
+        std::unique_ptr<AudioBlock> temp = std::move(m_current_block);
+        std::vector<std::unique_ptr<AudioBlock>> temp_vec;
+        temp_vec.push_back(std::move(temp));
+        process_blocks(temp_vec);
+    }
+    
+    process_blocks(blocks);
+    
+    if (bytes_remaining > 0) {
+        std::unique_ptr<AudioBlock> block;
+        if (m_audio_queue.pop(block)) {
+            std::vector<std::unique_ptr<AudioBlock>> single_block;
+            single_block.push_back(std::move(block));
+            process_blocks(single_block);
+        } else {
+            std::memset(output + bytes_copied, 0, bytes_remaining);
+            underrun = true;
         }
     }
     
-    // 结束性能提示
     EndPerformanceHint(num_frames);
     
-    // 记录underrun
     if (underrun) {
         m_performance_stats.xrun_count++;
-        LOGW("Audio underrun: %d frames of silence inserted", num_frames);
     }
     
-    // 定期更新延迟和XRun统计
     static int callback_count = 0;
-    if (++callback_count % 100 == 0) { // 每100次回调更新一次
+    if (++callback_count % 100 == 0) {
         UpdateLatencyMeasurement();
         UpdateXRunCount();
     }
@@ -836,8 +797,6 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(
 }
 
 void OboeAudioRenderer::OnStreamErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) {
-    LOGW("Stream error after close: %s", oboe::convertToText(error));
-    
     HandleError(error, "Stream error after close");
     
     if (!RecoverFromError(error)) {
@@ -852,8 +811,6 @@ void OboeAudioRenderer::OnStreamErrorAfterClose(oboe::AudioStream* audioStream, 
 }
 
 void OboeAudioRenderer::OnStreamErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) {
-    LOGW("Stream error before close: %s", oboe::convertToText(error));
-    
     HandleError(error, "Stream error before close");
     m_stream_started.store(false);
     UpdateState(StreamState::Error);
