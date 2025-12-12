@@ -29,80 +29,58 @@ public:
     static_assert(std::is_unsigned<INDEX_TYPE>::value, "Index type must be unsigned");
 
     bool pop(T &val) {
-        INDEX_TYPE currentRead = readCounter.load(std::memory_order_relaxed);
-        INDEX_TYPE currentWrite = writeCounter.load(std::memory_order_acquire);
-        
-        if (currentRead == currentWrite) {
+        if (isEmpty()){
             return false;
+        } else {
+            val = std::move(buffer[mask(readCounter)]);
+            ++readCounter;
+            return true;
         }
-        
-        val = std::move(buffer[mask(currentRead)]);
-        readCounter.store(currentRead + 1, std::memory_order_release);
-        return true;
     }
 
     bool push(const T& item) {
-        INDEX_TYPE currentWrite = writeCounter.load(std::memory_order_relaxed);
-        INDEX_TYPE currentRead = readCounter.load(std::memory_order_acquire);
-        
-        if ((currentWrite - currentRead) == CAPACITY) {
+        if (isFull()){
             return false;
+        } else {
+            buffer[mask(writeCounter)] = item;
+            ++writeCounter;
+            return true;
         }
-        
-        buffer[mask(currentWrite)] = item;
-        writeCounter.store(currentWrite + 1, std::memory_order_release);
-        return true;
     }
 
     bool push(T&& item) {
-        INDEX_TYPE currentWrite = writeCounter.load(std::memory_order_relaxed);
-        INDEX_TYPE currentRead = readCounter.load(std::memory_order_acquire);
-        
-        if ((currentWrite - currentRead) == CAPACITY) {
+        if (isFull()){
             return false;
+        } else {
+            buffer[mask(writeCounter)] = std::move(item);
+            ++writeCounter;
+            return true;
         }
-        
-        buffer[mask(currentWrite)] = std::move(item);
-        writeCounter.store(currentWrite + 1, std::memory_order_release);
-        return true;
     }
 
     bool peek(T &item) const {
-        INDEX_TYPE currentRead = readCounter.load(std::memory_order_acquire);
-        INDEX_TYPE currentWrite = writeCounter.load(std::memory_order_acquire);
-        
-        if (currentRead == currentWrite) {
+        if (isEmpty()){
             return false;
+        } else {
+            item = buffer[mask(readCounter)];
+            return true;
         }
-        
-        item = buffer[mask(currentRead)];
-        return true;
     }
 
     INDEX_TYPE size() const {
-        INDEX_TYPE currentWrite = writeCounter.load(std::memory_order_acquire);
-        INDEX_TYPE currentRead = readCounter.load(std::memory_order_acquire);
-        return currentWrite - currentRead;
+        return writeCounter - readCounter;
     };
 
-    bool empty() const { 
-        INDEX_TYPE currentWrite = writeCounter.load(std::memory_order_acquire);
-        INDEX_TYPE currentRead = readCounter.load(std::memory_order_acquire);
-        return currentRead == currentWrite; 
-    }
-    
-    bool full() const { 
-        INDEX_TYPE currentWrite = writeCounter.load(std::memory_order_acquire);
-        INDEX_TYPE currentRead = readCounter.load(std::memory_order_acquire);
-        return (currentWrite - currentRead) == CAPACITY; 
-    }
+    bool empty() const { return isEmpty(); }
+    bool full() const { return isFull(); }
 
     void clear() {
-        INDEX_TYPE currentWrite = writeCounter.load(std::memory_order_acquire);
-        readCounter.store(currentWrite, std::memory_order_release);
+        readCounter = writeCounter.load();
     }
 
 private:
+    bool isEmpty() const { return readCounter == writeCounter; }
+    bool isFull() const { return size() == CAPACITY; }
     INDEX_TYPE mask(INDEX_TYPE n) const { return static_cast<INDEX_TYPE>(n & (CAPACITY - 1)); }
 
     T buffer[CAPACITY];
@@ -138,13 +116,6 @@ public:
 
     uint32_t available() const {
         return pool.size();
-    }
-
-    void preallocate(uint32_t count) {
-        for (uint32_t i = 0; i < count && available() < POOL_SIZE; ++i) {
-            auto obj = std::make_unique<T>();
-            pool.push(std::move(obj));
-        }
     }
 
 private:

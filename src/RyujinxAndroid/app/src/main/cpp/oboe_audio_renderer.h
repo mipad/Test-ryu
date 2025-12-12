@@ -6,8 +6,6 @@
 #include <atomic>
 #include <memory>
 #include <cstdint>
-#include <thread>
-#include <chrono>
 #include "LockFreeQueue.h"
 
 namespace RyujinxOboe {
@@ -59,7 +57,6 @@ public:
     float GetVolume() const { return m_volume.load(); }
 
     void Reset();
-    void PreallocateBlocks(size_t count);
 
 private:
     class AAudioExclusiveCallback : public oboe::AudioStreamDataCallback {
@@ -91,7 +88,6 @@ private:
     oboe::AudioFormat MapSampleFormat(int32_t format);
     static size_t GetBytesPerSample(int32_t format);
     bool OptimizeBufferSize();
-    bool TryOpenStreamWithRetry(int maxRetryCount = 3);
 
     std::shared_ptr<oboe::AudioStream> m_stream;
     std::unique_ptr<AAudioExclusiveCallback> m_audio_callback;
@@ -109,8 +105,8 @@ private:
     int32_t m_device_channels = 2;
     oboe::AudioFormat m_oboe_format{oboe::AudioFormat::I16};
     
-    static constexpr uint32_t AUDIO_QUEUE_SIZE = 512;
-    static constexpr uint32_t OBJECT_POOL_SIZE = 1024;
+    static constexpr uint32_t AUDIO_QUEUE_SIZE = 256;
+    static constexpr uint32_t OBJECT_POOL_SIZE = 512;
     
     LockFreeQueue<std::unique_ptr<AudioBlock>, AUDIO_QUEUE_SIZE> m_audio_queue;
     LockFreeObjectPool<AudioBlock, OBJECT_POOL_SIZE> m_object_pool;
