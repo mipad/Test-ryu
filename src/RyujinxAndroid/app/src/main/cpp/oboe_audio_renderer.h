@@ -161,7 +161,6 @@ public:
     static size_t GetActiveInstanceCount();
     static void DumpAllInstancesInfo();
     
-    // 新增同步控制接口
     bool SetWriteBlockingEnabled(bool enabled);
     int32_t GetRecommendedWriteFrames(int32_t desired_frames);
     float GetQueueLoadFactor() const;
@@ -257,7 +256,7 @@ private:
     
     AdpfWrapper m_adpf_wrapper;
     
-    static constexpr uint32_t AUDIO_QUEUE_SIZE = 768;
+    static constexpr uint32_t AUDIO_QUEUE_SIZE = 1024;
     static constexpr uint32_t OBJECT_POOL_SIZE = 1024;
     
     LockFreeQueue<std::unique_ptr<AudioBlock>, AUDIO_QUEUE_SIZE> m_audio_queue;
@@ -268,7 +267,6 @@ private:
     static std::mutex s_instances_mutex;
     static std::set<OboeAudioRenderer*> s_active_instances;
     
-    // 新增同步控制成员
     std::atomic<bool> m_write_blocking{false};
     std::atomic<int32_t> m_recommended_write_frames{240};
     std::atomic<int64_t> m_last_callback_time{0};
