@@ -20,7 +20,7 @@ enum SampleFormat {
 };
 
 struct AudioBlock {
-    static constexpr size_t BLOCK_SIZE = 4096;
+    static constexpr size_t BLOCK_SIZE = 1024;
     
     uint8_t data[BLOCK_SIZE];
     size_t data_size = 0;
@@ -110,7 +110,7 @@ private:
     oboe::AudioFormat m_oboe_format{oboe::AudioFormat::I16};
     
     static constexpr uint32_t AUDIO_QUEUE_SIZE = 512;
-    static constexpr uint32_t OBJECT_POOL_SIZE = 512;
+    static constexpr uint32_t OBJECT_POOL_SIZE = 1024;
     
     LockFreeQueue<std::unique_ptr<AudioBlock>, AUDIO_QUEUE_SIZE> m_audio_queue;
     LockFreeObjectPool<AudioBlock, OBJECT_POOL_SIZE> m_object_pool;
