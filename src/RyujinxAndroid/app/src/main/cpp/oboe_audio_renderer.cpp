@@ -297,7 +297,6 @@ void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& bu
            ->setFormatConversionAllowed(true)
            ->setUsage(oboe::Usage::Game)
            ->setFramesPerCallback(frames_per_callback)
-           ->setContentType(oboe::ContentType::Game)
            ->setInputPreset(oboe::InputPreset::Generic);
     
     auto channel_count = m_channel_count.load();
