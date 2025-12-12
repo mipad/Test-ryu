@@ -18,7 +18,7 @@
 #include "native_window.h"
 #include <pthread.h>
 
-#define CALL_VK(func) if (VK_SUCCESS != (func)) { assert(false); }
+#define CALL_VK(func) if (VK_SUCCESS != (func)) { __android_log_print(ANDROID_LOG_ERROR, "Ryujinx", "Vulkan error in %s", #func); }
 #define VK_CHECK(x) CALL_VK(x)
 #define LoadLib(a) dlopen(a, RTLD_NOW)
 
@@ -44,6 +44,12 @@ extern "C" {
     bool isOboeRendererPlaying(void* renderer);
     int32_t getOboeRendererBufferedFrames(void* renderer);
     void resetOboeRenderer(void* renderer);
+    int32_t getOboeRendererState(void* renderer);
+    int32_t getOboeRendererXRunCount(void* renderer);
+    double calculateOboeRendererLatency(void* renderer);
+    void setOboeRendererPerformanceHint(void* renderer, bool enabled);
+    size_t getActiveOboeRendererCount();
+    void dumpOboeRendererInfo();
 
     const char* GetAndroidDeviceModel();
     const char* GetAndroidDeviceBrand();

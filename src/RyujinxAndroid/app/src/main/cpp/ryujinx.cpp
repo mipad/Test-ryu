@@ -72,15 +72,16 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
     return JNI_VERSION_1_6; 
 }
 
-JNIEXPORT void JNICALL JNI_OnUnload(JavaVM* vm, void* reserved) {}
+JNIEXPORT void JNICALL JNI_OnUnload(JavaVM* vm, void* reserved) {
+}
 
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_MainActivity_initVm(JNIEnv *env, jobject thiz) {
     JavaVM *vm = nullptr;
     env->GetJavaVM(&vm);
     _vm = vm;
-    _mainActivity = thiz;
-    _mainActivityClass = env->GetObjectClass(thiz);
+    _mainActivity = env->NewGlobalRef(thiz);
+    _mainActivityClass = (jclass)env->NewGlobalRef(env->GetObjectClass(thiz));
 }
 
 void setCurrentTransform(long native_window, int transform) {
@@ -182,7 +183,12 @@ Java_org_ryujinx_android_NativeHelpers_destroyOboeRenderer(JNIEnv *env, jobject 
 JNIEXPORT jboolean JNICALL
 Java_org_ryujinx_android_NativeHelpers_initOboeRenderer(JNIEnv *env, jobject thiz, jlong renderer_ptr, jint sample_rate, jint channel_count, jint sample_format) {
     auto renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer_ptr);
-    return renderer && renderer->InitializeWithFormat(sample_rate, channel_count, sample_format) ? JNI_TRUE : JNI_FALSE;
+    if (!renderer) {
+        return JNI_FALSE;
+    }
+    
+    bool success = renderer->InitializeWithFormat(sample_rate, channel_count, sample_format);
+    return success ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT void JNICALL
@@ -196,11 +202,15 @@ Java_org_ryujinx_android_NativeHelpers_shutdownOboeRenderer(JNIEnv *env, jobject
 JNIEXPORT jboolean JNICALL
 Java_org_ryujinx_android_NativeHelpers_writeOboeRendererAudio(JNIEnv *env, jobject thiz, jlong renderer_ptr, jshortArray audio_data, jint num_frames) {
     auto renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer_ptr);
-    if (!renderer || !audio_data || num_frames <= 0) return JNI_FALSE;
+    if (!renderer || !audio_data || num_frames <= 0) {
+        return JNI_FALSE;
+    }
+    
     jshort* data = env->GetShortArrayElements(audio_data, nullptr);
     if (data) {
         bool success = renderer->WriteAudio(reinterpret_cast<int16_t*>(data), num_frames);
         env->ReleaseShortArrayElements(audio_data, data, JNI_ABORT);
+        
         return success ? JNI_TRUE : JNI_FALSE;
     }
     return JNI_FALSE;
@@ -209,12 +219,16 @@ Java_org_ryujinx_android_NativeHelpers_writeOboeRendererAudio(JNIEnv *env, jobje
 JNIEXPORT jboolean JNICALL
 Java_org_ryujinx_android_NativeHelpers_writeOboeRendererAudioRaw(JNIEnv *env, jobject thiz, jlong renderer_ptr, jbyteArray audio_data, jint num_frames, jint sample_format) {
     auto renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer_ptr);
-    if (!renderer || !audio_data || num_frames <= 0) return JNI_FALSE;
+    if (!renderer || !audio_data || num_frames <= 0) {
+        return JNI_FALSE;
+    }
+    
     void* dataPtr = env->GetPrimitiveArrayCritical(audio_data, nullptr);
     jbyte* data = static_cast<jbyte*>(dataPtr);
     if (data) {
         bool success = renderer->WriteAudioRaw(reinterpret_cast<uint8_t*>(data), num_frames, sample_format);
         env->ReleasePrimitiveArrayCritical(audio_data, data, JNI_ABORT);
+        
         return success ? JNI_TRUE : JNI_FALSE;
     }
     return JNI_FALSE;
@@ -268,12 +282,52 @@ Java_org_ryujinx_android_NativeHelpers_getAndroidDeviceBrand(JNIEnv *env, jobjec
     return env->NewStringUTF(brand);
 }
 
+JNIEXPORT jint JNICALL
+Java_org_ryujinx_android_NativeHelpers_getOboeRendererState(JNIEnv *env, jobject thiz, jlong renderer_ptr) {
+    auto renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer_ptr);
+    if (renderer) {
+        return static_cast<jint>(renderer->GetState());
+    }
+    return static_cast<jint>(RyujinxOboe::StreamState::Uninitialized);
+}
+
+JNIEXPORT jint JNICALL
+Java_org_ryujinx_android_NativeHelpers_getOboeRendererXRunCount(JNIEnv *env, jobject thiz, jlong renderer_ptr) {
+    auto renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer_ptr);
+    return renderer ? static_cast<jint>(renderer->GetXRunCount()) : 0;
+}
+
+JNIEXPORT jdouble JNICALL
+Java_org_ryujinx_android_NativeHelpers_calculateOboeRendererLatency(JNIEnv *env, jobject thiz, jlong renderer_ptr) {
+    auto renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer_ptr);
+    return renderer ? static_cast<jdouble>(renderer->CalculateLatencyMillis()) : 0.0;
+}
+
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_setOboeRendererPerformanceHint(JNIEnv *env, jobject thiz, jlong renderer_ptr, jboolean enabled) {
+    auto renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer_ptr);
+    if (renderer) {
+        renderer->SetPerformanceHintEnabled(enabled);
+    }
+}
+
+JNIEXPORT jint JNICALL
+Java_org_ryujinx_android_NativeHelpers_getActiveOboeRendererCount(JNIEnv *env, jobject thiz) {
+    return static_cast<jint>(RyujinxOboe::OboeAudioRenderer::GetActiveInstanceCount());
+}
+
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_dumpOboeRendererInfo(JNIEnv *env, jobject thiz) {
+    RyujinxOboe::OboeAudioRenderer::DumpAllInstancesInfo();
+}
+
 } // extern "C" 结束
 
 // ========== 多实例 Oboe Audio C接口 ==========
 
 void* createOboeRenderer() {
-    return new RyujinxOboe::OboeAudioRenderer();
+    auto renderer = new RyujinxOboe::OboeAudioRenderer();
+    return reinterpret_cast<void*>(renderer);
 }
 
 void destroyOboeRenderer(void* renderer) {
@@ -286,7 +340,12 @@ void destroyOboeRenderer(void* renderer) {
 
 bool initOboeRenderer(void* renderer, int sample_rate, int channel_count, int sample_format) {
     auto oboe_renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer);
-    return oboe_renderer && oboe_renderer->InitializeWithFormat(sample_rate, channel_count, sample_format);
+    if (!oboe_renderer) {
+        return false;
+    }
+    
+    bool result = oboe_renderer->InitializeWithFormat(sample_rate, channel_count, sample_format);
+    return result;
 }
 
 void shutdownOboeRenderer(void* renderer) {
@@ -298,12 +357,22 @@ void shutdownOboeRenderer(void* renderer) {
 
 bool writeOboeRendererAudio(void* renderer, const int16_t* data, int32_t num_frames) {
     auto oboe_renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer);
-    return oboe_renderer && data && num_frames > 0 && oboe_renderer->WriteAudio(data, num_frames);
+    if (!oboe_renderer || !data || num_frames <= 0) {
+        return false;
+    }
+    
+    bool result = oboe_renderer->WriteAudio(data, num_frames);
+    return result;
 }
 
 bool writeOboeRendererAudioRaw(void* renderer, const uint8_t* data, int32_t num_frames, int32_t sample_format) {
     auto oboe_renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer);
-    return oboe_renderer && data && num_frames > 0 && oboe_renderer->WriteAudioRaw(data, num_frames, sample_format);
+    if (!oboe_renderer || !data || num_frames <= 0) {
+        return false;
+    }
+    
+    bool result = oboe_renderer->WriteAudioRaw(data, num_frames, sample_format);
+    return result;
 }
 
 void setOboeRendererVolume(void* renderer, float volume) {
@@ -315,17 +384,20 @@ void setOboeRendererVolume(void* renderer, float volume) {
 
 bool isOboeRendererInitialized(void* renderer) {
     auto oboe_renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer);
-    return oboe_renderer && oboe_renderer->IsInitialized();
+    bool result = oboe_renderer && oboe_renderer->IsInitialized();
+    return result;
 }
 
 bool isOboeRendererPlaying(void* renderer) {
     auto oboe_renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer);
-    return oboe_renderer && oboe_renderer->IsPlaying();
+    bool result = oboe_renderer && oboe_renderer->IsPlaying();
+    return result;
 }
 
 int32_t getOboeRendererBufferedFrames(void* renderer) {
     auto oboe_renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer);
-    return oboe_renderer ? static_cast<int32_t>(oboe_renderer->GetBufferedFrames()) : 0;
+    int32_t result = oboe_renderer ? static_cast<int32_t>(oboe_renderer->GetBufferedFrames()) : 0;
+    return result;
 }
 
 void resetOboeRenderer(void* renderer) {
@@ -335,14 +407,51 @@ void resetOboeRenderer(void* renderer) {
     }
 }
 
+int32_t getOboeRendererState(void* renderer) {
+    auto oboe_renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer);
+    if (oboe_renderer) {
+        return static_cast<int32_t>(oboe_renderer->GetState());
+    }
+    return static_cast<int32_t>(RyujinxOboe::StreamState::Uninitialized);
+}
+
+int32_t getOboeRendererXRunCount(void* renderer) {
+    auto oboe_renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer);
+    return oboe_renderer ? static_cast<int32_t>(oboe_renderer->GetXRunCount()) : 0;
+}
+
+double calculateOboeRendererLatency(void* renderer) {
+    auto oboe_renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer);
+    return oboe_renderer ? static_cast<double>(oboe_renderer->CalculateLatencyMillis()) : 0.0;
+}
+
+void setOboeRendererPerformanceHint(void* renderer, bool enabled) {
+    auto oboe_renderer = reinterpret_cast<RyujinxOboe::OboeAudioRenderer*>(renderer);
+    if (oboe_renderer) {
+        oboe_renderer->SetPerformanceHintEnabled(enabled);
+    }
+}
+
+size_t getActiveOboeRendererCount() {
+    return RyujinxOboe::OboeAudioRenderer::GetActiveInstanceCount();
+}
+
+void dumpOboeRendererInfo() {
+    RyujinxOboe::OboeAudioRenderer::DumpAllInstancesInfo();
+}
+
 const char* GetAndroidDeviceModel() {
     static char model[PROP_VALUE_MAX] = {0};
-    if (model[0] == '\0') __system_property_get("ro.product.model", model);
+    if (model[0] == '\0') {
+        __system_property_get("ro.product.model", model);
+    }
     return model;
 }
 
 const char* GetAndroidDeviceBrand() {
     static char brand[PROP_VALUE_MAX] = {0};
-    if (brand[0] == '\0') __system_property_get("ro.product.brand", brand);
+    if (brand[0] == '\0') {
+        __system_property_get("ro.product.brand", brand);
+    }
     return brand;
 }
