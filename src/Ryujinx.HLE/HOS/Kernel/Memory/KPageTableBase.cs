@@ -961,55 +961,57 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         }
 
         public Result SetMemoryAttribute(ulong address, ulong size, MemoryAttribute attributeMask, MemoryAttribute attributeValue)
+{
+    lock (_blockManager)
+    {
+        MemoryState stateCheckMask = 0;
+
+        if (attributeMask.HasFlag(MemoryAttribute.Uncached))
         {
-            lock (_blockManager)
-            {
-                MemoryState stateCheckMask = 0;
-
-                if (attributeMask.HasFlag(MemoryAttribute.Uncached))
-                {
-                    stateCheckMask = MemoryState.AttributeChangeAllowed;
-                }
-
-                if (attributeMask.HasFlag(MemoryAttribute.PermissionLocked))
-                {
-                    stateCheckMask |= MemoryState.PermissionLockAllowed;
-                }
-
-                if (CheckRange(
-                    address,
-                    size,
-                    stateCheckMask,
-                    stateCheckMask,
-                    KMemoryPermission.None,
-                    KMemoryPermission.None,
-                    MemoryAttribute.BorrowedAndIpcMapped,
-                    MemoryAttribute.None,
-                    MemoryAttribute.DeviceMappedAndUncached,
-                    out MemoryState state,
-                    out KMemoryPermission permission,
-                    out MemoryAttribute attribute))
-                {
-                    if (!_slabManager.CanAllocate(MaxBlocksNeededForInsertion))
-                    {
-                        return KernelResult.OutOfResource;
-                    }
-
-                    ulong pagesCount = size / PageSize;
-
-                    attribute &= ~attributeMask;
-                    attribute |= attributeMask & attributeValue;
-
-                    _blockManager.InsertBlock(address, pagesCount, state, permission, attribute);
-
-                    return Result.Success;
-                }
-                else
-                {
-                    return KernelResult.InvalidMemState;
-                }
-            }
+            stateCheckMask = MemoryState.AttributeChangeAllowed;
         }
+
+        if (attributeMask.HasFlag(MemoryAttribute.PermissionLocked))
+        {
+            stateCheckMask |= MemoryState.PermissionLockAllowed;
+        }
+
+        // 修改：完全不检查DeviceMapped和Uncached属性
+        // 注意：BorrowedAndIpcMapped仍然会被检查
+        if (CheckRange(
+            address,
+            size,
+            stateCheckMask,
+            stateCheckMask,
+            KMemoryPermission.None,
+            KMemoryPermission.None,
+            MemoryAttribute.BorrowedAndIpcMapped,
+            MemoryAttribute.None,
+            MemoryAttribute.None, // 不忽略任何属性
+            out MemoryState state,
+            out KMemoryPermission permission,
+            out MemoryAttribute attribute))
+        {
+            if (!_slabManager.CanAllocate(MaxBlocksNeededForInsertion))
+            {
+                return KernelResult.OutOfResource;
+            }
+
+            ulong pagesCount = size / PageSize;
+
+            attribute &= ~attributeMask;
+            attribute |= attributeMask & attributeValue;
+
+            _blockManager.InsertBlock(address, pagesCount, state, permission, attribute);
+
+            return Result.Success;
+        }
+        else
+        {
+            return KernelResult.InvalidMemState;
+        }
+    }
+}
 
         public KMemoryInfo QueryMemory(ulong address)
         {
@@ -3144,3 +3146,4 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         protected abstract void Write(ulong va, ReadOnlySpan<byte> data);
     }
 }
+
