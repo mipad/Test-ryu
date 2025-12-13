@@ -264,8 +264,8 @@ namespace Ryujinx.HLE.Loaders.Processes
             NceCpuCodePatch[] nsoPatch = new NceCpuCodePatch[executables.Length];
             ulong[] nsoBase = new ulong[executables.Length];
 
-            // 先创建所有补丁，判断是否使用NCE模式
-            bool isNceMode = false;
+            // 关键修复：简化NCE检测逻辑，只在需要时创建补丁
+            bool hasNcePatch = false;
             for (int index = 0; index < executables.Length; index++)
             {
                 IExecutable nso = executables[index];
@@ -290,12 +290,21 @@ namespace Ryujinx.HLE.Loaders.Processes
 
                 bool for64Bit = ((ProcessCreationFlags)meta.Flags).HasFlag(ProcessCreationFlags.Is64Bit);
 
-                NceCpuCodePatch codePatch = ArmProcessContextFactory.CreateCodePatchForNce(context, for64Bit, nso.Text);
+                // 只在需要时创建NCE补丁
+                NceCpuCodePatch codePatch = null;
+                if (RuntimeInformation.ProcessArchitecture == Architecture.Arm64 && 
+                    for64Bit && 
+                    context.Device.Configuration.UseHypervisor && 
+                    !OperatingSystem.IsMacOS())
+                {
+                    codePatch = ArmProcessContextFactory.CreateCodePatchForNce(context, for64Bit, nso.Text);
+                }
+                
                 nsoPatch[index] = codePatch;
 
                 if (codePatch != null)
                 {
-                    isNceMode = true;
+                    hasNcePatch = true;
                     codeSize += codePatch.Size;
                 }
 
@@ -313,43 +322,9 @@ namespace Ryujinx.HLE.Loaders.Processes
                 }
             }
 
-            // 如果是NCE模式，调整地址计算
-            if (isNceMode)
-            {
-                // NCE模式下，ReservedSize是地址空间的基地址，不是偏移量
-                // 所以我们需要调整地址计算
-                Logger.Info?.Print(LogClass.Loader, "NCE mode detected, adjusting address calculations");
-                
-                // 对于NCE模式，我们将codeStart设为0，因为ReservedSize已经是基地址
-                ulong oldCodeStart = codeStart;
-                codeStart = 0;
-                
-                // 重新计算nsoBase，使其相对于0
-                codeSize = 0;
-                for (int index = 0; index < executables.Length; index++)
-                {
-                    if (nsoPatch[index] != null)
-                    {
-                        codeSize += nsoPatch[index].Size;
-                    }
-                    
-                    nsoBase[index] = codeSize;
-                    
-                    IExecutable nso = executables[index];
-                    uint textEnd = nso.TextOffset + (uint)nso.Text.Length;
-                    uint roEnd = nso.RoOffset + (uint)nso.Ro.Length;
-                    uint dataEnd = nso.DataOffset + (uint)nso.Data.Length + nso.BssSize;
-                    
-                    uint nsoSize = textEnd;
-                    if (nsoSize < roEnd) nsoSize = roEnd;
-                    if (nsoSize < dataEnd) nsoSize = dataEnd;
-                    nsoSize = BitUtils.AlignUp<uint>(nsoSize, KPageTableBase.PageSize);
-                    
-                    codeSize += nsoSize;
-                }
-                
-                Logger.Info?.Print(LogClass.Loader, $"NCE mode: codeStart={oldCodeStart:X} -> {codeStart:X}");
-            }
+            // 关键修复：不再调整codeStart，保持原始值
+            // NCE模式下，ReservedSize会在进程初始化时作为基地址处理
+            Logger.Info?.Print(LogClass.Loader, $"Code layout - Start: 0x{codeStart:X}, Size: 0x{codeSize:X}, HasNCE: {hasNcePatch}");
 
             int codePagesCount = (int)(codeSize / KPageTableBase.PageSize);
             int personalMmHeapPagesCount = (int)(meta.SystemResourceSize / KPageTableBase.PageSize);
@@ -358,7 +333,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                 name,
                 (int)meta.Version,
                 programId,
-                codeStart,
+                codeStart,  // 使用原始codeStart，不调整
                 codePagesCount,
                 (ProcessCreationFlags)meta.Flags | ProcessCreationFlags.IsApplication,
                 0,
@@ -429,7 +404,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                 $"{programId:x16}",
                 displayVersion,
                 diskCacheEnabled,
-                codeStart,
+                codeStart,  // 使用原始codeStart
                 codeSize);
 
             result = process.Initialize(
@@ -448,31 +423,28 @@ namespace Ryujinx.HLE.Loaders.Processes
                 return ProcessResult.Failed;
             }
 
-            // 检测是否是NCE内存管理器
-            bool usingNceMemoryManager = false;
-            using (process.Context as IArmProcessContext)
-            {
-                var armProcessContext = process.Context as IArmProcessContext;
-                if (armProcessContext != null && armProcessContext.AddressSpace is Ryujinx.Cpu.Nce.MemoryManagerNative)
-                {
-                    usingNceMemoryManager = true;
-                    Logger.Info?.Print(LogClass.Loader, 
-                        $"NCE MemoryManager detected: ReservedSize=0x{process.Context.ReservedSize:X}, " +
-                        $"AddressSpaceSize=0x{process.Context.AddressSpaceSize:X}");
-                }
-            }
+            // 关键修复：简化NCE模式检测
+            // 我们通过检查ReservedSize是否很大来判断是否是NCE模式
+            bool isNceMode = process.Context.ReservedSize > 0x100000000; // 如果ReservedSize > 4GB，很可能是NCE模式
+            
+            Logger.Info?.Print(LogClass.Loader, 
+                $"Process initialized - ReservedSize: 0x{process.Context.ReservedSize:X}, " +
+                $"AddressSpaceSize: 0x{process.Context.AddressSpaceSize:X}, " +
+                $"IsNCE: {isNceMode}");
 
             for (int index = 0; index < executables.Length; index++)
             {
-                // 关键修复：根据内存管理器类型计算地址
+                // 关键修复：统一地址计算方式
+                // NCE模式下：ReservedSize是基地址，nsoBase[index]是相对偏移
+                // 非NCE模式下：ReservedSize通常为0或很小，nsoBase[index]是绝对地址
                 ulong nsoBaseAddress;
                 
-                if (usingNceMemoryManager)
+                if (isNceMode && process.Context.ReservedSize > 0)
                 {
-                    // NCE模式：ReservedSize是基地址，直接加上相对地址
+                    // NCE模式：基地址 + 相对偏移
                     nsoBaseAddress = process.Context.ReservedSize + nsoBase[index];
                     
-                    // 验证地址是否有效
+                    // 验证地址有效性
                     if (nsoBaseAddress < process.Context.ReservedSize)
                     {
                         Logger.Error?.Print(LogClass.Loader, 
@@ -482,13 +454,13 @@ namespace Ryujinx.HLE.Loaders.Processes
                 }
                 else
                 {
-                    // 非NCE模式：使用原来的计算方式
-                    nsoBaseAddress = process.Context.ReservedSize + nsoBase[index];
+                    // 非NCE模式：直接使用nsoBase[index]
+                    nsoBaseAddress = nsoBase[index];
                 }
 
                 Logger.Info?.Print(LogClass.Loader, 
                     $"Loading image {index} at 0x{nsoBaseAddress:x16} " +
-                    $"(NCE={usingNceMemoryManager}, base=0x{nsoBase[index]:x16})...");
+                    $"(NCE={isNceMode}, base=0x{nsoBase[index]:x16}, reserved=0x{process.Context.ReservedSize:x16})...");
 
                 result = LoadIntoMemory(process, executables[index], nsoBaseAddress, nsoPatch[index]);
 
@@ -551,19 +523,10 @@ namespace Ryujinx.HLE.Loaders.Processes
 
         private static Result LoadIntoMemory(KProcess process, IExecutable image, ulong baseAddress, NceCpuCodePatch codePatch = null)
         {
-            // 检测是否是NCE内存管理器
-            bool isNceMode = false;
+            // 关键修复：简化NCE模式检测
+            bool isNceMode = process.Context.ReservedSize > 0x100000000;
             ulong reservedSize = process.Context.ReservedSize;
             
-            using (process.Context as IArmProcessContext)
-            {
-                var armProcessContext = process.Context as IArmProcessContext;
-                if (armProcessContext != null && armProcessContext.AddressSpace is Ryujinx.Cpu.Nce.MemoryManagerNative)
-                {
-                    isNceMode = true;
-                }
-            }
-
             Logger.Info?.Print(LogClass.Loader, 
                 $"LoadIntoMemory: base=0x{baseAddress:X}, isNce={isNceMode}, reserved=0x{reservedSize:X}");
 
