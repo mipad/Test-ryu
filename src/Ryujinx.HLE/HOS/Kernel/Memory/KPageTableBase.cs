@@ -961,81 +961,81 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         }
 
         public Result SetMemoryAttribute(ulong address, ulong size, MemoryAttribute attributeMask, MemoryAttribute attributeValue)
-{
-    lock (_blockManager)
-    {
-        MemoryState stateCheckMask = 0;
-
-        if (attributeMask.HasFlag(MemoryAttribute.Uncached))
         {
-            stateCheckMask = MemoryState.AttributeChangeAllowed;
-        }
-
-        if (attributeMask.HasFlag(MemoryAttribute.PermissionLocked))
-        {
-            stateCheckMask |= MemoryState.PermissionLockAllowed;
-        }
-
-        // 修改：完全不检查DeviceMapped和Uncached属性
-        // 注意：BorrowedAndIpcMapped仍然会被检查
-        if (CheckRange(
-            address,
-            size,
-            stateCheckMask,
-            stateCheckMask,
-            KMemoryPermission.None,
-            KMemoryPermission.None,
-            MemoryAttribute.BorrowedAndIpcMapped,
-            MemoryAttribute.None,
-            MemoryAttribute.None, // 不忽略任何属性
-            out MemoryState state,
-            out KMemoryPermission permission,
-            out MemoryAttribute attribute))
-        {
-            if (!_slabManager.CanAllocate(MaxBlocksNeededForInsertion))
+            lock (_blockManager)
             {
-                return KernelResult.OutOfResource;
-            }
+                MemoryState stateCheckMask = 0;
 
-            ulong pagesCount = size / PageSize;
-
-            attribute &= ~attributeMask;
-            attribute |= attributeMask & attributeValue;
-
-            _blockManager.InsertBlock(address, pagesCount, state, permission, attribute);
-
-            return Result.Success;
-        }
-        else
-        {
-            return KernelResult.InvalidMemState;
-        }
-    }
-}
-
-        public KMemoryInfo QueryMemory(ulong address)
-        {
-            if (address >= AddressSpaceStart &&
-                address < AddressSpaceEnd)
-            {
-                lock (_blockManager)
+                if (attributeMask.HasFlag(MemoryAttribute.Uncached))
                 {
-                    return _blockManager.FindBlock(address).GetInfo();
+                    stateCheckMask = MemoryState.AttributeChangeAllowed;
+                }
+
+                if (attributeMask.HasFlag(MemoryAttribute.PermissionLocked))
+                {
+                    stateCheckMask |= MemoryState.PermissionLockAllowed;
+                }
+
+                if (CheckRange(
+                    address,
+                    size,
+                    stateCheckMask,
+                    stateCheckMask,
+                    KMemoryPermission.None,
+                    KMemoryPermission.None,
+                    MemoryAttribute.BorrowedAndIpcMapped,
+                    MemoryAttribute.None,
+                    MemoryAttribute.DeviceMappedAndUncached,
+                    out MemoryState state,
+                    out KMemoryPermission permission,
+                    out MemoryAttribute attribute))
+                {
+                    if (!_slabManager.CanAllocate(MaxBlocksNeededForInsertion))
+                    {
+                        return KernelResult.OutOfResource;
+                    }
+
+                    ulong pagesCount = size / PageSize;
+
+                    attribute &= ~attributeMask;
+                    attribute |= attributeMask & attributeValue;
+
+                    _blockManager.InsertBlock(address, pagesCount, state, permission, attribute);
+
+                    return Result.Success;
+                }
+                else
+                {
+                    return KernelResult.InvalidMemState;
                 }
             }
-            else
-            {
-                return KMemoryInfo.Pool.Allocate().Set(
-                    AddressSpaceEnd,
-                    ~AddressSpaceEnd + 1,
-                    MemoryState.Reserved,
-                    KMemoryPermission.None,
-                    MemoryAttribute.None,
-                    KMemoryPermission.None,
-                    0,
-                    0);
-            }
         }
+
+        public KMemoryInfo QueryMemory(ulong address)
+{
+    if (address >= AddressSpaceStart &&
+        address < AddressSpaceEnd)
+    {
+        lock (_blockManager)
+        {
+            return _blockManager.FindBlock(address).GetInfo();
+        }
+    }
+    else
+    {
+        // 修复：正确计算剩余地址空间大小
+        ulong size = (address < AddressSpaceEnd) ? (AddressSpaceEnd - address) : 0;
+        return KMemoryInfo.Pool.Allocate().Set(
+            AddressSpaceEnd,
+            size,
+            MemoryState.Reserved,
+            KMemoryPermission.None,
+            MemoryAttribute.None,
+            KMemoryPermission.None,
+            0,
+            0);
+    }
+}
 
         public Result Map(ulong dst, ulong src, ulong size)
         {
