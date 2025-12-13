@@ -264,6 +264,8 @@ namespace Ryujinx.HLE.Loaders.Processes
             NceCpuCodePatch[] nsoPatch = new NceCpuCodePatch[executables.Length];
             ulong[] nsoBase = new ulong[executables.Length];
 
+            // 先创建所有补丁，判断是否使用NCE模式
+            bool isNceMode = false;
             for (int index = 0; index < executables.Length; index++)
             {
                 IExecutable nso = executables[index];
@@ -293,6 +295,7 @@ namespace Ryujinx.HLE.Loaders.Processes
 
                 if (codePatch != null)
                 {
+                    isNceMode = true;
                     codeSize += codePatch.Size;
                 }
 
@@ -308,6 +311,44 @@ namespace Ryujinx.HLE.Loaders.Processes
 
                     codeSize += argsSize;
                 }
+            }
+
+            // 如果是NCE模式，调整地址计算
+            if (isNceMode)
+            {
+                // NCE模式下，ReservedSize是地址空间的基地址，不是偏移量
+                // 所以我们需要调整地址计算
+                Logger.Info?.Print(LogClass.Loader, "NCE mode detected, adjusting address calculations");
+                
+                // 对于NCE模式，我们将codeStart设为0，因为ReservedSize已经是基地址
+                ulong oldCodeStart = codeStart;
+                codeStart = 0;
+                
+                // 重新计算nsoBase，使其相对于0
+                codeSize = 0;
+                for (int index = 0; index < executables.Length; index++)
+                {
+                    if (nsoPatch[index] != null)
+                    {
+                        codeSize += nsoPatch[index].Size;
+                    }
+                    
+                    nsoBase[index] = codeSize;
+                    
+                    IExecutable nso = executables[index];
+                    uint textEnd = nso.TextOffset + (uint)nso.Text.Length;
+                    uint roEnd = nso.RoOffset + (uint)nso.Ro.Length;
+                    uint dataEnd = nso.DataOffset + (uint)nso.Data.Length + nso.BssSize;
+                    
+                    uint nsoSize = textEnd;
+                    if (nsoSize < roEnd) nsoSize = roEnd;
+                    if (nsoSize < dataEnd) nsoSize = dataEnd;
+                    nsoSize = BitUtils.AlignUp<uint>(nsoSize, KPageTableBase.PageSize);
+                    
+                    codeSize += nsoSize;
+                }
+                
+                Logger.Info?.Print(LogClass.Loader, $"NCE mode: codeStart={oldCodeStart:X} -> {codeStart:X}");
             }
 
             int codePagesCount = (int)(codeSize / KPageTableBase.PageSize);
@@ -407,11 +448,47 @@ namespace Ryujinx.HLE.Loaders.Processes
                 return ProcessResult.Failed;
             }
 
+            // 检测是否是NCE内存管理器
+            bool usingNceMemoryManager = false;
+            using (process.Context as IArmProcessContext)
+            {
+                var armProcessContext = process.Context as IArmProcessContext;
+                if (armProcessContext != null && armProcessContext.AddressSpace is Ryujinx.Cpu.Nce.MemoryManagerNative)
+                {
+                    usingNceMemoryManager = true;
+                    Logger.Info?.Print(LogClass.Loader, 
+                        $"NCE MemoryManager detected: ReservedSize=0x{process.Context.ReservedSize:X}, " +
+                        $"AddressSpaceSize=0x{process.Context.AddressSpaceSize:X}");
+                }
+            }
+
             for (int index = 0; index < executables.Length; index++)
             {
-                ulong nsoBaseAddress = process.Context.ReservedSize + nsoBase[index];
+                // 关键修复：根据内存管理器类型计算地址
+                ulong nsoBaseAddress;
+                
+                if (usingNceMemoryManager)
+                {
+                    // NCE模式：ReservedSize是基地址，直接加上相对地址
+                    nsoBaseAddress = process.Context.ReservedSize + nsoBase[index];
+                    
+                    // 验证地址是否有效
+                    if (nsoBaseAddress < process.Context.ReservedSize)
+                    {
+                        Logger.Error?.Print(LogClass.Loader, 
+                            $"NCE address calculation overflow: 0x{process.Context.ReservedSize:X} + 0x{nsoBase[index]:X}");
+                        return ProcessResult.Failed;
+                    }
+                }
+                else
+                {
+                    // 非NCE模式：使用原来的计算方式
+                    nsoBaseAddress = process.Context.ReservedSize + nsoBase[index];
+                }
 
-                Logger.Info?.Print(LogClass.Loader, $"Loading image {index} at 0x{nsoBaseAddress:x16}...");
+                Logger.Info?.Print(LogClass.Loader, 
+                    $"Loading image {index} at 0x{nsoBaseAddress:x16} " +
+                    $"(NCE={usingNceMemoryManager}, base=0x{nsoBase[index]:x16})...");
 
                 result = LoadIntoMemory(process, executables[index], nsoBaseAddress, nsoPatch[index]);
 
@@ -474,6 +551,56 @@ namespace Ryujinx.HLE.Loaders.Processes
 
         private static Result LoadIntoMemory(KProcess process, IExecutable image, ulong baseAddress, NceCpuCodePatch codePatch = null)
         {
+            // 检测是否是NCE内存管理器
+            bool isNceMode = false;
+            ulong reservedSize = process.Context.ReservedSize;
+            
+            using (process.Context as IArmProcessContext)
+            {
+                var armProcessContext = process.Context as IArmProcessContext;
+                if (armProcessContext != null && armProcessContext.AddressSpace is Ryujinx.Cpu.Nce.MemoryManagerNative)
+                {
+                    isNceMode = true;
+                }
+            }
+
+            Logger.Info?.Print(LogClass.Loader, 
+                $"LoadIntoMemory: base=0x{baseAddress:X}, isNce={isNceMode}, reserved=0x{reservedSize:X}");
+
+            // NCE模式下验证地址
+            if (isNceMode && baseAddress < reservedSize)
+            {
+                Logger.Error?.Print(LogClass.Loader, 
+                    $"NCE base address 0x{baseAddress:X} below reserved start 0x{reservedSize:X}");
+                return Result.InvalidAddress;
+            }
+
+            ulong patchAddress = 0;
+            if (codePatch != null)
+            {
+                // 计算补丁地址
+                patchAddress = baseAddress - codePatch.Size;
+                
+                // NCE模式下验证补丁地址
+                if (isNceMode && patchAddress < reservedSize)
+                {
+                    Logger.Error?.Print(LogClass.Loader, 
+                        $"NCE patch address 0x{patchAddress:X} below reserved start 0x{reservedSize:X}");
+                    
+                    // 调整：将补丁放在reservedSize处，NSO放在补丁之后
+                    patchAddress = reservedSize;
+                    baseAddress = patchAddress + codePatch.Size;
+                    
+                    Logger.Info?.Print(LogClass.Loader, 
+                        $"Adjusted: patch at 0x{patchAddress:X}, NSO at 0x{baseAddress:X}");
+                }
+
+                Logger.Info?.Print(LogClass.Loader, 
+                    $"Writing NCE patch at 0x{patchAddress:X}, size: {codePatch.Size}");
+
+                codePatch.Write(process.CpuMemory, patchAddress, baseAddress + image.TextOffset);
+            }
+
             ulong textStart = baseAddress + image.TextOffset;
             ulong roStart = baseAddress + image.RoOffset;
             ulong dataStart = baseAddress + image.DataOffset;
@@ -492,9 +619,17 @@ namespace Ryujinx.HLE.Loaders.Processes
 
             process.CpuMemory.Fill(bssStart, image.BssSize, 0);
 
+            // 如果是NCE补丁，需要设置补丁区域的内存权限
             if (codePatch != null)
             {
-                codePatch.Write(process.CpuMemory, baseAddress - codePatch.Size, textStart);
+                ulong patchSize = BitUtils.AlignUp<ulong>((ulong)codePatch.Size, KPageTableBase.PageSize);
+                Result result = SetProcessMemoryPermission(process, patchAddress, patchSize, KMemoryPermission.ReadAndExecute);
+                if (result != Result.Success)
+                {
+                    Logger.Error?.Print(LogClass.Loader, 
+                        $"Failed to set NCE patch memory permission: {result}");
+                    return result;
+                }
             }
 
             Result SetProcessMemoryPermission(ulong address, ulong size, KMemoryPermission permission)
@@ -505,6 +640,14 @@ namespace Ryujinx.HLE.Loaders.Processes
                 }
 
                 size = BitUtils.AlignUp<ulong>(size, KPageTableBase.PageSize);
+                
+                // NCE模式下验证地址
+                if (isNceMode && address < reservedSize)
+                {
+                    Logger.Error?.Print(LogClass.Loader, 
+                        $"Setting permission for address 0x{address:X} below reserved start 0x{reservedSize:X}");
+                    return Result.InvalidAddress;
+                }
 
                 return process.MemoryManager.SetProcessMemoryPermission(address, size, permission);
             }
@@ -522,6 +665,18 @@ namespace Ryujinx.HLE.Loaders.Processes
             }
 
             return SetProcessMemoryPermission(dataStart, end - dataStart, KMemoryPermission.ReadAndWrite);
+        }
+
+        // 辅助方法：设置内存权限
+        private static Result SetProcessMemoryPermission(KProcess process, ulong address, ulong size, KMemoryPermission permission)
+        {
+            if (size == 0)
+            {
+                return Result.Success;
+            }
+
+            size = BitUtils.AlignUp<ulong>(size, KPageTableBase.PageSize);
+            return process.MemoryManager.SetProcessMemoryPermission(address, size, permission);
         }
     }
 }
