@@ -572,7 +572,7 @@ namespace Ryujinx.HLE.Loaders.Processes
             {
                 Logger.Error?.Print(LogClass.Loader, 
                     $"NCE base address 0x{baseAddress:X} below reserved start 0x{reservedSize:X}");
-                return Result.InvalidAddress;
+                return KernelResult.InvalidAddress;
             }
 
             ulong patchAddress = 0;
@@ -619,20 +619,8 @@ namespace Ryujinx.HLE.Loaders.Processes
 
             process.CpuMemory.Fill(bssStart, image.BssSize, 0);
 
-            // 如果是NCE补丁，需要设置补丁区域的内存权限
-            if (codePatch != null)
-            {
-                ulong patchSize = BitUtils.AlignUp<ulong>((ulong)codePatch.Size, KPageTableBase.PageSize);
-                Result result = SetProcessMemoryPermission(process, patchAddress, patchSize, KMemoryPermission.ReadAndExecute);
-                if (result != Result.Success)
-                {
-                    Logger.Error?.Print(LogClass.Loader, 
-                        $"Failed to set NCE patch memory permission: {result}");
-                    return result;
-                }
-            }
-
-            Result SetProcessMemoryPermission(ulong address, ulong size, KMemoryPermission permission)
+            // 定义设置内存权限的辅助函数
+            Result SetProcessMemoryPermissionLocal(ulong address, ulong size, KMemoryPermission permission)
             {
                 if (size == 0)
                 {
@@ -646,37 +634,38 @@ namespace Ryujinx.HLE.Loaders.Processes
                 {
                     Logger.Error?.Print(LogClass.Loader, 
                         $"Setting permission for address 0x{address:X} below reserved start 0x{reservedSize:X}");
-                    return Result.InvalidAddress;
+                    return KernelResult.InvalidAddress;
                 }
 
                 return process.MemoryManager.SetProcessMemoryPermission(address, size, permission);
             }
 
-            Result result = SetProcessMemoryPermission(textStart, (ulong)image.Text.Length, KMemoryPermission.ReadAndExecute);
-            if (result != Result.Success)
+            // 如果是NCE补丁，需要设置补丁区域的内存权限
+            if (codePatch != null)
             {
-                return result;
+                ulong patchSize = BitUtils.AlignUp<ulong>((ulong)codePatch.Size, KPageTableBase.PageSize);
+                Result patchResult = SetProcessMemoryPermissionLocal(patchAddress, patchSize, KMemoryPermission.ReadAndExecute);
+                if (patchResult != Result.Success)
+                {
+                    Logger.Error?.Print(LogClass.Loader, 
+                        $"Failed to set NCE patch memory permission: {patchResult}");
+                    return patchResult;
+                }
             }
 
-            result = SetProcessMemoryPermission(roStart, (ulong)image.Ro.Length, KMemoryPermission.Read);
-            if (result != Result.Success)
+            Result textResult = SetProcessMemoryPermissionLocal(textStart, (ulong)image.Text.Length, KMemoryPermission.ReadAndExecute);
+            if (textResult != Result.Success)
             {
-                return result;
+                return textResult;
             }
 
-            return SetProcessMemoryPermission(dataStart, end - dataStart, KMemoryPermission.ReadAndWrite);
-        }
-
-        // 辅助方法：设置内存权限
-        private static Result SetProcessMemoryPermission(KProcess process, ulong address, ulong size, KMemoryPermission permission)
-        {
-            if (size == 0)
+            Result roResult = SetProcessMemoryPermissionLocal(roStart, (ulong)image.Ro.Length, KMemoryPermission.Read);
+            if (roResult != Result.Success)
             {
-                return Result.Success;
+                return roResult;
             }
 
-            size = BitUtils.AlignUp<ulong>(size, KPageTableBase.PageSize);
-            return process.MemoryManager.SetProcessMemoryPermission(address, size, permission);
+            return SetProcessMemoryPermissionLocal(dataStart, end - dataStart, KMemoryPermission.ReadAndWrite);
         }
     }
 }
