@@ -244,11 +244,25 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
                 throw new InvalidOperationException($"Invalid Process Id {Pid}.");
             }
 
+            // 关键修复：在初始化内存管理器之前创建上下文，以获取ReservedSize
+            bool for64Bit = creationInfo.Flags.HasFlag(ProcessCreationFlags.Is64Bit);
+            int addrSpaceBits = GetAddressSpaceWidth(creationInfo.Flags);
+            ulong addressSpaceSize = 1UL << addrSpaceBits;
+            
+            // 创建上下文（这可能会设置ReservedSize）
+            Context = _contextFactory.Create(KernelContext, Pid, addressSpaceSize, InvalidAccessHandler, for64Bit);
+            
+            ulong reservedSize = Context.ReservedSize;
+            
+            Logger.Info?.Print(LogClass.Loader, 
+                $"KProcess.Initialize: Pid={Pid}, ReservedSize=0x{reservedSize:X}, " +
+                $"AddressSpaceSize=0x{addressSpaceSize:X}, codeAddress=0x{creationInfo.CodeAddress:X}");
+
+            // 现在初始化内存管理器，传入正确的ReservedSize
             InitializeMemoryManager(creationInfo.Flags);
             
-            // 注意：这里不再添加ASLR偏移，因为ProcessLoaderHelper已经添加过了
-            ulong codeAddress = creationInfo.CodeAddress + Context.ReservedSize;
-            
+            // 关键修复：代码地址需要加上ReservedSize
+            ulong codeAddress = creationInfo.CodeAddress + reservedSize;
             ulong codeSize = codePagesCount * KPageTableBase.PageSize;
 
             Result result = MemoryManager.InitializeForProcess(
@@ -256,22 +270,20 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
                 !creationInfo.Flags.HasFlag(ProcessCreationFlags.EnableAslr),
                 memRegion,
                 memConfig,
-                codeAddress,
+                codeAddress,  // 使用调整后的地址
                 codeSize,
-                Context.ReservedSize,
+                reservedSize,  // 传入ReservedSize
                 slabManager);
 
             if (result != Result.Success)
             {
                 CleanUpForError();
-
                 return result;
             }
 
             if (!MemoryManager.CanContain(codeAddress, codeSize, MemoryState.CodeStatic))
             {
                 CleanUpForError();
-
                 return KernelResult.InvalidMemRange;
             }
 
@@ -284,7 +296,6 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
             if (result != Result.Success)
             {
                 CleanUpForError();
-
                 return result;
             }
 
@@ -293,7 +304,6 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
             if (result != Result.Success)
             {
                 CleanUpForError();
-
                 return result;
             }
 
@@ -307,6 +317,23 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
             _entrypoint += entrypointOffset;
 
             return result;
+        }
+
+        // 辅助方法：获取地址空间宽度
+        private static int GetAddressSpaceWidth(ProcessCreationFlags flags)
+        {
+            switch (flags & ProcessCreationFlags.AddressSpaceMask)
+            {
+                case ProcessCreationFlags.AddressSpace32Bit:
+                case ProcessCreationFlags.AddressSpace32BitWithoutAlias:
+                    return 32;
+                case ProcessCreationFlags.AddressSpace64BitDeprecated:
+                    return 36;
+                case ProcessCreationFlags.AddressSpace64Bit:
+                    return 39;
+                default:
+                    throw new ArgumentException($"Invalid process flags {flags}", nameof(flags));
+            }
         }
 
         private Result ParseProcessInfo(ProcessCreationInfo creationInfo)
@@ -1082,8 +1109,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
 
             bool for64Bit = flags.HasFlag(ProcessCreationFlags.Is64Bit);
 
-            Context = _contextFactory.Create(KernelContext, Pid, 1UL << addrSpaceBits, InvalidAccessHandler, for64Bit);
-
+            // 注意：现在Context已在Initialize方法中创建，这里只需创建MemoryManager
             MemoryManager = new KPageTable(KernelContext, CpuMemory, Context.AddressSpaceSize);
         }
 
