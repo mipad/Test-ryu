@@ -935,53 +935,59 @@ namespace Ryujinx.HLE.HOS.Kernel.SupervisorCall
         }
 
         [Svc(3)]
-        public Result SetMemoryAttribute(
-            [PointerSized] ulong address,
-            [PointerSized] ulong size,
-            MemoryAttribute attributeMask,
-            MemoryAttribute attributeValue)
-        {
-            if (!PageAligned(address))
-            {
-                return KernelResult.InvalidAddress;
-            }
+public Result SetMemoryAttribute(
+    [PointerSized] ulong address,
+    [PointerSized] ulong size,
+    MemoryAttribute attributeMask,
+    MemoryAttribute attributeValue)
+{
+    if (!PageAligned(address))
+    {
+        return KernelResult.InvalidAddress;
+    }
 
-            if (!PageAligned(size) || size == 0)
-            {
-                return KernelResult.InvalidSize;
-            }
+    if (!PageAligned(size) || size == 0)
+    {
+        return KernelResult.InvalidSize;
+    }
 
-            MemoryAttribute attributes = attributeMask | attributeValue;
+    MemoryAttribute attributes = attributeMask | attributeValue;
 
-            const MemoryAttribute SupportedAttributes = MemoryAttribute.Uncached | MemoryAttribute.PermissionLocked;
+    // 检查1：确保设置的属性都在掩码内
+    if (attributes != attributeMask)
+    {
+        return KernelResult.InvalidCombination;
+    }
 
-            if (attributes != attributeMask ||
-               (attributes | SupportedAttributes) != SupportedAttributes)
-            {
-                return KernelResult.InvalidCombination;
-            }
+    // 检查2：PermissionLocked属性不能取消设置
+    if ((attributeMask & MemoryAttribute.PermissionLocked) != (attributeValue & MemoryAttribute.PermissionLocked))
+    {
+        return KernelResult.InvalidCombination;
+    }
 
-            // The permission locked attribute can't be unset.
-            if ((attributeMask & MemoryAttribute.PermissionLocked) != (attributeValue & MemoryAttribute.PermissionLocked))
-            {
-                return KernelResult.InvalidCombination;
-            }
+    // 新增：记录警告日志（类似Skyline的做法）
+    // 如果使用缓存（没有设置Uncached）或设置了DeviceMapped
+    if ((attributes & MemoryAttribute.Uncached) == 0 || (attributes & MemoryAttribute.DeviceMapped) != 0)
+    {
+        Logger.Warning?.Print(LogClass.KernelSvc, 
+            $"Cached, device shared attribute used (0x{(uint)attributes:X})");
+    }
 
-            KProcess process = KernelStatic.GetCurrentProcess();
+    KProcess process = KernelStatic.GetCurrentProcess();
 
-            if (!process.MemoryManager.InsideAddrSpace(address, size))
-            {
-                return KernelResult.InvalidMemState;
-            }
+    if (!process.MemoryManager.InsideAddrSpace(address, size))
+    {
+        return KernelResult.InvalidMemState;
+    }
 
-            Result result = process.MemoryManager.SetMemoryAttribute(
-                address,
-                size,
-                attributeMask,
-                attributeValue);
+    Result result = process.MemoryManager.SetMemoryAttribute(
+        address,
+        size,
+        attributeMask,
+        attributeValue);
 
-            return result;
-        }
+    return result;
+}
 
         [Svc(4)]
         public Result MapMemory([PointerSized] ulong dst, [PointerSized] ulong src, [PointerSized] ulong size)
@@ -3114,3 +3120,4 @@ namespace Ryujinx.HLE.HOS.Kernel.SupervisorCall
         }
     }
 }
+
