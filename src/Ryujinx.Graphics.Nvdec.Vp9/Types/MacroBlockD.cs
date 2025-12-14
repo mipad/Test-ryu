@@ -1,5 +1,7 @@
 using Ryujinx.Common.Memory;
+using Ryujinx.Graphics.Nvdec.Vp9.Common;
 using Ryujinx.Graphics.Video;
+using System;
 
 namespace Ryujinx.Graphics.Nvdec.Vp9.Types
 {
@@ -66,7 +68,6 @@ namespace Ryujinx.Graphics.Nvdec.Vp9.Types
         {
             int aboveSkip = !AboveMi.IsNull ? AboveMi.Value.Skip : 0;
             int leftSkip = !LeftMi.IsNull ? LeftMi.Value.Skip : 0;
-
             return aboveSkip + leftSkip;
         }
 
@@ -83,18 +84,18 @@ namespace Ryujinx.Graphics.Nvdec.Vp9.Types
             {
                 return leftType;
             }
-            else if (leftType == Constants.SwitchableFilters)
+
+            if (leftType == Constants.SwitchableFilters)
             {
                 return aboveType;
             }
-            else if (aboveType == Constants.SwitchableFilters)
+
+            if (aboveType == Constants.SwitchableFilters)
             {
                 return leftType;
             }
-            else
-            {
-                return Constants.SwitchableFilters;
-            }
+
+            return Constants.SwitchableFilters;
         }
 
         // The mode info data structure has a one element border above and to the
@@ -107,17 +108,19 @@ namespace Ryujinx.Graphics.Nvdec.Vp9.Types
         public readonly int GetIntraInterContext()
         {
             if (!AboveMi.IsNull && !LeftMi.IsNull)
-            { // Both edges available
+            {
+                // Both edges available
                 bool aboveIntra = !AboveMi.Value.IsInterBlock();
                 bool leftIntra = !LeftMi.Value.IsInterBlock();
-
-                return leftIntra && aboveIntra ? 3 : (leftIntra || aboveIntra ? 1 : 0);
+                return leftIntra && aboveIntra ? 3 : leftIntra || aboveIntra ? 1 : 0;
             }
 
             if (!AboveMi.IsNull || !LeftMi.IsNull)
-            { // One edge available
+            {
+                // One edge available
                 return 2 * (!(!AboveMi.IsNull ? AboveMi.Value : LeftMi.Value).IsInterBlock() ? 1 : 0);
             }
+
             return 0;
         }
 
@@ -128,8 +131,8 @@ namespace Ryujinx.Graphics.Nvdec.Vp9.Types
         public readonly int GetTxSizeContext()
         {
             int maxTxSize = (int)Luts.MaxTxSizeLookup[(int)Mi[0].Value.SbType];
-            int aboveCtx = (!AboveMi.IsNull && AboveMi.Value.Skip == 0) ? (int)AboveMi.Value.TxSize : maxTxSize;
-            int leftCtx = (!LeftMi.IsNull && LeftMi.Value.Skip == 0) ? (int)LeftMi.Value.TxSize : maxTxSize;
+            int aboveCtx = !AboveMi.IsNull && AboveMi.Value.Skip == 0 ? (int)AboveMi.Value.TxSize : maxTxSize;
+            int leftCtx = !LeftMi.IsNull && LeftMi.Value.Skip == 0 ? (int)LeftMi.Value.TxSize : maxTxSize;
             if (LeftMi.IsNull)
             {
                 leftCtx = aboveCtx;
@@ -140,17 +143,17 @@ namespace Ryujinx.Graphics.Nvdec.Vp9.Types
                 aboveCtx = leftCtx;
             }
 
-            return (aboveCtx + leftCtx) > maxTxSize ? 1 : 0;
+            return aboveCtx + leftCtx > maxTxSize ? 1 : 0;
         }
 
         public void SetupBlockPlanes(int ssX, int ssY)
         {
-            int i;
-
-            for (i = 0; i < Constants.MaxMbPlane; i++)
+            Span<MacroBlockDPlane> planeSpan = Plane.AsSpan();
+            
+            for (int i = 0; i < Constants.MaxMbPlane; i++)
             {
-                Plane[i].SubsamplingX = i != 0 ? ssX : 0;
-                Plane[i].SubsamplingY = i != 0 ? ssY : 0;
+                planeSpan[i].SubsamplingX = i != 0 ? ssX : 0;
+                planeSpan[i].SubsamplingY = i != 0 ? ssY : 0;
             }
         }
 
@@ -158,25 +161,42 @@ namespace Ryujinx.Graphics.Nvdec.Vp9.Types
         {
             int aboveIdx = miCol * 2;
             int leftIdx = (miRow * 2) & 15;
-            int i;
-            for (i = 0; i < Constants.MaxMbPlane; ++i)
+            
+            Span<MacroBlockDPlane> planeSpan = Plane.AsSpan();
+            Span<ArrayPtr<sbyte>> aboveContextSpan = AboveContext.AsSpan();
+            Span<Array16<sbyte>> leftContextSpan = LeftContext.AsSpan();
+
+            for (int i = 0; i < Constants.MaxMbPlane; ++i)
             {
-                ref MacroBlockDPlane pd = ref Plane[i];
-                pd.AboveContext = AboveContext[i].Slice(aboveIdx >> pd.SubsamplingX);
-                pd.LeftContext = new ArrayPtr<sbyte>(ref LeftContext[i][leftIdx >> pd.SubsamplingY], 16 - (leftIdx >> pd.SubsamplingY));
+                ref MacroBlockDPlane pd = ref planeSpan[i];
+                pd.AboveContext = aboveContextSpan[i].Slice(aboveIdx >> pd.SubsamplingX);
+                pd.LeftContext = new ArrayPtr<sbyte>(ref leftContextSpan[i][leftIdx >> pd.SubsamplingY],
+                    16 - (leftIdx >> pd.SubsamplingY));
             }
         }
 
         internal void SetMiRowCol(ref TileInfo tile, int miRow, int bh, int miCol, int bw, int miRows, int miCols)
         {
-            MbToTopEdge = -((miRow * Constants.MiSize) * 8);
-            MbToBottomEdge = ((miRows - bh - miRow) * Constants.MiSize) * 8;
-            MbToLeftEdge = -((miCol * Constants.MiSize) * 8);
-            MbToRightEdge = ((miCols - bw - miCol) * Constants.MiSize) * 8;
+            MbToTopEdge = -(miRow * Constants.MiSize * 8);
+            MbToBottomEdge = (miRows - bh - miRow) * Constants.MiSize * 8;
+            MbToLeftEdge = -(miCol * Constants.MiSize * 8);
+            MbToRightEdge = (miCols - bw - miCol) * Constants.MiSize * 8;
 
             // Are edges available for intra prediction?
-            AboveMi = (miRow != 0) ? Mi[-MiStride] : Ptr<ModeInfo>.Null;
-            LeftMi = (miCol > tile.MiColStart) ? Mi[-1] : Ptr<ModeInfo>.Null;
+            AboveMi = miRow != 0 ? Mi[-MiStride] : Ptr<ModeInfo>.Null;
+            LeftMi = miCol > tile.MiColStart ? Mi[-1] : Ptr<ModeInfo>.Null;
+        }
+
+        public unsafe void DecResetSkipContext()
+        {
+            Span<MacroBlockDPlane> planeSpan = Plane.AsSpan();
+            
+            for (int i = 0; i < Constants.MaxMbPlane; i++)
+            {
+                ref MacroBlockDPlane pd = ref planeSpan[i];
+                MemoryUtil.Fill(pd.AboveContext.ToPointer(), (sbyte)0, pd.N4W);
+                MemoryUtil.Fill(pd.LeftContext.ToPointer(), (sbyte)0, pd.N4H);
+            }
         }
     }
 }
