@@ -24,7 +24,12 @@
             <Type Name="Silk.NET.Vulkan.Extensions.KHR.KhrSwapchain"
                   Dynamic="Required All"/>
         </Assembly>
+        <!-- 添加动态绑定支持以解决反射警告 -->
+        <Assembly Name="Microsoft.CSharp" Dynamic="Required All" />
+        <Assembly Name="System.Linq.Expressions" Dynamic="Required All" />
+        
         <Assembly Name="Ryujinx.HLE">
+            <!-- 保留所有警告中提到的服务 -->
             <Type Name="Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel.NvHostGpuDeviceFile"
                   Dynamic="Required All" />
             <Type Name="Ryujinx.HLE.HOS.Services.Fs.IFileSystemProxyForLoader"
@@ -231,6 +236,7 @@
                   Dynamic="Required All" />
             <Type Name="Ryujinx.HLE.HOS.Services.Vi.IManagerRootService"
                   Dynamic="Required All" />
+            <!-- 警告相关：INvDrvServices 构造函数反射 -->
             <Type Name="Ryujinx.HLE.HOS.Services.Nv.INvDrvServices"
                   Dynamic="Required All" />
             <Type Name="Ryujinx.HLE.HOS.Services.Account.Acc.AccountService.IManagerForApplication"
@@ -423,6 +429,7 @@
                   Dynamic="Required All" />
             <Type Name="Ryujinx.HLE.HOS.Services.Fs.FileSystemProxy.IStorage"
                   Dynamic="Required All" />
+            <!-- 警告相关：IUserInterface 的静态构造函数 -->
             <Type Name="Ryujinx.HLE.HOS.Services.Sm.IUserInterface"
                   Dynamic="Required All" />
             <Type Name="Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrlGpu.NvHostCtrlGpuDeviceFile"
@@ -531,14 +538,33 @@
                   Dynamic="Required All" />
             <Type Name="Ryujinx.HLE.HOS.Services.Pcv.Rgltr.IRegulatorManager"
                   Dynamic="Required All" />
-                  <Type Name="Ryujinx.HLE.HOS.Services.IpcService"
+            <Type Name="Ryujinx.HLE.HOS.Services.IpcService"
                   Dynamic="Required All" />
-                  <Type Name="Ryujinx.HLE.HOS.Services.Nv.INvDrvServices"
+            <Type Name="Ryujinx.HLE.HOS.Services.Nv.INvDrvServices"
                   Dynamic="Required All" />
-                  <Type Name="Ryujinx.HLE.HOS.Services.Sm.IUserInterface"
+            <Type Name="Ryujinx.HLE.HOS.Services.Sm.IUserInterface"
                   Dynamic="Required All" />
-                  <Type Name="Ryujinx.HLE.Exceptions.ServiceNotImplementedException"
+            <!-- 警告相关：ServiceNotImplementedException -->
+            <Type Name="Ryujinx.HLE.Exceptions.ServiceNotImplementedException"
                   Dynamic="Required All" />
         </Assembly>
+        
+        <!-- 添加 DynamicObjectFormatter 相关的程序集 -->
+        <Assembly Name="Ryujinx.Common">
+            <Type Name="Ryujinx.Common.Logging.Formatters.DynamicObjectFormatter"
+                  Dynamic="Required All" />
+        </Assembly>
+        
+        <!-- 添加 MsgPack 库 -->
+        <Assembly Name="MsgPack" Dynamic="Required All" />
+        
+        <!-- 添加 Silk.NET.Core 以解决单文件警告 -->
+        <Assembly Name="Silk.NET.Core">
+            <Type Name="Silk.NET.Core.Loader.DefaultPathResolver"
+                  Dynamic="Required All" />
+        </Assembly>
+        
+        <!-- 添加 DependencyModel 支持 -->
+        <Assembly Name="Microsoft.Extensions.DependencyModel" Dynamic="Required All" />
     </Application>
 </Directives>
