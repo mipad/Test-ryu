@@ -2,9 +2,9 @@ name: Android CI Fixed
 
 on:
   push:
-    branches: [ "vp9" ]  
+    branches: [ "剪裁" ]  
   pull_request:
-    branches: [ "vp9" ]
+    branches: [ "剪裁" ]
 
 jobs:
   build:
@@ -27,7 +27,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: vp9
+        ref: 剪裁
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
