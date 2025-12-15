@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace Ryujinx.HLE.Generators
@@ -8,49 +9,141 @@ namespace Ryujinx.HLE.Generators
     [Generator]
     public class IpcServiceGenerator : ISourceGenerator
     {
+        private class ServiceInfo
+        {
+            public string FullTypeName { get; set; }
+            public string ServiceName { get; set; }
+            public bool HasServiceCtxConstructor { get; set; }
+            public bool HasServiceCtxAndParameterConstructor { get; set; }
+            public string ParameterType { get; set; }
+        }
+
         public void Execute(GeneratorExecutionContext context)
         {
             var syntaxReceiver = (ServiceSyntaxReceiver)context.SyntaxReceiver;
-            CodeGenerator generator = new CodeGenerator();
+            
+            // 收集所有服务类的信息
+            var serviceInfos = new List<ServiceInfo>();
+            
+            foreach (var classDeclaration in syntaxReceiver.Types)
+            {
+                // 跳过抽象类和私有类
+                if (classDeclaration.Modifiers.Any(SyntaxKind.AbstractKeyword) || 
+                    classDeclaration.Modifiers.Any(SyntaxKind.PrivateKeyword))
+                {
+                    continue;
+                }
 
+                // 检查是否有ServiceAttribute
+                var serviceAttribute = classDeclaration.AttributeLists
+                    .SelectMany(x => x.Attributes)
+                    .FirstOrDefault(y => y.Name.ToString() == "Service" || y.Name.ToString() == "ServiceAttribute");
+                    
+                if (serviceAttribute == null)
+                {
+                    continue;
+                }
+
+                // 获取服务名称
+                string serviceName = "";
+                if (serviceAttribute.ArgumentList != null && serviceAttribute.ArgumentList.Arguments.Count > 0)
+                {
+                    var firstArg = serviceAttribute.ArgumentList.Arguments[0];
+                    if (firstArg.Expression is LiteralExpressionSyntax literal &&
+                        literal.Kind() == SyntaxKind.StringLiteralExpression)
+                    {
+                        serviceName = literal.Token.ValueText;
+                    }
+                }
+
+                if (string.IsNullOrEmpty(serviceName))
+                {
+                    continue;
+                }
+
+                // 获取完整类型名
+                var fullTypeName = GetFullName(classDeclaration, context);
+                
+                if (!fullTypeName.StartsWith("Ryujinx.HLE.HOS.Services"))
+                {
+                    continue;
+                }
+
+                // 检查构造函数
+                var constructors = classDeclaration.ChildNodes()
+                    .OfType<ConstructorDeclarationSyntax>()
+                    .ToList();
+
+                bool hasServiceCtxConstructor = false;
+                bool hasServiceCtxAndParameterConstructor = false;
+                string parameterType = null;
+
+                foreach (var constructor in constructors)
+                {
+                    var parameters = constructor.ParameterList.Parameters;
+                    
+                    if (parameters.Count >= 1 && parameters[0].Type.ToString() == "ServiceCtx")
+                    {
+                        hasServiceCtxConstructor = true;
+                        
+                        if (parameters.Count == 2)
+                        {
+                            hasServiceCtxAndParameterConstructor = true;
+                            parameterType = parameters[1].Type.ToString();
+                        }
+                    }
+                }
+
+                serviceInfos.Add(new ServiceInfo
+                {
+                    FullTypeName = fullTypeName,
+                    ServiceName = serviceName,
+                    HasServiceCtxConstructor = hasServiceCtxConstructor,
+                    HasServiceCtxAndParameterConstructor = hasServiceCtxAndParameterConstructor,
+                    ParameterType = parameterType
+                });
+            }
+
+            // 生成GetServiceInstance方法
+            CodeGenerator generator = new CodeGenerator();
             generator.AppendLine("using System;");
+            generator.AppendLine("using System.Collections.Generic;");
             generator.EnterScope($"namespace Ryujinx.HLE.HOS.Services.Sm");
             generator.EnterScope($"partial class IUserInterface");
 
-            generator.EnterScope($"public IpcService? GetServiceInstance(Type type, ServiceCtx context, object? parameter = null)");
-            foreach (var className in syntaxReceiver.Types)
+            // 生成BuildServiceDictionary方法
+            generator.EnterScope($"private static partial Dictionary<string, Type> BuildServiceDictionary()");
+            generator.EnterScope($"return new Dictionary<string, Type>");
+            
+            foreach (var serviceInfo in serviceInfos)
             {
-                if (className.Modifiers.Any(SyntaxKind.AbstractKeyword) || className.Modifiers.Any(SyntaxKind.PrivateKeyword) || !className.AttributeLists.Any(x => x.Attributes.Any(y => y.ToString().StartsWith("Service"))))
-                    continue;
-                var name = GetFullName(className, context).Replace("global::", "");
-                if (!name.StartsWith("Ryujinx.HLE.HOS.Services"))
-                    continue;
-                var constructors = className.ChildNodes().Where(x => x.IsKind(SyntaxKind.ConstructorDeclaration)).Select(y => y as ConstructorDeclarationSyntax);
+                generator.AppendLine($"{{ \"{serviceInfo.ServiceName}\", typeof({serviceInfo.FullTypeName}) }},");
+            }
+            
+            generator.LeaveScope(";");
+            generator.LeaveScope();
 
-                if (!constructors.Any(x => x.ParameterList.Parameters.Count >= 1))
-                    continue;
-
-                if (constructors.Where(x => x.ParameterList.Parameters.Count >= 1).FirstOrDefault().ParameterList.Parameters[0].Type.ToString() == "ServiceCtx")
+            // 生成GetServiceInstance方法
+            generator.EnterScope($"public IpcService? GetServiceInstance(Type type, ServiceCtx context, object? parameter = null)");
+            
+            foreach (var serviceInfo in serviceInfos)
+            {
+                if (!serviceInfo.HasServiceCtxConstructor)
                 {
-                    generator.EnterScope($"if (type == typeof({GetFullName(className, context)}))");
-                    if (constructors.Any(x => x.ParameterList.Parameters.Count == 2))
-                    {
-                        var type = constructors.Where(x => x.ParameterList.Parameters.Count == 2).FirstOrDefault().ParameterList.Parameters[1].Type;
-                        var model = context.Compilation.GetSemanticModel(type.SyntaxTree);
-                        var typeSymbol = model.GetSymbolInfo(type).Symbol as INamedTypeSymbol;
-                        var fullName = typeSymbol.ToString();
-                        generator.EnterScope("if (parameter != null)");
-                        generator.AppendLine($"return new {GetFullName(className, context)}(context, ({fullName})parameter);");
-                        generator.LeaveScope();
-                    }
+                    continue;
+                }
 
-                    if (constructors.Any(x => x.ParameterList.Parameters.Count == 1))
-                    {
-                        generator.AppendLine($"return new {GetFullName(className, context)}(context);");
-                    }
-
+                generator.EnterScope($"if (type == typeof({serviceInfo.FullTypeName}))");
+                
+                if (serviceInfo.HasServiceCtxAndParameterConstructor && !string.IsNullOrEmpty(serviceInfo.ParameterType))
+                {
+                    generator.EnterScope($"if (parameter != null)");
+                    generator.AppendLine($"return new {serviceInfo.FullTypeName}(context, ({serviceInfo.ParameterType})parameter);");
                     generator.LeaveScope();
                 }
+
+                generator.AppendLine($"return new {serviceInfo.FullTypeName}(context);");
+                generator.LeaveScope();
             }
 
             generator.AppendLine("return null;");
@@ -58,14 +151,14 @@ namespace Ryujinx.HLE.Generators
 
             generator.LeaveScope();
             generator.LeaveScope();
+            
             context.AddSource($"IUserInterface.g.cs", generator.ToString());
         }
 
         private string GetFullName(ClassDeclarationSyntax syntaxNode, GeneratorExecutionContext context)
         {
             var typeSymbol = context.Compilation.GetSemanticModel(syntaxNode.SyntaxTree).GetDeclaredSymbol(syntaxNode);
-
-            return typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            return typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat).Replace("global::", "");
         }
 
         public void Initialize(GeneratorInitializationContext context)
