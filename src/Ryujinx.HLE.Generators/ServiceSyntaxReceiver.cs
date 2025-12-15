@@ -12,13 +12,24 @@ namespace Ryujinx.HLE.Generators
         {
             if (syntaxNode is ClassDeclarationSyntax classDeclaration)
             {
-                if (classDeclaration.BaseList == null)
+                // 检查类是否有ServiceAttribute
+                foreach (var attributeList in classDeclaration.AttributeLists)
                 {
-                    return;
+                    foreach (var attribute in attributeList.Attributes)
+                    {
+                        var attributeName = attribute.Name.ToString();
+                        if (attributeName == "Service" || 
+                            attributeName == "ServiceAttribute" ||
+                            attributeName.EndsWith("Service") ||
+                            attributeName.EndsWith("ServiceAttribute"))
+                        {
+                            Types.Add(classDeclaration);
+                            return;
+                        }
+                    }
                 }
-
-                Types.Add(classDeclaration);
             }
         }
     }
 }
+
