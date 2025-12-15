@@ -14,6 +14,7 @@ namespace Ryujinx.HLE.Generators
             public string FullTypeName { get; set; }
             public string ServiceName { get; set; }
             public List<ConstructorInfo> Constructors { get; set; } = new List<ConstructorInfo>();
+            public List<ConstructorInfo> ServiceCtxConstructors { get; set; } = new List<ConstructorInfo>();
         }
 
         private class ConstructorInfo
@@ -112,6 +113,14 @@ namespace Ryujinx.HLE.Generators
                     }
                     
                     serviceInfo.Constructors.Add(ctorInfo);
+                    
+                    // 检查是否有ServiceCtx作为第一个参数
+                    if (ctorInfo.Parameters.Count > 0 && 
+                        (ctorInfo.Parameters[0].FullTypeName.Contains("ServiceCtx") || 
+                         ctorInfo.Parameters[0].TypeName == "ServiceCtx"))
+                    {
+                        serviceInfo.ServiceCtxConstructors.Add(ctorInfo);
+                    }
                 }
 
                 serviceInfos.Add(serviceInfo);
@@ -149,48 +158,50 @@ namespace Ryujinx.HLE.Generators
             {
                 generator.EnterScope($"if (type == typeof({serviceInfo.FullTypeName}))");
                 
-                // 查找最适合的构造函数
-                var suitableConstructors = serviceInfo.Constructors
-                    .Where(c => c.Parameters.Count >= 1 && 
-                           (c.Parameters[0].FullTypeName.Contains("ServiceCtx") || 
-                            c.Parameters[0].FullTypeName.EndsWith("ServiceCtx")))
-                    .ToList();
-                
-                if (suitableConstructors.Any())
+                // 检查是否有以ServiceCtx作为第一个参数的构造函数
+                if (serviceInfo.ServiceCtxConstructors.Any())
                 {
-                    // 首先尝试匹配参数数量的构造函数
-                    var oneParamConstructor = suitableConstructors.FirstOrDefault(c => c.Parameters.Count == 1);
-                    
-                    if (oneParamConstructor != null)
+                    // 优先选择只有一个参数的构造函数（只有ServiceCtx）
+                    var singleParamCtor = serviceInfo.ServiceCtxConstructors.FirstOrDefault(c => c.Parameters.Count == 1);
+                    if (singleParamCtor != null)
                     {
-                        // 只有一个ServiceCtx参数的构造函数
                         generator.AppendLine($"return new {serviceInfo.FullTypeName}(context);");
                     }
                     else
                     {
-                        // 尝试找到匹配参数的构造函数
-                        bool hasTwoParamConstructor = false;
-                        foreach (var ctor in suitableConstructors.Where(c => c.Parameters.Count == 2))
+                        // 检查是否有两个参数的构造函数
+                        var twoParamCtors = serviceInfo.ServiceCtxConstructors.Where(c => c.Parameters.Count == 2).ToList();
+                        if (twoParamCtors.Any())
                         {
-                            hasTwoParamConstructor = true;
-                            generator.EnterScope($"if (parameter is {ctor.Parameters[1].FullTypeName})");
-                            generator.AppendLine($"return new {serviceInfo.FullTypeName}(context, ({ctor.Parameters[1].FullTypeName})parameter);");
-                            generator.LeaveScope();
-                        }
-                        
-                        if (hasTwoParamConstructor)
-                        {
-                            // 如果所有带两个参数的构造函数都不匹配，尝试默认构造函数（如果存在）
-                            generator.AppendLine("// No matching constructor found for the provided parameter");
-                            generator.AppendLine("// Trying default constructor");
+                            // 如果有多个两个参数的构造函数，需要检查参数类型
+                            bool firstCtor = true;
+                            foreach (var ctor in twoParamCtors)
+                            {
+                                if (firstCtor)
+                                {
+                                    generator.EnterScope($"if (parameter is {ctor.Parameters[1].FullTypeName})");
+                                    firstCtor = false;
+                                }
+                                else
+                                {
+                                    generator.AppendLine($"else if (parameter is {ctor.Parameters[1].FullTypeName})");
+                                }
+                                
+                                generator.AppendLine($"return new {serviceInfo.FullTypeName}(context, ({ctor.Parameters[1].FullTypeName})parameter);");
+                            }
                             
-                            // 再次尝试单参数构造函数，以防我们错过了什么
+                            // 如果没有匹配的参数类型
+                            generator.AppendLine("else");
+                            generator.IncreaseIndentation();
                             generator.AppendLine($"return new {serviceInfo.FullTypeName}(context);");
+                            generator.DecreaseIndentation();
+                            
+                            generator.LeaveScope();
                         }
                         else
                         {
-                            // 没有合适的构造函数
-                            generator.AppendLine("// No suitable constructor found");
+                            // 有其他参数数量的构造函数，不支持
+                            generator.AppendLine("// Unsupported constructor parameter count");
                             generator.AppendLine("return null;");
                         }
                     }
