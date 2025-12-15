@@ -13,10 +13,19 @@ namespace Ryujinx.HLE.Generators
         {
             public string FullTypeName { get; set; }
             public string ServiceName { get; set; }
-            public bool HasServiceCtxConstructor { get; set; }
-            public bool HasServiceCtxAndParameterConstructor { get; set; }
-            public string ParameterType { get; set; }
-            public string ParameterTypeFullName { get; set; }
+            public List<ConstructorInfo> Constructors { get; set; } = new List<ConstructorInfo>();
+        }
+
+        private class ConstructorInfo
+        {
+            public List<ParameterInfo> Parameters { get; set; } = new List<ParameterInfo>();
+        }
+
+        private class ParameterInfo
+        {
+            public string TypeName { get; set; }
+            public string FullTypeName { get; set; }
+            public string Name { get; set; }
         }
 
         public void Execute(GeneratorExecutionContext context)
@@ -40,9 +49,7 @@ namespace Ryujinx.HLE.Generators
                     .SelectMany(x => x.Attributes)
                     .FirstOrDefault(y => 
                         y.Name.ToString() == "Service" || 
-                        y.Name.ToString() == "ServiceAttribute" ||
-                        y.Name.ToString().EndsWith("Service") ||
-                        y.Name.ToString().EndsWith("ServiceAttribute"));
+                        y.Name.ToString() == "ServiceAttribute");
                     
                 if (serviceAttribute == null)
                 {
@@ -58,12 +65,6 @@ namespace Ryujinx.HLE.Generators
                         literal.Kind() == SyntaxKind.StringLiteralExpression)
                     {
                         serviceName = literal.Token.ValueText;
-                    }
-                    else if (firstArg.Expression is InvocationExpressionSyntax invocation &&
-                             invocation.Expression.ToString() == "nameof")
-                    {
-                        // 处理 nameof(...) 的情况
-                        serviceName = invocation.ArgumentList.Arguments[0].ToString();
                     }
                 }
 
@@ -81,66 +82,39 @@ namespace Ryujinx.HLE.Generators
                     continue;
                 }
 
-                // 检查构造函数
+                // 获取所有构造函数信息
                 var constructors = classDeclaration.ChildNodes()
                     .OfType<ConstructorDeclarationSyntax>()
                     .ToList();
 
-                bool hasServiceCtxConstructor = false;
-                bool hasServiceCtxAndParameterConstructor = false;
-                string parameterType = null;
-                string parameterTypeFullName = null;
+                var serviceInfo = new ServiceInfo
+                {
+                    FullTypeName = fullTypeName,
+                    ServiceName = serviceName
+                };
 
                 foreach (var constructor in constructors)
                 {
-                    var parameters = constructor.ParameterList.Parameters;
+                    var ctorInfo = new ConstructorInfo();
+                    var semanticModel = context.Compilation.GetSemanticModel(constructor.SyntaxTree);
                     
-                    if (parameters.Count >= 1)
+                    foreach (var parameter in constructor.ParameterList.Parameters)
                     {
-                        var firstParamType = parameters[0].Type.ToString();
-                        if (firstParamType == "ServiceCtx" || 
-                            firstParamType.EndsWith(".ServiceCtx") ||
-                            firstParamType == "Ryujinx.HLE.HOS.Ipc.ServiceCtx")
+                        var paramTypeSymbol = semanticModel.GetSymbolInfo(parameter.Type).Symbol as INamedTypeSymbol;
+                        var paramInfo = new ParameterInfo
                         {
-                            hasServiceCtxConstructor = true;
-                            
-                            if (parameters.Count == 2)
-                            {
-                                hasServiceCtxAndParameterConstructor = true;
-                                parameterType = parameters[1].Type.ToString();
-                                
-                                // 获取完整的参数类型名
-                                var paramTypeSymbol = context.Compilation.GetSemanticModel(constructor.SyntaxTree)
-                                    .GetSymbolInfo(parameters[1].Type).Symbol as INamedTypeSymbol;
-                                
-                                if (paramTypeSymbol != null)
-                                {
-                                    parameterTypeFullName = paramTypeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-                                }
-                                else
-                                {
-                                    // 如果无法获取符号，使用原始字符串
-                                    parameterTypeFullName = parameterType;
-                                }
-                            }
-                        }
+                            TypeName = parameter.Type.ToString(),
+                            FullTypeName = paramTypeSymbol?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ?? parameter.Type.ToString(),
+                            Name = parameter.Identifier.Text
+                        };
+                        
+                        ctorInfo.Parameters.Add(paramInfo);
                     }
+                    
+                    serviceInfo.Constructors.Add(ctorInfo);
                 }
 
-                if (!hasServiceCtxConstructor)
-                {
-                    continue;
-                }
-
-                serviceInfos.Add(new ServiceInfo
-                {
-                    FullTypeName = fullTypeName,
-                    ServiceName = serviceName,
-                    HasServiceCtxConstructor = hasServiceCtxConstructor,
-                    HasServiceCtxAndParameterConstructor = hasServiceCtxAndParameterConstructor,
-                    ParameterType = parameterType,
-                    ParameterTypeFullName = parameterTypeFullName
-                });
+                serviceInfos.Add(serviceInfo);
             }
 
             // 生成代码
@@ -152,6 +126,9 @@ namespace Ryujinx.HLE.Generators
             
             generator.EnterScope($"namespace Ryujinx.HLE.HOS.Services.Sm");
             generator.EnterScope($"partial class IUserInterface");
+            
+            // 生成_services字段
+            generator.AppendLine("private static readonly Dictionary<string, Type> _services = BuildServiceDictionary();");
             
             // 生成BuildServiceDictionary方法
             generator.EnterScope($"private static Dictionary<string, Type> BuildServiceDictionary()");
@@ -172,20 +149,46 @@ namespace Ryujinx.HLE.Generators
             {
                 generator.EnterScope($"if (type == typeof({serviceInfo.FullTypeName}))");
                 
-                if (serviceInfo.HasServiceCtxAndParameterConstructor && 
-                    !string.IsNullOrEmpty(serviceInfo.ParameterTypeFullName))
+                // 查找最适合的构造函数
+                var suitableConstructors = serviceInfo.Constructors
+                    .Where(c => c.Parameters.Count >= 1 && 
+                           (c.Parameters[0].FullTypeName.Contains("ServiceCtx") || 
+                            c.Parameters[0].FullTypeName.EndsWith("ServiceCtx")))
+                    .ToList();
+                
+                if (suitableConstructors.Any())
                 {
-                    generator.EnterScope($"if (parameter != null)");
-                    generator.AppendLine($"return new {serviceInfo.FullTypeName}(context, ({serviceInfo.ParameterTypeFullName})parameter);");
-                    generator.LeaveScope();
-                    generator.AppendLine($"else");
-                    generator.IncreaseIndentation();
-                    generator.AppendLine($"return new {serviceInfo.FullTypeName}(context);");
-                    generator.DecreaseIndentation();
+                    // 首先尝试匹配参数数量的构造函数
+                    var constructor = suitableConstructors.FirstOrDefault(c => c.Parameters.Count == 1);
+                    
+                    if (constructor != null)
+                    {
+                        // 只有一个ServiceCtx参数的构造函数
+                        generator.AppendLine($"return new {serviceInfo.FullTypeName}(context);");
+                    }
+                    else if (parameter != null)
+                    {
+                        // 尝试找到匹配参数的构造函数
+                        foreach (var ctor in suitableConstructors.Where(c => c.Parameters.Count == 2))
+                        {
+                            generator.AppendLine($"if (parameter is {ctor.Parameters[1].FullTypeName})");
+                            generator.IncreaseIndentation();
+                            generator.AppendLine($"return new {serviceInfo.FullTypeName}(context, ({ctor.Parameters[1].FullTypeName})parameter);");
+                            generator.DecreaseIndentation();
+                        }
+                    }
+                    else
+                    {
+                        // 没有参数，但有需要参数的构造函数
+                        generator.AppendLine("// This service requires a parameter, but none was provided");
+                        generator.AppendLine("// You may need to check the ServiceAttribute for this service");
+                        generator.AppendLine("return null;");
+                    }
                 }
                 else
                 {
-                    generator.AppendLine($"return new {serviceInfo.FullTypeName}(context);");
+                    generator.AppendLine("// No suitable constructor found");
+                    generator.AppendLine("return null;");
                 }
                 
                 generator.LeaveScope();
@@ -212,3 +215,4 @@ namespace Ryujinx.HLE.Generators
         }
     }
 }
+
