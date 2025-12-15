@@ -16,8 +16,6 @@ namespace Ryujinx.HLE.HOS.Services.Sm
 {
     partial class IUserInterface : IpcService
     {
-        private static readonly Dictionary<string, Type> _services;
-
         private readonly SmRegistry _registry;
         private readonly ServerBase _commonServer;
 
@@ -31,11 +29,12 @@ namespace Ryujinx.HLE.HOS.Services.Sm
 
         static IUserInterface()
         {
-            _services = typeof(IUserInterface).Assembly.GetTypes()
-                .SelectMany(type => type.GetCustomAttributes(typeof(ServiceAttribute), true)
-                .Select(service => (((ServiceAttribute)service).Name, type)))
-                .ToDictionary(service => service.Name, service => service.type);
+            // 这部分将由源生成器生成
+            _services = BuildServiceDictionary();
         }
+
+        // 添加部分方法声明，源生成器将实现这个方法
+        private static partial System.Collections.Generic.Dictionary<string, System.Type> BuildServiceDictionary();
 
         [CommandCmif(0)]
         [CommandTipc(0)] // 12.0.0+
@@ -261,3 +260,4 @@ namespace Ryujinx.HLE.HOS.Services.Sm
         }
     }
 }
+
