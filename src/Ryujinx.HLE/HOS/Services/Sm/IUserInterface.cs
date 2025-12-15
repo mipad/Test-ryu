@@ -15,9 +15,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace Ryujinx.HLE.HOS.Services.Sm
 {
     partial class IUserInterface : IpcService
-    {
-        private static readonly Dictionary<string, Type> _services = BuildServiceDictionary();
-        
+    {        
         private readonly SmRegistry _registry;
         private readonly ServerBase _commonServer;
 
@@ -90,6 +88,11 @@ namespace Ryujinx.HLE.HOS.Services.Sm
                     ServiceAttribute serviceAttribute = (ServiceAttribute)type.GetCustomAttributes(typeof(ServiceAttribute)).First(service => ((ServiceAttribute)service).Name == name);
 
                     IpcService service = GetServiceInstance(type, context, serviceAttribute.Parameter);
+
+                    if (service == null)
+                    {
+                        throw new InvalidOperationException($"Failed to create instance of service {name}. Check constructor parameters.");
+                    }
 
                     service.TrySetServer(_commonServer);
                     service.Server.AddSessionObj(session.ServerSession, service);
