@@ -16,6 +16,8 @@ namespace Ryujinx.HLE.HOS.Services.Sm
 {
     partial class IUserInterface : IpcService
     {
+        private static readonly Dictionary<string, Type> _services = BuildServiceDictionary();
+        
         private readonly SmRegistry _registry;
         private readonly ServerBase _commonServer;
 
@@ -26,15 +28,6 @@ namespace Ryujinx.HLE.HOS.Services.Sm
             _commonServer = new ServerBase(context, "CommonServer");
             _registry = registry;
         }
-
-        static IUserInterface()
-        {
-            // 这部分将由源生成器生成
-            _services = BuildServiceDictionary();
-        }
-
-        // 添加部分方法声明，源生成器将实现这个方法
-        private static partial System.Collections.Generic.Dictionary<string, System.Type> BuildServiceDictionary();
 
         [CommandCmif(0)]
         [CommandTipc(0)] // 12.0.0+
