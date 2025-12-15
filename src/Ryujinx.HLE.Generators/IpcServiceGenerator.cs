@@ -159,30 +159,40 @@ namespace Ryujinx.HLE.Generators
                 if (suitableConstructors.Any())
                 {
                     // 首先尝试匹配参数数量的构造函数
-                    var constructor = suitableConstructors.FirstOrDefault(c => c.Parameters.Count == 1);
+                    var oneParamConstructor = suitableConstructors.FirstOrDefault(c => c.Parameters.Count == 1);
                     
-                    if (constructor != null)
+                    if (oneParamConstructor != null)
                     {
                         // 只有一个ServiceCtx参数的构造函数
                         generator.AppendLine($"return new {serviceInfo.FullTypeName}(context);");
                     }
-                    else if (parameter != null)
-                    {
-                        // 尝试找到匹配参数的构造函数
-                        foreach (var ctor in suitableConstructors.Where(c => c.Parameters.Count == 2))
-                        {
-                            generator.AppendLine($"if (parameter is {ctor.Parameters[1].FullTypeName})");
-                            generator.IncreaseIndentation();
-                            generator.AppendLine($"return new {serviceInfo.FullTypeName}(context, ({ctor.Parameters[1].FullTypeName})parameter);");
-                            generator.DecreaseIndentation();
-                        }
-                    }
                     else
                     {
-                        // 没有参数，但有需要参数的构造函数
-                        generator.AppendLine("// This service requires a parameter, but none was provided");
-                        generator.AppendLine("// You may need to check the ServiceAttribute for this service");
-                        generator.AppendLine("return null;");
+                        // 尝试找到匹配参数的构造函数
+                        bool hasTwoParamConstructor = false;
+                        foreach (var ctor in suitableConstructors.Where(c => c.Parameters.Count == 2))
+                        {
+                            hasTwoParamConstructor = true;
+                            generator.EnterScope($"if (parameter is {ctor.Parameters[1].FullTypeName})");
+                            generator.AppendLine($"return new {serviceInfo.FullTypeName}(context, ({ctor.Parameters[1].FullTypeName})parameter);");
+                            generator.LeaveScope();
+                        }
+                        
+                        if (hasTwoParamConstructor)
+                        {
+                            // 如果所有带两个参数的构造函数都不匹配，尝试默认构造函数（如果存在）
+                            generator.AppendLine("// No matching constructor found for the provided parameter");
+                            generator.AppendLine("// Trying default constructor");
+                            
+                            // 再次尝试单参数构造函数，以防我们错过了什么
+                            generator.AppendLine($"return new {serviceInfo.FullTypeName}(context);");
+                        }
+                        else
+                        {
+                            // 没有合适的构造函数
+                            generator.AppendLine("// No suitable constructor found");
+                            generator.AppendLine("return null;");
+                        }
                     }
                 }
                 else
