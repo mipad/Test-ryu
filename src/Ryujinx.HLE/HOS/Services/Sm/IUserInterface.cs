@@ -91,7 +91,28 @@ namespace Ryujinx.HLE.HOS.Services.Sm
 
                     if (service == null)
                     {
-                        throw new InvalidOperationException($"Failed to create instance of service {name}. Check constructor parameters.");
+                        // 无法创建服务实例，可能是因为缺少参数
+                        if (context.Device.Configuration.IgnoreMissingServices)
+                        {
+                            Logger.Warning?.Print(LogClass.Service, $"Failed to create service {name} (missing parameters), ignored");
+                            
+                            // 仍然需要创建session并返回handle
+                            if (context.Process.HandleTable.GenerateHandle(session.ClientSession, out int handle) != Result.Success)
+                            {
+                                throw new InvalidOperationException("Out of handles!");
+                            }
+
+                            session.ServerSession.DecrementReferenceCount();
+                            session.ClientSession.DecrementReferenceCount();
+
+                            context.Response.HandleDesc = IpcHandleDesc.MakeMove(handle);
+                            
+                            return ResultCode.Success;
+                        }
+                        else
+                        {
+                            throw new NotImplementedException($"Failed to create service {name}. Required parameter: {serviceAttribute.Parameter?.GetType().Name ?? "unknown"}");
+                        }
                     }
 
                     service.TrySetServer(_commonServer);
