@@ -184,19 +184,37 @@ namespace Ryujinx.HLE.Generators
                                 }
                                 else
                                 {
+                                    generator.DecreaseIndentation();
                                     generator.AppendLine($"else if (parameter is {ctor.Parameters[1].FullTypeName})");
+                                    generator.IncreaseIndentation();
+                                    generator.AppendLine("{");
                                 }
                                 
                                 generator.AppendLine($"return new {serviceInfo.FullTypeName}(context, ({ctor.Parameters[1].FullTypeName})parameter);");
+                                generator.AppendLine("}");
                             }
                             
-                            // 如果没有匹配的参数类型
-                            generator.AppendLine("else");
-                            generator.IncreaseIndentation();
-                            generator.AppendLine($"return new {serviceInfo.FullTypeName}(context);");
-                            generator.DecreaseIndentation();
-                            
-                            generator.LeaveScope();
+                            // 如果没有匹配的参数类型，尝试单参数构造函数
+                            var fallbackCtor = serviceInfo.ServiceCtxConstructors.FirstOrDefault(c => c.Parameters.Count == 1);
+                            if (fallbackCtor != null)
+                            {
+                                generator.DecreaseIndentation();
+                                generator.AppendLine("else");
+                                generator.IncreaseIndentation();
+                                generator.AppendLine("{");
+                                generator.AppendLine($"return new {serviceInfo.FullTypeName}(context);");
+                                generator.AppendLine("}");
+                            }
+                            else
+                            {
+                                generator.DecreaseIndentation();
+                                generator.AppendLine("else");
+                                generator.IncreaseIndentation();
+                                generator.AppendLine("{");
+                                generator.AppendLine("// No matching constructor and no fallback constructor found");
+                                generator.AppendLine("return null;");
+                                generator.AppendLine("}");
+                            }
                         }
                         else
                         {
@@ -236,4 +254,3 @@ namespace Ryujinx.HLE.Generators
         }
     }
 }
-
