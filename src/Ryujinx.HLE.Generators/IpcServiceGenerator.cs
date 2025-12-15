@@ -46,53 +46,27 @@ namespace Ryujinx.HLE.Generators
                 }
 
                 // 检查是否有ServiceAttribute
-                var serviceAttribute = classDeclaration.AttributeLists
+                var serviceAttributes = classDeclaration.AttributeLists
                     .SelectMany(x => x.Attributes)
-                    .FirstOrDefault(y => 
+                    .Where(y => 
                         y.Name.ToString() == "Service" || 
-                        y.Name.ToString() == "ServiceAttribute");
+                        y.Name.ToString() == "ServiceAttribute")
+                    .ToList();
                     
-                if (serviceAttribute == null)
-                {
-                    continue;
-                }
-
-                // 获取服务名称
-                string serviceName = "";
-                if (serviceAttribute.ArgumentList != null && serviceAttribute.ArgumentList.Arguments.Count > 0)
-                {
-                    var firstArg = serviceAttribute.ArgumentList.Arguments[0];
-                    if (firstArg.Expression is LiteralExpressionSyntax literal &&
-                        literal.Kind() == SyntaxKind.StringLiteralExpression)
-                    {
-                        serviceName = literal.Token.ValueText;
-                    }
-                }
-
-                if (string.IsNullOrEmpty(serviceName))
+                if (serviceAttributes.Count == 0)
                 {
                     continue;
                 }
 
                 // 获取完整类型名
                 var fullTypeName = GetFullName(classDeclaration, context);
-                
-                // 检查是否在服务命名空间内
-                if (!fullTypeName.StartsWith("Ryujinx.HLE.HOS.Services."))
-                {
-                    continue;
-                }
 
                 // 获取所有构造函数信息
                 var constructors = classDeclaration.ChildNodes()
                     .OfType<ConstructorDeclarationSyntax>()
                     .ToList();
 
-                var serviceInfo = new ServiceInfo
-                {
-                    FullTypeName = fullTypeName,
-                    ServiceName = serviceName
-                };
+                var serviceCtxConstructors = new List<ConstructorInfo>();
 
                 foreach (var constructor in constructors)
                 {
@@ -112,18 +86,44 @@ namespace Ryujinx.HLE.Generators
                         ctorInfo.Parameters.Add(paramInfo);
                     }
                     
-                    serviceInfo.Constructors.Add(ctorInfo);
-                    
                     // 检查是否有ServiceCtx作为第一个参数
                     if (ctorInfo.Parameters.Count > 0 && 
                         (ctorInfo.Parameters[0].FullTypeName.Contains("ServiceCtx") || 
                          ctorInfo.Parameters[0].TypeName == "ServiceCtx"))
                     {
-                        serviceInfo.ServiceCtxConstructors.Add(ctorInfo);
+                        serviceCtxConstructors.Add(ctorInfo);
                     }
                 }
 
-                serviceInfos.Add(serviceInfo);
+                // 为每个ServiceAttribute创建一个服务条目
+                foreach (var serviceAttribute in serviceAttributes)
+                {
+                    // 获取服务名称
+                    string serviceName = "";
+                    if (serviceAttribute.ArgumentList != null && serviceAttribute.ArgumentList.Arguments.Count > 0)
+                    {
+                        var firstArg = serviceAttribute.ArgumentList.Arguments[0];
+                        if (firstArg.Expression is LiteralExpressionSyntax literal &&
+                            literal.Kind() == SyntaxKind.StringLiteralExpression)
+                        {
+                            serviceName = literal.Token.ValueText;
+                        }
+                    }
+
+                    if (string.IsNullOrEmpty(serviceName))
+                    {
+                        continue;
+                    }
+
+                    var serviceInfo = new ServiceInfo
+                    {
+                        FullTypeName = fullTypeName,
+                        ServiceName = serviceName,
+                        ServiceCtxConstructors = serviceCtxConstructors.ToList()
+                    };
+
+                    serviceInfos.Add(serviceInfo);
+                }
             }
 
             // 生成代码
@@ -154,8 +154,12 @@ namespace Ryujinx.HLE.Generators
             // 生成GetServiceInstance方法
             generator.EnterScope($"private IpcService GetServiceInstance(Type type, ServiceCtx context, object parameter)");
             
-            foreach (var serviceInfo in serviceInfos)
+            // 按类型分组，避免重复生成相同的创建代码
+            var groupedByType = serviceInfos.GroupBy(s => s.FullTypeName);
+
+            foreach (var group in groupedByType)
             {
+                var serviceInfo = group.First();
                 generator.EnterScope($"if (type == typeof({serviceInfo.FullTypeName}))");
                 
                 // 检查是否有以ServiceCtx作为第一个参数的构造函数
@@ -173,48 +177,40 @@ namespace Ryujinx.HLE.Generators
                         var twoParamCtors = serviceInfo.ServiceCtxConstructors.Where(c => c.Parameters.Count == 2).ToList();
                         if (twoParamCtors.Any())
                         {
-                            // 如果有多个两个参数的构造函数，需要检查参数类型
-                            bool firstCtor = true;
-                            foreach (var ctor in twoParamCtors)
+                            // 处理第一个条件
+                            var firstCtor = twoParamCtors.First();
+                            generator.EnterScope($"if (parameter is {firstCtor.Parameters[1].FullTypeName})");
+                            generator.AppendLine($"return new {serviceInfo.FullTypeName}(context, ({firstCtor.Parameters[1].FullTypeName})parameter);");
+                            generator.LeaveScope();
+                            
+                            // 处理其余条件
+                            for (int i = 1; i < twoParamCtors.Count; i++)
                             {
-                                if (firstCtor)
-                                {
-                                    generator.EnterScope($"if (parameter is {ctor.Parameters[1].FullTypeName})");
-                                    firstCtor = false;
-                                }
-                                else
-                                {
-                                    generator.DecreaseIndentation();
-                                    generator.AppendLine($"else if (parameter is {ctor.Parameters[1].FullTypeName})");
-                                    generator.IncreaseIndentation();
-                                    generator.AppendLine("{");
-                                }
-                                
+                                var ctor = twoParamCtors[i];
+                                generator.AppendLine($"else if (parameter is {ctor.Parameters[1].FullTypeName})");
+                                generator.EnterScope();
                                 generator.AppendLine($"return new {serviceInfo.FullTypeName}(context, ({ctor.Parameters[1].FullTypeName})parameter);");
-                                generator.AppendLine("}");
+                                generator.LeaveScope();
                             }
                             
-                            // 如果没有匹配的参数类型，尝试单参数构造函数
-                            var fallbackCtor = serviceInfo.ServiceCtxConstructors.FirstOrDefault(c => c.Parameters.Count == 1);
-                            if (fallbackCtor != null)
+                            // 如果没有匹配的参数类型，尝试使用默认值或返回null
+                            generator.AppendLine("else");
+                            generator.EnterScope();
+                            
+                            // 尝试使用单参数构造函数（如果有的话）
+                            if (singleParamCtor != null)
                             {
-                                generator.DecreaseIndentation();
-                                generator.AppendLine("else");
-                                generator.IncreaseIndentation();
-                                generator.AppendLine("{");
                                 generator.AppendLine($"return new {serviceInfo.FullTypeName}(context);");
-                                generator.AppendLine("}");
                             }
                             else
                             {
-                                generator.DecreaseIndentation();
-                                generator.AppendLine("else");
-                                generator.IncreaseIndentation();
-                                generator.AppendLine("{");
-                                generator.AppendLine("// No matching constructor and no fallback constructor found");
+                                // 尝试使用第一个双参数构造函数，传入默认值
+                                generator.AppendLine($"// No matching parameter type found");
+                                generator.AppendLine($"// You may need to provide a default value for {twoParamCtors.First().Parameters[1].FullTypeName}");
                                 generator.AppendLine("return null;");
-                                generator.AppendLine("}");
                             }
+                            
+                            generator.LeaveScope();
                         }
                         else
                         {
@@ -254,3 +250,4 @@ namespace Ryujinx.HLE.Generators
         }
     }
 }
+
