@@ -97,7 +97,7 @@ namespace Ryujinx.HLE.HOS.Services.Sm
                             Logger.Warning?.Print(LogClass.Service, $"Failed to create service {name} (missing parameters), ignored");
                             
                             // 仍然需要创建session并返回handle
-                            if (context.Process.HandleTable.GenerateHandle(session.ClientSession, out int handle) != Result.Success)
+                            if (context.Process.HandleTable.GenerateHandle(session.ClientSession, out int tempHandle) != Result.Success)
                             {
                                 throw new InvalidOperationException("Out of handles!");
                             }
@@ -105,7 +105,7 @@ namespace Ryujinx.HLE.HOS.Services.Sm
                             session.ServerSession.DecrementReferenceCount();
                             session.ClientSession.DecrementReferenceCount();
 
-                            context.Response.HandleDesc = IpcHandleDesc.MakeMove(handle);
+                            context.Response.HandleDesc = IpcHandleDesc.MakeMove(tempHandle);
                             
                             return ResultCode.Success;
                         }
