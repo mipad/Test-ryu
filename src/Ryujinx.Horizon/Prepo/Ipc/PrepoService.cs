@@ -1,5 +1,5 @@
-using MsgPack;
-using MsgPack.Serialization;
+using MessagePack;
+using MessagePack.Serialization;
 using Ryujinx.Common.Logging;
 using Ryujinx.Common.Utilities;
 using Ryujinx.Horizon.Common;
