@@ -2,9 +2,9 @@ name: Android CI Fixed
 
 on:
   push:
-    branches: [ "音频" ]  
+    branches: [ "MessagePack" ]  
   pull_request:
-    branches: [ "音频" ]
+    branches: [ "MessagePack" ]
 
 jobs:
   build:
@@ -27,7 +27,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: 音频
+        ref: MessagePack
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
