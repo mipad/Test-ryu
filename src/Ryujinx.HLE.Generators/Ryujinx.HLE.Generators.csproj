@@ -6,6 +6,8 @@
         <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
         <CompilerGeneratedFilesOutputPath>Generated</CompilerGeneratedFilesOutputPath>
         <IsRoslynComponent>true</IsRoslynComponent>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
     </PropertyGroup>
 
     <ItemGroup>
