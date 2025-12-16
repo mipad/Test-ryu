@@ -1,4 +1,5 @@
 using MessagePack;
+using MessagePack.Formatters;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -9,200 +10,119 @@ namespace Ryujinx.Common.Utilities
 {
     public static class MessagePackObjectFormatter
     {
-        public static string Format(byte[] msgPackData)
+        public static string ToString(object obj, bool pretty)
         {
-            if (msgPackData == null || msgPackData.Length == 0)
+            if (obj == null)
             {
                 return "null";
             }
 
+            if (pretty)
+            {
+                return Format(obj);
+            }
+
+            return obj.ToString();
+        }
+
+        public static string Format(object obj)
+        {
             var builder = new IndentedStringBuilder();
-            FormatMessagePack(msgPackData, builder);
+
+            FormatMsgPackObj(obj, builder);
+
             return builder.ToString();
         }
 
-        private static void FormatMessagePack(byte[] data, IndentedStringBuilder builder)
+        private static void FormatMsgPackObj(object obj, IndentedStringBuilder builder)
         {
-            try
-            {
-                var reader = new MessagePackReader(data);
-                FormatMessagePackValue(ref reader, builder);
-            }
-            catch (Exception ex)
-            {
-                builder.Append("Error formatting MessagePack: ");
-                builder.Append(ex.Message);
-            }
-        }
-
-        private static void FormatMessagePackValue(ref MessagePackReader reader, IndentedStringBuilder builder)
-        {
-            if (reader.End)
+            if (obj == null)
             {
                 builder.Append("null");
                 return;
             }
 
-            // 使用 MessagePackCode 来检查格式
-            var code = reader.NextCode;
-
-            // 判断是否为有符号整数
-            if (code >= MessagePackCode.Int8 && code <= MessagePackCode.Int64 ||
-                (code >= MessagePackCode.FixedIntMin && code <= MessagePackCode.FixedIntMax))
+            if (IsDictionary(obj))
             {
-                builder.Append(reader.ReadInt64());
-                return;
+                FormatMsgPackMap(obj, builder);
             }
-
-            // 判断是否为无符号整数
-            if (code == MessagePackCode.UInt8 || code == MessagePackCode.UInt16 || 
-                code == MessagePackCode.UInt32 || code == MessagePackCode.UInt64)
+            else if (IsArrayOrList(obj))
             {
-                builder.Append(reader.ReadUInt64());
-                return;
+                FormatMsgPackArray(obj, builder);
             }
-
-            // 处理其他类型
-            switch (code)
+            else
             {
-                case MessagePackCode.Nil:
-                    reader.ReadNil();
-                    builder.Append("null");
-                    break;
+                var type = obj.GetType();
 
-                case MessagePackCode.True:
-                case MessagePackCode.False:
-                    builder.Append(reader.ReadBoolean());
-                    break;
+                if (type == typeof(string))
+                {
+                    builder.AppendQuotedString((string)obj);
+                }
+                else if (type == typeof(byte[]))
+                {
+                    FormatByteArray((byte[])obj, builder);
+                }
+                else if (type == typeof(ExtensionResult))
+                {
+                    var extObject = (ExtensionResult)obj;
+                    builder.Append('{');
 
-                case MessagePackCode.Float32:
-                    builder.Append(reader.ReadSingle());
-                    break;
-
-                case MessagePackCode.Float64:
-                    builder.Append(reader.ReadDouble());
-                    break;
-
-                case MessagePackCode.Str8:
-                case MessagePackCode.Str16:
-                case MessagePackCode.Str32:
-                case MessagePackCode.FixStr:
-                    builder.AppendQuotedString(reader.ReadString());
-                    break;
-
-                case MessagePackCode.Bin8:
-                case MessagePackCode.Bin16:
-                case MessagePackCode.Bin32:
-                    var bytes = reader.ReadBytes();
-                    if (bytes.HasValue)
-                    {
-                        FormatByteArray(bytes.Value.ToArray(), builder);
-                    }
-                    else
-                    {
-                        builder.Append("null");
-                    }
-                    break;
-
-                case MessagePackCode.FixArray:
-                case MessagePackCode.Array16:
-                case MessagePackCode.Array32:
-                    var arrayLength = reader.ReadArrayHeader();
-                    
-                    if (arrayLength == 0)
-                    {
-                        builder.Append("[ ]");
-                        break;
-                    }
-                    
-                    builder.Append("[ ");
-                    
-                    for (int i = 0; i < arrayLength; i++)
-                    {
-                        FormatMessagePackValue(ref reader, builder);
-                        if (i < arrayLength - 1)
-                        {
-                            builder.Append(", ");
-                        }
-                    }
-                    
-                    builder.Append(" ]");
-                    break;
-
-                case MessagePackCode.FixMap:
-                case MessagePackCode.Map16:
-                case MessagePackCode.Map32:
-                    var mapLength = reader.ReadMapHeader();
-                    
-                    if (mapLength == 0)
-                    {
-                        builder.Append("{ }");
-                        break;
-                    }
-                    
-                    builder.Append('{')
-                           .IncreaseIndent()
+                    // Indent
+                    builder.IncreaseIndent()
                            .AppendLine();
-                    
-                    for (int i = 0; i < mapLength; i++)
-                    {
-                        // Key
-                        FormatMessagePackValue(ref reader, builder);
-                        builder.Append(": ");
-                        
-                        // Value
-                        FormatMessagePackValue(ref reader, builder);
-                        
-                        if (i < mapLength - 1)
-                        {
-                            builder.AppendLine(",");
-                        }
-                        else
-                        {
-                            builder.AppendLine();
-                        }
-                    }
-                    
-                    builder.DecreaseIndent()
-                           .Append('}');
-                    break;
 
-                case MessagePackCode.FixExt1:
-                case MessagePackCode.FixExt2:
-                case MessagePackCode.FixExt4:
-                case MessagePackCode.FixExt8:
-                case MessagePackCode.FixExt16:
-                case MessagePackCode.Ext8:
-                case MessagePackCode.Ext16:
-                case MessagePackCode.Ext32:
-                    var extHeader = reader.ReadExtensionFormatHeader();
-                    var extData = reader.ReadRaw(extHeader.Length);
-                    
-                    builder.Append('{')
-                           .IncreaseIndent()
-                           .AppendLine();
-                    
+                    // Print TypeCode field
                     builder.AppendQuotedString("TypeCode")
                            .Append(": ")
-                           .Append(extHeader.TypeCode)
+                           .Append(extObject.TypeCode)
                            .AppendLine(",");
-                    
+
+                    // Print Value field
                     builder.AppendQuotedString("Value")
                            .Append(": ");
-                    
-                    FormatByteArrayAsString(extData.ToArray(), builder, true);
-                    
-                    builder.DecreaseIndent()
-                           .AppendLine()
-                           .Append('}');
-                    break;
 
-                default:
-                    // 未知类型，跳过
-                    builder.Append("(unknown)");
-                    reader.Skip();
-                    break;
+                    FormatByteArrayAsString(extObject.Data, builder, true);
+
+                    // Unindent
+                    builder.DecreaseIndent()
+                           .AppendLine();
+
+                    builder.Append('}');
+                }
+                else if (type.IsPrimitive || type == typeof(decimal) || type == typeof(DateTime))
+                {
+                    builder.Append(obj.ToString());
+                }
+                else
+                {
+                    // For complex objects, use MessagePack to serialize to a string representation
+                    try
+                    {
+                        var json = MessagePackSerializer.SerializeToJson(obj);
+                        builder.AppendQuotedString(json);
+                    }
+                    catch
+                    {
+                        builder.AppendQuotedString(obj.ToString());
+                    }
+                }
             }
+        }
+
+        private static bool IsDictionary(object obj)
+        {
+            var type = obj.GetType();
+            return type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Dictionary<,>) ||
+                   obj is IDictionary;
+        }
+
+        private static bool IsArrayOrList(object obj)
+        {
+            var type = obj.GetType();
+            return type.IsArray ||
+                   (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>)) ||
+                   obj is IList ||
+                   obj is IEnumerable;
         }
 
         private static void FormatByteArray(byte[] arr, IndentedStringBuilder builder)
@@ -256,6 +176,119 @@ namespace Ryujinx.Common.Utilities
             builder.Append('"');
         }
 
+        private static void FormatMsgPackMap(object obj, IndentedStringBuilder builder)
+        {
+            builder.Append('{');
+
+            // Indent
+            builder.IncreaseIndent()
+                   .AppendLine();
+
+            if (obj is IDictionary dictionary)
+            {
+                var enumerator = dictionary.GetEnumerator();
+                var hasItems = false;
+
+                while (enumerator.MoveNext())
+                {
+                    hasItems = true;
+                    var entry = enumerator.Entry;
+
+                    FormatMsgPackObj(entry.Key, builder);
+                    builder.Append(": ");
+                    FormatMsgPackObj(entry.Value, builder);
+                    builder.AppendLine(",");
+                }
+
+                // Remove the trailing new line and comma if there were items
+                if (hasItems)
+                {
+                    builder.TrimLastLine()
+                           .Remove(builder.Length - 1, 1);
+                }
+            }
+            else if (obj.GetType().IsGenericType && obj.GetType().GetGenericTypeDefinition() == typeof(Dictionary<,>))
+            {
+                var dictType = obj.GetType();
+                var keysProperty = dictType.GetProperty("Keys");
+                var indexer = dictType.GetProperty("Item");
+
+                if (keysProperty != null && indexer != null)
+                {
+                    var keys = keysProperty.GetValue(obj) as IEnumerable;
+                    if (keys != null)
+                    {
+                        var keyList = keys.Cast<object>().ToList();
+                        var hasItems = keyList.Count > 0;
+
+                        foreach (var key in keyList)
+                        {
+                            var value = indexer.GetValue(obj, new[] { key });
+                            FormatMsgPackObj(key, builder);
+                            builder.Append(": ");
+                            FormatMsgPackObj(value, builder);
+                            builder.AppendLine(",");
+                        }
+
+                        // Remove the trailing new line and comma if there were items
+                        if (hasItems)
+                        {
+                            builder.TrimLastLine()
+                                   .Remove(builder.Length - 1, 1);
+                        }
+                    }
+                }
+            }
+
+            // Unindent
+            builder.DecreaseIndent()
+                   .AppendLine();
+
+            builder.Append('}');
+        }
+
+        private static void FormatMsgPackArray(object obj, IndentedStringBuilder builder)
+        {
+            builder.Append("[ ");
+
+            if (obj is IEnumerable enumerable)
+            {
+                var items = new List<object>();
+                foreach (var item in enumerable)
+                {
+                    items.Add(item);
+                }
+
+                foreach (var item in items)
+                {
+                    FormatMsgPackObj(item, builder);
+                    builder.Append(", ");
+                }
+
+                // Remove trailing comma if there were items
+                if (items.Count > 0)
+                {
+                    builder.Remove(builder.Length - 2, 2);
+                }
+            }
+            else if (obj is Array array)
+            {
+                for (int i = 0; i < array.Length; i++)
+                {
+                    FormatMsgPackObj(array.GetValue(i), builder);
+                    builder.Append(", ");
+                }
+
+                // Remove trailing comma if array is not empty
+                if (array.Length > 0)
+                {
+                    builder.Remove(builder.Length - 2, 2);
+                }
+            }
+
+            builder.Append(" ]");
+        }
+
         private static char ToHexChar(int b)
         {
             if (b < 10)
@@ -266,42 +299,16 @@ namespace Ryujinx.Common.Utilities
             return unchecked((char)('A' + (b - 10)));
         }
 
-        // 为了保持向后兼容性，提供一个辅助方法来转换对象为MessagePack字节数组
-        public static byte[] ToMessagePackBytes(object obj)
+        // ExtensionResult class for handling MessagePack extension types
+        public class ExtensionResult
         {
-            if (obj == null)
+            public sbyte TypeCode { get; }
+            public byte[] Data { get; }
+
+            public ExtensionResult(sbyte typeCode, byte[] data)
             {
-                return new byte[] { 0xC0 }; // MessagePack nil value
-            }
-
-            return MessagePackSerializer.Serialize(obj);
-        }
-
-        // 扩展方法，用于保持旧的API调用方式
-        public static class Extensions
-        {
-            public static string ToString(byte[] msgPackData, bool pretty)
-            {
-                if (msgPackData == null || msgPackData.Length == 0)
-                {
-                    return "null";
-                }
-
-                if (pretty)
-                {
-                    return Format(msgPackData);
-                }
-
-                // 非pretty模式，尝试反序列化为对象然后ToString
-                try
-                {
-                    var obj = MessagePackSerializer.Deserialize<object>(msgPackData);
-                    return obj?.ToString() ?? "null";
-                }
-                catch
-                {
-                    return BitConverter.ToString(msgPackData).Replace("-", "");
-                }
+                TypeCode = typeCode;
+                Data = data;
             }
         }
 
@@ -381,13 +388,8 @@ namespace Ryujinx.Common.Utilities
                 }
 
                 _builder.Append('"');
-                // 转义字符串中的特殊字符
-                var escapedValue = value.Replace("\\", "\\\\")
-                                        .Replace("\"", "\\\"")
-                                        .Replace("\n", "\\n")
-                                        .Replace("\r", "\\r")
-                                        .Replace("\t", "\\t");
-                _builder.Append(escapedValue);
+                // Escape quotes in the string
+                _builder.Append(value.Replace("\"", "\\\""));
                 _builder.Append('"');
 
                 return this;
@@ -400,9 +402,7 @@ namespace Ryujinx.Common.Utilities
                 _builder.AppendLine();
 
                 for (int i = 0; i < _indentCount; i++)
-                {
                     _builder.Append(IndentString);
-                }
 
                 return this;
             }
@@ -440,6 +440,15 @@ namespace Ryujinx.Common.Utilities
             {
                 return _builder.ToString();
             }
+        }
+    }
+
+    // 为保持向后兼容性，添加扩展方法
+    public static class MessagePackObjectExtensions
+    {
+        public static string ToString(this object obj, bool pretty)
+        {
+            return MessagePackObjectFormatter.ToString(obj, pretty);
         }
     }
 }
