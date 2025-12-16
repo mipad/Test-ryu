@@ -250,4 +250,3 @@ namespace Ryujinx.HLE.Generators
         }
     }
 }
-
