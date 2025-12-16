@@ -124,14 +124,24 @@ namespace Ryujinx.HLE.Generators
             {
                 var generator = new CodeGenerator();
                 
-                generator.AppendLine("using Ryujinx.HLE.HOS.Ipc;");
-                generator.AppendLine("using Ryujinx.Cpu;");
+                // 添加必要的 using 指令 - 使用完全限定名称确保类型可用
                 generator.AppendLine("using System;");
                 generator.AppendLine();
                 
                 generator.EnterScope("namespace Ryujinx.HLE.Generators");
                 generator.EnterScope("internal static partial class DeviceFileFactory");
-                generator.EnterScope("public static NvDeviceFile CreateDeviceFile(string path, ServiceCtx context, IVirtualMemoryManager memory, ulong owner)");
+                
+                // 生成方法注释
+                generator.AppendLine("/// <summary>");
+                generator.AppendLine("/// Creates a device file instance based on the path.");
+                generator.AppendLine("/// </summary>");
+                generator.AppendLine("/// <param name=\"path\">The device path.</param>");
+                generator.AppendLine("/// <param name=\"context\">The service context.</param>");
+                generator.AppendLine("/// <param name=\"memory\">The virtual memory manager.</param>");
+                generator.AppendLine("/// <param name=\"owner\">The owner process ID.</param>");
+                generator.AppendLine("/// <returns>The created device file or null if not found.</returns>");
+                
+                generator.EnterScope("public static Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvDeviceFile CreateDeviceFile(string path, Ryujinx.HLE.HOS.Ipc.ServiceCtx context, Ryujinx.Cpu.IVirtualMemoryManager memory, ulong owner)");
                 
                 generator.EnterScope("switch (path)");
                 
@@ -155,7 +165,7 @@ namespace Ryujinx.HLE.Generators
                         }
                         else if (deviceFile.ConstructorParameters.Count == 2)
                         {
-                            // 只有ServiceCtx和owner
+                            // 只有ServiceCtx和owner（如NvMapDeviceFile）
                             generator.AppendLine($"return new {deviceFile.FullTypeName}(context, owner);");
                         }
                         else
@@ -169,6 +179,14 @@ namespace Ryujinx.HLE.Generators
                     }
                 }
                 
+                // 添加注释掉的设备文件
+                generator.EnterScope("// Note: The following devices are commented out in the original registry:");
+                generator.AppendLine("// case \"/dev/nvhost-msenc\":");
+                generator.AppendLine("// case \"/dev/nvhost-nvjpg\":");
+                generator.AppendLine("// case \"/dev/nvhost-display\":");
+                generator.AppendLine("//     return new Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel.NvHostChannelDeviceFile(context, memory, owner);");
+                generator.LeaveScope();
+                
                 generator.AppendLine("default:");
                 generator.AppendLine("    return null;");
                 generator.LeaveScope();
@@ -178,7 +196,46 @@ namespace Ryujinx.HLE.Generators
                 generator.LeaveScope();
                 
                 context.AddSource("DeviceFileFactory.g.cs", generator.ToString());
+                
+                // 同时生成一个帮助方法文件
+                GenerateHelperFile(context, deviceFileInfos);
             }
+        }
+        
+        private void GenerateHelperFile(GeneratorExecutionContext context, List<DeviceFileInfo> deviceFileInfos)
+        {
+            var generator = new CodeGenerator();
+            
+            generator.AppendLine("using System;");
+            generator.AppendLine("using System.Collections.Generic;");
+            generator.AppendLine();
+            
+            generator.EnterScope("namespace Ryujinx.HLE.Generators");
+            generator.EnterScope("internal static partial class DeviceFileFactory");
+            
+            // 生成一个方法来获取所有设备路径
+            generator.EnterScope("public static IReadOnlyDictionary<string, string> GetDevicePathMappings()");
+            generator.EnterScope("return new Dictionary<string, string>");
+            
+            foreach (var deviceFile in deviceFileInfos)
+            {
+                if (!deviceFile.HasValidConstructor)
+                    continue;
+                    
+                string devicePath = GetDevicePathFromTypeName(deviceFile.TypeName);
+                if (!string.IsNullOrEmpty(devicePath))
+                {
+                    generator.AppendLine($"{{ \"{devicePath}\", \"{deviceFile.FullTypeName}\" }},");
+                }
+            }
+            
+            generator.LeaveScope(";");
+            generator.LeaveScope();
+            
+            generator.LeaveScope();
+            generator.LeaveScope();
+            
+            context.AddSource("DeviceFileFactory.Helpers.g.cs", generator.ToString());
         }
 
         private string GetDevicePathFromTypeName(string typeName)
@@ -191,7 +248,7 @@ namespace Ryujinx.HLE.Generators
                 { "NvHostCtrlGpuDeviceFile", "/dev/nvhost-ctrl-gpu" },
                 { "NvHostAsGpuDeviceFile", "/dev/nvhost-as-gpu" },
                 { "NvHostGpuDeviceFile", "/dev/nvhost-gpu" },
-                { "NvHostChannelDeviceFile", "/dev/nvhost-channel" }, // 基本路径，实际有多个
+                { "NvHostChannelDeviceFile", "/dev/nvhost-channel" }, // 基本路径，实际有多个实例
                 { "NvHostDbgGpuDeviceFile", "/dev/nvhost-dbg-gpu" },
                 { "NvHostProfGpuDeviceFile", "/dev/nvhost-prof-gpu" },
             };
