@@ -96,7 +96,7 @@ namespace Ryujinx.HLE.Generators
                             if (paramTypes.Count >= 2)
                             {
                                 // 检查第一个参数是否为ServiceCtx
-                                if (paramTypes[0].Contains("ServiceCtx"))
+                                if (paramTypes[0].Contains("ServiceCtx") || paramTypes[0].EndsWith("ServiceCtx"))
                                 {
                                     hasValidConstructor = true;
                                     constructorParams.AddRange(paramTypes);
@@ -124,8 +124,10 @@ namespace Ryujinx.HLE.Generators
             {
                 var generator = new CodeGenerator();
                 
-                // 添加必要的 using 指令 - 使用完全限定名称确保类型可用
-                generator.AppendLine("using System;");
+                // 添加必要的 using 指令
+                generator.AppendLine("using Ryujinx.HLE.HOS;");
+                generator.AppendLine("using Ryujinx.Memory;");
+                generator.AppendLine("using Ryujinx.HLE.HOS.Services.Nv.NvDrvServices;");
                 generator.AppendLine();
                 
                 generator.EnterScope("namespace Ryujinx.HLE.Generators");
@@ -141,7 +143,7 @@ namespace Ryujinx.HLE.Generators
                 generator.AppendLine("/// <param name=\"owner\">The owner process ID.</param>");
                 generator.AppendLine("/// <returns>The created device file or null if not found.</returns>");
                 
-                generator.EnterScope("public static Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvDeviceFile CreateDeviceFile(string path, Ryujinx.HLE.HOS.Ipc.ServiceCtx context, Ryujinx.Cpu.IVirtualMemoryManager memory, ulong owner)");
+                generator.EnterScope("public static NvDeviceFile CreateDeviceFile(string path, ServiceCtx context, IVirtualMemoryManager memory, ulong owner)");
                 
                 generator.EnterScope("switch (path)");
                 
@@ -159,7 +161,8 @@ namespace Ryujinx.HLE.Generators
                         
                         // 根据构造函数的参数数量决定如何调用
                         if (deviceFile.ConstructorParameters.Count == 3 && 
-                            deviceFile.ConstructorParameters[1].Contains("IVirtualMemoryManager"))
+                            (deviceFile.ConstructorParameters[1].Contains("IVirtualMemoryManager") || 
+                             deviceFile.ConstructorParameters[1].EndsWith("IVirtualMemoryManager")))
                         {
                             generator.AppendLine($"return new {deviceFile.FullTypeName}(context, memory, owner);");
                         }
@@ -196,46 +199,7 @@ namespace Ryujinx.HLE.Generators
                 generator.LeaveScope();
                 
                 context.AddSource("DeviceFileFactory.g.cs", generator.ToString());
-                
-                // 同时生成一个帮助方法文件
-                GenerateHelperFile(context, deviceFileInfos);
             }
-        }
-        
-        private void GenerateHelperFile(GeneratorExecutionContext context, List<DeviceFileInfo> deviceFileInfos)
-        {
-            var generator = new CodeGenerator();
-            
-            generator.AppendLine("using System;");
-            generator.AppendLine("using System.Collections.Generic;");
-            generator.AppendLine();
-            
-            generator.EnterScope("namespace Ryujinx.HLE.Generators");
-            generator.EnterScope("internal static partial class DeviceFileFactory");
-            
-            // 生成一个方法来获取所有设备路径
-            generator.EnterScope("public static IReadOnlyDictionary<string, string> GetDevicePathMappings()");
-            generator.EnterScope("return new Dictionary<string, string>");
-            
-            foreach (var deviceFile in deviceFileInfos)
-            {
-                if (!deviceFile.HasValidConstructor)
-                    continue;
-                    
-                string devicePath = GetDevicePathFromTypeName(deviceFile.TypeName);
-                if (!string.IsNullOrEmpty(devicePath))
-                {
-                    generator.AppendLine($"{{ \"{devicePath}\", \"{deviceFile.FullTypeName}\" }},");
-                }
-            }
-            
-            generator.LeaveScope(";");
-            generator.LeaveScope();
-            
-            generator.LeaveScope();
-            generator.LeaveScope();
-            
-            context.AddSource("DeviceFileFactory.Helpers.g.cs", generator.ToString());
         }
 
         private string GetDevicePathFromTypeName(string typeName)
