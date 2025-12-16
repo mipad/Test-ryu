@@ -1,5 +1,4 @@
 using MessagePack;
-using MessagePack.Serialization;
 using Ryujinx.Common.Logging;
 using Ryujinx.Common.Utilities;
 using Ryujinx.Horizon.Common;
@@ -196,7 +195,23 @@ namespace Ryujinx.Horizon.Prepo.Ipc
             }
 
             StringBuilder builder = new();
-            MessagePackObject deserializedReport = MessagePackSerializer.UnpackMessagePackObject(reportBuffer.ToArray());
+            
+            // 使用新的 MessagePack API 反序列化
+            object deserializedReport;
+            try
+            {
+                // 将 ReadOnlySpan<byte> 转换为 byte[]
+                byte[] reportData = reportBuffer.ToArray();
+                
+                // 使用 Typeless 反序列化以获取 object 类型的结果
+                deserializedReport = MessagePackSerializer.Typeless.Deserialize(reportData);
+            }
+            catch (MessagePackSerializationException ex)
+            {
+                // 如果反序列化失败，记录错误并返回默认值
+                Logger.Warning?.Print(LogClass.ServicePrepo, $"Failed to deserialize report: {ex.Message}");
+                deserializedReport = null;
+            }
 
             builder.AppendLine();
             builder.AppendLine("PlayReport log:");
@@ -229,7 +244,15 @@ namespace Ryujinx.Horizon.Prepo.Ipc
             }
 
             builder.AppendLine($" Room: {gameRoom}");
-            builder.AppendLine($" Report: {MessagePackObjectFormatter.Format(deserializedReport)}");
+            
+            if (deserializedReport != null)
+            {
+                builder.AppendLine($" Report: {MessagePackObjectFormatter.Format(deserializedReport)}");
+            }
+            else
+            {
+                builder.AppendLine($" Report: <deserialization failed>");
+            }
 
             Logger.Info?.Print(LogClass.ServicePrepo, builder.ToString());
 
