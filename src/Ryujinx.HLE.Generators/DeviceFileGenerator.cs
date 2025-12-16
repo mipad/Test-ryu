@@ -15,25 +15,23 @@ namespace Ryujinx.HLE.Generators
             public string FullTypeName { get; set; }
             public string TypeName { get; set; }
             public string Namespace { get; set; }
-            public List<ConstructorInfo> Constructors { get; set; } = new List<ConstructorInfo>();
-        }
-
-        private class ConstructorInfo
-        {
-            public List<ParameterInfo> Parameters { get; set; } = new List<ParameterInfo>();
-        }
-
-        private class ParameterInfo
-        {
-            public string TypeName { get; set; }
-            public string FullTypeName { get; set; }
-            public string Name { get; set; }
+            public bool HasValidConstructor { get; set; }
+            public List<string> ConstructorParameters { get; set; } = new List<string>();
         }
 
         public void Execute(GeneratorExecutionContext context)
         {
-            var syntaxReceiver = new DeviceFileSyntaxReceiver();
+            // 首先检查是否有任何继承自NvDeviceFile的类
             var compilation = context.Compilation;
+            var deviceFileType = compilation.GetTypeByMetadataName("Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvDeviceFile");
+            
+            if (deviceFileType == null)
+            {
+                // 如果找不到基类，可能是项目引用问题
+                return;
+            }
+
+            var deviceFileInfos = new List<DeviceFileInfo>();
             
             // 遍历所有语法树
             foreach (var syntaxTree in compilation.SyntaxTrees)
@@ -41,8 +39,9 @@ namespace Ryujinx.HLE.Generators
                 var root = syntaxTree.GetRoot();
                 var semanticModel = compilation.GetSemanticModel(syntaxTree);
                 
-                // 查找所有继承自NvDeviceFile的类
+                // 查找所有类声明
                 var classDeclarations = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+                
                 foreach (var classDeclaration in classDeclarations)
                 {
                     var classSymbol = semanticModel.GetDeclaredSymbol(classDeclaration);
@@ -52,9 +51,10 @@ namespace Ryujinx.HLE.Generators
                     // 检查是否继承自NvDeviceFile
                     var baseType = classSymbol.BaseType;
                     bool isNvDeviceFile = false;
+                    
                     while (baseType != null)
                     {
-                        if (baseType.Name == "NvDeviceFile")
+                        if (baseType.Equals(deviceFileType, SymbolEqualityComparer.Default))
                         {
                             isNvDeviceFile = true;
                             break;
@@ -71,75 +71,102 @@ namespace Ryujinx.HLE.Generators
                         .Where(c => !c.Modifiers.Any(SyntaxKind.AbstractKeyword))
                         .ToList();
 
-                    var deviceFileConstructors = new List<ConstructorInfo>();
-
+                    bool hasValidConstructor = false;
+                    List<string> constructorParams = new List<string>();
+                    
                     foreach (var constructor in constructors)
                     {
                         var parameters = constructor.ParameterList.Parameters;
                         
-                        // 检查是否是 ServiceCtx, IVirtualMemoryManager, ulong 构造函数
-                        if (parameters.Count == 3)
+                        // 检查参数数量
+                        if (parameters.Count >= 2)
                         {
-                            var paramTypes = parameters.Select(p => 
-                                semanticModel.GetTypeInfo(p.Type).Type?.ToDisplayString() ?? p.Type.ToString()).ToList();
-                            
-                            if (paramTypes[0].Contains("ServiceCtx") && 
-                                paramTypes[1].Contains("IVirtualMemoryManager") && 
-                                paramTypes[2] == "ulong")
+                            var paramTypes = new List<string>();
+                            foreach (var parameter in parameters)
                             {
-                                var ctorInfo = new ConstructorInfo();
-                                foreach (var parameter in parameters)
+                                var paramTypeSymbol = semanticModel.GetTypeInfo(parameter.Type).Type;
+                                if (paramTypeSymbol != null)
                                 {
-                                    var paramTypeSymbol = semanticModel.GetSymbolInfo(parameter.Type).Symbol as INamedTypeSymbol;
-                                    ctorInfo.Parameters.Add(new ParameterInfo
-                                    {
-                                        TypeName = parameter.Type.ToString(),
-                                        FullTypeName = paramTypeSymbol?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ?? parameter.Type.ToString(),
-                                        Name = parameter.Identifier.Text
-                                    });
+                                    paramTypes.Add(paramTypeSymbol.ToDisplayString());
                                 }
-                                deviceFileConstructors.Add(ctorInfo);
+                            }
+                            
+                            // 检查是否是 ServiceCtx, IVirtualMemoryManager, ulong 构造函数
+                            // 或者 ServiceCtx, ulong 构造函数（如NvMapDeviceFile）
+                            if (paramTypes.Count >= 2)
+                            {
+                                // 检查第一个参数是否为ServiceCtx
+                                if (paramTypes[0].Contains("ServiceCtx"))
+                                {
+                                    hasValidConstructor = true;
+                                    constructorParams.AddRange(paramTypes);
+                                    break;
+                                }
                             }
                         }
                     }
 
-                    if (deviceFileConstructors.Any())
+                    var deviceFileInfo = new DeviceFileInfo
                     {
-                        var deviceFileInfo = new DeviceFileInfo
-                        {
-                            FullTypeName = classSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat).Replace("global::", ""),
-                            TypeName = classSymbol.Name,
-                            Namespace = classSymbol.ContainingNamespace.ToDisplayString(),
-                            Constructors = deviceFileConstructors
-                        };
-                        
-                        syntaxReceiver.DeviceFiles.Add(deviceFileInfo);
-                    }
+                        FullTypeName = classSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat).Replace("global::", ""),
+                        TypeName = classSymbol.Name,
+                        Namespace = classSymbol.ContainingNamespace.ToDisplayString(),
+                        HasValidConstructor = hasValidConstructor,
+                        ConstructorParameters = constructorParams
+                    };
+                    
+                    deviceFileInfos.Add(deviceFileInfo);
                 }
             }
 
             // 生成设备文件工厂代码
-            if (syntaxReceiver.DeviceFiles.Any())
+            if (deviceFileInfos.Any())
             {
                 var generator = new CodeGenerator();
                 
                 generator.AppendLine("using Ryujinx.HLE.HOS.Ipc;");
                 generator.AppendLine("using Ryujinx.Cpu;");
                 generator.AppendLine("using System;");
-                generator.AppendLine("using System.Collections.Generic;");
                 generator.AppendLine();
                 
                 generator.EnterScope("namespace Ryujinx.HLE.Generators");
-                generator.EnterScope("internal static class DeviceFileFactory");
+                generator.EnterScope("internal static partial class DeviceFileFactory");
                 generator.EnterScope("public static NvDeviceFile CreateDeviceFile(string path, ServiceCtx context, IVirtualMemoryManager memory, ulong owner)");
                 
                 generator.EnterScope("switch (path)");
                 
-                foreach (var deviceFile in syntaxReceiver.DeviceFiles)
+                foreach (var deviceFile in deviceFileInfos)
                 {
-                    generator.EnterScope($"case \"{GetDevicePath(deviceFile.TypeName)}\":");
-                    generator.AppendLine($"return new {deviceFile.FullTypeName}(context, memory, owner);");
-                    generator.LeaveScope();
+                    if (!deviceFile.HasValidConstructor)
+                        continue;
+                    
+                    // 根据类型名生成设备路径
+                    string devicePath = GetDevicePathFromTypeName(deviceFile.TypeName);
+                    
+                    if (!string.IsNullOrEmpty(devicePath))
+                    {
+                        generator.EnterScope($"case \"{devicePath}\":");
+                        
+                        // 根据构造函数的参数数量决定如何调用
+                        if (deviceFile.ConstructorParameters.Count == 3 && 
+                            deviceFile.ConstructorParameters[1].Contains("IVirtualMemoryManager"))
+                        {
+                            generator.AppendLine($"return new {deviceFile.FullTypeName}(context, memory, owner);");
+                        }
+                        else if (deviceFile.ConstructorParameters.Count == 2)
+                        {
+                            // 只有ServiceCtx和owner
+                            generator.AppendLine($"return new {deviceFile.FullTypeName}(context, owner);");
+                        }
+                        else
+                        {
+                            // 其他构造函数，尝试使用默认值
+                            generator.AppendLine($"// Warning: Unsupported constructor for {deviceFile.TypeName}");
+                            generator.AppendLine("return null;");
+                        }
+                        
+                        generator.LeaveScope();
+                    }
                 }
                 
                 generator.AppendLine("default:");
@@ -154,36 +181,39 @@ namespace Ryujinx.HLE.Generators
             }
         }
 
-        private string GetDevicePath(string typeName)
+        private string GetDevicePathFromTypeName(string typeName)
         {
-            // 将类型名转换为设备路径
-            // 例如: NvMapDeviceFile -> "/dev/nvmap"
-            if (typeName.StartsWith("Nv"))
-                typeName = typeName.Substring(2);
-            
-            if (typeName.EndsWith("DeviceFile"))
-                typeName = typeName.Substring(0, typeName.Length - "DeviceFile".Length);
-            
-            // 转换为小写并用连字符分隔
-            var result = new StringBuilder();
-            for (int i = 0; i < typeName.Length; i++)
+            // 根据已知的设备文件类型名生成路径
+            var pathMappings = new Dictionary<string, string>
             {
-                if (i > 0 && char.IsUpper(typeName[i]))
-                    result.Append('-');
-                result.Append(char.ToLower(typeName[i]));
+                { "NvMapDeviceFile", "/dev/nvmap" },
+                { "NvHostCtrlDeviceFile", "/dev/nvhost-ctrl" },
+                { "NvHostCtrlGpuDeviceFile", "/dev/nvhost-ctrl-gpu" },
+                { "NvHostAsGpuDeviceFile", "/dev/nvhost-as-gpu" },
+                { "NvHostGpuDeviceFile", "/dev/nvhost-gpu" },
+                { "NvHostChannelDeviceFile", "/dev/nvhost-channel" }, // 基本路径，实际有多个
+                { "NvHostDbgGpuDeviceFile", "/dev/nvhost-dbg-gpu" },
+                { "NvHostProfGpuDeviceFile", "/dev/nvhost-prof-gpu" },
+            };
+            
+            if (pathMappings.TryGetValue(typeName, out string path))
+            {
+                return path;
             }
             
-            return $"/dev/nvhost-{result}";
+            // 如果不在映射中，尝试生成默认路径
+            if (typeName.StartsWith("NvHost") && typeName.EndsWith("DeviceFile"))
+            {
+                string baseName = typeName.Substring(6, typeName.Length - 6 - "DeviceFile".Length);
+                return $"/dev/nvhost-{baseName.ToLower()}";
+            }
+            
+            return null;
         }
 
         public void Initialize(GeneratorInitializationContext context)
         {
             // 不需要注册语法接收器，因为我们直接分析所有语法树
-        }
-
-        private class DeviceFileSyntaxReceiver
-        {
-            public List<DeviceFileInfo> DeviceFiles { get; } = new List<DeviceFileInfo>();
         }
     }
 }
