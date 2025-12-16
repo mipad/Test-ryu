@@ -1,13 +1,22 @@
-using MsgPack;
+using MessagePack;
+using MessagePack.Formatters;
 using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 
 namespace Ryujinx.Common.Utilities
 {
     public static class MessagePackObjectFormatter
     {
-        public static string ToString(this MessagePackObject obj, bool pretty)
+        public static string ToString(object obj, bool pretty)
         {
+            if (obj == null)
+            {
+                return "null";
+            }
+
             if (pretty)
             {
                 return Format(obj);
@@ -16,7 +25,7 @@ namespace Ryujinx.Common.Utilities
             return obj.ToString();
         }
 
-        public static string Format(MessagePackObject obj)
+        public static string Format(object obj)
         {
             var builder = new IndentedStringBuilder();
 
@@ -25,34 +34,37 @@ namespace Ryujinx.Common.Utilities
             return builder.ToString();
         }
 
-        private static void FormatMsgPackObj(MessagePackObject obj, IndentedStringBuilder builder)
+        private static void FormatMsgPackObj(object obj, IndentedStringBuilder builder)
         {
-            if (obj.IsMap || obj.IsDictionary)
+            if (obj == null)
+            {
+                builder.Append("null");
+                return;
+            }
+
+            if (IsDictionary(obj))
             {
                 FormatMsgPackMap(obj, builder);
             }
-            else if (obj.IsArray || obj.IsList)
+            else if (IsArrayOrList(obj))
             {
                 FormatMsgPackArray(obj, builder);
             }
-            else if (obj.IsNil)
-            {
-                builder.Append("null");
-            }
             else
             {
-                var literal = obj.ToObject();
+                var type = obj.GetType();
 
-                if (literal is String)
+                if (type == typeof(string))
                 {
-                    builder.AppendQuotedString(obj.AsStringUtf16());
+                    builder.AppendQuotedString((string)obj);
                 }
-                else if (literal is byte[] byteArray)
+                else if (type == typeof(byte[]))
                 {
-                    FormatByteArray(byteArray, builder);
+                    FormatByteArray((byte[])obj, builder);
                 }
-                else if (literal is MessagePackExtendedTypeObject extObject)
+                else if (type == typeof(ExtensionResult))
                 {
+                    var extObject = (ExtensionResult)obj;
                     builder.Append('{');
 
                     // Indent
@@ -69,7 +81,7 @@ namespace Ryujinx.Common.Utilities
                     builder.AppendQuotedString("Value")
                            .Append(": ");
 
-                    FormatByteArrayAsString(extObject.GetBody(), builder, true);
+                    FormatByteArrayAsString(extObject.Data, builder, true);
 
                     // Unindent
                     builder.DecreaseIndent()
@@ -77,15 +89,50 @@ namespace Ryujinx.Common.Utilities
 
                     builder.Append('}');
                 }
+                else if (type.IsPrimitive || type == typeof(decimal) || type == typeof(DateTime))
+                {
+                    builder.Append(obj.ToString());
+                }
                 else
                 {
-                    builder.Append(literal);
+                    // For complex objects, use MessagePack to serialize to a string representation
+                    try
+                    {
+                        var json = MessagePackSerializer.SerializeToJson(obj);
+                        builder.AppendQuotedString(json);
+                    }
+                    catch
+                    {
+                        builder.AppendQuotedString(obj.ToString());
+                    }
                 }
             }
         }
 
+        private static bool IsDictionary(object obj)
+        {
+            var type = obj.GetType();
+            return type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Dictionary<,>) ||
+                   obj is IDictionary;
+        }
+
+        private static bool IsArrayOrList(object obj)
+        {
+            var type = obj.GetType();
+            return type.IsArray ||
+                   (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>)) ||
+                   obj is IList ||
+                   obj is IEnumerable;
+        }
+
         private static void FormatByteArray(byte[] arr, IndentedStringBuilder builder)
         {
+            if (arr == null)
+            {
+                builder.Append("null");
+                return;
+            }
+
             builder.Append("[ ");
 
             foreach (var b in arr)
@@ -96,14 +143,23 @@ namespace Ryujinx.Common.Utilities
                 builder.Append(", ");
             }
 
-            // Remove trailing comma
-            builder.Remove(builder.Length - 2, 2);
+            // Remove trailing comma if array is not empty
+            if (arr.Length > 0)
+            {
+                builder.Remove(builder.Length - 2, 2);
+            }
 
             builder.Append(" ]");
         }
 
         private static void FormatByteArrayAsString(byte[] arr, IndentedStringBuilder builder, bool withPrefix)
         {
+            if (arr == null)
+            {
+                builder.Append("null");
+                return;
+            }
+
             builder.Append('"');
 
             if (withPrefix)
@@ -120,30 +176,69 @@ namespace Ryujinx.Common.Utilities
             builder.Append('"');
         }
 
-        private static void FormatMsgPackMap(MessagePackObject obj, IndentedStringBuilder builder)
+        private static void FormatMsgPackMap(object obj, IndentedStringBuilder builder)
         {
-            var map = obj.AsDictionary();
-
             builder.Append('{');
 
             // Indent
             builder.IncreaseIndent()
                    .AppendLine();
 
-            foreach (var item in map)
+            if (obj is IDictionary dictionary)
             {
-                FormatMsgPackObj(item.Key, builder);
+                var enumerator = dictionary.GetEnumerator();
+                var hasItems = false;
 
-                builder.Append(": ");
+                while (enumerator.MoveNext())
+                {
+                    hasItems = true;
+                    var entry = enumerator.Entry;
 
-                FormatMsgPackObj(item.Value, builder);
+                    FormatMsgPackObj(entry.Key, builder);
+                    builder.Append(": ");
+                    FormatMsgPackObj(entry.Value, builder);
+                    builder.AppendLine(",");
+                }
 
-                builder.AppendLine(",");
+                // Remove the trailing new line and comma if there were items
+                if (hasItems)
+                {
+                    builder.TrimLastLine()
+                           .Remove(builder.Length - 1, 1);
+                }
             }
+            else if (obj.GetType().IsGenericType && obj.GetType().GetGenericTypeDefinition() == typeof(Dictionary<,>))
+            {
+                var dictType = obj.GetType();
+                var keysProperty = dictType.GetProperty("Keys");
+                var indexer = dictType.GetProperty("Item");
 
-            // Remove the trailing new line and comma
-            builder.TrimLastLine()
-                   .Remove(builder.Length - 1, 1);
+                if (keysProperty != null && indexer != null)
+                {
+                    var keys = keysProperty.GetValue(obj) as IEnumerable;
+                    if (keys != null)
+                    {
+                        var keyList = keys.Cast<object>().ToList();
+                        var hasItems = keyList.Count > 0;
+
+                        foreach (var key in keyList)
+                        {
+                            var value = indexer.GetValue(obj, new[] { key });
+                            FormatMsgPackObj(key, builder);
+                            builder.Append(": ");
+                            FormatMsgPackObj(value, builder);
+                            builder.AppendLine(",");
+                        }
+
+                        // Remove the trailing new line and comma if there were items
+                        if (hasItems)
+                        {
+                            builder.TrimLastLine()
+                                   .Remove(builder.Length - 1, 1);
+                        }
+                    }
+                }
+            }
 
             // Unindent
             builder.DecreaseIndent()
@@ -152,21 +247,44 @@ namespace Ryujinx.Common.Utilities
             builder.Append('}');
         }
 
-        private static void FormatMsgPackArray(MessagePackObject obj, IndentedStringBuilder builder)
+        private static void FormatMsgPackArray(object obj, IndentedStringBuilder builder)
         {
-            var arr = obj.AsList();
-
             builder.Append("[ ");
 
-            foreach (var item in arr)
+            if (obj is IEnumerable enumerable)
             {
-                FormatMsgPackObj(item, builder);
+                var items = new List<object>();
+                foreach (var item in enumerable)
+                {
+                    items.Add(item);
+                }
 
-                builder.Append(", ");
+                foreach (var item in items)
+                {
+                    FormatMsgPackObj(item, builder);
+                    builder.Append(", ");
+                }
+
+                // Remove trailing comma if there were items
+                if (items.Count > 0)
+                {
+                    builder.Remove(builder.Length - 2, 2);
+                }
             }
+            else if (obj is Array array)
+            {
+                for (int i = 0; i < array.Length; i++)
+                {
+                    FormatMsgPackObj(array.GetValue(i), builder);
+                    builder.Append(", ");
+                }
 
-            // Remove trailing comma
-            builder.Remove(builder.Length - 2, 2);
+                // Remove trailing comma if array is not empty
+                if (array.Length > 0)
+                {
+                    builder.Remove(builder.Length - 2, 2);
+                }
+            }
 
             builder.Append(" ]");
         }
@@ -179,6 +297,19 @@ namespace Ryujinx.Common.Utilities
             }
 
             return unchecked((char)('A' + (b - 10)));
+        }
+
+        // ExtensionResult class for handling MessagePack extension types
+        public class ExtensionResult
+        {
+            public sbyte TypeCode { get; }
+            public byte[] Data { get; }
+
+            public ExtensionResult(sbyte typeCode, byte[] data)
+            {
+                TypeCode = typeCode;
+                Data = data;
+            }
         }
 
         internal class IndentedStringBuilder
@@ -219,7 +350,10 @@ namespace Ryujinx.Common.Utilities
 
             public IndentedStringBuilder DecreaseIndent()
             {
-                _indentCount--;
+                if (_indentCount > 0)
+                {
+                    _indentCount--;
+                }
 
                 return this;
             }
@@ -240,15 +374,22 @@ namespace Ryujinx.Common.Utilities
 
             public IndentedStringBuilder Append(object value)
             {
-                this.Append(value.ToString());
+                _builder.Append(value?.ToString() ?? "null");
 
                 return this;
             }
 
             public IndentedStringBuilder AppendQuotedString(string value)
             {
+                if (value == null)
+                {
+                    _builder.Append("null");
+                    return this;
+                }
+
                 _builder.Append('"');
-                _builder.Append(value);
+                // Escape quotes in the string
+                _builder.Append(value.Replace("\"", "\\\""));
                 _builder.Append('"');
 
                 return this;
@@ -277,14 +418,20 @@ namespace Ryujinx.Common.Utilities
 
             public IndentedStringBuilder TrimLastLine()
             {
-                _builder.Remove(_newLineIndex, _builder.Length - _newLineIndex);
+                if (_newLineIndex < _builder.Length)
+                {
+                    _builder.Remove(_newLineIndex, _builder.Length - _newLineIndex);
+                }
 
                 return this;
             }
 
             public IndentedStringBuilder Remove(int startIndex, int length)
             {
-                _builder.Remove(startIndex, length);
+                if (startIndex >= 0 && startIndex + length <= _builder.Length)
+                {
+                    _builder.Remove(startIndex, length);
+                }
 
                 return this;
             }
@@ -293,6 +440,15 @@ namespace Ryujinx.Common.Utilities
             {
                 return _builder.ToString();
             }
+        }
+    }
+
+    // 为保持向后兼容性，添加扩展方法
+    public static class MessagePackObjectExtensions
+    {
+        public static string ToString(this object obj, bool pretty)
+        {
+            return MessagePackObjectFormatter.ToString(obj, pretty);
         }
     }
 }
