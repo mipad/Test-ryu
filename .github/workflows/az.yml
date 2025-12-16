@@ -2,9 +2,9 @@ name: Android CI Fixed
 
 on:
   push:
-    branches: [ "剪裁" ]  
+    branches: [ "音频" ]  
   pull_request:
-    branches: [ "剪裁" ]
+    branches: [ "音频" ]
 
 jobs:
   build:
@@ -27,7 +27,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: 剪裁
+        ref: 音频
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
