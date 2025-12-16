@@ -43,43 +43,56 @@ namespace Ryujinx.Common.Utilities
                 return;
             }
 
-            switch (reader.NextMessagePackType)
-            {
-                case MessagePackType.Integer:
-                    if (reader.NextFormat == MessagePackFormat.Int8 || 
-                        reader.NextFormat == MessagePackFormat.Int16 ||
-                        reader.NextFormat == MessagePackFormat.Int32 ||
-                        reader.NextFormat == MessagePackFormat.Int64)
-                    {
-                        builder.Append(reader.ReadInt64());
-                    }
-                    else
-                    {
-                        builder.Append(reader.ReadUInt64());
-                    }
-                    break;
+            // 使用 MessagePackCode 来检查格式
+            var code = reader.NextCode;
 
-                case MessagePackType.Nil:
+            // 判断是否为有符号整数
+            if (code >= MessagePackCode.Int8 && code <= MessagePackCode.Int64 ||
+                (code >= MessagePackCode.FixedIntMin && code <= MessagePackCode.FixedIntMax))
+            {
+                builder.Append(reader.ReadInt64());
+                return;
+            }
+
+            // 判断是否为无符号整数
+            if (code == MessagePackCode.UInt8 || code == MessagePackCode.UInt16 || 
+                code == MessagePackCode.UInt32 || code == MessagePackCode.UInt64)
+            {
+                builder.Append(reader.ReadUInt64());
+                return;
+            }
+
+            // 处理其他类型
+            switch (code)
+            {
+                case MessagePackCode.Nil:
                     reader.ReadNil();
                     builder.Append("null");
                     break;
 
-                case MessagePackType.Boolean:
+                case MessagePackCode.True:
+                case MessagePackCode.False:
                     builder.Append(reader.ReadBoolean());
                     break;
 
-                case MessagePackType.Float:
-                    if (reader.NextFormat == MessagePackFormat.Float32)
-                        builder.Append(reader.ReadSingle());
-                    else
-                        builder.Append(reader.ReadDouble());
+                case MessagePackCode.Float32:
+                    builder.Append(reader.ReadSingle());
                     break;
 
-                case MessagePackType.String:
+                case MessagePackCode.Float64:
+                    builder.Append(reader.ReadDouble());
+                    break;
+
+                case MessagePackCode.Str8:
+                case MessagePackCode.Str16:
+                case MessagePackCode.Str32:
+                case MessagePackCode.FixStr:
                     builder.AppendQuotedString(reader.ReadString());
                     break;
 
-                case MessagePackType.Binary:
+                case MessagePackCode.Bin8:
+                case MessagePackCode.Bin16:
+                case MessagePackCode.Bin32:
                     var bytes = reader.ReadBytes();
                     if (bytes.HasValue)
                     {
@@ -91,7 +104,9 @@ namespace Ryujinx.Common.Utilities
                     }
                     break;
 
-                case MessagePackType.Array:
+                case MessagePackCode.FixArray:
+                case MessagePackCode.Array16:
+                case MessagePackCode.Array32:
                     var arrayLength = reader.ReadArrayHeader();
                     
                     if (arrayLength == 0)
@@ -114,7 +129,9 @@ namespace Ryujinx.Common.Utilities
                     builder.Append(" ]");
                     break;
 
-                case MessagePackType.Map:
+                case MessagePackCode.FixMap:
+                case MessagePackCode.Map16:
+                case MessagePackCode.Map32:
                     var mapLength = reader.ReadMapHeader();
                     
                     if (mapLength == 0)
@@ -150,7 +167,14 @@ namespace Ryujinx.Common.Utilities
                            .Append('}');
                     break;
 
-                case MessagePackType.Extension:
+                case MessagePackCode.FixExt1:
+                case MessagePackCode.FixExt2:
+                case MessagePackCode.FixExt4:
+                case MessagePackCode.FixExt8:
+                case MessagePackCode.FixExt16:
+                case MessagePackCode.Ext8:
+                case MessagePackCode.Ext16:
+                case MessagePackCode.Ext32:
                     var extHeader = reader.ReadExtensionFormatHeader();
                     var extData = reader.ReadRaw(extHeader.Length);
                     
