@@ -21,18 +21,17 @@
 #include <atomic>
 #include <memory>
 #include <type_traits>
-#include <concepts>
 #include <utility>
 
 template <typename T, uint32_t CAPACITY, typename INDEX_TYPE = uint32_t>
-requires (std::unsigned_integral<INDEX_TYPE>)
 class LockFreeQueue {
 public:
-    static consteval bool isPowerOfTwo(uint32_t n) noexcept { 
+    static constexpr bool isPowerOfTwo(uint32_t n) noexcept { 
         return (n & (n - 1)) == 0; 
     }
     
     static_assert(isPowerOfTwo(CAPACITY), "Capacity must be a power of 2");
+    static_assert(std::is_unsigned<INDEX_TYPE>::value, "Index type must be unsigned");
     static_assert(CAPACITY > 0, "Capacity must be greater than 0");
 
     [[nodiscard]] bool pop(T &val) noexcept {
@@ -65,17 +64,6 @@ public:
         }
     }
 
-    template <typename... Args>
-    [[nodiscard]] bool emplace(Args&&... args) noexcept {
-        if (isFull()) {
-            return false;
-        } else {
-            buffer[mask(writeCounter)] = T{std::forward<Args>(args)...};
-            ++writeCounter;
-            return true;
-        }
-    }
-
     [[nodiscard]] bool peek(T &item) const noexcept {
         if (isEmpty()) {
             return false;
@@ -86,24 +74,21 @@ public:
     }
 
     [[nodiscard]] INDEX_TYPE size() const noexcept {
-        return writeCounter.load(std::memory_order_acquire) - 
-               readCounter.load(std::memory_order_acquire);
+        return writeCounter - readCounter;
     }
 
     [[nodiscard]] bool empty() const noexcept { return isEmpty(); }
     [[nodiscard]] bool full() const noexcept { return isFull(); }
 
     void clear() noexcept {
-        readCounter.store(writeCounter.load(std::memory_order_acquire), 
-                         std::memory_order_release);
+        readCounter = writeCounter.load();
     }
 
     [[nodiscard]] constexpr INDEX_TYPE capacity() const noexcept { return CAPACITY; }
 
 private:
     [[nodiscard]] bool isEmpty() const noexcept { 
-        return readCounter.load(std::memory_order_acquire) == 
-               writeCounter.load(std::memory_order_acquire); 
+        return readCounter == writeCounter; 
     }
     
     [[nodiscard]] bool isFull() const noexcept { return size() == CAPACITY; }
@@ -112,19 +97,18 @@ private:
         return static_cast<INDEX_TYPE>(n & (CAPACITY - 1)); 
     }
 
-    alignas(64) T buffer[CAPACITY];
-    alignas(64) std::atomic<INDEX_TYPE> writeCounter{0};
-    alignas(64) std::atomic<INDEX_TYPE> readCounter{0};
+    T buffer[CAPACITY];
+    std::atomic<INDEX_TYPE> writeCounter{0};
+    std::atomic<INDEX_TYPE> readCounter{0};
 };
 
 template<typename T, uint32_t POOL_SIZE>
-requires (POOL_SIZE > 0)
 class LockFreeObjectPool {
 public:
     LockFreeObjectPool() {
         for (uint32_t i = 0; i < POOL_SIZE; ++i) {
             objects[i] = std::make_unique<T>();
-            pool.push(std::move(objects[i]));
+            static_cast<void>(pool.push(std::move(objects[i])));
         }
     }
 

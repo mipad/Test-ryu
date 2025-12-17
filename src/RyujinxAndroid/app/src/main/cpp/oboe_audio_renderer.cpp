@@ -58,15 +58,15 @@ void OboeAudioRenderer::Shutdown() noexcept {
 
 void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& builder) const noexcept {
     builder.setPerformanceMode(oboe::PerformanceMode::LowLatency)
-           .setAudioApi(oboe::AudioApi::AAudio)
-           .setSharingMode(oboe::SharingMode::Exclusive)
-           .setDirection(oboe::Direction::Output)
-           .setSampleRate(m_sample_rate.load(std::memory_order_relaxed))
-           .setSampleRateConversionQuality(oboe::SampleRateConversionQuality::High)
-           .setFormat(m_oboe_format)
-           .setFormatConversionAllowed(true)
-           .setUsage(oboe::Usage::Game)
-           .setFramesPerCallback(256);
+           ->setAudioApi(oboe::AudioApi::AAudio)
+           ->setSharingMode(oboe::SharingMode::Exclusive)
+           ->setDirection(oboe::Direction::Output)
+           ->setSampleRate(m_sample_rate.load(std::memory_order_relaxed))
+           ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::High)
+           ->setFormat(m_oboe_format)
+           ->setFormatConversionAllowed(true)
+           ->setUsage(oboe::Usage::Game)
+           ->setFramesPerCallback(256);
     
     const auto channel_count = m_channel_count.load(std::memory_order_relaxed);
     const auto channel_mask = [channel_count]() noexcept -> oboe::ChannelMask {
@@ -79,8 +79,8 @@ void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& bu
     }();
     
     builder.setChannelCount(channel_count)
-           .setChannelMask(channel_mask)
-           .setChannelConversionAllowed(true);
+           ->setChannelMask(channel_mask)
+           ->setChannelConversionAllowed(true);
 }
 
 bool OboeAudioRenderer::ConfigureAndOpenStream() noexcept {
@@ -88,7 +88,7 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() noexcept {
     
     ConfigureForAAudioExclusive(builder);
     builder.setDataCallback(m_audio_callback.get())
-           .setErrorCallback(m_error_callback.get());
+           ->setErrorCallback(m_error_callback.get());
     
     auto result = builder.openStream(m_stream);
     
@@ -98,7 +98,7 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() noexcept {
         
         if (result != oboe::Result::OK) {
             builder.setAudioApi(oboe::AudioApi::OpenSLES)
-                   .setSharingMode(oboe::SharingMode::Shared);
+                   ->setSharingMode(oboe::SharingMode::Shared);
             result = builder.openStream(m_stream);
             
             if (result != oboe::Result::OK) {
@@ -224,11 +224,11 @@ void OboeAudioRenderer::Reset() noexcept {
     
     m_audio_queue.clear();
     if (m_current_block) {
-        m_object_pool.release(std::move(m_current_block));
+        static_cast<void>(m_object_pool.release(std::move(m_current_block)));
     }
     
     CloseStream();
-    ConfigureAndOpenStream();
+    static_cast<void>(ConfigureAndOpenStream());
 }
 
 oboe::AudioFormat OboeAudioRenderer::MapSampleFormat(int32_t format) noexcept {
@@ -273,7 +273,7 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(
     while (bytes_remaining > 0) {
         if (!m_current_block || m_current_block->consumed || m_current_block->available() == 0) {
             if (m_current_block) {
-                m_object_pool.release(std::move(m_current_block));
+                static_cast<void>(m_object_pool.release(std::move(m_current_block)));
             }
             
             if (!m_audio_queue.pop(m_current_block)) {
@@ -305,7 +305,7 @@ void OboeAudioRenderer::OnStreamErrorAfterClose(oboe::AudioStream* audioStream,
     
     if (m_initialized.load(std::memory_order_acquire)) {
         CloseStream();
-        ConfigureAndOpenStream();
+        static_cast<void>(ConfigureAndOpenStream());
     }
 }
 
