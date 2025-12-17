@@ -2,9 +2,9 @@ name: Android CI Fixed
 
 on:
   push:
-    branches: [ "稳定1" ]  
+    branches: ["稳定1"]
   pull_request:
-    branches: [ "稳定1" ]
+    branches: ["稳定1"]
 
 jobs:
   build:
@@ -49,7 +49,20 @@ jobs:
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
-    # ========== 3. 缓存优化 ==========
+    # ========== 3. 安装必要工具 ==========
+    - name: Install Build Tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          ninja-build \
+          cmake \
+          build-essential \
+          pkg-config \
+          libtool \
+          autoconf \
+          automake
+
+    # ========== 4. 缓存优化 ==========
     - name: Cache Gradle dependencies
       uses: actions/cache@v3
       with:
@@ -60,7 +73,17 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-gradle-
 
-    # ========== 4. 权限和Gradle设置 ==========
+    - name: Cache Android SDK
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.android/build-cache
+          $ANDROID_HOME/build-cache
+        key: ${{ runner.os }}-android-${{ env.ANDROID_API_LEVEL }}-${{ env.ANDROID_BUILD_TOOLS }}
+        restore-keys: |
+          ${{ runner.os }}-android-
+
+    # ========== 5. 权限和Gradle设置 ==========
     - name: Set execution permissions
       working-directory: ${{ github.workspace }}/Test-ryu
       run: |
@@ -78,7 +101,7 @@ jobs:
           echo "Gradle Wrapper already exists"
         fi
 
-    # ========== 5. 验证环境 ==========
+    # ========== 6. 验证环境 ==========
     - name: Verify .NET SDK Installation
       run: |
         dotnet --list-sdks
@@ -86,7 +109,7 @@ jobs:
 
     - name: Install Android SDK Components
       run: |
-        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install \
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install \
           "build-tools;${{ env.ANDROID_BUILD_TOOLS }}" \
           "platforms;android-${{ env.ANDROID_API_LEVEL }}" \
           "cmake;3.22.1" \
@@ -95,21 +118,14 @@ jobs:
     - name: Configure Environment Paths
       shell: bash
       run: |
-        # 显式定义 ANDROID_NDK_HOME，避免路径拼接错误
-        ANDROID_NDK_HOME="/usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}"
+        # 设置环境变量
+        ANDROID_NDK_HOME="$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}"
         LLVM_PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
-        LIB_DIR="$LLVM_PATH/sysroot/usr/lib/aarch64-linux-android/${{ env.ANDROID_API_LEVEL }}"
-
+        
         echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
         echo "LLVM_PATH=$LLVM_PATH" >> $GITHUB_ENV
-        echo "LIB_DIR=$LIB_DIR" >> $GITHUB_ENV
+        echo "CMAKE_BUILD_TYPE=Debug" >> $GITHUB_ENV  # 明确指定构建类型
         echo "$LLVM_PATH/bin" >> $GITHUB_PATH
-
-    - name: Install Ninja Build
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y ninja-build
-        ninja --version
 
     - name: Validate Build Environment
       run: |
@@ -118,70 +134,100 @@ jobs:
         java -version
         echo "Gradle version:"
         ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/gradlew --version
-        echo "Android SDK路径:"
-        echo $ANDROID_HOME
-        echo "NDK路径:"
-        echo $ANDROID_NDK_HOME
-        echo "LLVM路径:"
-        echo $LLVM_PATH
+        echo "Android SDK路径: $ANDROID_HOME"
+        echo "NDK路径: $ANDROID_NDK_HOME"
+        echo "LLVM路径: $LLVM_PATH"
+        echo "CMake版本:"
+        cmake --version
+        echo "Ninja版本:"
+        ninja --version
         echo "=== 环境验证完成 ==="
 
-    # ========== 6. 主构建流程 ==========
-    - name: Build APK
+    # ========== 7. 主构建流程 ==========
+    - name: Build APK (Debug Version)
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       env:
-        OPENSSL_ROOT_DIR: /opt/openssl-x64
+        # 设置 CMake 构建类型为 Debug
+        CMAKE_ARGS: "-DCMAKE_BUILD_TYPE=Debug"
       run: |
-        # 调试输出：关键环境变量
         echo "LLVM_PATH: $LLVM_PATH"
-        echo "OPENSSL_ROOT_DIR: $OPENSSL_ROOT_DIR"
         echo "ANDROID_NDK_HOME: $ANDROID_NDK_HOME"
-
-        # 执行构建
-        ./gradlew clean assembleRelease \
-          -DllvmToolchainPath=$LLVM_PATH \
-          -Dopenssl.root=$OPENSSL_ROOT_DIR \
-          -Pandroid.overridePathCheck=true \
+        echo "CMAKE_BUILD_TYPE: $CMAKE_BUILD_TYPE"
+        
+        # 检查项目结构
+        echo "=== 项目结构 ==="
+        find . -maxdepth 3 -type f -name "*.gradle*" -o -name "CMakeLists.txt" | sort
+        echo "=== 结束 ==="
+        
+        # 清理构建缓存
+        ./gradlew clean
+        
+        # 构建调试版本（根据你的 CMakeLists.txt 配置）
+        echo "=== 开始构建调试版本 ==="
+        ./gradlew assembleDebug \
+          -DllvmToolchainPath="$LLVM_PATH" \
+          -Pandroid.useAndroidX=true \
+          -Pandroid.enableJetifier=true \
           --no-daemon \
           --stacktrace \
           --info
+        
+        echo "=== 构建完成 ==="
 
-    # ========== 7. 构建产物检查 ==========
+    # ========== 8. 构建产物检查 ==========
     - name: Find Native Libraries (.so)
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       run: |
-        echo "========== 开始搜索 .so 文件 =========="
-        find app/build -name "*.so" -print
+        echo "========== 搜索 .so 文件 =========="
+        find app/build -name "*.so" -type f | head -20
         echo "========== 搜索完成 =========="
 
     - name: List APK Files
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       run: |
         echo "========== APK 文件列表 =========="
-        find app/build/outputs/apk -name "*.apk" -print
+        find app/build/outputs/apk -name "*.apk" -type f
+        echo "文件详情:"
+        for apk in $(find app/build/outputs/apk -name "*.apk" -type f); do
+          echo "- $apk ($(du -h "$apk" | cut -f1))"
+        done
         echo "========== 列表完成 =========="
 
-    # ========== 8. 产物处理 ==========
+    # ========== 9. 产物处理 ==========
     - name: Upload Native Libraries
+      if: success()
       uses: actions/upload-artifact@v4
       with:
-        name: native-libs
+        name: native-libs-debug
         path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/**/*.so
         retention-days: 7
 
     - name: Upload APK Artifact
+      if: success()
       uses: actions/upload-artifact@v4
       with:
-        name: android-arm64-release
-        path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
+        name: android-arm64-debug
+        path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
         retention-days: 7
 
     - name: Upload Build Reports
-      uses: actions/upload-artifact@v4
       if: always()
+      uses: actions/upload-artifact@v4
       with:
         name: build-reports
         path: |
           ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/reports/
           ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/build/reports/
+          ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/logs/
         retention-days: 3
+
+    # ========== 10. 失败时的诊断信息 ==========
+    - name: Collect Build Logs on Failure
+      if: failure()
+      run: |
+        echo "=== 构建失败，收集日志信息 ==="
+        find ${{ github.workspace }}/Test-ryu -name "*.log" -type f | head -10 | while read log; do
+          echo "===== $log ====="
+          tail -100 "$log" || echo "无法读取日志"
+        done
+        echo "=== 日志收集完成 ==="
