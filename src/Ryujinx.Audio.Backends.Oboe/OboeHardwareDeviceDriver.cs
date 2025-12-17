@@ -358,11 +358,12 @@ namespace Ryujinx.Audio.Backends.Oboe
             private readonly int _channelCount;
             private readonly uint _sampleRate;
             private readonly SampleFormat _sampleFormat;
-            private readonly IntPtr _rendererPtr;
+            private IntPtr _rendererPtr; // 移除了 readonly 修饰符
             private int _consecutiveFailures;
             private const int MAX_CONSECUTIVE_FAILURES = 5;
             private DateTime _lastAudioDataTime;
             private bool _disposed;
+            private readonly object _rendererLock = new(); // 添加锁对象用于线程安全
 
             public bool IsActive => _active && !_disposed;
 
@@ -457,16 +458,20 @@ namespace Ryujinx.Audio.Backends.Oboe
                 _disposed = true;
                 Stop();
                 
-                if (_rendererPtr != IntPtr.Zero)
+                lock (_rendererLock)
                 {
-                    try
+                    if (_rendererPtr != IntPtr.Zero)
                     {
-                        shutdownOboeRenderer(_rendererPtr);
-                        destroyOboeRenderer(_rendererPtr);
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Warning?.Print(LogClass.Audio, $"Error destroying Oboe renderer: {ex.Message}");
+                        try
+                        {
+                            shutdownOboeRenderer(_rendererPtr);
+                            destroyOboeRenderer(_rendererPtr);
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Warning?.Print(LogClass.Audio, $"Error destroying Oboe renderer: {ex.Message}");
+                        }
+                        _rendererPtr = IntPtr.Zero;
                     }
                 }
                 
@@ -517,7 +522,13 @@ namespace Ryujinx.Audio.Backends.Oboe
 
                 // 直接传递原始数据到独立的渲染器
                 int formatValue = SampleFormatToInt(_sampleFormat);
-                bool writeSuccess = writeOboeRendererAudioRaw(_rendererPtr, buffer.Data, frameCount, formatValue);
+                bool writeSuccess;
+                
+                lock (_rendererLock)
+                {
+                    if (_rendererPtr == IntPtr.Zero) return;
+                    writeSuccess = writeOboeRendererAudioRaw(_rendererPtr, buffer.Data, frameCount, formatValue);
+                }
 
                 if (writeSuccess)
                 {
@@ -542,7 +553,13 @@ namespace Ryujinx.Audio.Backends.Oboe
                     else
                     {
                         // 重置渲染器
-                        resetOboeRenderer(_rendererPtr);
+                        lock (_rendererLock)
+                        {
+                            if (_rendererPtr != IntPtr.Zero)
+                            {
+                                resetOboeRenderer(_rendererPtr);
+                            }
+                        }
                     }
                 }
             }
@@ -554,21 +571,24 @@ namespace Ryujinx.Audio.Backends.Oboe
                 Logger.Info?.Print(LogClass.Audio, "Resetting audio pipeline due to inactivity");
                 Stop();
                 
-                if (_rendererPtr != IntPtr.Zero)
+                lock (_rendererLock)
                 {
-                    shutdownOboeRenderer(_rendererPtr);
-                }
-                
-                // 重新初始化
-                int formatValue = SampleFormatToInt(_sampleFormat);
-                if (!initOboeRenderer(_rendererPtr, (int)_sampleRate, _channelCount, formatValue))
-                {
-                    Logger.Error?.Print(LogClass.Audio, "Failed to reinitialize Oboe audio renderer after inactivity");
-                }
-                else
-                {
-                    setOboeRendererVolume(_rendererPtr, _volume);
-                    Start();
+                    if (_rendererPtr != IntPtr.Zero)
+                    {
+                        shutdownOboeRenderer(_rendererPtr);
+                    }
+                    
+                    // 重新初始化
+                    int formatValue = SampleFormatToInt(_sampleFormat);
+                    if (_rendererPtr != IntPtr.Zero && !initOboeRenderer(_rendererPtr, (int)_sampleRate, _channelCount, formatValue))
+                    {
+                        Logger.Error?.Print(LogClass.Audio, "Failed to reinitialize Oboe audio renderer after inactivity");
+                    }
+                    else if (_rendererPtr != IntPtr.Zero)
+                    {
+                        setOboeRendererVolume(_rendererPtr, _volume);
+                        Start();
+                    }
                 }
                 
                 _consecutiveFailures = 0;
@@ -582,46 +602,71 @@ namespace Ryujinx.Audio.Backends.Oboe
                 
                 Stop();
                 
-                if (_rendererPtr != IntPtr.Zero)
-                {
-                    shutdownOboeRenderer(_rendererPtr);
-                    destroyOboeRenderer(_rendererPtr);
-                }
+                IntPtr newRenderer = IntPtr.Zero;
+                bool resetSuccessful = false;
                 
-                // 重新创建渲染器
-                IntPtr newRenderer = createOboeRenderer();
-                if (newRenderer == IntPtr.Zero)
+                try
                 {
-                    Logger.Error?.Print(LogClass.Audio, "Failed to create new Oboe renderer during hard reset");
-                    return;
-                }
-                
-                // 重新初始化
-                int formatValue = SampleFormatToInt(_sampleFormat);
-                if (!initOboeRenderer(newRenderer, (int)_sampleRate, _channelCount, formatValue))
-                {
-                    destroyOboeRenderer(newRenderer);
-                    Logger.Error?.Print(LogClass.Audio, "Failed to initialize new Oboe renderer during hard reset");
-                    return;
-                }
-                
-                // 更新渲染器指针
-                unsafe
-                {
-                    fixed (IntPtr* rendererPtr = &_rendererPtr)
+                    // 销毁旧的渲染器
+                    lock (_rendererLock)
                     {
-                        *rendererPtr = newRenderer;
+                        if (_rendererPtr != IntPtr.Zero)
+                        {
+                            shutdownOboeRenderer(_rendererPtr);
+                            destroyOboeRenderer(_rendererPtr);
+                            _rendererPtr = IntPtr.Zero;
+                        }
+                    }
+                    
+                    // 重新创建渲染器
+                    newRenderer = createOboeRenderer();
+                    if (newRenderer == IntPtr.Zero)
+                    {
+                        Logger.Error?.Print(LogClass.Audio, "Failed to create new Oboe renderer during hard reset");
+                        return;
+                    }
+                    
+                    // 重新初始化
+                    int formatValue = SampleFormatToInt(_sampleFormat);
+                    if (!initOboeRenderer(newRenderer, (int)_sampleRate, _channelCount, formatValue))
+                    {
+                        destroyOboeRenderer(newRenderer);
+                        Logger.Error?.Print(LogClass.Audio, "Failed to initialize new Oboe renderer during hard reset");
+                        return;
+                    }
+                    
+                    // 更新渲染器指针
+                    lock (_rendererLock)
+                    {
+                        _rendererPtr = newRenderer;
+                    }
+                    
+                    setOboeRendererVolume(newRenderer, _volume);
+                    Start();
+                    resetSuccessful = true;
+                }
+                finally
+                {
+                    if (!resetSuccessful && newRenderer != IntPtr.Zero)
+                    {
+                        // 如果重置失败，清理新创建的渲染器
+                        destroyOboeRenderer(newRenderer);
                     }
                 }
                 
-                setOboeRendererVolume(_rendererPtr, _volume);
-                Start();
                 _consecutiveFailures = 0;
                 _totalWrittenSamples = 0;
                 _totalPlayedSamples = 0;
                 _queuedBuffers.Clear();
                 
-                Logger.Info?.Print(LogClass.Audio, "Audio session hard reset completed successfully");
+                if (resetSuccessful)
+                {
+                    Logger.Info?.Print(LogClass.Audio, "Audio session hard reset completed successfully");
+                }
+                else
+                {
+                    Logger.Error?.Print(LogClass.Audio, "Audio session hard reset failed");
+                }
             }
 
             private int SampleFormatToInt(SampleFormat format)
@@ -657,9 +702,12 @@ namespace Ryujinx.Audio.Backends.Oboe
             public override void SetVolume(float volume)
             {
                 _volume = Math.Clamp(volume, 0.0f, 1.0f);
-                if (_rendererPtr != IntPtr.Zero && !_disposed)
+                lock (_rendererLock)
                 {
-                    setOboeRendererVolume(_rendererPtr, _volume);
+                    if (_rendererPtr != IntPtr.Zero && !_disposed)
+                    {
+                        setOboeRendererVolume(_rendererPtr, _volume);
+                    }
                 }
             }
 
