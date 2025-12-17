@@ -113,8 +113,8 @@ tasks.register('compileLibRyujinx', Exec) {
             "-p:DisableUnsupportedError=true",
             "-p:PublishAotUsingRuntimePack=true",
             "-p:StripSymbols=${stripSymbols}",
-            "-p:DebugType=full",  # 生成完整的调试信息
-            "-p:DebugSymbols=true", # 生成符号文件
+            "-p:DebugType=full",   // 生成完整的调试信息
+            "-p:DebugSymbols=true", // 生成符号文件
             "--artifacts-path", buildDir
 
     args additionalArgs.split(" ")
@@ -123,7 +123,7 @@ tasks.register('compileLibRyujinx', Exec) {
         project.sync {
             from project.ext.outputTree.getFiles()
             include '*.so'
-            include '*.so.dbg', '*.pdb', '*.dll'  # 包含调试文件
+            include '*.so.dbg', '*.pdb', '*.dll'  // 包含调试文件
             into publishDirectory
             rename (String originalName) -> originalName.toLowerCase()
             duplicatesStrategy 'fail'
