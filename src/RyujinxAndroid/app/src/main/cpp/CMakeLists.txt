@@ -9,8 +9,12 @@ cmake_minimum_required(VERSION 3.22.1)
 # Declares and names the project.
 project("ryujinxjni")
 
-# 设置构建类型
-set(CMAKE_BUILD_TYPE Release)
+# 根据构建类型设置不同的配置
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Debug)
+endif()
+
+message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
 # 其他选项
 set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded)
@@ -87,25 +91,66 @@ add_library(
     oboe_audio_renderer.cpp
 )
 
-# 添加编译定义以优化音频处理
-target_compile_definitions(ryujinxjni PRIVATE
-    RYUJINX_AUDIO_OPTIMIZE=1
-    # 如果需要，可以添加更多音频优化标志
-)
-# 为音频渲染器文件单独启用激进优化
-# 注意：如果某些游戏出现杂音，可以回退到 "-O3" 或 "-O3 -ffast-math"
-set_source_files_properties(oboe_audio_renderer.cpp PROPERTIES
-    COMPILE_FLAGS "-Ofast"
-)
+# 根据构建类型设置不同的编译定义
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_definitions(ryujinxjni PRIVATE
+        DEBUG=1
+        _DEBUG=1
+        RYUJINX_AUDIO_OPTIMIZE=0
+        # 调试相关定义
+    )
+    message(STATUS "Using debug build configuration")
+else()
+    target_compile_definitions(ryujinxjni PRIVATE
+        NDEBUG=1
+        RYUJINX_AUDIO_OPTIMIZE=1
+        # 发布版优化定义
+    )
+    message(STATUS "Using release build configuration")
+endif()
 
-# 为主目标添加编译选项（其他文件保持 -O3，不包含 -ffast-math）
-target_compile_options(ryujinxjni PRIVATE
-    -std=c++20
-    -O3
-    -DNDEBUG
-    -march=armv8-a
-    #-Ofast
-)
+# 根据构建类型设置编译选项
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    # 调试版本：保留符号和调试信息
+    target_compile_options(ryujinxjni PRIVATE
+        -std=c++20
+        -O0        # 无优化
+        -g         # 生成调试信息
+        -ggdb      # 生成GDB调试信息
+        -DDEBUG
+        -D_DEBUG
+        -march=armv8-a
+        # 添加调试支持
+        -fno-omit-frame-pointer
+        -fno-inline-functions
+    )
+    
+    # 为音频渲染器文件设置调试编译选项
+    set_source_files_properties(oboe_audio_renderer.cpp PROPERTIES
+        COMPILE_FLAGS "-O0 -g -ggdb"
+    )
+    
+    # 设置调试版本的后缀
+    set_target_properties(ryujinxjni PROPERTIES
+        DEBUG_POSTFIX "_debug"
+    )
+else()
+    # 发布版本：优化设置
+    target_compile_options(ryujinxjni PRIVATE
+        -std=c++20
+        -O3
+        -DNDEBUG
+        -march=armv8-a
+        # 发布版优化选项
+        -ffast-math
+        -funroll-loops
+    )
+    
+    # 为音频渲染器文件设置发布版优化
+    set_source_files_properties(oboe_audio_renderer.cpp PROPERTIES
+        COMPILE_FLAGS "-Ofast"
+    )
+endif()
 
 # 查找系统库
 find_library(log-lib log)
@@ -139,7 +184,7 @@ cmake_path(APPEND JNI_PATH libssl.so OUTPUT_VARIABLE LIBSSL_JNI_PATH)
 # 构建 OpenSSL（如果预构建文件不存在）
 if (NOT (EXISTS ${LIBCRYPTO_JNI_PATH} AND EXISTS ${LIBSSL_JNI_PATH}))
     include(../../../../libryujinx/libs/OpenSSL.cmake)
-    add_dependencies(ryujinxjni openssl)
+    add_dependencies(ryujinxjnx openssl)
 endif ()
 
 # 设置 OpenAL 输出目录
@@ -147,4 +192,12 @@ set_target_properties(OpenAL PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
     ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
     RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
+)
+
+# 设置目标属性以保留调试符号
+set_target_properties(ryujinxjni PROPERTIES
+    COMPILE_FLAGS_DEBUG "-O0 -g -ggdb"
+    COMPILE_FLAGS_RELEASE "-O3 -DNDEBUG"
+    # 确保不剥离符号
+    STRIP ""
 )
