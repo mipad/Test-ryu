@@ -72,12 +72,12 @@ public:
         other.m_jstr = nullptr;
     }
     
-    [[nodiscard]] const char* get() const { return m_cstr; }
+    const char* get() const { return m_cstr; }
     operator bool() const { return m_cstr != nullptr; }
 };
 
 // C++20: 安全的字符串复制函数
-[[nodiscard]] std::unique_ptr<char[]> copyString(const char* source) {
+std::unique_ptr<char[]> copyString(const char* source) {
     if (!source) return nullptr;
     
     size_t len = strlen(source) + 1;
@@ -167,6 +167,23 @@ JNIEXPORT void JNICALL JNI_OnUnload(JavaVM* vm, void* reserved) {
         g_singleton_renderer->Shutdown();
         g_singleton_renderer.reset();
     }
+    
+    // 清理全局JNI引用
+    if (_mainActivityClass && _vm) {
+        JNIEnv* env;
+        if (_vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) == JNI_OK) {
+            env->DeleteGlobalRef(_mainActivityClass);
+        }
+        _mainActivityClass = nullptr;
+    }
+    
+    if (_mainActivity && _vm) {
+        JNIEnv* env;
+        if (_vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) == JNI_OK) {
+            env->DeleteGlobalRef(_mainActivity);
+        }
+        _mainActivity = nullptr;
+    }
 }
 
 JNIEXPORT void JNICALL
@@ -174,7 +191,7 @@ Java_org_ryujinx_android_MainActivity_initVm(JNIEnv *env, jobject thiz) {
     JavaVM *vm = nullptr;
     env->GetJavaVM(&vm);
     _vm = vm;
-    _mainActivity = thiz;
+    _mainActivity = env->NewGlobalRef(thiz);
     _mainActivityClass = reinterpret_cast<jclass>(env->NewGlobalRef(env->GetObjectClass(thiz)));
 }
 

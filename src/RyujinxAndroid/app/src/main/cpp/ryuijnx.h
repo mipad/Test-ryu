@@ -35,44 +35,44 @@ extern jobject _mainActivity;
 extern jclass _mainActivityClass;
 extern pthread_t _renderingThreadIdNative;
 
-// C++20: 添加nodiscard属性防止忽略返回值
-[[nodiscard]] char *getStringPointer(JNIEnv *env, jstring jS);
-[[nodiscard]] jstring createString(JNIEnv *env, char *ch);
-[[nodiscard]] jstring createStringFromStdString(JNIEnv *env, std::string s);
-[[nodiscard]] long createSurface(long native_surface, long instance);
-
 extern "C" {
     // 单例接口 (保持向后兼容)
-    [[nodiscard]] bool initOboeAudio(int sample_rate, int channel_count);
-    [[nodiscard]] bool initOboeAudioWithFormat(int sample_rate, int channel_count, int sample_format);
+    bool initOboeAudio(int sample_rate, int channel_count);
+    bool initOboeAudioWithFormat(int sample_rate, int channel_count, int sample_format);
     void shutdownOboeAudio();
-    [[nodiscard]] bool writeOboeAudio(const int16_t* data, int32_t num_frames);
-    [[nodiscard]] bool writeOboeAudioRaw(const uint8_t* data, int32_t num_frames, int32_t sample_format);
+    bool writeOboeAudio(const int16_t* data, int32_t num_frames);
+    bool writeOboeAudioRaw(const uint8_t* data, int32_t num_frames, int32_t sample_format);
     void setOboeVolume(float volume);
-    [[nodiscard]] bool isOboeInitialized();
-    [[nodiscard]] bool isOboePlaying();
-    [[nodiscard]] int32_t getOboeBufferedFrames();
+    bool isOboeInitialized();
+    bool isOboePlaying();
+    int32_t getOboeBufferedFrames();
     void resetOboeAudio();
     
     // 多实例接口 - 使用void*但内部使用智能指针
-    [[nodiscard]] void* createOboeRenderer();
+    void* createOboeRenderer();
     void destroyOboeRenderer(void* renderer);
-    [[nodiscard]] bool initOboeRenderer(void* renderer, int sample_rate, int channel_count, int sample_format);
+    bool initOboeRenderer(void* renderer, int sample_rate, int channel_count, int sample_format);
     void shutdownOboeRenderer(void* renderer);
-    [[nodiscard]] bool writeOboeRendererAudio(void* renderer, const int16_t* data, int32_t num_frames);
-    [[nodiscard]] bool writeOboeRendererAudioRaw(void* renderer, const uint8_t* data, int32_t num_frames, int32_t sample_format);
+    bool writeOboeRendererAudio(void* renderer, const int16_t* data, int32_t num_frames);
+    bool writeOboeRendererAudioRaw(void* renderer, const uint8_t* data, int32_t num_frames, int32_t sample_format);
     void setOboeRendererVolume(void* renderer, float volume);
-    [[nodiscard]] bool isOboeRendererInitialized(void* renderer);
-    [[nodiscard]] bool isOboeRendererPlaying(void* renderer);
-    [[nodiscard]] int32_t getOboeRendererBufferedFrames(void* renderer);
+    bool isOboeRendererInitialized(void* renderer);
+    bool isOboeRendererPlaying(void* renderer);
+    int32_t getOboeRendererBufferedFrames(void* renderer);
     void resetOboeRenderer(void* renderer);
 
-    [[nodiscard]] const char* GetAndroidDeviceModel();
-    [[nodiscard]] const char* GetAndroidDeviceBrand();
+    const char* GetAndroidDeviceModel();
+    const char* GetAndroidDeviceBrand();
 
     void setRenderingThread();
     void setCurrentTransform(long native_window, int transform);
     void debug_break(int code);
+    
+    // 这些函数需要在 extern "C" 块内声明，以匹配源文件中的定义
+    char *getStringPointer(JNIEnv *env, jstring jS);
+    jstring createString(JNIEnv *env, char *ch);
+    jstring createStringFromStdString(JNIEnv *env, std::string s);
+    long createSurface(long native_surface, long instance);
 }
 
 #endif //RYUJINXNATIVE_RYUIJNX_H
