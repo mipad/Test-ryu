@@ -3,10 +3,8 @@
 
 #include <stdlib.h>
 #include <dlfcn.h>
-#include <string.h>
 #include <string>
 #include <jni.h>
-#include <exception>
 #include <android/log.h>
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
@@ -17,26 +15,25 @@
 #include "adrenotools/driver.h"
 #include "native_window.h"
 #include <pthread.h>
-#include <memory>  // C++20: 智能指针支持
+#include <cstdint>
 
 #define CALL_VK(func) if (VK_SUCCESS != (func)) { assert(false); }
 #define VK_CHECK(x) CALL_VK(x)
 #define LoadLib(a) dlopen(a, RTLD_NOW)
 
-// C++20: 使用constexpr提高编译时优化
-constexpr int MAX_DEVICE_INFO_LENGTH = 128;
-
-void *_ryujinxNative = NULL;
-bool (*initialize)(char *) = NULL;
-
-extern long _renderingThreadId;
-extern JavaVM *_vm;
-extern jobject _mainActivity;
-extern jclass _mainActivityClass;
-extern pthread_t _renderingThreadIdNative;
+inline void *_ryujinxNative = nullptr;
+inline bool (*initialize)(char *) = nullptr;
 
 extern "C" {
-    // 单例接口 (保持向后兼容)
+    // 渲染线程相关
+    extern long _renderingThreadId;
+    extern JavaVM *_vm;
+    extern jobject _mainActivity;
+    extern jclass _mainActivityClass;
+    extern pthread_t _renderingThreadIdNative;
+    extern bool isInitialOrientationFlipped;
+
+    // 单例音频接口 (保持向后兼容)
     bool initOboeAudio(int sample_rate, int channel_count);
     bool initOboeAudioWithFormat(int sample_rate, int channel_count, int sample_format);
     void shutdownOboeAudio();
@@ -48,7 +45,7 @@ extern "C" {
     int32_t getOboeBufferedFrames();
     void resetOboeAudio();
     
-    // 多实例接口 - 使用void*但内部使用智能指针
+    // 多实例音频接口
     void* createOboeRenderer();
     void destroyOboeRenderer(void* renderer);
     bool initOboeRenderer(void* renderer, int sample_rate, int channel_count, int sample_format);
@@ -61,18 +58,18 @@ extern "C" {
     int32_t getOboeRendererBufferedFrames(void* renderer);
     void resetOboeRenderer(void* renderer);
 
+    // 设备信息接口
     const char* GetAndroidDeviceModel();
     const char* GetAndroidDeviceBrand();
 
+    // 工具函数
     void setRenderingThread();
     void setCurrentTransform(long native_window, int transform);
     void debug_break(int code);
-    
-    // 这些函数需要在 extern "C" 块内声明，以匹配源文件中的定义
-    char *getStringPointer(JNIEnv *env, jstring jS);
-    jstring createString(JNIEnv *env, char *ch);
-    jstring createStringFromStdString(JNIEnv *env, std::string s);
-    long createSurface(long native_surface, long instance);
+    [[nodiscard]] char *getStringPointer(JNIEnv *env, jstring jS);
+    [[nodiscard]] jstring createString(JNIEnv *env, char *ch);
+    [[nodiscard]] jstring createStringFromStdString(JNIEnv *env, std::string s);
+    [[nodiscard]] long createSurface(long native_surface, long instance);
 }
 
-#endif //RYUJINXNATIVE_RYUIJNX_H
+#endif // RYUJINXNATIVE_RYUIJNX_H
