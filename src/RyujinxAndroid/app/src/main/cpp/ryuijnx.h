@@ -30,178 +30,175 @@ using JByteArrayRef = jbyteArray;
 using JShortArrayRef = jshortArray;
 
 // 全局状态变量
-extern std::atomic<long> _renderingThreadId;
+extern long _renderingThreadId;
 extern JavaVM* _vm;
 extern jobject _mainActivity;
 extern jclass _mainActivityClass;
 extern pthread_t _renderingThreadIdNative;
 
-// Oboe渲染器智能指针类型
-using OboeRendererPtr = std::unique_ptr<class OboeAudioRenderer>;
+// 前向声明
+class OboeAudioRenderer;
+using OboeRendererPtr = OboeAudioRenderer*;
 
 extern "C" {
-    // ========== 核心接口 ==========
+    // ========== 核心JNI接口 ==========
     
-    // 单例音频接口（向后兼容）
-    [[nodiscard]] bool initOboeAudio(int sample_rate, int channel_count);
-    [[nodiscard]] bool initOboeAudioWithFormat(int sample_rate, int channel_count, int sample_format);
-    void shutdownOboeAudio();
-    [[nodiscard]] bool writeOboeAudio(const int16_t* data, int32_t num_frames);
-    [[nodiscard]] bool writeOboeAudioRaw(const uint8_t* data, int32_t num_frames, int32_t sample_format);
-    void setOboeVolume(float volume);
-    [[nodiscard]] bool isOboeInitialized();
-    [[nodiscard]] bool isOboePlaying();
-    [[nodiscard]] int32_t getOboeBufferedFrames();
-    void resetOboeAudio();
-    
-    // 多实例音频接口
-    [[nodiscard]] void* createOboeRenderer();
-    void destroyOboeRenderer(void* renderer);
-    [[nodiscard]] bool initOboeRenderer(void* renderer, int sample_rate, int channel_count, int sample_format);
-    void shutdownOboeRenderer(void* renderer);
-    [[nodiscard]] bool writeOboeRendererAudio(void* renderer, const int16_t* data, int32_t num_frames);
-    [[nodiscard]] bool writeOboeRendererAudioRaw(void* renderer, const uint8_t* data, int32_t num_frames, int32_t sample_format);
-    void setOboeRendererVolume(void* renderer, float volume);
-    [[nodiscard]] bool isOboeRendererInitialized(void* renderer);
-    [[nodiscard]] bool isOboeRendererPlaying(void* renderer);
-    [[nodiscard]] int32_t getOboeRendererBufferedFrames(void* renderer);
-    void resetOboeRenderer(void* renderer);
-
-    // 设备信息
-    [[nodiscard]] const char* GetAndroidDeviceModel();
-    [[nodiscard]] const char* GetAndroidDeviceBrand();
-
     // Vulkan和渲染接口
-    void setRenderingThread();
-    void setCurrentTransform(long native_window, int transform);
-    [[noreturn]] void debug_break(int code);
+    JNIEXPORT jlong JNICALL Java_org_ryujinx_android_NativeHelpers_getNativeWindow(
+        JNIEnv* env, jobject instance, jobject surface);
     
-    // 字符串处理（现代化版本）
-    [[nodiscard]] std::string getStringFromJString(JNIEnv* env, jstring jStr);
-    [[nodiscard]] jstring createJString(JNIEnv* env, const std::string& str);
-    [[nodiscard]] long createSurface(long native_surface, long instance);
+    JNIEXPORT void JNICALL Java_org_ryujinx_android_NativeHelpers_releaseNativeWindow(
+        JNIEnv* env, jobject instance, jlong window);
+    
+    JNIEXPORT jlong JNICALL Java_org_ryujinx_android_NativeHelpers_getCreateSurfacePtr(
+        JNIEnv* env, jobject instance);
+    
+    JNIEXPORT void JNICALL Java_org_ryujinx_android_MainActivity_initVm(
+        JNIEnv* env, jobject thiz);
+    
+    JNIEXPORT void JNICALL Java_org_ryujinx_android_NativeHelpers_setCurrentTransform(
+        JNIEnv* env, jobject thiz, jlong native_window, jint transform);
+    
+    JNIEXPORT jlong JNICALL Java_org_ryujinx_android_NativeHelpers_loadDriver(
+        JNIEnv* env, jobject thiz,
+        jstring native_lib_path,
+        jstring private_apps_path,
+        jstring driver_name);
+    
+    JNIEXPORT void JNICALL Java_org_ryujinx_android_NativeHelpers_setTurboMode(
+        JNIEnv* env, jobject thiz, jboolean enable);
+    
+    JNIEXPORT jint JNICALL Java_org_ryujinx_android_NativeHelpers_getMaxSwapInterval(
+        JNIEnv* env, jobject thiz, jlong native_window);
+    
+    JNIEXPORT jint JNICALL Java_org_ryujinx_android_NativeHelpers_getMinSwapInterval(
+        JNIEnv* env, jobject thiz, jlong native_window);
+    
+    JNIEXPORT jint JNICALL Java_org_ryujinx_android_NativeHelpers_setSwapInterval(
+        JNIEnv* env, jobject thiz, jlong native_window, jint swap_interval);
+    
+    JNIEXPORT jstring JNICALL Java_org_ryujinx_android_NativeHelpers_getStringJava(
+        JNIEnv* env, jobject thiz, jlong ptr);
+    
+    JNIEXPORT void JNICALL Java_org_ryujinx_android_NativeHelpers_setIsInitialOrientationFlipped(
+        JNIEnv* env, jobject thiz, jboolean is_flipped);
+    
+    // 音频单例接口
+    JNIEXPORT jboolean JNICALL Java_org_ryujinx_android_NativeHelpers_initOboeAudio(
+        JNIEnv* env, jobject thiz, jint sample_rate, jint channel_count);
+    
+    JNIEXPORT jboolean JNICALL Java_org_ryujinx_android_NativeHelpers_initOboeAudioWithFormat(
+        JNIEnv* env, jobject thiz, jint sample_rate, jint channel_count, jint sample_format);
+    
+    JNIEXPORT void JNICALL Java_org_ryujinx_android_NativeHelpers_shutdownOboeAudio(
+        JNIEnv* env, jobject thiz);
+    
+    JNIEXPORT jboolean JNICALL Java_org_ryujinx_android_NativeHelpers_writeOboeAudio(
+        JNIEnv* env, jobject thiz, jshortArray audio_data, jint num_frames);
+    
+    JNIEXPORT jboolean JNICALL Java_org_ryujinx_android_NativeHelpers_writeOboeAudioRaw(
+        JNIEnv* env, jobject thiz, jbyteArray audio_data, jint num_frames, jint sample_format);
+    
+    JNIEXPORT void JNICALL Java_org_ryujinx_android_NativeHelpers_setOboeVolume(
+        JNIEnv* env, jobject thiz, jfloat volume);
+    
+    JNIEXPORT jboolean JNICALL Java_org_ryujinx_android_NativeHelpers_isOboeInitialized(
+        JNIEnv* env, jobject thiz);
+    
+    JNIEXPORT jboolean JNICALL Java_org_ryujinx_android_NativeHelpers_isOboePlaying(
+        JNIEnv* env, jobject thiz);
+    
+    JNIEXPORT jint JNICALL Java_org_ryujinx_android_NativeHelpers_getOboeBufferedFrames(
+        JNIEnv* env, jobject thiz);
+    
+    JNIEXPORT void JNICALL Java_org_ryujinx_android_NativeHelpers_resetOboeAudio(
+        JNIEnv* env, jobject thiz);
+    
+    // 音频多实例接口
+    JNIEXPORT jlong JNICALL Java_org_ryujinx_android_NativeHelpers_createOboeRenderer(
+        JNIEnv* env, jobject thiz);
+    
+    JNIEXPORT void JNICALL Java_org_ryujinx_android_NativeHelpers_destroyOboeRenderer(
+        JNIEnv* env, jobject thiz, jlong renderer_ptr);
+    
+    JNIEXPORT jboolean JNICALL Java_org_ryujinx_android_NativeHelpers_initOboeRenderer(
+        JNIEnv* env, jobject thiz, jlong renderer_ptr, jint sample_rate, jint channel_count, jint sample_format);
+    
+    JNIEXPORT void JNICALL Java_org_ryujinx_android_NativeHelpers_shutdownOboeRenderer(
+        JNIEnv* env, jobject thiz, jlong renderer_ptr);
+    
+    JNIEXPORT jboolean JNICALL Java_org_ryujinx_android_NativeHelpers_writeOboeRendererAudio(
+        JNIEnv* env, jobject thiz, jlong renderer_ptr, jshortArray audio_data, jint num_frames);
+    
+    JNIEXPORT jboolean JNICALL Java_org_ryujinx_android_NativeHelpers_writeOboeRendererAudioRaw(
+        JNIEnv* env, jobject thiz, jlong renderer_ptr, jbyteArray audio_data, jint num_frames, jint sample_format);
+    
+    JNIEXPORT void JNICALL Java_org_ryujinx_android_NativeHelpers_setOboeRendererVolume(
+        JNIEnv* env, jobject thiz, jlong renderer_ptr, jfloat volume);
+    
+    JNIEXPORT jboolean JNICALL Java_org_ryujinx_android_NativeHelpers_isOboeRendererInitialized(
+        JNIEnv* env, jobject thiz, jlong renderer_ptr);
+    
+    JNIEXPORT jboolean JNICALL Java_org_ryujinx_android_NativeHelpers_isOboeRendererPlaying(
+        JNIEnv* env, jobject thiz, jlong renderer_ptr);
+    
+    JNIEXPORT jint JNICALL Java_org_ryujinx_android_NativeHelpers_getOboeRendererBufferedFrames(
+        JNIEnv* env, jobject thiz, jlong renderer_ptr);
+    
+    JNIEXPORT void JNICALL Java_org_ryujinx_android_NativeHelpers_resetOboeRenderer(
+        JNIEnv* env, jobject thiz, jlong renderer_ptr);
+    
+    JNIEXPORT jstring JNICALL Java_org_ryujinx_android_NativeHelpers_getAndroidDeviceModel(
+        JNIEnv* env, jobject thiz);
+    
+    JNIEXPORT jstring JNICALL Java_org_ryujinx_android_NativeHelpers_getAndroidDeviceBrand(
+        JNIEnv* env, jobject thiz);
+    
+    // 生命周期函数
+    JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved);
+    JNIEXPORT void JNICALL JNI_OnUnload(JavaVM* vm, void* reserved);
 }
 
-// ========== RAII包装器 ==========
+// ========== C++辅助函数 ==========
 
-/**
- * @brief JNI字符串自动管理包装器
- */
-class ScopedJString {
-private:
-    JNIEnv* m_env;
-    jstring m_jstr;
-    const char* m_cstr;
-    
-public:
-    ScopedJString(JNIEnv* env, jstring jstr) noexcept 
-        : m_env(env), m_jstr(jstr), 
-          m_cstr(jstr ? env->GetStringUTFChars(jstr, nullptr) : nullptr) {}
-    
-    ~ScopedJString() {
-        if (m_cstr && m_jstr) {
-            m_env->ReleaseStringUTFChars(m_jstr, m_cstr);
-        }
-    }
-    
-    // 删除拷贝构造和赋值
-    ScopedJString(const ScopedJString&) = delete;
-    ScopedJString& operator=(const ScopedJString&) = delete;
-    
-    // 允许移动
-    ScopedJString(ScopedJString&& other) noexcept 
-        : m_env(other.m_env), m_jstr(other.m_jstr), m_cstr(other.m_cstr) {
-        other.m_jstr = nullptr;
-        other.m_cstr = nullptr;
-    }
-    
-    // 访问器
-    [[nodiscard]] const char* c_str() const noexcept { return m_cstr; }
-    [[nodiscard]] explicit operator bool() const noexcept { return m_cstr != nullptr; }
-    
-    // 转换为std::string_view（零拷贝）
-    [[nodiscard]] std::string_view view() const noexcept {
-        return m_cstr ? std::string_view(m_cstr) : std::string_view();
-    }
-};
+// 这些是C++函数，不在extern "C"中
+char* getStringPointer(JNIEnv* env, jstring jS);
+jstring createString(JNIEnv* env, char* ch);
+jstring createStringFromStdString(JNIEnv* env, std::string s);
+long createSurface(long native_surface, long instance);
 
-/**
- * @brief JNI数组自动管理包装器（模板化）
- */
-template<typename T>
-class ScopedJArray {
-private:
-    JNIEnv* m_env;
-    jarray m_jarray;
-    T* m_data;
-    
-    // 类型特化的获取函数
-    T* getArrayElements(jarray arr, jboolean* isCopy) {
-        if constexpr (std::is_same_v<T, jbyte>) {
-            return m_env->GetByteArrayElements(static_cast<jbyteArray>(arr), isCopy);
-        } else if constexpr (std::is_same_v<T, jshort>) {
-            return m_env->GetShortArrayElements(static_cast<jshortArray>(arr), isCopy);
-        } else if constexpr (std::is_same_v<T, jint>) {
-            return m_env->GetIntArrayElements(static_cast<jintArray>(arr), isCopy);
-        } else if constexpr (std::is_same_v<T, jlong>) {
-            return m_env->GetLongArrayElements(static_cast<jlongArray>(arr), isCopy);
-        } else if constexpr (std::is_same_v<T, jfloat>) {
-            return m_env->GetFloatArrayElements(static_cast<jfloatArray>(arr), isCopy);
-        } else if constexpr (std::is_same_v<T, jdouble>) {
-            return m_env->GetDoubleArrayElements(static_cast<jdoubleArray>(arr), isCopy);
-        } else {
-            static_assert(sizeof(T) == 0, "Unsupported JNI array type");
-            return nullptr;
-        }
-    }
-    
-    void releaseArrayElements(jarray arr, T* data, jint mode) {
-        if constexpr (std::is_same_v<T, jbyte>) {
-            m_env->ReleaseByteArrayElements(static_cast<jbyteArray>(arr), data, mode);
-        } else if constexpr (std::is_same_v<T, jshort>) {
-            m_env->ReleaseShortArrayElements(static_cast<jshortArray>(arr), data, mode);
-        } else if constexpr (std::is_same_v<T, jint>) {
-            m_env->ReleaseIntArrayElements(static_cast<jintArray>(arr), data, mode);
-        } else if constexpr (std::is_same_v<T, jlong>) {
-            m_env->ReleaseLongArrayElements(static_cast<jlongArray>(arr), data, mode);
-        } else if constexpr (std::is_same_v<T, jfloat>) {
-            m_env->ReleaseFloatArrayElements(static_cast<jfloatArray>(arr), data, mode);
-        } else if constexpr (std::is_same_v<T, jdouble>) {
-            m_env->ReleaseDoubleArrayElements(static_cast<jdoubleArray>(arr), data, mode);
-        }
-    }
-    
-public:
-    ScopedJArray(JNIEnv* env, jarray jarr) noexcept 
-        : m_env(env), m_jarray(jarr), m_data(getArrayElements(jarr, nullptr)) {}
-    
-    ~ScopedJArray() {
-        if (m_data && m_jarray) {
-            releaseArrayElements(m_jarray, m_data, JNI_ABORT);
-        }
-    }
-    
-    // 删除拷贝构造和赋值
-    ScopedJArray(const ScopedJArray&) = delete;
-    ScopedJArray& operator=(const ScopedJArray&) = delete;
-    
-    // 允许移动
-    ScopedJArray(ScopedJArray&& other) noexcept 
-        : m_env(other.m_env), m_jarray(other.m_jarray), m_data(other.m_data) {
-        other.m_jarray = nullptr;
-        other.m_data = nullptr;
-    }
-    
-    // 访问器
-    [[nodiscard]] T* data() const noexcept { return m_data; }
-    [[nodiscard]] explicit operator bool() const noexcept { return m_data != nullptr; }
-    
-    // 转换为std::span（零拷贝）
-    template<size_t Extent = std::dynamic_extent>
-    [[nodiscard]] std::span<T, Extent> span(size_t length) const noexcept {
-        return m_data ? std::span<T, Extent>(m_data, length) : std::span<T, Extent>();
-    }
-};
+// 设备信息
+const char* GetAndroidDeviceModel();
+const char* GetAndroidDeviceBrand();
+
+// 渲染线程
+void setRenderingThread();
+void debug_break(int code);
+
+// 音频接口（C++，不在extern "C"中）
+bool initOboeAudio(int sample_rate, int channel_count);
+bool initOboeAudioWithFormat(int sample_rate, int channel_count, int sample_format);
+void shutdownOboeAudio();
+bool writeOboeAudio(const int16_t* data, int32_t num_frames);
+bool writeOboeAudioRaw(const uint8_t* data, int32_t num_frames, int32_t sample_format);
+void setOboeVolume(float volume);
+bool isOboeInitialized();
+bool isOboePlaying();
+int32_t getOboeBufferedFrames();
+void resetOboeAudio();
+
+// 音频多实例接口
+void* createOboeRenderer();
+void destroyOboeRenderer(void* renderer);
+bool initOboeRenderer(void* renderer, int sample_rate, int channel_count, int sample_format);
+void shutdownOboeRenderer(void* renderer);
+bool writeOboeRendererAudio(void* renderer, const int16_t* data, int32_t num_frames);
+bool writeOboeRendererAudioRaw(void* renderer, const uint8_t* data, int32_t num_frames, int32_t sample_format);
+void setOboeRendererVolume(void* renderer, float volume);
+bool isOboeRendererInitialized(void* renderer);
+bool isOboeRendererPlaying(void* renderer);
+int32_t getOboeRendererBufferedFrames(void* renderer);
+void resetOboeRenderer(void* renderer);
 
 // ========== 性能优化宏 ==========
 
@@ -212,7 +209,7 @@ public:
     #define ALWAYS_INLINE __attribute__((always_inline))
     #define NOINLINE __attribute__((noinline))
 #elif defined(_MSC_VER)
-    #define HOT_PATH __declspec(noinline)  // MSVC热路径优化不同
+    #define HOT_PATH __declspec(noinline)
     #define COLD_PATH 
     #define ALWAYS_INLINE __forceinline
     #define NOINLINE __declspec(noinline)
