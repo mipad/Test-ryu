@@ -12,14 +12,12 @@ def toolchainPath = providers.gradleProperty("org.ryujinx.llvm.toolchain.path").
 // Path to the dotnet executable This should be configured in your global gradle.properties
 // See: https://docs.gradle.org/current/userguide/directory_layout.html#dir:gradle_user_home
 def dotnetExecutable = providers.gradleProperty("org.ryujinx.dotnet.bin").getOrElse("dotnet")
-// Build configuration
-def configuration = providers.gradleProperty("org.ryujinx.config").getOrElse("release").toLowerCase()
+// Build configuration - 默认为 debug
+def configuration = providers.gradleProperty("org.ryujinx.config").getOrElse("debug").toLowerCase()
 // Publish directory
 def publishDirectory = providers.gradleProperty("org.ryujinx.publish.path").getOrNull()
 // Should the symbols be stripped from the published library?
-// Per default the symbols will be stripped for release builds, but not for debug builds.
-// This can be overridden using this property.
-// Valid values are: ["auto", "-1", "true", "1", "false", "0"]
+// 调试版本默认不剥离符号
 def stripSymbols = providers.gradleProperty("org.ryujinx.symbols.strip").getOrElse("")
 //noinspection GroovyFallthrough
 switch (stripSymbols) {
@@ -32,7 +30,8 @@ switch (stripSymbols) {
         stripSymbols = false
         break
     default:
-        stripSymbols = configuration == "release"
+        // 调试版本默认不剥离符号
+        stripSymbols = configuration != "debug"
         break
 }
 // Additional arguments for the dotnet publish command.
@@ -45,6 +44,11 @@ if (publishDirectory != null) {
 }
 else {
     publishDirectory = libsDirectory.get().toString()
+}
+
+// 为调试版本添加后缀
+if (configuration == "Debug") {
+    publishDirectory = "${publishDirectory}/debug"
 }
 
 // Trees
@@ -99,6 +103,7 @@ tasks.register('compileLibRyujinx', Exec) {
         println "\tStripSymbols: ${stripSymbols}"
         println "\tadditional args: ${additionalArgs.split(" ")}"
         println "\tcustom LLVM toolchain path: ${toolchainPath}"
+        println "\tOutput directory: ${publishDirectory}"
     }
 
     executable dotnetExecutable
@@ -108,6 +113,8 @@ tasks.register('compileLibRyujinx', Exec) {
             "-p:DisableUnsupportedError=true",
             "-p:PublishAotUsingRuntimePack=true",
             "-p:StripSymbols=${stripSymbols}",
+            "-p:DebugType=full",  # 生成完整的调试信息
+            "-p:DebugSymbols=true", # 生成符号文件
             "--artifacts-path", buildDir
 
     args additionalArgs.split(" ")
@@ -116,12 +123,14 @@ tasks.register('compileLibRyujinx', Exec) {
         project.sync {
             from project.ext.outputTree.getFiles()
             include '*.so'
+            include '*.so.dbg', '*.pdb', '*.dll'  # 包含调试文件
             into publishDirectory
             rename (String originalName) -> originalName.toLowerCase()
             duplicatesStrategy 'fail'
             preserve {
                 include '.gitkeep'
                 include '*.so'
+                include '*.so.dbg', '*.pdb', '*.dll'
                 exclude {
                     project.ext.publishTree
                 }
