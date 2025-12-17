@@ -1,12 +1,14 @@
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
+#include <span>
+#include <limits>
 
 namespace RyujinxOboe {
 
-OboeAudioRenderer::OboeAudioRenderer() {
-    m_audio_callback = std::make_unique<AAudioExclusiveCallback>(this);
-    m_error_callback = std::make_unique<AAudioExclusiveErrorCallback>(this);
+OboeAudioRenderer::OboeAudioRenderer() 
+    : m_audio_callback(std::make_unique<AAudioExclusiveCallback>(this)),
+      m_error_callback(std::make_unique<AAudioExclusiveErrorCallback>(this)) {
 }
 
 OboeAudioRenderer::~OboeAudioRenderer() {
@@ -17,11 +19,12 @@ bool OboeAudioRenderer::Initialize(int32_t sampleRate, int32_t channelCount) {
     return InitializeWithFormat(sampleRate, channelCount, PCM_INT16);
 }
 
-bool OboeAudioRenderer::InitializeWithFormat(int32_t sampleRate, int32_t channelCount, int32_t sampleFormat) {
-    if (m_initialized.load()) {
-        if (m_sample_rate.load() != sampleRate || 
-            m_channel_count.load() != channelCount ||
-            m_sample_format.load() != sampleFormat) {
+bool OboeAudioRenderer::InitializeWithFormat(int32_t sampleRate, int32_t channelCount, 
+                                             int32_t sampleFormat) {
+    if (m_initialized.load(std::memory_order_acquire)) {
+        if (m_sample_rate.load(std::memory_order_relaxed) != sampleRate || 
+            m_channel_count.load(std::memory_order_relaxed) != channelCount ||
+            m_sample_format.load(std::memory_order_relaxed) != sampleFormat) {
             Shutdown();
         } else {
             return true;
@@ -30,62 +33,62 @@ bool OboeAudioRenderer::InitializeWithFormat(int32_t sampleRate, int32_t channel
 
     std::lock_guard<std::mutex> lock(m_stream_mutex);
     
-    m_sample_rate.store(sampleRate);
-    m_channel_count.store(channelCount);
-    m_sample_format.store(sampleFormat);
+    m_sample_rate.store(sampleRate, std::memory_order_relaxed);
+    m_channel_count.store(channelCount, std::memory_order_relaxed);
+    m_sample_format.store(sampleFormat, std::memory_order_relaxed);
     m_oboe_format = MapSampleFormat(sampleFormat);
     
     if (!ConfigureAndOpenStream()) {
         return false;
     }
     
-    m_initialized.store(true);
+    m_initialized.store(true, std::memory_order_release);
     return true;
 }
 
-void OboeAudioRenderer::Shutdown() {
+void OboeAudioRenderer::Shutdown() noexcept {
     std::lock_guard<std::mutex> lock(m_stream_mutex);
     
     CloseStream();
     m_audio_queue.clear();
     m_current_block.reset();
-    m_initialized.store(false);
-    m_stream_started.store(false);
+    m_initialized.store(false, std::memory_order_release);
+    m_stream_started.store(false, std::memory_order_release);
 }
 
-void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& builder) {
+void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& builder) const noexcept {
     builder.setPerformanceMode(oboe::PerformanceMode::LowLatency)
-           ->setAudioApi(oboe::AudioApi::AAudio)
-           ->setSharingMode(oboe::SharingMode::Exclusive)
-           ->setDirection(oboe::Direction::Output)
-           ->setSampleRate(m_sample_rate.load())
-           ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::High)
-           ->setFormat(m_oboe_format)
-           ->setFormatConversionAllowed(true)
-           ->setUsage(oboe::Usage::Game)
-           ->setFramesPerCallback(256);
+           .setAudioApi(oboe::AudioApi::AAudio)
+           .setSharingMode(oboe::SharingMode::Exclusive)
+           .setDirection(oboe::Direction::Output)
+           .setSampleRate(m_sample_rate.load(std::memory_order_relaxed))
+           .setSampleRateConversionQuality(oboe::SampleRateConversionQuality::High)
+           .setFormat(m_oboe_format)
+           .setFormatConversionAllowed(true)
+           .setUsage(oboe::Usage::Game)
+           .setFramesPerCallback(256);
     
-    auto channel_count = m_channel_count.load();
-    auto channel_mask = [&]() {
+    const auto channel_count = m_channel_count.load(std::memory_order_relaxed);
+    const auto channel_mask = [channel_count]() noexcept -> oboe::ChannelMask {
         switch (channel_count) {
-        case 1: return oboe::ChannelMask::Mono;
-        case 2: return oboe::ChannelMask::Stereo;
-        case 6: return oboe::ChannelMask::CM5Point1;
+        case 1:  return oboe::ChannelMask::Mono;
+        case 2:  return oboe::ChannelMask::Stereo;
+        case 6:  return oboe::ChannelMask::CM5Point1;
         default: return oboe::ChannelMask::Unspecified;
         }
     }();
     
     builder.setChannelCount(channel_count)
-           ->setChannelMask(channel_mask)
-           ->setChannelConversionAllowed(true);
+           .setChannelMask(channel_mask)
+           .setChannelConversionAllowed(true);
 }
 
-bool OboeAudioRenderer::ConfigureAndOpenStream() {
+bool OboeAudioRenderer::ConfigureAndOpenStream() noexcept {
     oboe::AudioStreamBuilder builder;
     
     ConfigureForAAudioExclusive(builder);
     builder.setDataCallback(m_audio_callback.get())
-           ->setErrorCallback(m_error_callback.get());
+           .setErrorCallback(m_error_callback.get());
     
     auto result = builder.openStream(m_stream);
     
@@ -95,7 +98,7 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() {
         
         if (result != oboe::Result::OK) {
             builder.setAudioApi(oboe::AudioApi::OpenSLES)
-                   ->setSharingMode(oboe::SharingMode::Shared);
+                   .setSharingMode(oboe::SharingMode::Shared);
             result = builder.openStream(m_stream);
             
             if (result != oboe::Result::OK) {
@@ -117,51 +120,56 @@ bool OboeAudioRenderer::ConfigureAndOpenStream() {
         return false;
     }
     
-    m_stream_started.store(true);
+    m_stream_started.store(true, std::memory_order_release);
     return true;
 }
 
-bool OboeAudioRenderer::OptimizeBufferSize() {
+bool OboeAudioRenderer::OptimizeBufferSize() noexcept {
     if (!m_stream) return false;
     
-    int32_t framesPerBurst = m_stream->getFramesPerBurst();
-    int32_t desired_buffer_size = framesPerBurst > 0 ? framesPerBurst * 2 : 960;
+    const int32_t framesPerBurst = m_stream->getFramesPerBurst();
+    const int32_t desired_buffer_size = framesPerBurst > 0 ? framesPerBurst * 2 : 960;
     
     m_stream->setBufferSizeInFrames(desired_buffer_size);
     return true;
 }
 
-bool OboeAudioRenderer::OpenStream() {
+bool OboeAudioRenderer::OpenStream() noexcept {
     return ConfigureAndOpenStream();
 }
 
-void OboeAudioRenderer::CloseStream() {
+void OboeAudioRenderer::CloseStream() noexcept {
     if (m_stream) {
-        if (m_stream_started.load()) {
+        if (m_stream_started.load(std::memory_order_acquire)) {
             m_stream->stop();
         }
         m_stream->close();
         m_stream.reset();
-        m_stream_started.store(false);
+        m_stream_started.store(false, std::memory_order_release);
     }
 }
 
-bool OboeAudioRenderer::WriteAudio(const int16_t* data, int32_t num_frames) {
-    if (!m_initialized.load() || !data || num_frames <= 0) return false;
+bool OboeAudioRenderer::WriteAudio(const int16_t* data, int32_t num_frames) noexcept {
+    if (!m_initialized.load(std::memory_order_acquire) || !data || num_frames <= 0) {
+        return false;
+    }
     
-    int32_t system_channels = m_channel_count.load();
-    size_t data_size = num_frames * system_channels * sizeof(int16_t);
     return WriteAudioRaw(reinterpret_cast<const void*>(data), num_frames, PCM_INT16);
 }
 
-bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int32_t sampleFormat) {
-    if (!m_initialized.load() || !data || num_frames <= 0) return false;
+bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, 
+                                      int32_t sampleFormat) noexcept {
+    if (!m_initialized.load(std::memory_order_acquire) || !data || num_frames <= 0) {
+        return false;
+    }
     
-    int32_t system_channels = m_channel_count.load();
-    size_t bytes_per_sample = GetBytesPerSample(sampleFormat);
-    size_t total_bytes = num_frames * system_channels * bytes_per_sample;
+    const int32_t system_channels = m_channel_count.load(std::memory_order_relaxed);
+    const size_t bytes_per_sample = GetBytesPerSample(sampleFormat);
+    const size_t total_bytes = static_cast<size_t>(num_frames) * 
+                               static_cast<size_t>(system_channels) * 
+                               bytes_per_sample;
     
-    const uint8_t* byte_data = static_cast<const uint8_t*>(data);
+    const auto* byte_data = static_cast<const uint8_t*>(data);
     size_t bytes_remaining = total_bytes;
     size_t bytes_processed = 0;
     
@@ -169,7 +177,7 @@ bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int3
         auto block = m_object_pool.acquire();
         if (!block) return false;
         
-        size_t copy_size = std::min(bytes_remaining, AudioBlock::BLOCK_SIZE);
+        const size_t copy_size = std::min(bytes_remaining, AudioBlock::BLOCK_SIZE);
         std::memcpy(block->data, byte_data + bytes_processed, copy_size);
         block->data_size = copy_size;
         block->data_played = 0;
@@ -185,31 +193,33 @@ bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int3
     return true;
 }
 
-int32_t OboeAudioRenderer::GetBufferedFrames() const {
-    if (!m_initialized.load()) return 0;
+int32_t OboeAudioRenderer::GetBufferedFrames() const noexcept {
+    if (!m_initialized.load(std::memory_order_acquire)) return 0;
     
     int32_t total_frames = 0;
-    int32_t device_channels = m_device_channels;
+    const int32_t device_channels = m_device_channels;
     
     if (m_current_block && !m_current_block->consumed) {
-        size_t bytes_remaining = m_current_block->available();
-        size_t bytes_per_sample = GetBytesPerSample(m_current_block->sample_format);
-        total_frames += static_cast<int32_t>(bytes_remaining / (device_channels * bytes_per_sample));
+        const size_t bytes_remaining = m_current_block->available();
+        const size_t bytes_per_sample = GetBytesPerSample(m_current_block->sample_format);
+        total_frames += static_cast<int32_t>(bytes_remaining / 
+                                            (static_cast<size_t>(device_channels) * bytes_per_sample));
     }
     
-    uint32_t queue_size = m_audio_queue.size();
-    size_t bytes_per_sample = GetBytesPerSample(m_sample_format.load());
-    int32_t frames_per_block = static_cast<int32_t>(AudioBlock::BLOCK_SIZE / (device_channels * bytes_per_sample));
-    total_frames += queue_size * frames_per_block;
+    const uint32_t queue_size = m_audio_queue.size();
+    const size_t bytes_per_sample = GetBytesPerSample(m_sample_format.load(std::memory_order_relaxed));
+    const int32_t frames_per_block = static_cast<int32_t>(
+        AudioBlock::BLOCK_SIZE / (static_cast<size_t>(device_channels) * bytes_per_sample));
+    total_frames += static_cast<int32_t>(queue_size) * frames_per_block;
     
     return total_frames;
 }
 
-void OboeAudioRenderer::SetVolume(float volume) {
-    m_volume.store(std::max(0.0f, std::min(volume, 1.0f)));
+void OboeAudioRenderer::SetVolume(float volume) noexcept {
+    m_volume.store(std::clamp(volume, 0.0f, 1.0f), std::memory_order_release);
 }
 
-void OboeAudioRenderer::Reset() {
+void OboeAudioRenderer::Reset() noexcept {
     std::lock_guard<std::mutex> lock(m_stream_mutex);
     
     m_audio_queue.clear();
@@ -221,7 +231,7 @@ void OboeAudioRenderer::Reset() {
     ConfigureAndOpenStream();
 }
 
-oboe::AudioFormat OboeAudioRenderer::MapSampleFormat(int32_t format) {
+oboe::AudioFormat OboeAudioRenderer::MapSampleFormat(int32_t format) noexcept {
     switch (format) {
         case PCM_INT16:  return oboe::AudioFormat::I16;
         case PCM_INT24:  return oboe::AudioFormat::I24;
@@ -231,7 +241,7 @@ oboe::AudioFormat OboeAudioRenderer::MapSampleFormat(int32_t format) {
     }
 }
 
-size_t OboeAudioRenderer::GetBytesPerSample(int32_t format) {
+size_t OboeAudioRenderer::GetBytesPerSample(int32_t format) noexcept {
     switch (format) {
         case PCM_INT16:  return 2;
         case PCM_INT24:  return 3;
@@ -241,17 +251,23 @@ size_t OboeAudioRenderer::GetBytesPerSample(int32_t format) {
     }
 }
 
-oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) {
-    if (!m_initialized.load()) {
-        int32_t channels = m_device_channels;
-        size_t bytes_per_sample = GetBytesPerSample(m_sample_format.load());
-        size_t bytes_requested = num_frames * channels * bytes_per_sample;
+oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(
+    oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) noexcept {
+    
+    if (!m_initialized.load(std::memory_order_acquire)) {
+        const int32_t channels = m_device_channels;
+        const size_t bytes_per_sample = GetBytesPerSample(m_sample_format.load(std::memory_order_relaxed));
+        const size_t bytes_requested = static_cast<size_t>(num_frames) * 
+                                       static_cast<size_t>(channels) * 
+                                       bytes_per_sample;
         std::memset(audioData, 0, bytes_requested);
         return oboe::DataCallbackResult::Continue;
     }
     
-    uint8_t* output = static_cast<uint8_t*>(audioData);
-    size_t bytes_remaining = num_frames * m_device_channels * GetBytesPerSample(m_sample_format.load());
+    auto* output = static_cast<uint8_t*>(audioData);
+    size_t bytes_remaining = static_cast<size_t>(num_frames) * 
+                             static_cast<size_t>(m_device_channels) * 
+                             GetBytesPerSample(m_sample_format.load(std::memory_order_relaxed));
     size_t bytes_copied = 0;
     
     while (bytes_remaining > 0) {
@@ -266,7 +282,7 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioS
             }
         }
         
-        size_t bytes_to_copy = std::min(m_current_block->available(), bytes_remaining);
+        const size_t bytes_to_copy = std::min(m_current_block->available(), bytes_remaining);
         std::memcpy(output + bytes_copied, 
                    m_current_block->data + m_current_block->data_played,
                    bytes_to_copy);
@@ -283,30 +299,34 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioS
     return oboe::DataCallbackResult::Continue;
 }
 
-void OboeAudioRenderer::OnStreamErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) {
+void OboeAudioRenderer::OnStreamErrorAfterClose(oboe::AudioStream* audioStream, 
+                                                oboe::Result error) noexcept {
     std::lock_guard<std::mutex> lock(m_stream_mutex);
     
-    if (m_initialized.load()) {
+    if (m_initialized.load(std::memory_order_acquire)) {
         CloseStream();
         ConfigureAndOpenStream();
     }
 }
 
-void OboeAudioRenderer::OnStreamErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) {
+void OboeAudioRenderer::OnStreamErrorBeforeClose(oboe::AudioStream* audioStream, 
+                                                 oboe::Result error) noexcept {
     std::lock_guard<std::mutex> lock(m_stream_mutex);
-    m_stream_started.store(false);
+    m_stream_started.store(false, std::memory_order_release);
 }
 
 oboe::DataCallbackResult OboeAudioRenderer::AAudioExclusiveCallback::onAudioReady(
-    oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) {
+    oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) noexcept {
     return m_renderer->OnAudioReadyMultiFormat(audioStream, audioData, num_frames);
 }
 
-void OboeAudioRenderer::AAudioExclusiveErrorCallback::onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) {
+void OboeAudioRenderer::AAudioExclusiveErrorCallback::onErrorAfterClose(
+    oboe::AudioStream* audioStream, oboe::Result error) noexcept {
     m_renderer->OnStreamErrorAfterClose(audioStream, error);
 }
 
-void OboeAudioRenderer::AAudioExclusiveErrorCallback::onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) {
+void OboeAudioRenderer::AAudioExclusiveErrorCallback::onErrorBeforeClose(
+    oboe::AudioStream* audioStream, oboe::Result error) noexcept {
     m_renderer->OnStreamErrorBeforeClose(audioStream, error);
 }
 

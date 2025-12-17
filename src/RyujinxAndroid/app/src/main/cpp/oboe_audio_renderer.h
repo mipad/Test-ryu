@@ -6,11 +6,13 @@
 #include <atomic>
 #include <memory>
 #include <cstdint>
+#include <functional>
+#include <concepts>
 #include "LockFreeQueue.h"
 
 namespace RyujinxOboe {
 
-enum SampleFormat {
+enum SampleFormat : int32_t {
     PCM_INT16 = 1,
     PCM_INT24 = 2,
     PCM_INT32 = 3,
@@ -20,19 +22,19 @@ enum SampleFormat {
 struct AudioBlock {
     static constexpr size_t BLOCK_SIZE = 1024;
     
-    uint8_t data[BLOCK_SIZE];
+    uint8_t data[BLOCK_SIZE]{};
     size_t data_size = 0;
     size_t data_played = 0;
     int32_t sample_format = PCM_INT16;
     bool consumed = true;
     
-    void clear() {
+    void clear() noexcept {
         data_size = 0;
         data_played = 0;
         consumed = true;
     }
     
-    size_t available() const {
+    [[nodiscard]] size_t available() const noexcept {
         return data_size - data_played;
     }
 };
@@ -42,58 +44,88 @@ public:
     OboeAudioRenderer();
     ~OboeAudioRenderer();
 
-    bool Initialize(int32_t sampleRate, int32_t channelCount);
-    bool InitializeWithFormat(int32_t sampleRate, int32_t channelCount, int32_t sampleFormat);
-    void Shutdown();
-    
-    bool WriteAudio(const int16_t* data, int32_t num_frames);
-    bool WriteAudioRaw(const void* data, int32_t num_frames, int32_t sampleFormat);
-    
-    bool IsInitialized() const { return m_initialized.load(); }
-    bool IsPlaying() const { return m_stream && m_stream->getState() == oboe::StreamState::Started; }
-    int32_t GetBufferedFrames() const;
-    
-    void SetVolume(float volume);
-    float GetVolume() const { return m_volume.load(); }
+    // 禁止拷贝和移动
+    OboeAudioRenderer(const OboeAudioRenderer&) = delete;
+    OboeAudioRenderer& operator=(const OboeAudioRenderer&) = delete;
+    OboeAudioRenderer(OboeAudioRenderer&&) = delete;
+    OboeAudioRenderer& operator=(OboeAudioRenderer&&) = delete;
 
-    void Reset();
+    [[nodiscard]] bool Initialize(int32_t sampleRate, int32_t channelCount);
+    [[nodiscard]] bool InitializeWithFormat(int32_t sampleRate, int32_t channelCount, 
+                                           int32_t sampleFormat);
+    void Shutdown() noexcept;
+    
+    [[nodiscard]] bool WriteAudio(const int16_t* data, int32_t num_frames) noexcept;
+    [[nodiscard]] bool WriteAudioRaw(const void* data, int32_t num_frames, 
+                                    int32_t sampleFormat) noexcept;
+    
+    [[nodiscard]] bool IsInitialized() const noexcept { 
+        return m_initialized.load(std::memory_order_acquire); 
+    }
+    
+    [[nodiscard]] bool IsPlaying() const noexcept { 
+        return m_stream && m_stream->getState() == oboe::StreamState::Started; 
+    }
+    
+    [[nodiscard]] int32_t GetBufferedFrames() const noexcept;
+    
+    void SetVolume(float volume) noexcept;
+    [[nodiscard]] float GetVolume() const noexcept { 
+        return m_volume.load(std::memory_order_acquire); 
+    }
+
+    void Reset() noexcept;
 
 private:
-    class AAudioExclusiveCallback : public oboe::AudioStreamDataCallback {
+    class AAudioExclusiveCallback final : public oboe::AudioStreamDataCallback {
     public:
-        explicit AAudioExclusiveCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
-        oboe::DataCallbackResult onAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) override;
+        explicit AAudioExclusiveCallback(OboeAudioRenderer* renderer) noexcept 
+            : m_renderer(renderer) {}
+        
+        oboe::DataCallbackResult onAudioReady(oboe::AudioStream* audioStream, 
+                                             void* audioData, 
+                                             int32_t num_frames) noexcept override;
     private:
         OboeAudioRenderer* m_renderer;
     };
 
-    class AAudioExclusiveErrorCallback : public oboe::AudioStreamErrorCallback {
+    class AAudioExclusiveErrorCallback final : public oboe::AudioStreamErrorCallback {
     public:
-        explicit AAudioExclusiveErrorCallback(OboeAudioRenderer* renderer) : m_renderer(renderer) {}
-        void onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) override;
-        void onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) override;
+        explicit AAudioExclusiveErrorCallback(OboeAudioRenderer* renderer) noexcept 
+            : m_renderer(renderer) {}
+        
+        void onErrorAfterClose(oboe::AudioStream* audioStream, 
+                              oboe::Result error) noexcept override;
+        
+        void onErrorBeforeClose(oboe::AudioStream* audioStream, 
+                               oboe::Result error) noexcept override;
     private:
         OboeAudioRenderer* m_renderer;
     };
 
-    bool OpenStream();
-    void CloseStream();
-    bool ConfigureAndOpenStream();
-    void ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& builder);
+    [[nodiscard]] bool OpenStream() noexcept;
+    void CloseStream() noexcept;
+    [[nodiscard]] bool ConfigureAndOpenStream() noexcept;
+    void ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& builder) const noexcept;
 
-    oboe::DataCallbackResult OnAudioReadyMultiFormat(oboe::AudioStream* audioStream, void* audioData, int32_t num_frames);
-    void OnStreamErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error);
-    void OnStreamErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error);
+    [[nodiscard]] oboe::DataCallbackResult OnAudioReadyMultiFormat(
+        oboe::AudioStream* audioStream, void* audioData, int32_t num_frames) noexcept;
+    
+    void OnStreamErrorAfterClose(oboe::AudioStream* audioStream, 
+                                oboe::Result error) noexcept;
+    
+    void OnStreamErrorBeforeClose(oboe::AudioStream* audioStream, 
+                                 oboe::Result error) noexcept;
 
-    oboe::AudioFormat MapSampleFormat(int32_t format);
-    static size_t GetBytesPerSample(int32_t format);
-    bool OptimizeBufferSize();
+    [[nodiscard]] static oboe::AudioFormat MapSampleFormat(int32_t format) noexcept;
+    [[nodiscard]] static size_t GetBytesPerSample(int32_t format) noexcept;
+    [[nodiscard]] bool OptimizeBufferSize() noexcept;
 
     std::shared_ptr<oboe::AudioStream> m_stream;
     std::unique_ptr<AAudioExclusiveCallback> m_audio_callback;
     std::unique_ptr<AAudioExclusiveErrorCallback> m_error_callback;
     
-    std::mutex m_stream_mutex;
+    mutable std::mutex m_stream_mutex;
     std::atomic<bool> m_initialized{false};
     std::atomic<bool> m_stream_started{false};
     
