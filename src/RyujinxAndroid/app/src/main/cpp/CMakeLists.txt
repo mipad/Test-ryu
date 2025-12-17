@@ -77,7 +77,7 @@ set(ALSOFT_BACKEND_OPENSL ON CACHE BOOL "Enable OpenSL backend")
 set(ALSOFT_BACKEND_AAUDIO ON CACHE BOOL "Enable AAudio backend")
 set(ALSOFT_TESTS OFF CACHE BOOL "Disable tests")
 
-# 禁用 OpenAL 的可选依赖，它们不是必需的
+# 禁用 OpenAL 的可选依赖
 set(ALSOFT_BACKEND_PULSEAUDIO OFF CACHE BOOL "Disable PulseAudio backend")
 set(ALSOFT_BACKEND_ALSA OFF CACHE BOOL "Disable ALSA backend")
 set(ALSOFT_BACKEND_JACK OFF CACHE BOOL "Disable JACK backend")
@@ -99,12 +99,10 @@ set(ALSOFT_INSTALL OFF CACHE BOOL "Disable installation")
 set(ALSOFT_UTILS OFF CACHE BOOL "Disable utilities")
 set(ALSOFT_EXAMPLES OFF CACHE BOOL "Disable examples")
 set(ALSOFT_NO_CONFIG_UTIL OFF CACHE BOOL "Disable config util")
+set(ALSOFT_REQUIRE_MYSOFA OFF CACHE BOOL "Disable MySOFA")
 
 # 添加优化选项以减少杂音和延迟
 set(ALSOFT_CPUEXT_NEON ON CACHE BOOL "Enable NEON optimizations")
-
-# 设置 FetchContent 属性以在配置阶段禁用查找
-set(ALSOFT_REQUIRE_MYSOFA OFF)
 
 FetchContent_MakeAvailable(openal)
 
@@ -184,6 +182,32 @@ find_library(opensles-lib OpenSLES)
 find_library(aaudio-lib aaudio)
 find_library(android-lib android)
 
+# 查找 OpenSSL 库（使用预编译的）
+find_library(crypto-lib crypto
+    PATHS ${CMAKE_ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/30
+    NO_DEFAULT_PATH
+)
+
+find_library(ssl-lib ssl
+    PATHS ${CMAKE_ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/30
+    NO_DEFAULT_PATH
+)
+
+if(crypto-lib AND ssl-lib)
+    message(STATUS "Found system OpenSSL libraries")
+    message(STATUS "  crypto: ${crypto-lib}")
+    message(STATUS "  ssl: ${ssl-lib}")
+else()
+    message(WARNING "System OpenSSL not found, trying alternative paths")
+    # 尝试其他路径
+    find_library(crypto-lib crypto)
+    find_library(ssl-lib ssl)
+endif()
+
+if(NOT crypto-lib OR NOT ssl-lib)
+    message(FATAL_ERROR "OpenSSL libraries not found. Please install OpenSSL for Android.")
+endif()
+
 # 添加 Oboe 包含目录
 include_directories(${oboe_SOURCE_DIR}/include)
 
@@ -198,23 +222,14 @@ target_link_libraries(
     adrenotools
     oboe
     OpenAL
+    ${crypto-lib}
+    ${ssl-lib}
 )
 
-# 设置 JNI 库输出路径
+# 设置 OpenAL 输出目录
 set(JNI_PATH ../jniLibs/${CMAKE_ANDROID_ARCH_ABI})
 cmake_path(ABSOLUTE_PATH JNI_PATH NORMALIZE)
 
-cmake_path(APPEND JNI_PATH libcrypto.so OUTPUT_VARIABLE LIBCRYPTO_JNI_PATH)
-cmake_path(APPEND JNI_PATH libssl.so OUTPUT_VARIABLE LIBSSL_JNI_PATH)
-
-# 构建 OpenSSL（如果预构建文件不存在）
-if (NOT (EXISTS ${LIBCRYPTO_JNI_PATH} AND EXISTS ${LIBSSL_JNI_PATH}))
-    include(../../../../libryujinx/libs/OpenSSL.cmake)
-    # 修复：正确的目标名称是 ryujinxjni，不是 ryujinxjnx
-    add_dependencies(ryujinxjni openssl)
-endif ()
-
-# 设置 OpenAL 输出目录
 set_target_properties(OpenAL PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
     ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
