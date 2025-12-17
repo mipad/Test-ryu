@@ -29,20 +29,51 @@ android {
 
         externalNativeBuild {
             cmake {
-                cppFlags "-std=c++20", "-O3", "-DNDEBUG", "-DENABLE_HIGH_PERF=1", "-ffast-math", "-march=armv8-a", "-funroll-loops"
-                arguments "-DCMAKE_BUILD_TYPE=Release", "-DANDROID_ARM_NEON=TRUE"
+                // 移除发布优化标志，改用更通用的设置
+                cppFlags "-std=c++20", "-march=armv8-a"
+                arguments "-DANDROID_ARM_NEON=TRUE"
                 arguments "-DANDROID_STL=c++_shared"
             }
         }
     }
 
     buildTypes {
+        debug {
+            minifyEnabled false
+            debuggable true
+            jniDebuggable true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.debug
+            
+            externalNativeBuild {
+                cmake {
+                    cppFlags "-std=c++20", "-O0", "-g", "-DDEBUG", "-D_DEBUG", "-DENABLE_HIGH_PERF=0", "-march=armv8-a"
+                    arguments "-DCMAKE_BUILD_TYPE=Debug", "-DANDROID_ARM_NEON=TRUE"
+                    arguments "-DANDROID_STL=c++_shared"
+                }
+            }
+        }
+        
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.debug
+            
+            externalNativeBuild {
+                cmake {
+                    cppFlags "-std=c++20", "-O3", "-DNDEBUG", "-DENABLE_HIGH_PERF=1", "-ffast-math", "-march=armv8-a", "-funroll-loops"
+                    arguments "-DCMAKE_BUILD_TYPE=Release", "-DANDROID_ARM_NEON=TRUE"
+                    arguments "-DANDROID_STL=c++_shared"
+                }
+            }
         }
     }
+    
+    // 设置默认构建类型为 debug
+    buildTypes.all {
+        it.initWith(buildTypes.debug)
+    }
+    
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
@@ -59,9 +90,6 @@ android {
         prefab true
         buildConfig true
     }
-    //composeOptions {
-        //kotlinCompilerExtensionVersion '1.5.15'
-    //}
     packagingOptions {
         jniLibs {
             keepDebugSymbols += '**/libryujinx.so'
