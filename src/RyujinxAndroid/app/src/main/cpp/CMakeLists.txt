@@ -184,7 +184,7 @@ cmake_path(APPEND JNI_PATH libssl.so OUTPUT_VARIABLE LIBSSL_JNI_PATH)
 # 构建 OpenSSL（如果预构建文件不存在）
 if (NOT (EXISTS ${LIBCRYPTO_JNI_PATH} AND EXISTS ${LIBSSL_JNI_PATH}))
     include(../../../../libryujinx/libs/OpenSSL.cmake)
-    add_dependencies(ryujinxjnx openssl)
+    add_dependencies(ryujinxjni openssl)
 endif ()
 
 # 设置 OpenAL 输出目录
