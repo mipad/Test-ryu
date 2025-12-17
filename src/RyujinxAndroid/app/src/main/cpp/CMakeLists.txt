@@ -71,14 +71,40 @@ FetchContent_Declare(
     GIT_TAG        1.24.3  # 使用稳定版本
 )
 
-# 设置 OpenAL 构建选项 - 优化以减少杂音和延迟
+# 设置 OpenAL 构建选项 - 禁用可选依赖以减少构建复杂度
 set(ALSOFT_REQUIRE_OPENSL ON CACHE BOOL "Enable OpenSL backend")
 set(ALSOFT_BACKEND_OPENSL ON CACHE BOOL "Enable OpenSL backend")
 set(ALSOFT_BACKEND_AAUDIO ON CACHE BOOL "Enable AAudio backend")
 set(ALSOFT_TESTS OFF CACHE BOOL "Disable tests")
 
+# 禁用 OpenAL 的可选依赖，它们不是必需的
+set(ALSOFT_BACKEND_PULSEAUDIO OFF CACHE BOOL "Disable PulseAudio backend")
+set(ALSOFT_BACKEND_ALSA OFF CACHE BOOL "Disable ALSA backend")
+set(ALSOFT_BACKEND_JACK OFF CACHE BOOL "Disable JACK backend")
+set(ALSOFT_BACKEND_PORTAUDIO OFF CACHE BOOL "Disable PortAudio backend")
+set(ALSOFT_BACKEND_COREAUDIO OFF CACHE BOOL "Disable CoreAudio backend")
+set(ALSOFT_BACKEND_WASAPI OFF CACHE BOOL "Disable WASAPI backend")
+set(ALSOFT_BACKEND_WINMM OFF CACHE BOOL "Disable WinMM backend")
+set(ALSOFT_BACKEND_DSOUND OFF CACHE BOOL "Disable DirectSound backend")
+set(ALSOFT_BACKEND_OSS OFF CACHE BOOL "Disable OSS backend")
+set(ALSOFT_BACKEND_SNDIO OFF CACHE BOOL "Disable SndIO backend")
+set(ALSOFT_BACKEND_SUN OFF CACHE BOOL "Disable Sun backend")
+set(ALSOFT_BACKEND_OPENSL ON CACHE BOOL "Enable OpenSL backend")
+set(ALSOFT_BACKEND_WAVE OFF CACHE BOOL "Disable Wave backend")
+set(ALSOFT_BACKEND_NULL OFF CACHE BOOL "Disable Null backend")
+
+# 禁用 MySOFA 支持（减少依赖）
+set(ALSOFT_EMBED_HRTF_DATA ON CACHE BOOL "Embed HRTF data")
+set(ALSOFT_INSTALL OFF CACHE BOOL "Disable installation")
+set(ALSOFT_UTILS OFF CACHE BOOL "Disable utilities")
+set(ALSOFT_EXAMPLES OFF CACHE BOOL "Disable examples")
+set(ALSOFT_NO_CONFIG_UTIL OFF CACHE BOOL "Disable config util")
+
 # 添加优化选项以减少杂音和延迟
 set(ALSOFT_CPUEXT_NEON ON CACHE BOOL "Enable NEON optimizations")
+
+# 设置 FetchContent 属性以在配置阶段禁用查找
+set(ALSOFT_REQUIRE_MYSOFA OFF)
 
 FetchContent_MakeAvailable(openal)
 
@@ -184,6 +210,7 @@ cmake_path(APPEND JNI_PATH libssl.so OUTPUT_VARIABLE LIBSSL_JNI_PATH)
 # 构建 OpenSSL（如果预构建文件不存在）
 if (NOT (EXISTS ${LIBCRYPTO_JNI_PATH} AND EXISTS ${LIBSSL_JNI_PATH}))
     include(../../../../libryujinx/libs/OpenSSL.cmake)
+    # 修复：正确的目标名称是 ryujinxjni，不是 ryujinxjnx
     add_dependencies(ryujinxjni openssl)
 endif ()
 
