@@ -55,7 +55,6 @@ extern "C" {
     bool isOboeRendererPlaying(void* renderer);
     int32_t getOboeRendererBufferedFrames(void* renderer);
     void resetOboeRenderer(void* renderer);
-    void setOboeRendererPerformanceHint(void* renderer, bool enabled);  // 新增
     
     // 音频焦点和恢复接口（新增，用于解决忽然没有声音问题）
     void setOboeRendererAudioFocusCallback(void* renderer, void (*callback)(int focus_state));

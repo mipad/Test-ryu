@@ -196,7 +196,7 @@ void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& bu
            ->setFormat(m_oboe_format)
            ->setFormatConversionAllowed(true)
            ->setUsage(oboe::Usage::Game)
-           ->setFramesPerCallback(256);
+           ->setFramesPerCallback(240);
     
     auto channel_count = m_channel_count.load();
     auto channel_mask = [&]() {
@@ -363,10 +363,10 @@ bool OboeAudioRenderer::WriteAudio(const int16_t* data, int32_t num_frames) {
     
     int32_t system_channels = m_channel_count.load();
     size_t data_size = num_frames * system_channels * sizeof(int16_t);
-    return WriteAudioRaw(reinterpret_cast<const uint8_t*>(data), num_frames, PCM_INT16);
+    return WriteAudioRaw(reinterpret_cast<const void*>(data), num_frames, PCM_INT16);
 }
 
-bool OboeAudioRenderer::WriteAudioRaw(const uint8_t* data, int32_t num_frames, int32_t sampleFormat) {
+bool OboeAudioRenderer::WriteAudioRaw(const void* data, int32_t num_frames, int32_t sampleFormat) {
     if (!m_initialized.load() || !data || num_frames <= 0) return false;
     
     int32_t system_channels = m_channel_count.load();
@@ -421,33 +421,6 @@ void OboeAudioRenderer::SetVolume(float volume) {
     m_volume.store(std::max(0.0f, std::min(volume, 1.0f)));
 }
 
-float OboeAudioRenderer::GetVolume() const {
-    return m_volume.load();
-}
-
-void OboeAudioRenderer::SetPerformanceHintEnabled(bool enabled) {
-    // 性能提示设置，可根据需要实现具体的优化逻辑
-    __android_log_print(ANDROID_LOG_INFO, "OboeAudioRenderer", 
-                       "Performance hint enabled: %s", enabled ? "true" : "false");
-    
-    // 这里可以根据enabled调整音频参数，例如：
-    // - enabled时使用更低延迟的设置
-    // - disabled时使用更省电的设置
-    if (m_initialized.load() && m_stream) {
-        try {
-            if (enabled) {
-                // 启用性能提示时，设置更激进的低延迟参数
-                m_stream->setPerformanceMode(oboe::PerformanceMode::LowLatency);
-            } else {
-                // 禁用时，使用平衡模式
-                m_stream->setPerformanceMode(oboe::PerformanceMode::PowerSaving);
-            }
-        } catch (...) {
-            // 设置失败不影响主要功能
-        }
-    }
-}
-
 void OboeAudioRenderer::Reset() {
     std::lock_guard<std::mutex> lock(m_stream_mutex);
     
@@ -499,7 +472,7 @@ oboe::DataCallbackResult OboeAudioRenderer::OnAudioReadyMultiFormat(oboe::AudioS
     while (bytes_remaining > 0) {
         if (!m_current_block || m_current_block->consumed || m_current_block->available() == 0) {
             if (m_current_block) {
-                m_object_pool.release(std::move(m_current_block));
+                (void)m_object_pool.release(std::move(m_current_block));  // 显式忽略返回值
             }
             
             if (!m_audio_queue.pop(m_current_block)) {

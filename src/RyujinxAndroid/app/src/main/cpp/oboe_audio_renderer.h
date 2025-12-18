@@ -67,9 +67,6 @@ public:
     void Reset();
     void SetErrorCallback(ErrorCallback callback) { m_error_callback_user = std::move(callback); }
     
-    // 新增：性能提示设置
-    void SetPerformanceHintEnabled(bool enabled);
-    
 private:
     class AAudioExclusiveCallback : public oboe::AudioStreamDataCallback {
     public:

@@ -354,14 +354,6 @@ Java_org_ryujinx_android_NativeHelpers_resetOboeRenderer(JNIEnv *env, jobject th
     }
 }
 
-JNIEXPORT void JNICALL
-Java_org_ryujinx_android_NativeHelpers_setOboeRendererPerformanceHint(JNIEnv *env, jobject thiz, jlong renderer_ptr, jboolean enabled) {
-    auto wrapper = reinterpret_cast<OboeRendererWrapper*>(renderer_ptr);
-    if (wrapper && wrapper->renderer) {
-        wrapper->renderer->SetPerformanceHintEnabled(enabled);
-    }
-}
-
 JNIEXPORT jstring JNICALL
 Java_org_ryujinx_android_NativeHelpers_getAndroidDeviceModel(JNIEnv *env, jobject thiz) {
     char model[PROP_VALUE_MAX];
@@ -537,13 +529,6 @@ void resetOboeRenderer(void* renderer) {
     auto wrapper = reinterpret_cast<OboeRendererWrapper*>(renderer);
     if (wrapper && wrapper->renderer) {
         wrapper->renderer->Reset();
-    }
-}
-
-void setOboeRendererPerformanceHint(void* renderer, bool enabled) {
-    auto wrapper = reinterpret_cast<OboeRendererWrapper*>(renderer);
-    if (wrapper && wrapper->renderer) {
-        wrapper->renderer->SetPerformanceHintEnabled(enabled);
     }
 }
 
