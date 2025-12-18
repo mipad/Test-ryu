@@ -123,7 +123,7 @@ void OboeAudioRenderer::ConfigureForOpenSLES(oboe::AudioStreamBuilder& builder) 
            ->setSampleRate(m_sample_rate.load())
            ->setFormat(m_oboe_format)
            ->setUsage(oboe::Usage::Game)
-           ->setFramesPerCallback(256)
+           ->setFramesPerCallback(256);
     builder.setChannelCount(m_channel_count.load())
            ->setChannelConversionAllowed(true);
 }
