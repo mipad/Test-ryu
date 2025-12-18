@@ -115,7 +115,7 @@ namespace Ryujinx.Memory.Tracking
             _guestVirtualRegions = [];
             
             // Log the selected audio tracking mode
-            Logger.Info?.Print(LogClass.Memory, 
+            Logger.Info?.Print(LogClass.Emulation, 
                 $"MemoryTracking initialized with AudioTrackingMode: {audioTrackingMode}");
         }
 
@@ -194,12 +194,12 @@ namespace Ryujinx.Memory.Tracking
             if (currentTime - _lastAudioSkipLogTime > AudioSkipLogInterval)
             {
                 _lastAudioSkipLogTime = currentTime;
-                Logger.Info?.Print(LogClass.Memory, 
+                Logger.Info?.Print(LogClass.Emulation, 
                     $"Audio skip statistics: {skipCount} skips in last {AudioSkipLogInterval}ms");
             }
             
             // Detailed debug logging (enabled only in verbose mode)
-            Logger.Trace?.Print(LogClass.Memory, 
+            Logger.Trace?.Print(LogClass.Emulation, 
                 $"Skipping audio region access: VA=0x{address:X}, Size={size}, TotalSkips={skipCount}");
         }
 
