@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (最终稳定版本)
+// OboeHardwareDeviceDriver.cs (去掉性能提示的最终版本)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -46,9 +46,6 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         [DllImport("libryujinxjni", EntryPoint = "resetOboeRenderer")]
         private static extern void resetOboeRenderer(IntPtr renderer);
-
-        [DllImport("libryujinxjni", EntryPoint = "setOboeRendererPerformanceHint")]
-        private static extern void setOboeRendererPerformanceHint(IntPtr renderer, [MarshalAs(UnmanagedType.I1)] bool enabled);
 
         // 新增音频焦点相关接口
         [DllImport("libryujinxjni", EntryPoint = "setOboeRendererAudioFocusCallback")]
@@ -320,9 +317,6 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
 
                 setOboeRendererVolume(_rendererPtr, _volume);
-                
-                // 启用性能提示
-                setOboeRendererPerformanceHint(_rendererPtr, true);
 
                 // 设置音频焦点回调
                 setOboeRendererAudioFocusCallback(_rendererPtr, OnAudioFocusChanged);
