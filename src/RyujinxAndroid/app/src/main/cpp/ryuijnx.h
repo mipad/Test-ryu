@@ -3,8 +3,10 @@
 
 #include <stdlib.h>
 #include <dlfcn.h>
+#include <string.h>
 #include <string>
 #include <jni.h>
+#include <exception>
 #include <android/log.h>
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
@@ -15,25 +17,22 @@
 #include "adrenotools/driver.h"
 #include "native_window.h"
 #include <pthread.h>
-#include <cstdint>
 
 #define CALL_VK(func) if (VK_SUCCESS != (func)) { assert(false); }
 #define VK_CHECK(x) CALL_VK(x)
 #define LoadLib(a) dlopen(a, RTLD_NOW)
 
-inline void *_ryujinxNative = nullptr;
-inline bool (*initialize)(char *) = nullptr;
+void *_ryujinxNative = NULL;
+bool (*initialize)(char *) = NULL;
+
+extern long _renderingThreadId;
+extern JavaVM *_vm;
+extern jobject _mainActivity;
+extern jclass _mainActivityClass;
+extern pthread_t _renderingThreadIdNative;
 
 extern "C" {
-    // 渲染线程相关
-    extern long _renderingThreadId;
-    extern JavaVM *_vm;
-    extern jobject _mainActivity;
-    extern jclass _mainActivityClass;
-    extern pthread_t _renderingThreadIdNative;
-    extern bool isInitialOrientationFlipped;
-
-    // 单例音频接口 (保持向后兼容)
+    // 单例接口 (保持向后兼容)
     bool initOboeAudio(int sample_rate, int channel_count);
     bool initOboeAudioWithFormat(int sample_rate, int channel_count, int sample_format);
     void shutdownOboeAudio();
@@ -45,31 +44,35 @@ extern "C" {
     int32_t getOboeBufferedFrames();
     void resetOboeAudio();
     
-    // 多实例音频接口
+    // 多实例接口
     void* createOboeRenderer();
     void destroyOboeRenderer(void* renderer);
     bool initOboeRenderer(void* renderer, int sample_rate, int channel_count, int sample_format);
     void shutdownOboeRenderer(void* renderer);
-    bool writeOboeRendererAudio(void* renderer, const int16_t* data, int32_t num_frames);
     bool writeOboeRendererAudioRaw(void* renderer, const uint8_t* data, int32_t num_frames, int32_t sample_format);
     void setOboeRendererVolume(void* renderer, float volume);
     bool isOboeRendererInitialized(void* renderer);
     bool isOboeRendererPlaying(void* renderer);
     int32_t getOboeRendererBufferedFrames(void* renderer);
     void resetOboeRenderer(void* renderer);
+    void setOboeRendererPerformanceHint(void* renderer, bool enabled);  // 新增
+    
+    // 音频焦点和恢复接口（新增，用于解决忽然没有声音问题）
+    void setOboeRendererAudioFocusCallback(void* renderer, void (*callback)(int focus_state));
+    void requestOboeAudioFocus(void* renderer);
+    void abandonOboeAudioFocus(void* renderer);
+    void setOboeRendererErrorCallback(void* renderer, void (*callback)(const char* error, int error_code));
 
-    // 设备信息接口
     const char* GetAndroidDeviceModel();
     const char* GetAndroidDeviceBrand();
 
-    // 工具函数
     void setRenderingThread();
     void setCurrentTransform(long native_window, int transform);
     void debug_break(int code);
-    [[nodiscard]] char *getStringPointer(JNIEnv *env, jstring jS);
-    [[nodiscard]] jstring createString(JNIEnv *env, char *ch);
-    [[nodiscard]] jstring createStringFromStdString(JNIEnv *env, std::string s);
-    [[nodiscard]] long createSurface(long native_surface, long instance);
+    char *getStringPointer(JNIEnv *env, jstring jS);
+    jstring createString(JNIEnv *env, char *ch);
+    jstring createStringFromStdString(JNIEnv *env, std::string s);
+    long createSurface(long native_surface, long instance);
 }
 
-#endif // RYUJINXNATIVE_RYUIJNX_H
+#endif //RYUJINXNATIVE_RYUIJNX_H
