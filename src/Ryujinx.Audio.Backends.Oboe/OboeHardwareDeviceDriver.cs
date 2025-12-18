@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (合并版本 - 专注稳定性)
+// OboeHardwareDeviceDriver.cs (最终稳定版本)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -9,6 +9,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Ryujinx.Audio.Backends.Oboe
 {
@@ -47,10 +48,20 @@ namespace Ryujinx.Audio.Backends.Oboe
         private static extern void resetOboeRenderer(IntPtr renderer);
 
         [DllImport("libryujinxjni", EntryPoint = "setOboeRendererPerformanceHint")]
-        private static extern void setOboeRendererPerformanceHint(IntPtr renderer, bool enabled);
+        private static extern void setOboeRendererPerformanceHint(IntPtr renderer, [MarshalAs(UnmanagedType.I1)] bool enabled);
+
+        // 新增音频焦点相关接口
+        [DllImport("libryujinxjni", EntryPoint = "setOboeRendererAudioFocusCallback")]
+        private static extern void setOboeRendererAudioFocusCallback(IntPtr renderer, AudioFocusCallback callback);
 
         [DllImport("libryujinxjni", EntryPoint = "setOboeRendererErrorCallback")]
-        private static extern void setOboeRendererErrorCallback(IntPtr renderer);
+        private static extern void setOboeRendererErrorCallback(IntPtr renderer, AudioErrorCallback callback);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate void AudioFocusCallback(int focusState);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate void AudioErrorCallback([MarshalAs(UnmanagedType.LPStr)] string error, int errorCode);
 
         // ========== 属性 ==========
         public static bool IsSupported => true;
@@ -60,7 +71,9 @@ namespace Ryujinx.Audio.Backends.Oboe
         private readonly ManualResetEvent _updateRequiredEvent = new(false);
         private readonly ConcurrentDictionary<OboeAudioSession, byte> _sessions = new();
         private Thread _updateThread;
+        private Thread _healthCheckThread;
         private bool _stillRunning = true;
+        private readonly object _healthCheckLock = new();
 
         public float Volume { get; set; } = 1.0f;
 
@@ -68,6 +81,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         public OboeHardwareDeviceDriver()
         {
             StartUpdateThread();
+            StartHealthCheckThread();
         }
 
         private void StartUpdateThread()
@@ -78,7 +92,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 {
                     try
                     {
-                        Thread.Sleep(10); // 10ms更新频率，提高响应性
+                        Thread.Sleep(5); // 5ms更新频率，提高响应性
                         
                         foreach (var session in _sessions.Keys)
                         {
@@ -103,6 +117,42 @@ namespace Ryujinx.Audio.Backends.Oboe
                 Priority = ThreadPriority.AboveNormal  // 提高优先级
             };
             _updateThread.Start();
+        }
+
+        private void StartHealthCheckThread()
+        {
+            _healthCheckThread = new Thread(() =>
+            {
+                while (_stillRunning)
+                {
+                    try
+                    {
+                        Thread.Sleep(1000); // 每秒检查一次
+                        
+                        lock (_healthCheckLock)
+                        {
+                            foreach (var session in _sessions.Keys)
+                            {
+                                if (session.IsActive)
+                                {
+                                    session.PerformHealthCheck();
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warning?.Print(LogClass.Audio, $"Health check thread error: {ex.Message}");
+                        Thread.Sleep(5000);
+                    }
+                }
+            })
+            {
+                Name = "Audio.Oboe.HealthCheck",
+                IsBackground = true,
+                Priority = ThreadPriority.BelowNormal
+            };
+            _healthCheckThread.Start();
         }
 
         public void Dispose()
@@ -140,6 +190,15 @@ namespace Ryujinx.Audio.Backends.Oboe
                         if (!_updateThread.Join(TimeSpan.FromSeconds(2)))
                         {
                             Logger.Warning?.Print(LogClass.Audio, "Update thread did not exit cleanly");
+                        }
+                    }
+                    
+                    // 等待健康检查线程结束
+                    if (_healthCheckThread != null && _healthCheckThread.IsAlive)
+                    {
+                        if (!_healthCheckThread.Join(TimeSpan.FromSeconds(2)))
+                        {
+                            Logger.Warning?.Print(LogClass.Audio, "Health check thread did not exit cleanly");
                         }
                     }
                     
@@ -217,8 +276,12 @@ namespace Ryujinx.Audio.Backends.Oboe
             private int _consecutiveFailures;
             private DateTime _lastSuccessTime;
             private bool _needsRecovery;
+            private int _underrunCount;
+            private DateTime _lastUnderrunTime;
+            private bool _audioFocusLost;
+            private DateTime _lastHealthCheckTime;
 
-            public bool IsActive => _active;
+            public bool IsActive => _active && !_audioFocusLost;
 
             public OboeAudioSession(
                 OboeHardwareDeviceDriver driver,
@@ -235,7 +298,11 @@ namespace Ryujinx.Audio.Backends.Oboe
                 _volume = 1.0f;
                 _consecutiveFailures = 0;
                 _lastSuccessTime = DateTime.Now;
+                _lastHealthCheckTime = DateTime.Now;
                 _needsRecovery = false;
+                _underrunCount = 0;
+                _lastUnderrunTime = DateTime.MinValue;
+                _audioFocusLost = false;
                 
                 // 创建独立的渲染器实例
                 _rendererPtr = createOboeRenderer();
@@ -256,11 +323,115 @@ namespace Ryujinx.Audio.Backends.Oboe
                 
                 // 启用性能提示
                 setOboeRendererPerformanceHint(_rendererPtr, true);
+
+                // 设置音频焦点回调
+                setOboeRendererAudioFocusCallback(_rendererPtr, OnAudioFocusChanged);
+            }
+
+            private void OnAudioFocusChanged(int focusState)
+            {
+                Logger.Info?.Print(LogClass.Audio, $"Audio focus changed: {focusState}");
+                
+                switch (focusState)
+                {
+                    case 0: // AUDIOFOCUS_GAIN
+                        _audioFocusLost = false;
+                        TryRecoverFromFocusLoss();
+                        break;
+                    case 1: // AUDIOFOCUS_LOSS
+                    case 2: // AUDIOFOCUS_LOSS_TRANSIENT
+                        _audioFocusLost = true;
+                        break;
+                    case 3: // AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK
+                        // 可以降低音量，但我们直接暂停
+                        _audioFocusLost = true;
+                        break;
+                }
+            }
+
+            private void TryRecoverFromFocusLoss()
+            {
+                if (_audioFocusLost)
+                {
+                    Logger.Info?.Print(LogClass.Audio, "Recovering from audio focus loss");
+                    
+                    // 重置音频流
+                    try
+                    {
+                        resetOboeRenderer(_rendererPtr);
+                        
+                        // 重新初始化
+                        int formatValue = SampleFormatToInt(_sampleFormat);
+                        if (initOboeRenderer(_rendererPtr, (int)_sampleRate, _channelCount, formatValue))
+                        {
+                            setOboeRendererVolume(_rendererPtr, _volume);
+                            _audioFocusLost = false;
+                            Logger.Info?.Print(LogClass.Audio, "Audio focus recovery successful");
+                        }
+                        else
+                        {
+                            Logger.Error?.Print(LogClass.Audio, "Audio focus recovery failed");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error?.Print(LogClass.Audio, $"Audio focus recovery error: {ex.Message}");
+                    }
+                }
+            }
+
+            public void PerformHealthCheck()
+            {
+                try
+                {
+                    var now = DateTime.Now;
+                    
+                    // 每分钟重置一次计数器
+                    if ((now - _lastHealthCheckTime).TotalMinutes >= 1)
+                    {
+                        _consecutiveFailures = 0;
+                        _underrunCount = 0;
+                        _lastHealthCheckTime = now;
+                    }
+                    
+                    // 如果音频焦点丢失，尝试恢复
+                    if (_audioFocusLost)
+                    {
+                        TryRecoverFromFocusLoss();
+                    }
+                    
+                    // 检查音频是否在播放
+                    if (IsActive && _rendererPtr != IntPtr.Zero)
+                    {
+                        bool isPlaying = isOboeRendererPlaying(_rendererPtr);
+                        bool isInitialized = isOboeRendererInitialized(_rendererPtr);
+                        
+                        if (!isPlaying && isInitialized)
+                        {
+                            Logger.Warning?.Print(LogClass.Audio, 
+                                "Audio not playing but initialized, may need recovery");
+                            _needsRecovery = true;
+                        }
+                        
+                        if (!isInitialized)
+                        {
+                            Logger.Error?.Print(LogClass.Audio, "Audio renderer not initialized");
+                            _needsRecovery = true;
+                        }
+                        
+                        // 检查是否需要恢复
+                        CheckAndRecover();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning?.Print(LogClass.Audio, $"Health check error: {ex.Message}");
+                }
             }
 
             public int GetBufferedFrames()
             {
-                if (_rendererPtr == IntPtr.Zero) return 0;
+                if (_rendererPtr == IntPtr.Zero || _audioFocusLost) return 0;
                 
                 try
                 {
@@ -275,10 +446,30 @@ namespace Ryujinx.Audio.Backends.Oboe
 
             public void UpdatePlaybackStatus(int bufferedFrames)
             {
+                if (_audioFocusLost) return;
+                
                 try
                 {
                     // 检测是否需要恢复
                     CheckAndRecover();
+                    
+                    // 检测underrun
+                    if (bufferedFrames == 0 && _queuedBuffers.Count > 0 && IsActive)
+                    {
+                        var now = DateTime.Now;
+                        if ((now - _lastUnderrunTime).TotalSeconds > 1.0) // 避免连续记录
+                        {
+                            _underrunCount++;
+                            _lastUnderrunTime = now;
+                            Logger.Warning?.Print(LogClass.Audio, 
+                                $"Audio underrun detected (#{_underrunCount}). Buffered: {bufferedFrames}, Queue: {_queuedBuffers.Count}");
+                            
+                            if (_underrunCount >= 3)
+                            {
+                                _needsRecovery = true;
+                            }
+                        }
+                    }
                     
                     // 检查是否长时间没有音频活动
                     if (bufferedFrames == 0 && _queuedBuffers.Count > 0 && IsActive)
@@ -339,18 +530,22 @@ namespace Ryujinx.Audio.Backends.Oboe
                     
                     // 重置失败计数器
                     _consecutiveFailures = 0;
+                    _underrunCount = 0;
                     _needsRecovery = false;
                     _lastSuccessTime = DateTime.Now;
                     
                     // 尝试恢复音频流
                     if (_rendererPtr != IntPtr.Zero)
                     {
-                        // 先停止
+                        // 先重置
                         try
                         {
-                            shutdownOboeRenderer(_rendererPtr);
+                            resetOboeRenderer(_rendererPtr);
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            Logger.Warning?.Print(LogClass.Audio, $"Reset failed during recovery: {ex.Message}");
+                        }
                         
                         // 重新初始化
                         int formatValue = SampleFormatToInt(_sampleFormat);
@@ -426,6 +621,12 @@ namespace Ryujinx.Audio.Backends.Oboe
 
             public override void QueueBuffer(AudioBuffer buffer)
             {
+                if (_audioFocusLost)
+                {
+                    // 音频焦点丢失，不处理新数据
+                    return;
+                }
+
                 if (!_active) 
                 {
                     Start();
