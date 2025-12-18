@@ -9,8 +9,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Threading;
-using System.Linq;
-using System.Collections.Generic;
 
 namespace Ryujinx.Audio.Backends.Oboe
 {
@@ -53,13 +51,9 @@ namespace Ryujinx.Audio.Backends.Oboe
         private bool _disposed;
         private readonly ManualResetEvent _pauseEvent = new(true);
         private readonly ManualResetEvent _updateRequiredEvent = new(false);
-        private readonly ConcurrentDictionary<OboeAudioSession, SessionInfo> _sessions = new();
+        private readonly ConcurrentDictionary<OboeAudioSession, byte> _sessions = new();
         private Thread _updateThread;
         private bool _stillRunning = true;
-        private int _cleanupCounter = 0;
-        private const int CLEANUP_INTERVAL = 100; // 每100次更新循环清理一次
-        private const int MAX_SESSIONS = 8; // 最大会话数限制
-        private const int INACTIVE_TIMEOUT_MS = 10000; // 非活跃会话超时时间（10秒）
 
         public float Volume { get; set; } = 1.0f;
 
@@ -79,28 +73,12 @@ namespace Ryujinx.Audio.Backends.Oboe
                     {
                         Thread.Sleep(10); // 10ms更新频率
                         
-                        // 定期清理非活跃会话
-                        _cleanupCounter++;
-                        if (_cleanupCounter >= CLEANUP_INTERVAL)
-                        {
-                            _cleanupCounter = 0;
-                            CleanupInactiveSessions();
-                        }
-                        
-                        // 只处理活跃会话
-                        var activeSessions = GetActiveSessions();
-                        foreach (var session in activeSessions)
+                        foreach (var session in _sessions.Keys)
                         {
                             if (session.IsActive)
                             {
                                 int bufferedFrames = session.GetBufferedFrames();
                                 session.UpdatePlaybackStatus(bufferedFrames);
-                                
-                                // 更新会话活动时间
-                                if (_sessions.TryGetValue(session, out var sessionInfo))
-                                {
-                                    sessionInfo.LastActivityTime = DateTime.UtcNow;
-                                }
                             }
                         }
                     }
@@ -118,108 +96,6 @@ namespace Ryujinx.Audio.Backends.Oboe
             _updateThread.Start();
         }
 
-        private List<OboeAudioSession> GetActiveSessions()
-        {
-            // 获取所有活跃会话
-            var activeSessions = new List<OboeAudioSession>();
-            foreach (var kvp in _sessions)
-            {
-                if (kvp.Key.IsActive || IsRecentlyActive(kvp.Value))
-                {
-                    activeSessions.Add(kvp.Key);
-                }
-            }
-            return activeSessions;
-        }
-
-        private bool IsRecentlyActive(SessionInfo sessionInfo)
-        {
-            // 判断会话是否最近活跃（1秒内）
-            return (DateTime.UtcNow - sessionInfo.LastActivityTime).TotalMilliseconds < 1000;
-        }
-
-        private void CleanupInactiveSessions()
-        {
-            try
-            {
-                var sessionsToRemove = new List<OboeAudioSession>();
-                var now = DateTime.UtcNow;
-
-                foreach (var kvp in _sessions)
-                {
-                    var session = kvp.Key;
-                    var sessionInfo = kvp.Value;
-
-                    // 检查会话是否非活跃且超时
-                    if (!session.IsActive && 
-                        (now - sessionInfo.LastActivityTime).TotalMilliseconds > INACTIVE_TIMEOUT_MS)
-                    {
-                        sessionsToRemove.Add(session);
-                    }
-                }
-
-                // 清理超时会话
-                foreach (var session in sessionsToRemove)
-                {
-                    if (_sessions.TryRemove(session, out _))
-                    {
-                        try
-                        {
-                            session.Dispose();
-                            Logger.Debug?.Print(LogClass.Audio, $"Cleaned up inactive audio session: {session.GetHashCode()}");
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.Warning?.Print(LogClass.Audio, $"Error disposing inactive session: {ex.Message}");
-                        }
-                    }
-                }
-
-                // 如果会话数仍然超过限制，强制清理最老的会话
-                if (_sessions.Count > MAX_SESSIONS)
-                {
-                    ForceCleanupOldestSessions(_sessions.Count - MAX_SESSIONS);
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.Print(LogClass.Audio, $"Error in CleanupInactiveSessions: {ex.Message}");
-            }
-        }
-
-        private void ForceCleanupOldestSessions(int countToRemove)
-        {
-            try
-            {
-                // 按最后活动时间排序，清理最老的会话
-                var oldestSessions = _sessions
-                    .OrderBy(kvp => kvp.Value.LastActivityTime)
-                    .Take(countToRemove)
-                    .ToList();
-
-                foreach (var kvp in oldestSessions)
-                {
-                    var session = kvp.Key;
-                    if (_sessions.TryRemove(session, out _))
-                    {
-                        try
-                        {
-                            session.Dispose();
-                            Logger.Warning?.Print(LogClass.Audio, $"Force cleaned up audio session due to limit: {session.GetHashCode()}");
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.Warning?.Print(LogClass.Audio, $"Error disposing session during force cleanup: {ex.Message}");
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.Print(LogClass.Audio, $"Error in ForceCleanupOldestSessions: {ex.Message}");
-            }
-        }
-
         public void Dispose()
         {
             Dispose(true);
@@ -234,20 +110,6 @@ namespace Ryujinx.Audio.Backends.Oboe
                 {
                     _stillRunning = false;
                     _updateThread?.Join(100);
-                    
-                    // 清理所有会话
-                    foreach (var kvp in _sessions)
-                    {
-                        try
-                        {
-                            kvp.Key.Dispose();
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.Warning?.Print(LogClass.Audio, $"Error disposing session during driver shutdown: {ex.Message}");
-                        }
-                    }
-                    _sessions.Clear();
                     
                     _pauseEvent?.Dispose();
                     _updateRequiredEvent?.Dispose();
@@ -296,54 +158,15 @@ namespace Ryujinx.Audio.Backends.Oboe
                 sampleRate = 48000;
             }
 
-            // 检查会话数量限制
-            if (_sessions.Count >= MAX_SESSIONS)
-            {
-                // 尝试清理非活跃会话
-                CleanupInactiveSessions();
-                
-                // 如果仍然超过限制，抛出异常
-                if (_sessions.Count >= MAX_SESSIONS)
-                {
-                    throw new InvalidOperationException(
-                        $"Maximum number of audio sessions ({MAX_SESSIONS}) reached. " +
-                        "Please wait for existing sessions to finish or close some sessions.");
-                }
-            }
-
             var session = new OboeAudioSession(this, memoryManager, sampleFormat, sampleRate, channelCount);
-            var sessionInfo = new SessionInfo
-            {
-                LastActivityTime = DateTime.UtcNow,
-                CreationTime = DateTime.UtcNow
-            };
-            
-            if (_sessions.TryAdd(session, sessionInfo))
-            {
-                Logger.Debug?.Print(LogClass.Audio, 
-                    $"Created new audio session. Total sessions: {_sessions.Count}, " +
-                    $"SampleRate: {sampleRate}, Channels: {channelCount}, Format: {sampleFormat}");
-            }
+            _sessions.TryAdd(session, 0);
             
             return session;
         }
 
         private bool Unregister(OboeAudioSession session) 
         {
-            if (_sessions.TryRemove(session, out _))
-            {
-                Logger.Debug?.Print(LogClass.Audio, 
-                    $"Unregistered audio session. Remaining sessions: {_sessions.Count}");
-                return true;
-            }
-            return false;
-        }
-
-        // ========== 会话信息类 ==========
-        private class SessionInfo
-        {
-            public DateTime LastActivityTime { get; set; }
-            public DateTime CreationTime { get; set; }
+            return _sessions.TryRemove(session, out _);
         }
 
         // ========== 音频会话类 ==========
@@ -358,14 +181,9 @@ namespace Ryujinx.Audio.Backends.Oboe
             private readonly int _channelCount;
             private readonly uint _sampleRate;
             private readonly SampleFormat _sampleFormat;
-            private IntPtr _rendererPtr; // 移除了 readonly 修饰符
-            private int _consecutiveFailures;
-            private const int MAX_CONSECUTIVE_FAILURES = 5;
-            private DateTime _lastAudioDataTime;
-            private bool _disposed;
-            private readonly object _rendererLock = new(); // 添加锁对象用于线程安全
+            private readonly IntPtr _rendererPtr;
 
-            public bool IsActive => _active && !_disposed;
+            public bool IsActive => _active;
 
             public OboeAudioSession(
                 OboeHardwareDeviceDriver driver,
@@ -380,8 +198,6 @@ namespace Ryujinx.Audio.Backends.Oboe
                 _sampleRate = sampleRate;
                 _sampleFormat = sampleFormat;
                 _volume = 1.0f;
-                _consecutiveFailures = 0;
-                _lastAudioDataTime = DateTime.UtcNow;
                 
                 // 创建独立的渲染器实例
                 _rendererPtr = createOboeRenderer();
@@ -403,16 +219,11 @@ namespace Ryujinx.Audio.Backends.Oboe
 
             public int GetBufferedFrames()
             {
-                if (_disposed || _rendererPtr == IntPtr.Zero)
-                    return 0;
-                    
-                return getOboeRendererBufferedFrames(_rendererPtr);
+                return _rendererPtr != IntPtr.Zero ? getOboeRendererBufferedFrames(_rendererPtr) : 0;
             }
 
             public void UpdatePlaybackStatus(int bufferedFrames)
             {
-                if (_disposed) return;
-                
                 try
                 {
                     // 计算已播放的样本数
@@ -453,29 +264,14 @@ namespace Ryujinx.Audio.Backends.Oboe
 
             public override void Dispose()
             {
-                if (_disposed) return;
-                
-                _disposed = true;
                 Stop();
                 
-                lock (_rendererLock)
+                if (_rendererPtr != IntPtr.Zero)
                 {
-                    if (_rendererPtr != IntPtr.Zero)
-                    {
-                        try
-                        {
-                            shutdownOboeRenderer(_rendererPtr);
-                            destroyOboeRenderer(_rendererPtr);
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.Warning?.Print(LogClass.Audio, $"Error destroying Oboe renderer: {ex.Message}");
-                        }
-                        _rendererPtr = IntPtr.Zero;
-                    }
+                    shutdownOboeRenderer(_rendererPtr);
+                    destroyOboeRenderer(_rendererPtr);
                 }
                 
-                _queuedBuffers.Clear();
                 _driver.Unregister(this);
             }
 
@@ -486,10 +282,9 @@ namespace Ryujinx.Audio.Backends.Oboe
 
             public override void Start() 
             {
-                if (!_active && !_disposed)
+                if (!_active)
                 {
                     _active = true;
-                    _lastAudioDataTime = DateTime.UtcNow;
                 }
             }
 
@@ -504,14 +299,6 @@ namespace Ryujinx.Audio.Backends.Oboe
 
             public override void QueueBuffer(AudioBuffer buffer)
             {
-                if (_disposed) return;
-                
-                // 检查是否太久没有数据
-                if ((DateTime.UtcNow - _lastAudioDataTime).TotalSeconds > 30)
-                {
-                    ResetAudioPipeline();
-                }
-                
                 if (!_active) Start();
 
                 if (buffer.Data == null || buffer.Data.Length == 0) return;
@@ -522,150 +309,21 @@ namespace Ryujinx.Audio.Backends.Oboe
 
                 // 直接传递原始数据到独立的渲染器
                 int formatValue = SampleFormatToInt(_sampleFormat);
-                bool writeSuccess;
-                
-                lock (_rendererLock)
-                {
-                    if (_rendererPtr == IntPtr.Zero) return;
-                    writeSuccess = writeOboeRendererAudioRaw(_rendererPtr, buffer.Data, frameCount, formatValue);
-                }
+                bool writeSuccess = writeOboeRendererAudioRaw(_rendererPtr, buffer.Data, frameCount, formatValue);
 
                 if (writeSuccess)
                 {
-                    _consecutiveFailures = 0;
                     ulong sampleCount = (ulong)(frameCount * _channelCount);
                     _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, sampleCount));
                     _totalWrittenSamples += sampleCount;
-                    _lastAudioDataTime = DateTime.UtcNow;
                 }
                 else
                 {
-                    _consecutiveFailures++;
                     Logger.Warning?.Print(LogClass.Audio, 
-                        $"Audio write failed (consecutive: {_consecutiveFailures}): " +
-                        $"{frameCount} frames dropped, Format={_sampleFormat}, Rate={_sampleRate}Hz");
+                        $"Audio write failed: {frameCount} frames dropped, Format={_sampleFormat}, Rate={_sampleRate}Hz");
                     
-                    if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
-                    {
-                        // 完全重置
-                        HardReset();
-                    }
-                    else
-                    {
-                        // 重置渲染器
-                        lock (_rendererLock)
-                        {
-                            if (_rendererPtr != IntPtr.Zero)
-                            {
-                                resetOboeRenderer(_rendererPtr);
-                            }
-                        }
-                    }
-                }
-            }
-
-            private void ResetAudioPipeline()
-            {
-                if (_disposed) return;
-                
-                Logger.Info?.Print(LogClass.Audio, "Resetting audio pipeline due to inactivity");
-                Stop();
-                
-                lock (_rendererLock)
-                {
-                    if (_rendererPtr != IntPtr.Zero)
-                    {
-                        shutdownOboeRenderer(_rendererPtr);
-                    }
-                    
-                    // 重新初始化
-                    int formatValue = SampleFormatToInt(_sampleFormat);
-                    if (_rendererPtr != IntPtr.Zero && !initOboeRenderer(_rendererPtr, (int)_sampleRate, _channelCount, formatValue))
-                    {
-                        Logger.Error?.Print(LogClass.Audio, "Failed to reinitialize Oboe audio renderer after inactivity");
-                    }
-                    else if (_rendererPtr != IntPtr.Zero)
-                    {
-                        setOboeRendererVolume(_rendererPtr, _volume);
-                        Start();
-                    }
-                }
-                
-                _consecutiveFailures = 0;
-            }
-
-            private void HardReset()
-            {
-                if (_disposed) return;
-                
-                Logger.Warning?.Print(LogClass.Audio, "Performing hard reset of audio session");
-                
-                Stop();
-                
-                IntPtr newRenderer = IntPtr.Zero;
-                bool resetSuccessful = false;
-                
-                try
-                {
-                    // 销毁旧的渲染器
-                    lock (_rendererLock)
-                    {
-                        if (_rendererPtr != IntPtr.Zero)
-                        {
-                            shutdownOboeRenderer(_rendererPtr);
-                            destroyOboeRenderer(_rendererPtr);
-                            _rendererPtr = IntPtr.Zero;
-                        }
-                    }
-                    
-                    // 重新创建渲染器
-                    newRenderer = createOboeRenderer();
-                    if (newRenderer == IntPtr.Zero)
-                    {
-                        Logger.Error?.Print(LogClass.Audio, "Failed to create new Oboe renderer during hard reset");
-                        return;
-                    }
-                    
-                    // 重新初始化
-                    int formatValue = SampleFormatToInt(_sampleFormat);
-                    if (!initOboeRenderer(newRenderer, (int)_sampleRate, _channelCount, formatValue))
-                    {
-                        destroyOboeRenderer(newRenderer);
-                        Logger.Error?.Print(LogClass.Audio, "Failed to initialize new Oboe renderer during hard reset");
-                        return;
-                    }
-                    
-                    // 更新渲染器指针
-                    lock (_rendererLock)
-                    {
-                        _rendererPtr = newRenderer;
-                    }
-                    
-                    setOboeRendererVolume(newRenderer, _volume);
-                    Start();
-                    resetSuccessful = true;
-                }
-                finally
-                {
-                    if (!resetSuccessful && newRenderer != IntPtr.Zero)
-                    {
-                        // 如果重置失败，清理新创建的渲染器
-                        destroyOboeRenderer(newRenderer);
-                    }
-                }
-                
-                _consecutiveFailures = 0;
-                _totalWrittenSamples = 0;
-                _totalPlayedSamples = 0;
-                _queuedBuffers.Clear();
-                
-                if (resetSuccessful)
-                {
-                    Logger.Info?.Print(LogClass.Audio, "Audio session hard reset completed successfully");
-                }
-                else
-                {
-                    Logger.Error?.Print(LogClass.Audio, "Audio session hard reset failed");
+                    // 重置渲染器
+                    resetOboeRenderer(_rendererPtr);
                 }
             }
 
@@ -702,12 +360,9 @@ namespace Ryujinx.Audio.Backends.Oboe
             public override void SetVolume(float volume)
             {
                 _volume = Math.Clamp(volume, 0.0f, 1.0f);
-                lock (_rendererLock)
+                if (_rendererPtr != IntPtr.Zero)
                 {
-                    if (_rendererPtr != IntPtr.Zero && !_disposed)
-                    {
-                        setOboeRendererVolume(_rendererPtr, _volume);
-                    }
+                    setOboeRendererVolume(_rendererPtr, _volume);
                 }
             }
 
