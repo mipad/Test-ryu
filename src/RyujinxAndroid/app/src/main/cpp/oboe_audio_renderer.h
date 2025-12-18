@@ -19,7 +19,7 @@ enum SampleFormat {
 };
 
 struct AudioBlock {
-    static constexpr size_t BLOCK_SIZE = 960;
+    static constexpr size_t BLOCK_SIZE = 1024;
     
     uint8_t data[BLOCK_SIZE];
     size_t data_size = 0;
