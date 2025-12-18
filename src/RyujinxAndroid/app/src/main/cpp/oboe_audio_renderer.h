@@ -126,8 +126,8 @@ private:
     
     ErrorCallback m_error_callback_user;
     
-    static constexpr uint32_t AUDIO_QUEUE_SIZE = 480;
-    static constexpr uint32_t OBJECT_POOL_SIZE = 960;
+    static constexpr uint32_t AUDIO_QUEUE_SIZE = 512;
+    static constexpr uint32_t OBJECT_POOL_SIZE = 1024;
     
     LockFreeQueue<std::unique_ptr<AudioBlock>, AUDIO_QUEUE_SIZE> m_audio_queue;
     LockFreeObjectPool<AudioBlock, OBJECT_POOL_SIZE> m_object_pool;
