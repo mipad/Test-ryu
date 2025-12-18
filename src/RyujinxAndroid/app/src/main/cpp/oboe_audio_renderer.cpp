@@ -122,8 +122,8 @@ void OboeAudioRenderer::ConfigureForOpenSLES(oboe::AudioStreamBuilder& builder) 
            ->setDirection(oboe::Direction::Output)
            ->setSampleRate(m_sample_rate.load())
            ->setFormat(m_oboe_format)
-           ->setUsage(oboe::Usage::Game);
-    
+           ->setUsage(oboe::Usage::Game)
+           ->setFramesPerCallback(256)
     builder.setChannelCount(m_channel_count.load())
            ->setChannelConversionAllowed(true);
 }
@@ -196,7 +196,7 @@ void OboeAudioRenderer::ConfigureForAAudioExclusive(oboe::AudioStreamBuilder& bu
            ->setFormat(m_oboe_format)
            ->setFormatConversionAllowed(true)
            ->setUsage(oboe::Usage::Game)
-           ->setFramesPerCallback(240);
+           ->setFramesPerCallback(256);
     
     auto channel_count = m_channel_count.load();
     auto channel_mask = [&]() {
