@@ -2,9 +2,9 @@ name: Android CI Fixed
 
 on:
   push:
-    branches: [ "稳定剪裁1" ]  
+    branches: [ "稳定裁剪" ]  
   pull_request:
-    branches: [ "稳定剪裁1" ]
+    branches: [ "稳定裁剪" ]
 
 jobs:
   build:
@@ -27,7 +27,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: 稳定剪裁1
+        ref: 稳定裁剪
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
