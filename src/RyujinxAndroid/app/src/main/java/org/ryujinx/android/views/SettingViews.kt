@@ -323,7 +323,22 @@ class SettingViews {
                 loaded.value = true
             }
             
-            // 移除LaunchedEffect中关于NCE和JIT缓存淘汰互斥的逻辑
+            // 当NCE状态改变时，自动设置JIT Cache Eviction的状态（只作为默认行为，不是强制）
+            LaunchedEffect(useNce.value) {
+                if (useNce.value) {
+                    // 如果NCE开启，则关闭JIT Cache Eviction（它们互斥）
+                    enableJitCacheEviction.value = false
+                } else {
+                    // 如果NCE关闭，则自动打开JIT Cache Eviction（作为默认行为）
+                    // 但如果用户之前已经手动关闭了，我们尊重用户的选择
+                    // 这里只会在状态初始化时执行一次
+                    if (loaded.value) {
+                        // 只有在NCE刚关闭时才自动打开
+                        enableJitCacheEviction.value = true
+                    }
+                }
+            }
+            
             Scaffold(modifier = Modifier.fillMaxSize(),
                 topBar = {
                     TopAppBar(
@@ -667,18 +682,28 @@ class SettingViews {
                                 checked = useNce.value,
                                 onCheckedChange = {
                                     useNce.value = it
+                                    // 当NCE开启时，强制关闭JIT Cache Eviction（它们互斥）
+                                    if (it) {
+                                        enableJitCacheEviction.value = false
+                                    }
+                                    // 当NCE关闭时，不强制打开JIT Cache Eviction，让用户自己选择
+                                    // 用户仍然可以手动关闭它
                                 }
                             )
                             
-                            // JIT缓存淘汰选项 - 始终显示，不再与NCE互斥
-                            ModernSwitchRow(
-                                text = "Enable Jit Cache Eviction",
-                                description = "Used with JIT mode",
-                                checked = enableJitCacheEviction.value, 
-                                onCheckedChange = {
-                                    enableJitCacheEviction.value = it
+                            // 只在NCE关闭时显示JIT Cache Eviction选项
+                            AnimatedVisibility(visible = !useNce.value) {
+                                Column {
+                                    ModernSwitchRow(
+                                        text = "Enable Jit Cache Eviction",
+                                        description = "Used with JIT mode",
+                                        checked = enableJitCacheEviction.value, 
+                                        onCheckedChange = {
+                                            enableJitCacheEviction.value = it
+                                        }
+                                    )
                                 }
-                            )
+                            }
                             
                             ModernSwitchRow(
                                 text = "Enable VSync",
@@ -2740,3 +2765,4 @@ class SettingViews {
         }
     }
 }
+
