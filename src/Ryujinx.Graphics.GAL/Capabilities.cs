@@ -53,11 +53,12 @@ namespace Ryujinx.Graphics.GAL
         public readonly bool SupportsDepthClipControl;
         public readonly bool SupportsFragmentDensityMap;
         public readonly bool SupportsFragmentDensityMap2;
-        public readonly bool SupportsMultiview; // 新增：多视图支持
-        public readonly bool SupportsTimelineSemaphores; // 新增：时间线信号量支持
-        public readonly bool SupportsSynchronization2; // 新增：同步2支持
-        public readonly bool SupportsDynamicRendering; // 新增：动态渲染支持
-        public readonly bool SupportsExtendedDynamicState2; // 新增：扩展动态状态2支持
+        public readonly bool SupportsMultiview;
+        public readonly bool SupportsTimelineSemaphores;
+        public readonly bool SupportsSynchronization2;
+        public readonly bool SupportsDynamicRendering;
+        public readonly bool SupportsExtendedDynamicState2;
+        public readonly bool SupportsASTCDecodeMode; // 新增：ASTC 解码模式支持
 
         public readonly int UniformBufferSetIndex;
         public readonly int StorageBufferSetIndex;
@@ -129,11 +130,12 @@ namespace Ryujinx.Graphics.GAL
             bool supportsDepthClipControl,
             bool supportsFragmentDensityMap,
             bool supportsFragmentDensityMap2,
-            bool supportsMultiview, // 新增参数
-            bool supportsTimelineSemaphores, // 新增参数
-            bool supportsSynchronization2, // 新增参数
-            bool supportsDynamicRendering, // 新增参数
-            bool supportsExtendedDynamicState2, // 新增参数
+            bool supportsMultiview,
+            bool supportsTimelineSemaphores,
+            bool supportsSynchronization2,
+            bool supportsDynamicRendering,
+            bool supportsExtendedDynamicState2,
+            bool supportsASTCDecodeMode, // 新增参数
             int uniformBufferSetIndex,
             int storageBufferSetIndex,
             int textureSetIndex,
@@ -199,11 +201,12 @@ namespace Ryujinx.Graphics.GAL
             SupportsDepthClipControl = supportsDepthClipControl;
             SupportsFragmentDensityMap = supportsFragmentDensityMap;
             SupportsFragmentDensityMap2 = supportsFragmentDensityMap2;
-            SupportsMultiview = supportsMultiview; // 新增赋值
-            SupportsTimelineSemaphores = supportsTimelineSemaphores; // 新增赋值
-            SupportsSynchronization2 = supportsSynchronization2; // 新增赋值
-            SupportsDynamicRendering = supportsDynamicRendering; // 新增赋值
-            SupportsExtendedDynamicState2 = supportsExtendedDynamicState2; // 新增赋值
+            SupportsMultiview = supportsMultiview;
+            SupportsTimelineSemaphores = supportsTimelineSemaphores;
+            SupportsSynchronization2 = supportsSynchronization2;
+            SupportsDynamicRendering = supportsDynamicRendering;
+            SupportsExtendedDynamicState2 = supportsExtendedDynamicState2;
+            SupportsASTCDecodeMode = supportsASTCDecodeMode; // 新增赋值
             UniformBufferSetIndex = uniformBufferSetIndex;
             StorageBufferSetIndex = storageBufferSetIndex;
             TextureSetIndex = textureSetIndex;
