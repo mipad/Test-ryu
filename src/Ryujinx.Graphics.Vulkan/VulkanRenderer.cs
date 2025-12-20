@@ -18,30 +18,6 @@ using SamplerCreateInfo = Ryujinx.Graphics.GAL.SamplerCreateInfo;
 
 namespace Ryujinx.Graphics.Vulkan
 {
-    // 手动定义 VK_EXT_astc_decode_mode 扩展的结构体
-    // 因为 Silk.NET.Vulkan 2.23.0 可能不包含这个扩展
-    namespace Extensions
-    {
-        // ASTC 解码模式特性
-        public struct PhysicalDeviceASTCDecodeFeaturesEXT
-        {
-            public StructureType SType;
-            public unsafe void* PNext;
-            public Bool32 DecodeModeSharedExponent;
-            public Bool32 DecodeModeExplicit;
-        }
-
-        // ASTC 解码模式属性
-        public struct PhysicalDeviceASTCDecodePropertiesEXT
-        {
-            public StructureType SType;
-            public unsafe void* PNext;
-            public Bool32 DecodeModeSharedExponent;
-            public Bool32 DecodeModeExplicit;
-            public Bool32 DecodeModeCompressed;
-        }
-    }
-
     unsafe public sealed class VulkanRenderer : IRenderer
     {
         private VulkanInstance _instance;
@@ -73,8 +49,6 @@ namespace Ryujinx.Graphics.Vulkan
         internal ExtTransformFeedback TransformFeedbackApi { get; private set; }
         internal KhrDrawIndirectCount DrawIndirectCountApi { get; private set; }
         internal ExtAttachmentFeedbackLoopDynamicState DynamicFeedbackLoopApi { get; private set; }
-        
-        // 注意：Silk.NET.Vulkan 2.23.0 中没有 ExtASTCDecodeMode，所以我们不定义这个属性
         
         internal bool SupportsFragmentDensityMap { get; private set; }
         internal bool SupportsFragmentDensityMap2 { get; private set; }
@@ -171,6 +145,24 @@ namespace Ryujinx.Graphics.Vulkan
                 MVKInitialization.Initialize();
                 IsMoltenVk = true;
             }
+        }
+
+        // 内部 ASTC 解码模式结构体定义
+        internal struct ASTCDecodeFeaturesEXT
+        {
+            public StructureType SType;
+            public unsafe void* PNext;
+            public uint DecodeModeSharedExponent;
+            public uint DecodeModeExplicit;
+        }
+
+        internal struct ASTCDecodePropertiesEXT
+        {
+            public StructureType SType;
+            public unsafe void* PNext;
+            public uint DecodeModeSharedExponent;
+            public uint DecodeModeExplicit;
+            public uint DecodeModeCompressed;
         }
 
         private unsafe void LoadFeatures(uint maxQueueCount, uint queueFamilyIndex)
@@ -322,7 +314,7 @@ namespace Ryujinx.Graphics.Vulkan
             // 添加 ASTC 解码模式属性到属性链
             if (SupportsASTCDecodeMode)
             {
-                var propertiesAstcDecode = new Extensions.PhysicalDeviceASTCDecodePropertiesEXT
+                var propertiesAstcDecode = new ASTCDecodePropertiesEXT
                 {
                     SType = (StructureType)1000347001, // VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ASTC_DECODE_PROPERTIES_EXT
                 };
@@ -379,7 +371,7 @@ namespace Ryujinx.Graphics.Vulkan
             // 添加 ASTC 解码模式特性到特性链
             if (SupportsASTCDecodeMode)
             {
-                var featuresAstcDecode = new Extensions.PhysicalDeviceASTCDecodeFeaturesEXT
+                var featuresAstcDecode = new ASTCDecodeFeaturesEXT
                 {
                     SType = (StructureType)1000347000, // VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ASTC_DECODE_FEATURES_EXT
                 };
