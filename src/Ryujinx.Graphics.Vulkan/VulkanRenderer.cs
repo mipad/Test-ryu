@@ -380,10 +380,11 @@ namespace Ryujinx.Graphics.Vulkan
                 features2.PNext = &featuresAstcDecode;
             }
 
-            PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
-            {
-                SType = StructureType.PhysicalDeviceTextureCompressionAstchdrFeaturesExt,
-            };
+            
+                PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
+               {
+                SType = Silk.NET.Vulkan.StructureType.PhysicalDeviceTextureCompressionAstchdrFeaturesExt,
+               };
 
             if (_physicalDevice.IsDeviceExtensionPresent("VK_EXT_texture_compression_astc_hdr"))
             {
