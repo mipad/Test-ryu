@@ -151,6 +151,7 @@ namespace Ryujinx.Graphics.OpenGL
                 needsFragmentOutputSpecialization: false,
                 reduceShaderPrecision: false,
                 supportsAstcCompression: HwCapabilities.SupportsAstcCompression,
+                supportsASTCDecodeMode: false, // 添加缺失的参数
                 supportsBc123Compression: HwCapabilities.SupportsTextureCompressionS3tc,
                 supportsBc45Compression: HwCapabilities.SupportsTextureCompressionRgtc,
                 supportsBc67Compression: true,
