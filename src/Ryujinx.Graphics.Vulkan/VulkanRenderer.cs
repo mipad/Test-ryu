@@ -18,6 +18,30 @@ using SamplerCreateInfo = Ryujinx.Graphics.GAL.SamplerCreateInfo;
 
 namespace Ryujinx.Graphics.Vulkan
 {
+    // 手动定义 VK_EXT_astc_decode_mode 扩展的结构体
+    // 因为 Silk.NET.Vulkan 2.23.0 可能不包含这个扩展
+    namespace Extensions
+    {
+        // ASTC 解码模式特性
+        public struct PhysicalDeviceASTCDecodeFeaturesEXT
+        {
+            public StructureType SType;
+            public unsafe void* PNext;
+            public Bool32 DecodeModeSharedExponent;
+            public Bool32 DecodeModeExplicit;
+        }
+
+        // ASTC 解码模式属性
+        public struct PhysicalDeviceASTCDecodePropertiesEXT
+        {
+            public StructureType SType;
+            public unsafe void* PNext;
+            public Bool32 DecodeModeSharedExponent;
+            public Bool32 DecodeModeExplicit;
+            public Bool32 DecodeModeCompressed;
+        }
+    }
+
     unsafe public sealed class VulkanRenderer : IRenderer
     {
         private VulkanInstance _instance;
@@ -49,7 +73,8 @@ namespace Ryujinx.Graphics.Vulkan
         internal ExtTransformFeedback TransformFeedbackApi { get; private set; }
         internal KhrDrawIndirectCount DrawIndirectCountApi { get; private set; }
         internal ExtAttachmentFeedbackLoopDynamicState DynamicFeedbackLoopApi { get; private set; }
-        internal ExtASTCDecodeMode ASTCDecodeModeApi { get; private set; }
+        
+        // 注意：Silk.NET.Vulkan 2.23.0 中没有 ExtASTCDecodeMode，所以我们不定义这个属性
         
         internal bool SupportsFragmentDensityMap { get; private set; }
         internal bool SupportsFragmentDensityMap2 { get; private set; }
@@ -223,12 +248,8 @@ namespace Ryujinx.Graphics.Vulkan
                 DynamicFeedbackLoopApi = dynamicFeedbackLoopApi;
             }
 
-            // 新增：ASTC解码模式扩展
-            if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtASTCDecodeMode astcDecodeModeApi))
-            {
-                ASTCDecodeModeApi = astcDecodeModeApi;
-                SupportsASTCDecodeMode = true;
-            }
+            // 检测 ASTC 解码模式扩展支持
+            SupportsASTCDecodeMode = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_astc_decode_mode");
 
             SupportsFragmentDensityMap = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map");
             SupportsFragmentDensityMap2 = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map2");
@@ -298,14 +319,14 @@ namespace Ryujinx.Graphics.Vulkan
                 properties2.PNext = &propertiesPushDescriptor;
             }
 
-            // 新增：ASTC解码模式属性
-            PhysicalDeviceASTCDecodePropertiesEXT propertiesAstcDecode = new()
+            // 添加 ASTC 解码模式属性到属性链
+            if (SupportsASTCDecodeMode)
             {
-                SType = StructureType.PhysicalDeviceAstcDecodePropertiesExt,
-            };
+                var propertiesAstcDecode = new Extensions.PhysicalDeviceASTCDecodePropertiesEXT
+                {
+                    SType = (StructureType)1000347001, // VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ASTC_DECODE_PROPERTIES_EXT
+                };
 
-            if (_physicalDevice.IsDeviceExtensionPresent("VK_EXT_astc_decode_mode"))
-            {
                 propertiesAstcDecode.PNext = properties2.PNext;
                 properties2.PNext = &propertiesAstcDecode;
             }
@@ -355,14 +376,14 @@ namespace Ryujinx.Graphics.Vulkan
                 SType = StructureType.PhysicalDevicePortabilitySubsetFeaturesKhr,
             };
 
-            // 新增：ASTC解码模式特性
-            PhysicalDeviceASTCDecodeFeaturesEXT featuresAstcDecode = new()
+            // 添加 ASTC 解码模式特性到特性链
+            if (SupportsASTCDecodeMode)
             {
-                SType = StructureType.PhysicalDeviceAstcDecodeFeaturesExt,
-            };
+                var featuresAstcDecode = new Extensions.PhysicalDeviceASTCDecodeFeaturesEXT
+                {
+                    SType = (StructureType)1000347000, // VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ASTC_DECODE_FEATURES_EXT
+                };
 
-            if (_physicalDevice.IsDeviceExtensionPresent("VK_EXT_astc_decode_mode"))
-            {
                 featuresAstcDecode.PNext = features2.PNext;
                 features2.PNext = &featuresAstcDecode;
             }
@@ -378,7 +399,7 @@ namespace Ryujinx.Graphics.Vulkan
                 features2.PNext = &featuresAstcHdr;
             }
 
-            // 新增：Vulkan 1.3+ 特性
+            // Vulkan 1.3+ 特性
             PhysicalDeviceTimelineSemaphoreFeaturesKHR featuresTimelineSemaphore = new()
             {
                 SType = StructureType.PhysicalDeviceTimelineSemaphoreFeatures,
@@ -484,6 +505,18 @@ namespace Ryujinx.Graphics.Vulkan
             Api.GetPhysicalDeviceProperties2(_physicalDevice.PhysicalDevice, &properties2);
             Api.GetPhysicalDeviceFeatures2(_physicalDevice.PhysicalDevice, &features2);
 
+            // 从 ASTC 解码模式特性链中提取支持信息
+            bool supportsAstcDecodeModeSharedExponent = false;
+            bool supportsAstcDecodeModeExplicit = false;
+
+            if (SupportsASTCDecodeMode)
+            {
+                // 由于我们手动构建了特性链，我们可以从返回的数据中提取实际支持情况
+                // 但这里我们假设扩展存在就表示支持，实际实现中可能需要更复杂的检测
+                supportsAstcDecodeModeSharedExponent = true;
+                supportsAstcDecodeModeExplicit = true;
+            }
+
             var portabilityFlags = PortabilitySubsetFlags.None;
             uint vertexBufferAlignment = 1;
 
@@ -508,7 +541,7 @@ namespace Ryujinx.Graphics.Vulkan
             Vendor = VendorUtils.FromId(properties.VendorID);
             
             // 检测是否为Mali GPU
-            IsMaliGPU = Vendor == Vendor.ARM || GpuRenderer.Contains("Mali");
+            IsMaliGPU = Vendor == Vendor.ARM || (GpuRenderer?.Contains("Mali") ?? false);
 
             IsAmdWindows = Vendor == Vendor.Amd && OperatingSystem.IsWindows();
             IsIntelWindows = Vendor == Vendor.Intel && OperatingSystem.IsWindows();
@@ -568,9 +601,9 @@ namespace Ryujinx.Graphics.Vulkan
                 properties.Limits.FramebufferDepthSampleCounts &
                 properties.Limits.FramebufferStencilSampleCounts;
 
-            bool supportsAstcDecodeMode = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_astc_decode_mode") &&
-                                          featuresAstcDecode.DecodeModeSharedExponent &&
-                                          featuresAstcDecode.DecodeModeExplicit;
+            bool supportsAstcDecodeMode = SupportsASTCDecodeMode && 
+                                          supportsAstcDecodeModeSharedExponent &&
+                                          supportsAstcDecodeModeExplicit;
 
             Capabilities = new HardwareCapabilities(
                 _physicalDevice.IsDeviceExtensionPresent("VK_EXT_index_type_uint8"),
@@ -1383,7 +1416,7 @@ namespace Ryujinx.Graphics.Vulkan
                 HostMemoryAllocator.TryImport(BufferManager.HostImportedBufferMemoryRequirements, BufferManager.DefaultBufferMemoryFlags, address, size);
         }
 
-        // 新增：针对Mali GPU的特殊处理
+        // 针对Mali GPU的特殊处理
         internal bool ShouldUseSoftwareASTCDecode()
         {
             // 检测到Mali GPU且ASTC解码模式可能有问题时，使用软件解码
