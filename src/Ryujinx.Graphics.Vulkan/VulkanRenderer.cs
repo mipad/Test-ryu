@@ -890,9 +890,9 @@ namespace Ryujinx.Graphics.Vulkan
                 GpuVendor,
                 memoryType: memoryType,
                 hasFrontFacingBug: IsIntelWindows,
-                hasVectorIndexingBug: IsQualcommProprietary,
+                hasVectorIndexingBug: IsQualcommProprietary || Vendor == Vendor.ARM,
                 needsFragmentOutputSpecialization: IsMoltenVk,
-                reduceShaderPrecision: IsMoltenVk,
+                reduceShaderPrecision: IsMoltenVk || Vendor == Vendor.ARM,
                 supportsAstcCompression: features2.Features.TextureCompressionAstcLdr && supportsAstcFormats,
                 supportsBc123Compression: supportsBc123CompressionFormat,
                 supportsBc45Compression: supportsBc45CompressionFormat,
@@ -1161,7 +1161,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         public bool SupportsRenderPassBarrier(PipelineStageFlags flags)
         {
-            return !(IsMoltenVk || IsQualcommProprietary);
+            return !(IsMoltenVk || IsQualcommProprietary || Vendor == Vendor.ARM);
         }
 
         // ===== Surface/Present Lifecycle helpers =====
@@ -1328,3 +1328,4 @@ namespace Ryujinx.Graphics.Vulkan
         }        
     }
 }
+
