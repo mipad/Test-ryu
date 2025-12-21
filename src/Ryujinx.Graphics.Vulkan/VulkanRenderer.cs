@@ -969,9 +969,9 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 GpuVendor,
                 memoryType: memoryType,
                 hasFrontFacingBug: IsIntelWindows,
-                hasVectorIndexingBug: IsQualcommProprietary,
+                hasVectorIndexingBug: IsQualcommProprietary || Vendor == Vendor.ARM,
                 needsFragmentOutputSpecialization: IsMoltenVk,
-                reduceShaderPrecision: IsMoltenVk,
+                reduceShaderPrecision: IsMoltenVk || Vendor == Vendor.ARM,
                 supportsAstcCompression: features2.Features.TextureCompressionAstcLdr && supportsAstcFormats,
                 supportsBc123Compression: supportsBc123CompressionFormat,
                 supportsBc45Compression: supportsBc45CompressionFormat,
@@ -1243,7 +1243,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
 
         public bool SupportsRenderPassBarrier(PipelineStageFlags flags)
         {
-            return !(IsMoltenVk || IsQualcommProprietary);
+            return !(IsMoltenVk || IsQualcommProprietary || Vendor == Vendor.ARM);
         }
 
         // ===== Surface/Present Lifecycle helpers =====
@@ -1417,3 +1417,4 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         }
     }
 }
+
