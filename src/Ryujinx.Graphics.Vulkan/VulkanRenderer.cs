@@ -892,7 +892,7 @@ namespace Ryujinx.Graphics.Vulkan
                 hasFrontFacingBug: IsIntelWindows,
                 hasVectorIndexingBug: IsQualcommProprietary,
                 needsFragmentOutputSpecialization: IsMoltenVk,
-                reduceShaderPrecision: IsMoltenVk,
+                reduceShaderPrecision: IsMoltenVk || Vendor == Vendor.ARM,
                 supportsAstcCompression: features2.Features.TextureCompressionAstcLdr && supportsAstcFormats,
                 supportsBc123Compression: supportsBc123CompressionFormat,
                 supportsBc45Compression: supportsBc45CompressionFormat,
