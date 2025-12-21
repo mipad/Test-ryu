@@ -1161,7 +1161,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         public bool SupportsRenderPassBarrier(PipelineStageFlags flags)
         {
-            return !(IsMoltenVk || IsQualcommProprietary);
+            return !(IsMoltenVk || IsQualcommProprietary || Vendor == Vendor.ARM);
         }
 
         // ===== Surface/Present Lifecycle helpers =====
