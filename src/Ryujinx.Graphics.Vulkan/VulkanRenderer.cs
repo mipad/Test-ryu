@@ -890,7 +890,7 @@ namespace Ryujinx.Graphics.Vulkan
                 GpuVendor,
                 memoryType: memoryType,
                 hasFrontFacingBug: IsIntelWindows,
-                hasVectorIndexingBug: IsQualcommProprietary,
+                hasVectorIndexingBug: IsQualcommProprietary || Vendor == Vendor.ARM,
                 needsFragmentOutputSpecialization: IsMoltenVk,
                 reduceShaderPrecision: IsMoltenVk || Vendor == Vendor.ARM,
                 supportsAstcCompression: features2.Features.TextureCompressionAstcLdr && supportsAstcFormats,
