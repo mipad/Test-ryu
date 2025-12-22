@@ -715,3 +715,4 @@ namespace Ryujinx.Graphics.Gpu.Image
         }
     }
 }
+
