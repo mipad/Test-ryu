@@ -262,7 +262,7 @@ namespace Ryujinx.Graphics.Shader.Translation.Optimizations
                             // 尝试获取表达式字符串以便调试
                             if (operation.SourcesCount > 0)
                             {
-                                string expr = GetOperandExpression(operation.GetSource(0), block);
+                                string expr = GetOperandExpression(operation.GetSource(0), block, gpuAccessor);
                                 gpuAccessor.Log($"  Address expression: {expr}");
                             }
 
@@ -292,7 +292,7 @@ namespace Ryujinx.Graphics.Shader.Translation.Optimizations
                         {
                             Operand value = operation.GetSource(operation.SourcesCount - 1);
 
-                            var result = FindUniqueBaseAddressCb(gtsContext, block, value, needsOffset: false);
+                            var result = FindUniqueBaseAddressCb(gtsContext, block, value, needsOffset: false, gpuAccessor);
                             if (result.Found)
                             {
                                 uint targetCb = PackCbSlotAndOffset(result.SbCbSlot, result.SbCbOffset);
@@ -341,7 +341,7 @@ namespace Ryujinx.Graphics.Shader.Translation.Optimizations
             }
             // ===================================================================
 
-            SearchResult result = FindUniqueBaseAddressCb(gtsContext, block, globalAddress, needsOffset: true);
+            SearchResult result = FindUniqueBaseAddressCb(gtsContext, block, globalAddress, needsOffset: true, gpuAccessor);
 
             if (result.Found)
             {
@@ -412,7 +412,7 @@ namespace Ryujinx.Graphics.Shader.Translation.Optimizations
                 // ==================== 方案四：尝试增强搜索 ====================
                 gpuAccessor.Log($"Initial search failed for operation {operation.Inst}, trying enhanced search...");
                 
-                if (TryEnhancedSearch(gtsContext, block, globalAddress, out result))
+                if (TryEnhancedSearch(gtsContext, block, globalAddress, gpuAccessor, out result))
                 {
                     gpuAccessor.Log($"Enhanced search found storage buffer at slot {result.SbCbSlot}, offset {result.SbCbOffset}");
                     
@@ -436,7 +436,7 @@ namespace Ryujinx.Graphics.Shader.Translation.Optimizations
                     // ==================== 方案四：改进错误信息 ====================
                     gpuAccessor.Log($"Failed to find storage buffer for global memory operation \"{operation.Inst}\". ");
                     gpuAccessor.Log($"  Operation context: Block {block.Index}, StorageKind: {operation.StorageKind}");
-                    gpuAccessor.Log($"  Address expression: {GetOperandExpression(globalAddress, block)}");
+                    gpuAccessor.Log($"  Address expression: {GetOperandExpression(globalAddress, block, gpuAccessor)}");
                     gpuAccessor.Log($"  Sources count: {operation.SourcesCount}");
                     
                     for (int i = 0; i < operation.SourcesCount; i++)
@@ -457,7 +457,7 @@ namespace Ryujinx.Graphics.Shader.Translation.Optimizations
         /// <summary>
         /// 尝试从复杂操作中提取常量缓冲区引用
         /// </summary>
-        private static SearchResult TryExtractCbFromComplexOperation(Operation operation, BasicBlock block)
+        private static SearchResult TryExtractCbFromComplexOperation(Operation operation, BasicBlock block, IGpuAccessor gpuAccessor)
         {
             if (operation == null) return SearchResult.NotFound;
             
@@ -470,7 +470,7 @@ namespace Ryujinx.Graphics.Shader.Translation.Optimizations
                 if (source.Type == OperandType.ConstantBuffer)
                 {
                     gpuAccessor.Log($"  Found direct ConstantBuffer at source[{i}]");
-                    return GetBaseAddressCbWithOffset(source, Const(0), 0);
+                    return GetBaseAddressCbWithOffset(source, Const(0), 0, gpuAccessor);
                 }
             }
             
@@ -481,7 +481,7 @@ namespace Ryujinx.Graphics.Shader.Translation.Optimizations
                 if (source.AsgOp is Operation nestedOp)
                 {
                     gpuAccessor.Log($"  Recursing into nested operation {nestedOp.Inst} at source[{i}]");
-                    var result = TryExtractCbFromComplexOperation(nestedOp, block);
+                    var result = TryExtractCbFromComplexOperation(nestedOp, block, gpuAccessor);
                     if (result.Found) 
                     {
                         gpuAccessor.Log($"  Found ConstantBuffer in nested operation");
@@ -495,7 +495,7 @@ namespace Ryujinx.Graphics.Shader.Translation.Optimizations
                     if (lastOp != source && lastOp.AsgOp is Operation assignOp)
                     {
                         gpuAccessor.Log($"  Following local variable to assignment operation {assignOp.Inst}");
-                        var result = TryExtractCbFromComplexOperation(assignOp, block);
+                        var result = TryExtractCbFromComplexOperation(assignOp, block, gpuAccessor);
                         if (result.Found) return result;
                     }
                 }
@@ -517,7 +517,7 @@ namespace Ryujinx.Graphics.Shader.Translation.Optimizations
                         if (source.Type == OperandType.ConstantBuffer)
                         {
                             gpuAccessor.Log($"  Found ConstantBuffer in arithmetic operation at source[{otherIdx}]");
-                            return GetBaseAddressCbWithOffset(source, Const(0), 0);
+                            return GetBaseAddressCbWithOffset(source, Const(0), 0, gpuAccessor);
                         }
                     }
                     break;
@@ -532,7 +532,7 @@ namespace Ryujinx.Graphics.Shader.Translation.Optimizations
                         if (source.Type == OperandType.ConstantBuffer)
                         {
                             gpuAccessor.Log($"  Found ConstantBuffer in bitwise operation at source[{i}]");
-                            return GetBaseAddressCbWithOffset(source, Const(0), 0);
+                            return GetBaseAddressCbWithOffset(source, Const(0), 0, gpuAccessor);
                         }
                     }
                     break;
@@ -544,7 +544,7 @@ namespace Ryujinx.Graphics.Shader.Translation.Optimizations
         /// <summary>
         /// 增强的搜索方法，尝试更多查找策略
         /// </summary>
-        private static bool TryEnhancedSearch(GtsContext gtsContext, BasicBlock block, Operand globalAddress, out SearchResult result)
+        private static bool TryEnhancedSearch(GtsContext gtsContext, BasicBlock block, Operand globalAddress, IGpuAccessor gpuAccessor, out SearchResult result)
         {
             result = SearchResult.NotFound;
             
@@ -552,7 +552,7 @@ namespace Ryujinx.Graphics.Shader.Translation.Optimizations
             if (globalAddress.AsgOp is Operation operation)
             {
                 gpuAccessor.Log($"TryEnhancedSearch: Analyzing operation {operation.Inst}");
-                result = TryExtractCbFromComplexOperation(operation, block);
+                result = TryExtractCbFromComplexOperation(operation, block, gpuAccessor);
                 if (result.Found)
                 {
                     return true;
@@ -560,7 +560,7 @@ namespace Ryujinx.Graphics.Shader.Translation.Optimizations
             }
             
             // 2. 尝试查找内存中的基地址
-            result = FindBaseAddressCbFromMemory(gtsContext, globalAddress.AsgOp as Operation, 0, needsOffset: true);
+            result = FindBaseAddressCbFromMemory(gtsContext, globalAddress.AsgOp as Operation, 0, needsOffset: true, gpuAccessor);
             if (result.Found)
             {
                 return true;
@@ -577,7 +577,7 @@ namespace Ryujinx.Graphics.Shader.Translation.Optimizations
                 for (int i = 0; i < phi.SourcesCount; i++)
                 {
                     Operand source = phi.GetSource(i);
-                    var tempResult = FindUniqueBaseAddressCb(gtsContext, phi.GetBlock(i), source, needsOffset: false);
+                    var tempResult = FindUniqueBaseAddressCb(gtsContext, phi.GetBlock(i), source, needsOffset: false, gpuAccessor);
                     if (tempResult.Found)
                     {
                         uniqueCbs.Add((tempResult.SbCbSlot, tempResult.SbCbOffset));
@@ -655,7 +655,7 @@ namespace Ryujinx.Graphics.Shader.Translation.Optimizations
         /// <summary>
         /// 获取操作数的表达式字符串（用于调试）
         /// </summary>
-        private static string GetOperandExpression(Operand operand, BasicBlock block)
+        private static string GetOperandExpression(Operand operand, BasicBlock block, IGpuAccessor gpuAccessor)
         {
             if (operand == null) return "null";
             
@@ -923,7 +923,7 @@ namespace Ryujinx.Graphics.Shader.Translation.Optimizations
             }
             else
             {
-                SearchResult result = FindUniqueBaseAddressCb(gtsContext, block, operation.GetSource(0), needsOffset: false);
+                SearchResult result = FindUniqueBaseAddressCb(gtsContext, block, operation.GetSource(0), needsOffset: false, gpuAccessor);
 
                 if (result.Found)
                 {
@@ -938,7 +938,7 @@ namespace Ryujinx.Graphics.Shader.Translation.Optimizations
                     BasicBlock phiBlock = phi.GetBlock(srcIndex);
                     Operand phiSource = phi.GetSource(srcIndex);
 
-                    SearchResult result = FindUniqueBaseAddressCb(gtsContext, phiBlock, phiSource, needsOffset: false);
+                    SearchResult result = FindUniqueBaseAddressCb(gtsContext, phiBlock, phiSource, needsOffset: false, gpuAccessor);
 
                     if (result.Found)
                     {
@@ -966,7 +966,7 @@ namespace Ryujinx.Graphics.Shader.Translation.Optimizations
                 gpuAccessor.Log($"  Operation details: Block={block.Index}, StorageKind={operation.StorageKind}");
                 
                 // 尝试记录全局地址的详细信息
-                string expr = GetOperandExpression(operation.GetSource(0), block);
+                string expr = GetOperandExpression(operation.GetSource(0), block, gpuAccessor);
                 gpuAccessor.Log($"  Global address expression: {expr}");
                 
                 if (globalAddress.AsgOp is PhiNode phiNode)
@@ -1091,124 +1091,6 @@ namespace Ryujinx.Graphics.Shader.Translation.Optimizations
 
             return true;
         }
-
-        // ==================== 方案一：修改 FindUniqueBaseAddressCb 方法 ====================
-        private static SearchResult FindUniqueBaseAddressCb(GtsContext gtsContext, BasicBlock block, Operand globalAddress, bool needsOffset)
-        {
-            globalAddress = Utils.FindLastOperation(globalAddress, block);
-
-            if (globalAddress.Type == OperandType.ConstantBuffer)
-            {
-                gpuAccessor.Log($"FindUniqueBaseAddressCb: Direct ConstantBuffer found");
-                return GetBaseAddressCbWithOffset(globalAddress, Const(0), 0);
-            }
-
-            Operation operation = globalAddress.AsgOp as Operation;
-
-            if (operation == null || operation.Inst != Instruction.Add)
-            {
-                gpuAccessor.Log($"FindUniqueBaseAddressCb: Operation is null or not Add (is {operation?.Inst.ToString() ?? "null"})");
-                
-                // ==================== 方案一：扩展搜索范围 ====================
-                if (operation != null)
-                {
-                    gpuAccessor.Log($"  Trying complex operation extraction for {operation.Inst}");
-                    var complexResult = TryExtractCbFromComplexOperation(operation, block);
-                    if (complexResult.Found)
-                    {
-                        gpuAccessor.Log($"  Found ConstantBuffer through complex operation extraction");
-                        return complexResult;
-                    }
-                }
-                // =============================================================
-                
-                return FindBaseAddressCbFromMemory(gtsContext, operation, 0, needsOffset);
-            }
-
-            gpuAccessor.Log($"FindUniqueBaseAddressCb: Add operation found, analyzing sources");
-
-            Operand src1 = operation.GetSource(0);
-            Operand src2 = operation.GetSource(1);
-
-            int constOffset = 0;
-
-            if ((src1.Type == OperandType.LocalVariable && src2.Type == OperandType.Constant) ||
-                (src2.Type == OperandType.LocalVariable && src1.Type == OperandType.Constant))
-            {
-                Operand baseAddr;
-                Operand offset;
-
-                if (src1.Type == OperandType.LocalVariable)
-                {
-                    baseAddr = Utils.FindLastOperation(src1, block);
-                    offset = src2;
-                }
-                else
-                {
-                    baseAddr = Utils.FindLastOperation(src2, block);
-                    offset = src1;
-                }
-
-                gpuAccessor.Log($"  Pattern: LocalVariable + Constant, offset value: {offset.Value}");
-                var result = GetBaseAddressCbWithOffset(baseAddr, offset, 0);
-                if (result.Found)
-                {
-                    gpuAccessor.Log($"  Found ConstantBuffer with offset");
-                    return result;
-                }
-
-                constOffset = offset.Value;
-                operation = baseAddr.AsgOp as Operation;
-
-                if (operation == null || operation.Inst != Instruction.Add)
-                {
-                    gpuAccessor.Log($"  Base address is not Add operation (is {operation?.Inst.ToString() ?? "null"})");
-                    
-                    // ==================== 方案一：扩展搜索范围 ====================
-                    if (operation != null)
-                    {
-                        gpuAccessor.Log($"    Trying complex operation extraction for base address");
-                        var complexResult = TryExtractCbFromComplexOperation(operation, block);
-                        if (complexResult.Found)
-                        {
-                            gpuAccessor.Log($"    Found ConstantBuffer through complex operation extraction");
-                            return new SearchResult(complexResult.SbCbSlot, complexResult.SbCbOffset, 
-                                                   complexResult.Offset, complexResult.ConstOffset + constOffset);
-                        }
-                    }
-                    // =============================================================
-                    
-                    return FindBaseAddressCbFromMemory(gtsContext, operation, constOffset, needsOffset);
-                }
-                
-                gpuAccessor.Log($"  Base address is also Add operation, continuing analysis");
-            }
-
-            src1 = operation.GetSource(0);
-            src2 = operation.GetSource(1);
-
-            gpuAccessor.Log($"  Add operation sources: src1 type={src1.Type}, src2 type={src2.Type}");
-
-            // If we have two possible results, we give preference to the ones from
-            // the driver reserved constant buffer, as those are the ones that
-            // contains the base address.
-
-            // If both are constant buffer, give preference to the second operand,
-            // because constant buffer are always encoded as the second operand,
-            // so the second operand will always be the one from the last instruction.
-
-            if (src1.Type != OperandType.ConstantBuffer ||
-                (src1.Type == OperandType.ConstantBuffer && src2.Type == OperandType.ConstantBuffer) ||
-                (src2.Type == OperandType.ConstantBuffer && src2.GetCbufSlot() == DriverReservedCb))
-            {
-                gpuAccessor.Log($"  Checking src2 as potential ConstantBuffer");
-                return GetBaseAddressCbWithOffset(src2, src1, constOffset);
-            }
-
-            gpuAccessor.Log($"  Checking src1 as potential ConstantBuffer");
-            return GetBaseAddressCbWithOffset(src1, src2, constOffset);
-        }
-        // ==================================================================================
 
         private static uint PackCbSlotAndOffset(int cbSlot, int cbOffset)
         {
@@ -1416,7 +1298,125 @@ namespace Ryujinx.Graphics.Shader.Translation.Optimizations
             return oldValue;
         }
 
-        private static SearchResult GetBaseAddressCbWithOffset(Operand baseAddress, Operand offset, int constOffset)
+        // ==================== 方案一：修改 FindUniqueBaseAddressCb 方法 ====================
+        private static SearchResult FindUniqueBaseAddressCb(GtsContext gtsContext, BasicBlock block, Operand globalAddress, bool needsOffset, IGpuAccessor gpuAccessor)
+        {
+            globalAddress = Utils.FindLastOperation(globalAddress, block);
+
+            if (globalAddress.Type == OperandType.ConstantBuffer)
+            {
+                gpuAccessor.Log($"FindUniqueBaseAddressCb: Direct ConstantBuffer found");
+                return GetBaseAddressCbWithOffset(globalAddress, Const(0), 0, gpuAccessor);
+            }
+
+            Operation operation = globalAddress.AsgOp as Operation;
+
+            if (operation == null || operation.Inst != Instruction.Add)
+            {
+                gpuAccessor.Log($"FindUniqueBaseAddressCb: Operation is null or not Add (is {operation?.Inst.ToString() ?? "null"})");
+                
+                // ==================== 方案一：扩展搜索范围 ====================
+                if (operation != null)
+                {
+                    gpuAccessor.Log($"  Trying complex operation extraction for {operation.Inst}");
+                    var complexResult = TryExtractCbFromComplexOperation(operation, block, gpuAccessor);
+                    if (complexResult.Found)
+                    {
+                        gpuAccessor.Log($"  Found ConstantBuffer through complex operation extraction");
+                        return complexResult;
+                    }
+                }
+                // =============================================================
+                
+                return FindBaseAddressCbFromMemory(gtsContext, operation, 0, needsOffset, gpuAccessor);
+            }
+
+            gpuAccessor.Log($"FindUniqueBaseAddressCb: Add operation found, analyzing sources");
+
+            Operand src1 = operation.GetSource(0);
+            Operand src2 = operation.GetSource(1);
+
+            int constOffset = 0;
+
+            if ((src1.Type == OperandType.LocalVariable && src2.Type == OperandType.Constant) ||
+                (src2.Type == OperandType.LocalVariable && src1.Type == OperandType.Constant))
+            {
+                Operand baseAddr;
+                Operand offset;
+
+                if (src1.Type == OperandType.LocalVariable)
+                {
+                    baseAddr = Utils.FindLastOperation(src1, block);
+                    offset = src2;
+                }
+                else
+                {
+                    baseAddr = Utils.FindLastOperation(src2, block);
+                    offset = src1;
+                }
+
+                gpuAccessor.Log($"  Pattern: LocalVariable + Constant, offset value: {offset.Value}");
+                var result = GetBaseAddressCbWithOffset(baseAddr, offset, 0, gpuAccessor);
+                if (result.Found)
+                {
+                    gpuAccessor.Log($"  Found ConstantBuffer with offset");
+                    return result;
+                }
+
+                constOffset = offset.Value;
+                operation = baseAddr.AsgOp as Operation;
+
+                if (operation == null || operation.Inst != Instruction.Add)
+                {
+                    gpuAccessor.Log($"  Base address is not Add operation (is {operation?.Inst.ToString() ?? "null"})");
+                    
+                    // ==================== 方案一：扩展搜索范围 ====================
+                    if (operation != null)
+                    {
+                        gpuAccessor.Log($"    Trying complex operation extraction for base address");
+                        var complexResult = TryExtractCbFromComplexOperation(operation, block, gpuAccessor);
+                        if (complexResult.Found)
+                        {
+                            gpuAccessor.Log($"    Found ConstantBuffer through complex operation extraction");
+                            return new SearchResult(complexResult.SbCbSlot, complexResult.SbCbOffset, 
+                                                   complexResult.Offset, complexResult.ConstOffset + constOffset);
+                        }
+                    }
+                    // =============================================================
+                    
+                    return FindBaseAddressCbFromMemory(gtsContext, operation, constOffset, needsOffset, gpuAccessor);
+                }
+                
+                gpuAccessor.Log($"  Base address is also Add operation, continuing analysis");
+            }
+
+            src1 = operation.GetSource(0);
+            src2 = operation.GetSource(1);
+
+            gpuAccessor.Log($"  Add operation sources: src1 type={src1.Type}, src2 type={src2.Type}");
+
+            // If we have two possible results, we give preference to the ones from
+            // the driver reserved constant buffer, as those are the ones that
+            // contains the base address.
+
+            // If both are constant buffer, give preference to the second operand,
+            // because constant buffer are always encoded as the second operand,
+            // so the second operand will always be the one from the last instruction.
+
+            if (src1.Type != OperandType.ConstantBuffer ||
+                (src1.Type == OperandType.ConstantBuffer && src2.Type == OperandType.ConstantBuffer) ||
+                (src2.Type == OperandType.ConstantBuffer && src2.GetCbufSlot() == DriverReservedCb))
+            {
+                gpuAccessor.Log($"  Checking src2 as potential ConstantBuffer");
+                return GetBaseAddressCbWithOffset(src2, src1, constOffset, gpuAccessor);
+            }
+
+            gpuAccessor.Log($"  Checking src1 as potential ConstantBuffer");
+            return GetBaseAddressCbWithOffset(src1, src2, constOffset, gpuAccessor);
+        }
+        // ==================================================================================
+
+        private static SearchResult GetBaseAddressCbWithOffset(Operand baseAddress, Operand offset, int constOffset, IGpuAccessor gpuAccessor)
         {
             if (baseAddress.Type == OperandType.ConstantBuffer)
             {
@@ -1443,7 +1443,7 @@ namespace Ryujinx.Graphics.Shader.Translation.Optimizations
             return SearchResult.NotFound;
         }
 
-        private static SearchResult FindBaseAddressCbFromMemory(GtsContext gtsContext, Operation operation, int constOffset, bool needsOffset)
+        private static SearchResult FindBaseAddressCbFromMemory(GtsContext gtsContext, Operation operation, int constOffset, bool needsOffset, IGpuAccessor gpuAccessor)
         {
             if (operation != null)
             {
@@ -1547,13 +1547,5 @@ namespace Ryujinx.Graphics.Shader.Translation.Optimizations
             constOffset = 0;
             return false;
         }
-        
-        // ==================== 方案四：添加 gpuAccessor 引用（修复编译错误） ====================
-        // 注意：原文件中没有 gpuAccessor 的静态引用，我们需要在方法中传递它
-        // 但上面的代码已经使用了 gpuAccessor，需要确保它在所有方法中都可用
-        // 由于这是一个静态类，我们不能存储实例字段，所以需要在方法参数中传递
-        // 上面的代码假设 gpuAccessor 是通过方法参数传递的
-        // 如果编译时出现 gpuAccessor 未定义的错误，需要修改方法签名以包含它
-        // ==================================================================================
     }
 }
