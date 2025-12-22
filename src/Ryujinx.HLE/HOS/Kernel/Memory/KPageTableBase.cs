@@ -2568,7 +2568,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             KMemoryInfo info = currBlock.GetInfo();
 
             MemoryState firstState = info.State;
-            KMemoryPermission firstPermission = info.Permition;
+            KMemoryPermission firstPermission = info.Permission;
             MemoryAttribute firstAttribute = info.Attribute;
 
             info = currBlock.GetInfo(info);
