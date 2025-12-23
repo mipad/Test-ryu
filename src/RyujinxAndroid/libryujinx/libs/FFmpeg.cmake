@@ -41,7 +41,7 @@ set(FFMPEG_CONFIGURE_COMMAND
     --cross-prefix=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}21-
     --target-os=android
     --arch=aarch64
-    --cpu=cortex-a78
+   # --cpu=cortex-a78
     --cc=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}21-clang
     --cxx=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}21-clang++
     --nm=${ANDROID_TOOLCHAIN_ROOT}/bin/llvm-nm
@@ -51,7 +51,7 @@ set(FFMPEG_CONFIGURE_COMMAND
     --extra-cflags=-O3
     --extra-cflags=-fPIC
     --extra-cflags=-march=armv8.2-a+fp16+dotprod
-    --extra-cflags=-mtune=cortex-a78
+   # --extra-cflags=-mtune=cortex-a78
     --extra-cflags=-DANDROID
     --extra-cflags=-D__ANDROID_API__=21
     --extra-ldflags=-Wl,--hash-style=both
