@@ -7,6 +7,9 @@ set(ANDROID_TOOLCHAIN_ROOT ${CMAKE_ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x
 set(ANDROID_SYSROOT ${ANDROID_TOOLCHAIN_ROOT}/sysroot)
 set(ANDROID_PLATFORM aarch64-linux-android)
 
+# 提高 Android API 级别到 30（Android 11），获得更好的硬件支持
+set(ANDROID_API_LEVEL 30)
+
 if (CMAKE_HOST_WIN32)
     set(ProgramFiles_x86 "$ENV{ProgramFiles\(x86\)}")
     cmake_path(APPEND VSWHERE_BIN "${ProgramFiles_x86}" "Microsoft Visual Studio" "Installer" "vswhere.exe")
@@ -34,16 +37,15 @@ else ()
     list(APPEND PROJECT_ENV "PATH=${ANDROID_TOOLCHAIN_ROOT}/bin:$ENV{PATH}")
 endif ()
 
-# 设置 FFmpeg 配置选项 - 修复编译器路径
+# 设置 FFmpeg 配置选项 - 针对 Ryujinx 模拟器优化
 set(FFMPEG_CONFIGURE_COMMAND
     <SOURCE_DIR>/configure
     --prefix=${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install
-    --cross-prefix=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}21-
+    --cross-prefix=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}${ANDROID_API_LEVEL}-
     --target-os=android
     --arch=aarch64
-   # --cpu=cortex-a78
-    --cc=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}21-clang
-    --cxx=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}21-clang++
+    --cc=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}${ANDROID_API_LEVEL}-clang
+    --cxx=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}${ANDROID_API_LEVEL}-clang++
     --nm=${ANDROID_TOOLCHAIN_ROOT}/bin/llvm-nm
     --strip=${ANDROID_TOOLCHAIN_ROOT}/bin/llvm-strip
     --enable-cross-compile
@@ -51,9 +53,9 @@ set(FFMPEG_CONFIGURE_COMMAND
     --extra-cflags=-O3
     --extra-cflags=-fPIC
     --extra-cflags=-march=armv8.2-a+fp16+dotprod
-   # --extra-cflags=-mtune=cortex-a78
+    --extra-cflags=-mtune=cortex-a78
     --extra-cflags=-DANDROID
-    --extra-cflags=-D__ANDROID_API__=21
+    --extra-cflags=-D__ANDROID_API__=${ANDROID_API_LEVEL}
     --extra-ldflags=-Wl,--hash-style=both
     --extra-ldexeflags=-pie
     --enable-runtime-cpudetect
@@ -79,18 +81,65 @@ set(FFMPEG_CONFIGURE_COMMAND
     --enable-inline-asm
     --enable-jni
     --enable-mediacodec
+    --enable-mediafoundation
+    --enable-hwaccels
+    
+    # 针对 Ryujinx 的解码器（不需要编码器）
     --enable-decoder=*
-    --enable-encoder=*
+    --disable-encoder=*  # 模拟器不需要编码器
+    
+    # 针对 Switch 游戏常用格式
+    --enable-decoder=h264
+    --enable-decoder=hevc
+    --enable-decoder=vp8
+    --enable-decoder=vp9
+    --enable-decoder=av1
+    --enable-decoder=mpeg4
+    --enable-decoder=mpeg2video
+    --enable-decoder=mjpeg
+    --enable-decoder=wmv1
+    --enable-decoder=wmv2
+    --enable-decoder=wmv3
+    --enable-decoder=vc1
+    
+    # 硬件加速解码
+    --enable-hwaccel=h264_mediacodec
+    --enable-hwaccel=hevc_mediacodec
+    --enable-hwaccel=mpeg2_mediacodec
+    --enable-hwaccel=vp8_mediacodec
+    --enable-hwaccel=vp9_mediacodec
+    
     --enable-demuxer=*
     --enable-muxer=*
     --enable-parser=*
     --enable-bsf=*
-    --enable-hwaccels
+    
+    # ARM 架构优化
+    --enable-armv5te
+    --enable-armv6
+    --enable-armv6t2
+    --enable-armv8
+    --enable-vfp
+    --enable-vfpv3
+    --enable-thumb
+    
+    # 硬件加速相关
+    --enable-v4l2-m2m
+    
+    # 重要组件
     --enable-zlib
-    --enable-small
+    --enable-bzlib
+    --enable-lzma
+    
+    # 针对性能优化（移除大小优化）
+    --disable-small
     --enable-optimizations
+    --enable-fast-unaligned
+    
+    # 调试信息
     --disable-debug
     --disable-stripping
+    
     --pkg-config=pkg-config
 )
 
