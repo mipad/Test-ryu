@@ -216,7 +216,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
                 is64Bits = true;
             }
 
-            HostThread = new Thread(ThreadStart) { Name = "HLE.KThread" };
+            HostThread = new Thread(ThreadStart, 4096 * 100) { Name = "HLE.KThread" };
 
             Context = owner?.CreateExecutionContext() ?? new ProcessExecutionContext();
 
@@ -1555,3 +1555,4 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
         }
     }
 }
+
