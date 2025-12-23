@@ -116,7 +116,7 @@ namespace Ryujinx.HLE.HOS.Kernel
                 KScheduler.PreemptionThreadLoop(this);
             }
 
-            new Thread(PreemptionThreadStart) { Name = "HLE.PreemptionThread" }.Start();
+            new Thread(PreemptionThreadStart, 4096 * 100) { Name = "HLE.PreemptionThread" }.Start();
         }
 
         public void CommitMemory(ulong address, ulong size)
@@ -158,3 +158,4 @@ namespace Ryujinx.HLE.HOS.Kernel
         }
     }
 }
+
