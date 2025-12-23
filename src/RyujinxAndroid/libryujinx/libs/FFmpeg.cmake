@@ -89,8 +89,8 @@ set(FFMPEG_CONFIGURE_COMMAND
     --enable-parser=*
     --enable-bsf=*
     --enable-zlib
-    --enable-bzlib
-    --enable-lzma
+    --disable-bzlib      # 修复：禁用 bzlib
+    --disable-lzma       # 修复：禁用 lzma
     --disable-small
     --enable-optimizations
     --disable-debug
