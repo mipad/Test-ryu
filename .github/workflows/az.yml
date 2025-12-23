@@ -2,9 +2,9 @@ name: Android CI Fixed
 
 on:
   push:
-    branches: [ "稳定11" ]  
+    branches: [ "稳定-ffmpeg" ]  
   pull_request:
-    branches: [ "稳定11" ]
+    branches: [ "稳定-ffmpeg" ]
 
 jobs:
   build:
@@ -27,7 +27,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: 稳定11
+        ref: 稳定-ffmpeg
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
