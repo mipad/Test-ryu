@@ -37,7 +37,7 @@ else ()
     list(APPEND PROJECT_ENV "PATH=${ANDROID_TOOLCHAIN_ROOT}/bin:$ENV{PATH}")
 endif ()
 
-# 设置 FFmpeg 配置选项 - 针对 Ryujinx 模拟器优化
+# 设置 FFmpeg 配置选项 - 针对 Ryujinx 模拟器优化，启用多线程解码
 set(FFMPEG_CONFIGURE_COMMAND
     <SOURCE_DIR>/configure
     --prefix=${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install
@@ -50,15 +50,29 @@ set(FFMPEG_CONFIGURE_COMMAND
     --strip=${ANDROID_TOOLCHAIN_ROOT}/bin/llvm-strip
     --enable-cross-compile
     --sysroot=${ANDROID_SYSROOT}
+    
+    # 高级编译器优化
     --extra-cflags=-O3
     --extra-cflags=-fPIC
-    --extra-cflags=-march=armv8.2-a+fp16+dotprod
+    --extra-cflags=-march=armv8.2-a+fp16+dotprod  # 使用兼容性更好的架构
     --extra-cflags=-mtune=cortex-a78
+    --extra-cflags=-ftree-vectorize
+    --extra-cflags=-funroll-loops
+    --extra-cflags=-fomit-frame-pointer
     --extra-cflags=-DANDROID
     --extra-cflags=-D__ANDROID_API__=${ANDROID_API_LEVEL}
+    --extra-cflags=-DPTHREAD  # 启用pthread支持
     --extra-ldflags=-Wl,--hash-style=both
     --extra-ldexeflags=-pie
+    
+    # 多线程支持 - 关键！
+    --enable-pthreads
+    --enable-w32threads=no  # Android不需要Windows线程
+    
+    # 运行时优化
     --enable-runtime-cpudetect
+    
+    # 基础配置
     --disable-static
     --enable-shared
     --disable-programs
@@ -67,6 +81,8 @@ set(FFMPEG_CONFIGURE_COMMAND
     --disable-manpages
     --disable-podpages
     --disable-txtpages
+    
+    # 核心库
     --enable-avfilter
     --enable-avcodec
     --enable-avformat
@@ -76,25 +92,55 @@ set(FFMPEG_CONFIGURE_COMMAND
     --enable-network
     --enable-protocols
     --enable-filters
+    
+    # ARM架构优化
     --enable-asm
     --enable-neon
     --enable-inline-asm
+    --enable-armv5te
+    --enable-armv6
+    --enable-armv6t2
+    --enable-armv8
+    --enable-vfp
+    --enable-vfpv3
+    --enable-thumb
+    
+    # Android特有
     --enable-jni
     --enable-mediacodec
     --enable-hwaccels
+    
+    # 解码器配置 - 针对模拟器优化
     --enable-decoder=*
-    --disable-encoder=*
+    --disable-encoder=*  # 模拟器不需要编码器
+    
+    # 硬件加速解码
+    --enable-hwaccel=h264_mediacodec
+    --enable-hwaccel=hevc_mediacodec
+    --enable-hwaccel=mpeg2_mediacodec
+    --enable-hwaccel=vp8_mediacodec
+    --enable-hwaccel=vp9_mediacodec
+    --enable-hwaccel=av1_mediacodec
+    
     --enable-demuxer=*
     --enable-muxer=*
     --enable-parser=*
     --enable-bsf=*
+    
+    # 修改压缩库配置部分
     --enable-zlib
-    --disable-bzlib      # 修复：禁用 bzlib
-    --disable-lzma       # 修复：禁用 lzma
-    --disable-small
+    --disable-bzlib      # 改为禁用
+    --disable-lzma       # 改为禁用
+    
+    # 性能优化
+    --disable-small  # 移除大小优化，确保完整性能
     --enable-optimizations
+    --enable-fast-unaligned
+    
+    # 调试信息
     --disable-debug
-    --disable-stripping
+    --disable-stripping  # 保持符号表，便于调试
+    
     --pkg-config=pkg-config
 )
 
