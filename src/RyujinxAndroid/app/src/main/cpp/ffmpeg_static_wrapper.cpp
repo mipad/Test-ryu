@@ -191,7 +191,7 @@ int avcodec_receive_frame(AVCodecContext* avctx, AVFrame* frame) {
     return ::avcodec_receive_frame(avctx, frame);
 }
 
-// 修复：avcodec_flush_buffers 返回 void
+// 修复：avcodec_flush_buffers 返回 void（根据 FFmpeg 6.1.4）
 void avcodec_flush_buffers(AVCodecContext* avctx) {
     ::avcodec_flush_buffers(avctx);
 }
@@ -225,8 +225,9 @@ void avformat_free_context(AVFormatContext* s) {
     ::avformat_free_context(s);
 }
 
+// 修复：avformat_open_input 函数签名（根据 FFmpeg 6.1.4 avformat.h）
 int avformat_open_input(AVFormatContext** ps, const char* url,
-                        AVInputFormat* fmt, AVDictionary** options) {
+                        const AVInputFormat* fmt, AVDictionary** options) {
     return ::avformat_open_input(ps, url, fmt, options);
 }
 
@@ -301,9 +302,9 @@ void sws_freeContext(SwsContext* swsContext) {
 }
 
 // 字典操作
-// 修复：av_dict_get 返回 AVDictionaryEntry*
+// 修复：av_dict_get 返回 AVDictionaryEntry*（根据 FFmpeg 6.1.4）
 AVDictionaryEntry* av_dict_get(const AVDictionary* m, const char* key,
-                          const AVDictionaryEntry* prev, int flags) {
+                              const AVDictionaryEntry* prev, int flags) {
     return ::av_dict_get(m, key, prev, flags);
 }
 
@@ -339,8 +340,8 @@ void av_register_all() {
 // 如果需要错误字符串函数，请使用不同的名称
 const char* ffmpeg_av_err2str(int errnum) {
     static char str[AV_ERROR_MAX_STRING_SIZE];
-    memset(str, 0, sizeof(str));
-    return av_make_error_string(str, AV_ERROR_MAX_STRING_SIZE, errnum);
+    av_strerror(errnum, str, sizeof(str));
+    return str;
 }
 
 // 内存管理辅助
