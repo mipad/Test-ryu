@@ -1,4 +1,4 @@
-# CMakeLists (19).txt
+# CMakeLists.txt
 include(FetchContent)
 
 # For more information about using CMake with Android Studio, read the
@@ -110,6 +110,7 @@ target_compile_options(ryujinxjni PRIVATE
     -ffunction-sections
     -fdata-sections
     -fvisibility=hidden
+    -Wno-macro-redefined  # 添加：抑制宏重定义警告
 )
 
 # 链接器优化
