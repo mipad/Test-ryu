@@ -51,12 +51,19 @@ set(ALSOFT_TESTS OFF CACHE BOOL "Disable tests")
 set(ALSOFT_CPUEXT_NEON ON CACHE BOOL "Enable NEON optimizations")
 FetchContent_MakeAvailable(openal)
 
-# 为主目标添加 PAGE_SIZE 定义
+# 为 adrenotools 相关目标添加 PAGE_SIZE 定义
 if(TARGET adrenotools)
     target_compile_definitions(adrenotools PRIVATE PAGE_SIZE=4096)
 endif()
+
 if(TARGET linkernsbypass)
     target_compile_definitions(linkernsbypass PRIVATE PAGE_SIZE=4096)
+endif()
+
+# 为 adrenotools 的子目录目标也添加定义 (来自19号文件)
+get_target_property(adrenotools_sources adrenotools SOURCES)
+if(adrenotools_sources)
+    target_compile_definitions(adrenotools PRIVATE PAGE_SIZE=4096)
 endif()
 
 # 创建主库，包含 FFmpeg 包装器
@@ -67,6 +74,12 @@ add_library(
     ryujinx.cpp
     oboe_audio_renderer.cpp
     ffmpeg_static_wrapper.cpp  # 新增的 FFmpeg 静态库包装器
+)
+
+# 添加编译定义以优化音频处理 (来自19号文件)
+target_compile_definitions(ryujinxjni PRIVATE
+    RYUJINX_AUDIO_OPTIMIZE=1
+    # 如果需要，可以添加更多音频优化标志
 )
 
 # 为音频渲染器文件启用激进优化
@@ -127,12 +140,14 @@ set_target_properties(ryujinxjni PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
 )
 
-# 设置 OpenAL 输出目录
+# 设置 OpenAL 输出目录 (使用19号文件的完整设置)
 set_target_properties(OpenAL PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
+    ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
+    RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
 )
 
-# 构建 OpenSSL（如果需要）
+# 构建 OpenSSL（如果预构建文件不存在） - 使用19号文件的完整逻辑
 cmake_path(APPEND JNI_PATH libcrypto.so OUTPUT_VARIABLE LIBCRYPTO_JNI_PATH)
 cmake_path(APPEND JNI_PATH libssl.so OUTPUT_VARIABLE LIBSSL_JNI_PATH)
 
