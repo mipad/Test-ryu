@@ -16,7 +16,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fPIC -march=armv8.2-a+fp16+dotprod 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -fPIC -march=armv8.2-a+fp16+dotprod -mtune=cortex-a78")
 
 # 包含 FFmpeg 静态库构建
-include(FFmpegStaticFixed.cmake)
+include(../../../../libryujinx/libs/FFmpegStaticFixed.cmake)
 
 # 使用 FetchContent 获取依赖
 include(FetchContent)
@@ -161,3 +161,4 @@ message(STATUS "Building for Android ABI: ${CMAKE_ANDROID_ARCH_ABI}")
 message(STATUS "FFmpeg include directory: ${FFMPEG_INCLUDE_DIR}")
 message(STATUS "Oboe source directory: ${oboe_SOURCE_DIR}")
 message(STATUS "Output directory: ${JNI_PATH}")
+
