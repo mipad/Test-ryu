@@ -1,4 +1,4 @@
-// FFmpegApi.cs
+// FFmpegApi (1).cs
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -8,35 +8,48 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
 {
     static partial class FFmpegApi
     {
-        // 直接指向我们的主库
-        private const string RyujinxLibraryName = "libryujinxjni";
-        
-        // 修改白名单，直接加载我们的主库
+        // 修改：直接指向主库
+        public const string RyujinxLibraryName = "ryujinxjni";
+
         private static readonly Dictionary<string, (int, int)> _librariesWhitelist = new()
         {
-            { "avcodec", (0, 0) },  // 版本号不重要，我们直接重定向
-            { "avutil", (0, 0) },
-            { "swresample", (0, 0) },
-            { "swscale", (0, 0) }
+            { RyujinxLibraryName, (1, 1) }, // 只需要主库版本
         };
+
+        private static string FormatLibraryNameForCurrentOs(string libraryName, int version)
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                return $"{libraryName}.dll";
+            }
+            else if (OperatingSystem.IsLinux())
+            {
+                return $"lib{libraryName}.so";
+            }
+            else if (OperatingSystem.IsMacOS())
+            {
+                return $"lib{libraryName}.dylib";
+            }
+            else
+            {
+                throw new NotImplementedException($"Unsupported OS for FFmpeg: {RuntimeInformation.RuntimeIdentifier}");
+            }
+        }
 
         private static bool TryLoadWhitelistedLibrary(string libraryName, Assembly assembly, DllImportSearchPath? searchPath, out IntPtr handle)
         {
             handle = IntPtr.Zero;
 
-            // 对于 FFmpeg 库，直接加载我们的主库
-            if (_librariesWhitelist.ContainsKey(libraryName))
+            if (_librariesWhitelist.TryGetValue(libraryName, out var value))
             {
-                // Android 上加载 libryujinxjni.so
-                if (NativeLibrary.TryLoad("libryujinxjni.so", assembly, searchPath, out handle))
+                (int minVersion, int maxVersion) = value;
+
+                for (int version = maxVersion; version >= minVersion; version--)
                 {
-                    return true;
-                }
-                
-                // 如果失败，尝试其他可能的名称
-                if (NativeLibrary.TryLoad("ryujinxjni", assembly, searchPath, out handle))
-                {
-                    return true;
+                    if (NativeLibrary.TryLoad(FormatLibraryNameForCurrentOs(libraryName, version), assembly, searchPath, out handle))
+                    {
+                        return true;
+                    }
                 }
             }
 
@@ -45,98 +58,75 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
 
         static FFmpegApi()
         {
-            NativeLibrary.SetDllImportResolver(typeof(FFmpegApi).Assembly, (name, assembly, path) =>
-            {
-                // 重定向所有 FFmpeg 库到我们的主库
-                if (name == "avutil" || name == "avcodec" || name == "swresample" || name == "swscale")
-                {
-                    if (TryLoadWhitelistedLibrary(name, assembly, path, out nint handle))
-                    {
-                        return handle;
-                    }
-                }
-
-                return IntPtr.Zero;
-            });
+            // 静态链接 FFmpeg，所以不需要动态加载
+            // 保留此代码只是为了兼容性
         }
 
         public unsafe delegate void av_log_set_callback_callback(void* a0, AVLog level, [MarshalAs(UnmanagedType.LPUTF8Str)] string a2, byte* a3);
 
-        // 直接从 libryujinxjni.so 导入函数
-        [DllImport(RyujinxLibraryName, EntryPoint = "av_frame_alloc")]
-        internal static unsafe extern AVFrame* av_frame_alloc();
+        // 修改所有 DllImport 指向主库
+        [LibraryImport(RyujinxLibraryName, EntryPoint = "av_frame_alloc")]
+        internal static unsafe partial AVFrame* av_frame_alloc();
 
-        [DllImport(RyujinxLibraryName, EntryPoint = "av_frame_unref")]
-        internal static unsafe extern void av_frame_unref(AVFrame* frame);
+        [LibraryImport(RyujinxLibraryName, EntryPoint = "av_frame_unref")]
+        internal static unsafe partial void av_frame_unref(AVFrame* frame);
 
-        [DllImport(RyujinxLibraryName, EntryPoint = "av_free")]
-        internal static unsafe extern void av_free(AVFrame* frame);
+        [LibraryImport(RyujinxLibraryName, EntryPoint = "av_free")]
+        internal static unsafe partial void av_free(AVFrame* frame);
 
-        [DllImport(RyujinxLibraryName, EntryPoint = "av_log_set_level")]
-        internal static unsafe extern void av_log_set_level(AVLog level);
+        [LibraryImport(RyujinxLibraryName, EntryPoint = "av_log_set_level")]
+        internal static unsafe partial void av_log_set_level(AVLog level);
 
-        [DllImport(RyujinxLibraryName, EntryPoint = "av_log_set_callback")]
-        internal static unsafe extern void av_log_set_callback(av_log_set_callback_callback callback);
+        [LibraryImport(RyujinxLibraryName, EntryPoint = "av_log_set_callback")]
+        internal static unsafe partial void av_log_set_callback(av_log_set_callback_callback callback);
 
-        [DllImport(RyujinxLibraryName, EntryPoint = "av_log_get_level")]
-        internal static unsafe extern AVLog av_log_get_level();
+        [LibraryImport(RyujinxLibraryName, EntryPoint = "av_log_get_level")]
+        internal static unsafe partial AVLog av_log_get_level();
 
-        [DllImport(RyujinxLibraryName, EntryPoint = "av_log_format_line")]
-        internal static unsafe extern void av_log_format_line(void* ptr, AVLog level, [MarshalAs(UnmanagedType.LPUTF8Str)] string fmt, byte* vl, byte* line, int lineSize, int* printPrefix);
+        [LibraryImport(RyujinxLibraryName, EntryPoint = "av_log_format_line")]
+        internal static unsafe partial void av_log_format_line(void* ptr, AVLog level, [MarshalAs(UnmanagedType.LPUTF8Str)] string fmt, byte* vl, byte* line, int lineSize, int* printPrefix);
 
-        [DllImport(RyujinxLibraryName, EntryPoint = "avcodec_find_decoder")]
-        internal static unsafe extern AVCodec* avcodec_find_decoder(AVCodecID id);
+        [LibraryImport(RyujinxLibraryName, EntryPoint = "avcodec_find_decoder")]
+        internal static unsafe partial AVCodec* avcodec_find_decoder(AVCodecID id);
 
-        [DllImport(RyujinxLibraryName, EntryPoint = "avcodec_alloc_context3")]
-        internal static unsafe extern AVCodecContext* avcodec_alloc_context3(AVCodec* codec);
+        [LibraryImport(RyujinxLibraryName, EntryPoint = "avcodec_alloc_context3")]
+        internal static unsafe partial AVCodecContext* avcodec_alloc_context3(AVCodec* codec);
 
-        [DllImport(RyujinxLibraryName, EntryPoint = "avcodec_open2")]
-        internal static unsafe extern int avcodec_open2(AVCodecContext* avctx, AVCodec* codec, void** options);
+        [LibraryImport(RyujinxLibraryName, EntryPoint = "avcodec_open2")]
+        internal static unsafe partial int avcodec_open2(AVCodecContext* avctx, AVCodec* codec, void** options);
 
-        [DllImport(RyujinxLibraryName, EntryPoint = "avcodec_close")]
-        internal static unsafe extern int avcodec_close(AVCodecContext* avctx);
+        [LibraryImport(RyujinxLibraryName, EntryPoint = "avcodec_close")]
+        internal static unsafe partial int avcodec_close(AVCodecContext* avctx);
 
-        [DllImport(RyujinxLibraryName, EntryPoint = "avcodec_free_context")]
-        internal static unsafe extern void avcodec_free_context(AVCodecContext** avctx);
+        [LibraryImport(RyujinxLibraryName, EntryPoint = "avcodec_free_context")]
+        internal static unsafe partial void avcodec_free_context(AVCodecContext** avctx);
 
-        [DllImport(RyujinxLibraryName, EntryPoint = "av_packet_alloc")]
-        internal static unsafe extern AVPacket* av_packet_alloc();
+        [LibraryImport(RyujinxLibraryName, EntryPoint = "av_packet_alloc")]
+        internal static unsafe partial AVPacket* av_packet_alloc();
 
-        [DllImport(RyujinxLibraryName, EntryPoint = "av_packet_unref")]
-        internal static unsafe extern void av_packet_unref(AVPacket* pkt);
+        [LibraryImport(RyujinxLibraryName, EntryPoint = "av_packet_unref")]
+        internal static unsafe partial void av_packet_unref(AVPacket* pkt);
 
-        [DllImport(RyujinxLibraryName, EntryPoint = "av_packet_free")]
-        internal static unsafe extern void av_packet_free(AVPacket** pkt);
+        [LibraryImport(RyujinxLibraryName, EntryPoint = "av_packet_free")]
+        internal static unsafe partial void av_packet_free(AVPacket** pkt);
 
-        [DllImport(RyujinxLibraryName, EntryPoint = "avcodec_version")]
-        internal static unsafe extern int avcodec_version();
+        [LibraryImport(RyujinxLibraryName, EntryPoint = "avcodec_version")]
+        internal static unsafe partial int avcodec_version();
 
-        // swresample 函数
-        [DllImport(RyujinxLibraryName, EntryPoint = "swr_alloc")]
-        internal static unsafe extern SwrContext* swr_alloc();
+        // 添加 swresample 和 swscale 的函数
+        [LibraryImport(RyujinxLibraryName, EntryPoint = "swr_alloc")]
+        internal static unsafe partial SwrContext* swr_alloc();
 
-        [DllImport(RyujinxLibraryName, EntryPoint = "swr_init")]
-        internal static unsafe extern int swr_init(SwrContext* s);
+        [LibraryImport(RyujinxLibraryName, EntryPoint = "swr_init")]
+        internal static unsafe partial int swr_init(SwrContext* s);
 
-        [DllImport(RyujinxLibraryName, EntryPoint = "swr_convert")]
-        internal static unsafe extern int swr_convert(SwrContext* s, byte** outData, int outCount, byte** inData, int inCount);
+        [LibraryImport(RyujinxLibraryName, EntryPoint = "swr_free")]
+        internal static unsafe partial void swr_free(SwrContext** s);
 
-        [DllImport(RyujinxLibraryName, EntryPoint = "swr_free")]
-        internal static unsafe extern void swr_free(SwrContext** s);
-
-        // swscale 函数
-        [DllImport(RyujinxLibraryName, EntryPoint = "sws_getContext")]
-        internal static unsafe extern SwsContext* sws_getContext(int srcW, int srcH, AVPixelFormat srcFormat,
-                                                                int dstW, int dstH, AVPixelFormat dstFormat,
-                                                                int flags, SwsFilter* srcFilter,
-                                                                SwsFilter* dstFilter, double* param);
-
-        [DllImport(RyujinxLibraryName, EntryPoint = "sws_scale")]
-        internal static unsafe extern int sws_scale(SwsContext* c, byte*[] srcSlice, int[] srcStride,
-                                                   int srcSliceY, int srcSliceH,
-                                                   byte*[] dst, int[] dstStride);
-
-        [DllImport(RyujinxLibraryName, EntryPoint = "sws_freeContext")]
-        internal static unsafe extern void sws_freeContext(SwsContext* swsContext);
+        [LibraryImport(RyujinxLibraryName, EntryPoint = "sws_getContext")]
+        internal static unsafe partial SwsContext* sws_getContext(int srcW, int srcH, AVPixelFormat srcFormat,
+                                                                  int dstW, int dstH, AVPixelFormat dstFormat,
+                                                                  int flags, SwsFilter* srcFilter,
+                                                                  SwsFilter* dstFilter, double* param);
     }
 }
