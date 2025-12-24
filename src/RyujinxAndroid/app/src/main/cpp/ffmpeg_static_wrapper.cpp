@@ -143,7 +143,8 @@ void av_packet_free(AVPacket** pkt) {
     ::av_packet_free(pkt);
 }
 
-int avcodec_version() {
+// 修复：avcodec_version 返回 unsigned（根据 FFmpeg 头文件）
+unsigned avcodec_version() {
     return ::avcodec_version();
 }
 
