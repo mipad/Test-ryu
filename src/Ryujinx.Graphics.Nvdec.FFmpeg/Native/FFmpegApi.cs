@@ -110,7 +110,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         internal static unsafe partial void av_packet_free(AVPacket** pkt);
 
         [LibraryImport(RyujinxLibraryName, EntryPoint = "avcodec_version")]
-        internal static unsafe partial int avcodec_version();
+        internal static unsafe partial uint avcodec_version();  // 改为 uint
         
         // 新增：错误信息转换函数（可选）
         [LibraryImport(RyujinxLibraryName, EntryPoint = "ffmpeg_av_err2str")]
