@@ -158,8 +158,7 @@ set(FFMPEG_CONFIGURE_COMMAND
     --disable-iconv
     --disable-sdl2
     
-    # pkg-config 配置
-    --pkg-config=$(which pkg-config)
+    # 修复：删除有问题的 pkg-config 配置
 )
 
 # 添加配置验证步骤
