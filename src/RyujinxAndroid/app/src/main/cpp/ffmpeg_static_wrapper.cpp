@@ -191,8 +191,9 @@ int avcodec_receive_frame(AVCodecContext* avctx, AVFrame* frame) {
     return ::avcodec_receive_frame(avctx, frame);
 }
 
-int avcodec_flush_buffers(AVCodecContext* avctx) {
-    return ::avcodec_flush_buffers(avctx);
+// 修复：avcodec_flush_buffers 返回 void
+void avcodec_flush_buffers(AVCodecContext* avctx) {
+    ::avcodec_flush_buffers(avctx);
 }
 
 AVPacket* av_packet_alloc() {
@@ -300,7 +301,8 @@ void sws_freeContext(SwsContext* swsContext) {
 }
 
 // 字典操作
-AVDictionary* av_dict_get(const AVDictionary* m, const char* key,
+// 修复：av_dict_get 返回 AVDictionaryEntry*
+AVDictionaryEntry* av_dict_get(const AVDictionary* m, const char* key,
                           const AVDictionaryEntry* prev, int flags) {
     return ::av_dict_get(m, key, prev, flags);
 }
@@ -333,7 +335,9 @@ void av_register_all() {
 }
 
 // 错误处理
-const char* av_err2str(int errnum) {
+// 注意：FFmpeg 已经将 av_err2str 定义为宏，因此不能定义同名的函数
+// 如果需要错误字符串函数，请使用不同的名称
+const char* ffmpeg_av_err2str(int errnum) {
     static char str[AV_ERROR_MAX_STRING_SIZE];
     memset(str, 0, sizeof(str));
     return av_make_error_string(str, AV_ERROR_MAX_STRING_SIZE, errnum);
