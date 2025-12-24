@@ -48,9 +48,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return;
             }
 
-            int avCodecRawVersion = FFmpegApi.avcodec_version();
-            int avCodecMajorVersion = avCodecRawVersion >> 16;
-            int avCodecMinorVersion = (avCodecRawVersion >> 8) & 0xFF;
+            // 修复：avcodec_version 返回 uint，需要显式转换为 int
+            uint avCodecRawVersion = FFmpegApi.avcodec_version();
+            int avCodecMajorVersion = (int)(avCodecRawVersion >> 16);
+            int avCodecMinorVersion = (int)((avCodecRawVersion >> 8) & 0xFF);
 
             // libavcodec 59.24 changed AvCodec to move its private API and also move the codec function to an union.
             if (avCodecMajorVersion > 59 || (avCodecMajorVersion == 59 && avCodecMinorVersion > 24))
