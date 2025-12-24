@@ -63,24 +63,6 @@ set(OBOE_DISABLE_CONVERSION ON CACHE BOOL "Disable format conversion in Oboe")
 
 FetchContent_MakeAvailable(oboe)
 
-# 使用 FetchContent 获取标准 OpenAL Soft
-FetchContent_Declare(
-    openal
-    GIT_REPOSITORY https://github.com/kcat/openal-soft.git
-    GIT_TAG        1.24.3  # 使用稳定版本
-)
-
-# 设置 OpenAL 构建选项 - 优化以减少杂音和延迟
-set(ALSOFT_REQUIRE_OPENSL ON CACHE BOOL "Enable OpenSL backend")
-set(ALSOFT_BACKEND_OPENSL ON CACHE BOOL "Enable OpenSL backend")
-set(ALSOFT_BACKEND_AAUDIO ON CACHE BOOL "Enable AAudio backend")
-set(ALSOFT_TESTS OFF CACHE BOOL "Disable tests")
-
-# 添加优化选项以减少杂音和延迟
-set(ALSOFT_CPUEXT_NEON ON CACHE BOOL "Enable NEON optimizations")
-
-FetchContent_MakeAvailable(openal)
-
 # 创建主库，包含 FFmpeg 包装器
 add_library(
     ryujinxjni
@@ -94,10 +76,9 @@ add_library(
 # 添加编译定义以优化音频处理
 target_compile_definitions(ryujinxjni PRIVATE
     RYUJINX_AUDIO_OPTIMIZE=1
-    # 如果需要，可以添加更多音频优化标志
 )
+
 # 为音频渲染器文件单独启用激进优化
-# 注意：如果某些游戏出现杂音，可以回退到 "-O3" 或 "-O3 -ffast-math"
 set_source_files_properties(oboe_audio_renderer.cpp PROPERTIES
     COMPILE_FLAGS "-Ofast"
 )
@@ -107,13 +88,12 @@ set_source_files_properties(ffmpeg_static_wrapper.cpp PROPERTIES
     COMPILE_FLAGS "-O3 -ffast-math"
 )
 
-# 为主目标添加编译选项（其他文件保持 -O3，不包含 -ffast-math）
+# 为主目标添加编译选项
 target_compile_options(ryujinxjni PRIVATE
     -std=c++20
     -O3
     -DNDEBUG
     -march=armv8-a
-    #-Ofast
 )
 
 # 查找系统库
@@ -141,7 +121,6 @@ target_link_libraries(
     ${vulkan-lib}
     adrenotools
     oboe
-    OpenAL
     ffmpeg-static-combined  # 链接 FFmpeg 静态库
 )
 
@@ -157,13 +136,6 @@ if (NOT (EXISTS ${LIBCRYPTO_JNI_PATH} AND EXISTS ${LIBSSL_JNI_PATH}))
     include(../../../../libryujinx/libs/OpenSSL.cmake)
     add_dependencies(ryujinxjni openssl)
 endif ()
-
-# 设置 OpenAL 输出目录
-set_target_properties(OpenAL PROPERTIES
-    LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
-    ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
-    RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
-)
 
 # 输出构建信息
 message(STATUS "Building for Android ABI: ${CMAKE_ANDROID_ARCH_ABI}")
