@@ -1,4 +1,3 @@
-// FFmpegApi (1).cs
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -112,21 +111,5 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
 
         [LibraryImport(RyujinxLibraryName, EntryPoint = "avcodec_version")]
         internal static unsafe partial int avcodec_version();
-
-        // 添加 swresample 和 swscale 的函数
-        [LibraryImport(RyujinxLibraryName, EntryPoint = "swr_alloc")]
-        internal static unsafe partial SwrContext* swr_alloc();
-
-        [LibraryImport(RyujinxLibraryName, EntryPoint = "swr_init")]
-        internal static unsafe partial int swr_init(SwrContext* s);
-
-        [LibraryImport(RyujinxLibraryName, EntryPoint = "swr_free")]
-        internal static unsafe partial void swr_free(SwrContext** s);
-
-        [LibraryImport(RyujinxLibraryName, EntryPoint = "sws_getContext")]
-        internal static unsafe partial SwsContext* sws_getContext(int srcW, int srcH, AVPixelFormat srcFormat,
-                                                                  int dstW, int dstH, AVPixelFormat dstFormat,
-                                                                  int flags, SwsFilter* srcFilter,
-                                                                  SwsFilter* dstFilter, double* param);
     }
 }
