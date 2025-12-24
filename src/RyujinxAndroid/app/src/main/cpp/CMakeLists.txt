@@ -1,3 +1,4 @@
+# 修改后的 CMakeLists.txt，结合19号和21号文件的优点
 cmake_minimum_required(VERSION 3.22.1)
 project("ryujinxjni")
 
@@ -9,14 +10,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 # Android 特定选项
 set(ANDROID_STL c++_shared)
 set(ANDROID_ARM_NEON TRUE)
-set(ANDROID_PLATFORM 30)
 
-# 编译器优化标志
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fPIC -march=armv8.2-a+fp16+dotprod -mtune=cortex-a78")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -fPIC -march=armv8.2-a+fp16+dotprod -mtune=cortex-a78")
+# 注意：不设置全局的编译器标志，避免干扰依赖库的构建
 
-# 包含 FFmpeg 静态库构建
-include(../../../../libryujinx/libs/FFmpegStaticFixed.cmake)
+# 包含 FFmpeg 静态库构建 - 使用相对路径
+include(../../../../libryujinx/libs/FFmpegStatic.cmake)
 
 # 使用 FetchContent 获取依赖
 include(FetchContent)
@@ -60,7 +58,7 @@ if(TARGET linkernsbypass)
     target_compile_definitions(linkernsbypass PRIVATE PAGE_SIZE=4096)
 endif()
 
-# 为 adrenotools 的子目录目标也添加定义 (来自19号文件)
+# 为 adrenotools 的子目录目标也添加定义
 get_target_property(adrenotools_sources adrenotools SOURCES)
 if(adrenotools_sources)
     target_compile_definitions(adrenotools PRIVATE PAGE_SIZE=4096)
@@ -76,7 +74,7 @@ add_library(
     ffmpeg_static_wrapper.cpp  # 新增的 FFmpeg 静态库包装器
 )
 
-# 添加编译定义以优化音频处理 (来自19号文件)
+# 添加编译定义以优化音频处理
 target_compile_definitions(ryujinxjni PRIVATE
     RYUJINX_AUDIO_OPTIMIZE=1
     # 如果需要，可以添加更多音频优化标志
@@ -92,7 +90,7 @@ set_source_files_properties(ffmpeg_static_wrapper.cpp PROPERTIES
     COMPILE_FLAGS "-O3 -ffast-math"
 )
 
-# 主目标编译选项
+# 主目标编译选项 - 只针对主目标设置
 target_compile_options(ryujinxjni PRIVATE
     -std=c++20
     -O3
@@ -100,6 +98,7 @@ target_compile_options(ryujinxjni PRIVATE
     -march=armv8-a
     -DANDROID
     -D__ANDROID_API__=30
+    # 如果需要，可以在这里添加其他优化标志
 )
 
 # 添加 FFmpeg 包含目录
@@ -140,19 +139,19 @@ set_target_properties(ryujinxjni PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
 )
 
-# 设置 OpenAL 输出目录 (使用19号文件的完整设置)
+# 设置 OpenAL 输出目录
 set_target_properties(OpenAL PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
     ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
     RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
 )
 
-# 构建 OpenSSL（如果预构建文件不存在） - 使用19号文件的完整逻辑
+# 构建 OpenSSL（如果预构建文件不存在）
 cmake_path(APPEND JNI_PATH libcrypto.so OUTPUT_VARIABLE LIBCRYPTO_JNI_PATH)
 cmake_path(APPEND JNI_PATH libssl.so OUTPUT_VARIABLE LIBSSL_JNI_PATH)
 
 if (NOT (EXISTS ${LIBCRYPTO_JNI_PATH} AND EXISTS ${LIBSSL_JNI_PATH}))
-    include(../../../../libryujinx/libs/OpenSSL.cmake)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/../../../../libryujinx/libs/OpenSSL.cmake)
     add_dependencies(ryujinxjni openssl)
 endif ()
 
@@ -161,4 +160,3 @@ message(STATUS "Building for Android ABI: ${CMAKE_ANDROID_ARCH_ABI}")
 message(STATUS "FFmpeg include directory: ${FFMPEG_INCLUDE_DIR}")
 message(STATUS "Oboe source directory: ${oboe_SOURCE_DIR}")
 message(STATUS "Output directory: ${JNI_PATH}")
-
