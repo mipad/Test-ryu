@@ -58,7 +58,7 @@ set(FFMPEG_CONFIGURE_COMMAND
     --extra-cflags=-march=armv8.2-a+fp16+dotprod
     --extra-cflags=-mtune=cortex-a78
     --extra-cflags=-DANDROID
-    --extra-cflags=-D__ANDROID_API__=${ANDROID_API_LEVEL}
+    # 注意：移除了 -D__ANDROID_API__=${ANDROID_API_LEVEL}，避免与工具链冲突
     --extra-ldflags=-Wl,--hash-style=both
     --extra-ldexeflags=-pie
     
