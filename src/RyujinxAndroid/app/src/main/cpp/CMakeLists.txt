@@ -1,4 +1,4 @@
-# 修改后的 CMakeLists.txt，结合19号和21号文件的优点
+# 修改后的 CMakeLists.txt，修复 OpenAL pthread 问题
 cmake_minimum_required(VERSION 3.22.1)
 project("ryujinxjni")
 
@@ -36,17 +36,27 @@ FetchContent_Declare(
 set(OBOE_DISABLE_CONVERSION ON CACHE BOOL "Disable format conversion in Oboe")
 FetchContent_MakeAvailable(oboe)
 
-# OpenAL Soft
+# OpenAL Soft - 修复 Android pthread 问题
 FetchContent_Declare(
     openal
     GIT_REPOSITORY https://github.com/kcat/openal-soft.git
     GIT_TAG        1.24.3
 )
+
+# 设置 OpenAL 构建选项 - 修复 Android pthread 问题
+set(ALSOFT_REQUIRE_PTHREADS OFF CACHE BOOL "Disable pthread requirement for Android")
+set(ALSOFT_NO_CONFIG_UTIL ON CACHE BOOL "Disable config utility")
+set(ALSOFT_UTILS OFF CACHE BOOL "Disable utilities")
+set(ALSOFT_EXAMPLES OFF CACHE BOOL "Disable examples")
+set(ALSOFT_INSTALL OFF CACHE BOOL "Disable installation")
 set(ALSOFT_REQUIRE_OPENSL ON CACHE BOOL "Enable OpenSL backend")
 set(ALSOFT_BACKEND_OPENSL ON CACHE BOOL "Enable OpenSL backend")
 set(ALSOFT_BACKEND_AAUDIO ON CACHE BOOL "Enable AAudio backend")
 set(ALSOFT_TESTS OFF CACHE BOOL "Disable tests")
 set(ALSOFT_CPUEXT_NEON ON CACHE BOOL "Enable NEON optimizations")
+set(ALSOFT_EMBED_PTHREADS ON CACHE BOOL "Embed pthreads for Android")
+set(ALSOFT_ANDROID ON CACHE BOOL "Enable Android build")
+
 FetchContent_MakeAvailable(openal)
 
 # 为 adrenotools 相关目标添加 PAGE_SIZE 定义
@@ -56,12 +66,6 @@ endif()
 
 if(TARGET linkernsbypass)
     target_compile_definitions(linkernsbypass PRIVATE PAGE_SIZE=4096)
-endif()
-
-# 为 adrenotools 的子目录目标也添加定义
-get_target_property(adrenotools_sources adrenotools SOURCES)
-if(adrenotools_sources)
-    target_compile_definitions(adrenotools PRIVATE PAGE_SIZE=4096)
 endif()
 
 # 创建主库，包含 FFmpeg 包装器
@@ -77,7 +81,6 @@ add_library(
 # 添加编译定义以优化音频处理
 target_compile_definitions(ryujinxjni PRIVATE
     RYUJINX_AUDIO_OPTIMIZE=1
-    # 如果需要，可以添加更多音频优化标志
 )
 
 # 为音频渲染器文件启用激进优化
@@ -98,7 +101,6 @@ target_compile_options(ryujinxjni PRIVATE
     -march=armv8-a
     -DANDROID
     -D__ANDROID_API__=30
-    # 如果需要，可以在这里添加其他优化标志
 )
 
 # 添加 FFmpeg 包含目录
