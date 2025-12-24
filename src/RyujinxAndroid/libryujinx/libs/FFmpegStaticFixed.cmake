@@ -1,4 +1,5 @@
-# FFmpegStatic.cmake
+# FFmpegStaticFixed.cmake
+# 修复的 FFmpeg 静态库构建配置
 include(ExternalProject)
 
 set(PROJECT_ENV "ANDROID_NDK_ROOT=${CMAKE_ANDROID_NDK}")
@@ -8,7 +9,7 @@ set(ANDROID_TOOLCHAIN_ROOT ${CMAKE_ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x
 set(ANDROID_SYSROOT ${ANDROID_TOOLCHAIN_ROOT}/sysroot)
 set(ANDROID_PLATFORM aarch64-linux-android)
 
-# 使用 Android API 级别 30
+# Android API 级别 30
 set(ANDROID_API_LEVEL 30)
 
 # 获取可用的编译工具
@@ -44,19 +45,18 @@ set(TOOLS_TO_CHECK ar ranlib strip nm)
 foreach(TOOL ${TOOLS_TO_CHECK})
     set(TOOL_PATH "${ANDROID_TOOLCHAIN_ROOT}/bin/llvm-${TOOL}")
     if(NOT EXISTS ${TOOL_PATH})
-        # 回退到传统工具名
-        set(TOOL_PATH "${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}-${TOOL}")
+        set(TOOL_PATH "${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}${ANDROID_API_LEVEL}-${TOOL}")
         if(NOT EXISTS ${TOOL_PATH})
-            message(WARNING "Tool ${TOOL} not found at llvm-${TOOL} or ${ANDROID_PLATFORM}-${TOOL}")
+            message(WARNING "Tool ${TOOL} not found at llvm-${TOOL} or ${ANDROID_PLATFORM}${ANDROID_API_LEVEL}-${TOOL}")
         endif()
     endif()
 endforeach()
 
-# 设置 FFmpeg 配置选项 - 修复工具链问题
+# 设置 FFmpeg 配置选项 - 修复的静态库配置
 set(FFMPEG_CONFIGURE_COMMAND
     <SOURCE_DIR>/configure
-    --prefix=${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install
-    --cross-prefix=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}-
+    --prefix=${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install
+    --cross-prefix=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}${ANDROID_API_LEVEL}-
     --target-os=android
     --arch=aarch64
     --cpu=cortex-a78
@@ -75,7 +75,7 @@ set(FFMPEG_CONFIGURE_COMMAND
     --extra-cflags=-march=armv8.2-a+fp16+dotprod
     --extra-cflags=-mtune=cortex-a78
     --extra-cflags=-DANDROID
-    # 注意：移除了 -D__ANDROID_API__=${ANDROID_API_LEVEL}，避免与工具链冲突
+    --extra-cflags=-D__ANDROID_API__=${ANDROID_API_LEVEL}
     --extra-cflags=-Wno-unused-function
     --extra-cflags=-Wno-unused-variable
     --extra-cflags=-Wno-unused-but-set-variable
@@ -91,22 +91,24 @@ set(FFMPEG_CONFIGURE_COMMAND
     # 静态库配置
     --enable-static
     --disable-shared
+    --enable-pic
     
     # 基础配置
     --disable-programs
     --disable-doc
     
-    # 核心库（根据 C# 需要）
+    # 核心库（根据需要）
     --enable-avcodec
     --enable-avformat
     --enable-avutil
     --enable-swresample
     --enable-swscale
+    --enable-avfilter
     
-    # 禁用不需要的库以减少体积和警告
-    --disable-avdevice
-    --disable-postproc
-    --disable-avfilter
+    # 网络和协议支持
+    --enable-network
+    --enable-protocols
+    --enable-filters
     
     # ARM 优化
     --enable-asm
@@ -141,7 +143,7 @@ set(FFMPEG_CONFIGURE_COMMAND
     # 性能优化
     --disable-small
     --enable-optimizations
-    --disable-runtime-cpudetect
+    --enable-runtime-cpudetect
     
     # 调试信息
     --disable-debug
@@ -156,7 +158,7 @@ set(FFMPEG_CONFIGURE_COMMAND
     --disable-iconv
     --disable-sdl2
     
-    # 添加 pkg-config 配置
+    # pkg-config 配置
     --pkg-config=$(which pkg-config)
 )
 
@@ -175,43 +177,68 @@ ExternalProject_Add(
     INSTALL_COMMAND             ${MAKE_COMMAND} install
     BUILD_IN_SOURCE            1
     BUILD_BYPRODUCTS
-        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libavcodec.a
-        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libavutil.a
-        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libavformat.a
-        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libswresample.a
-        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libswscale.a
+        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavcodec.a
+        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavutil.a
+        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavformat.a
+        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libswresample.a
+        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libswscale.a
+        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavfilter.a
 )
 
 # 创建静态库导入目标
 add_library(avcodec-static STATIC IMPORTED GLOBAL)
 set_target_properties(avcodec-static PROPERTIES
-    IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libavcodec.a
+    IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavcodec.a
+    INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/include
 )
 add_dependencies(avcodec-static ffmpeg-static)
 
 add_library(avutil-static STATIC IMPORTED GLOBAL)
 set_target_properties(avutil-static PROPERTIES
-    IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libavutil.a
+    IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavutil.a
+    INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/include
 )
 add_dependencies(avutil-static ffmpeg-static)
 
 add_library(avformat-static STATIC IMPORTED GLOBAL)
 set_target_properties(avformat-static PROPERTIES
-    IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libavformat.a
+    IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavformat.a
+    INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/include
 )
 add_dependencies(avformat-static ffmpeg-static)
 
 add_library(swresample-static STATIC IMPORTED GLOBAL)
 set_target_properties(swresample-static PROPERTIES
-    IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libswresample.a
+    IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libswresample.a
+    INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/include
 )
 add_dependencies(swresample-static ffmpeg-static)
 
 add_library(swscale-static STATIC IMPORTED GLOBAL)
 set_target_properties(swscale-static PROPERTIES
-    IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libswscale.a
+    IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libswscale.a
+    INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/include
 )
 add_dependencies(swscale-static ffmpeg-static)
 
+add_library(avfilter-static STATIC IMPORTED GLOBAL)
+set_target_properties(avfilter-static PROPERTIES
+    IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavfilter.a
+    INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/include
+)
+add_dependencies(avfilter-static ffmpeg-static)
+
 # 添加头文件目录
-set(FFMPEG_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/include)
+set(FFMPEG_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/include)
+
+# 创建组合库目标
+add_library(ffmpeg-static-combined INTERFACE)
+target_link_libraries(ffmpeg-static-combined INTERFACE
+    avcodec-static
+    avformat-static
+    avutil-static
+    swresample-static
+    swscale-static
+    avfilter-static
+)
+target_include_directories(ffmpeg-static-combined INTERFACE ${FFMPEG_INCLUDE_DIR})
