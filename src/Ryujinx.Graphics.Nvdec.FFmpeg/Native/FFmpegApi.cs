@@ -111,5 +111,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
 
         [LibraryImport(RyujinxLibraryName, EntryPoint = "avcodec_version")]
         internal static unsafe partial int avcodec_version();
+        
+        // 新增：错误信息转换函数（可选）
+        [LibraryImport(RyujinxLibraryName, EntryPoint = "ffmpeg_av_err2str")]
+        [return: MarshalAs(UnmanagedType.LPUTF8Str)]
+        internal static unsafe partial string ffmpeg_av_err2str(int errnum);
     }
 }
