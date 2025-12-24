@@ -11,6 +11,7 @@ set(ANDROID_PLATFORM aarch64-linux-android)
 # 使用 Android API 级别 30
 set(ANDROID_API_LEVEL 30)
 
+# 获取可用的编译工具
 if (CMAKE_HOST_WIN32)
     set(ProgramFiles_x86 "$ENV{ProgramFiles\(x86\)}")
     cmake_path(APPEND VSWHERE_BIN "${ProgramFiles_x86}" "Microsoft Visual Studio" "Installer" "vswhere.exe")
@@ -38,17 +39,32 @@ else ()
     list(APPEND PROJECT_ENV "PATH=${ANDROID_TOOLCHAIN_ROOT}/bin:$ENV{PATH}")
 endif ()
 
-# 设置 FFmpeg 配置选项 - 简化的静态配置
+# 检查工具是否存在
+set(TOOLS_TO_CHECK ar ranlib strip nm)
+foreach(TOOL ${TOOLS_TO_CHECK})
+    set(TOOL_PATH "${ANDROID_TOOLCHAIN_ROOT}/bin/llvm-${TOOL}")
+    if(NOT EXISTS ${TOOL_PATH})
+        # 回退到传统工具名
+        set(TOOL_PATH "${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}-${TOOL}")
+        if(NOT EXISTS ${TOOL_PATH})
+            message(WARNING "Tool ${TOOL} not found at llvm-${TOOL} or ${ANDROID_PLATFORM}-${TOOL}")
+        endif()
+    endif()
+endforeach()
+
+# 设置 FFmpeg 配置选项 - 修复工具链问题
 set(FFMPEG_CONFIGURE_COMMAND
     <SOURCE_DIR>/configure
     --prefix=${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install
     --cross-prefix=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}-
     --target-os=android
     --arch=aarch64
+    --cpu=cortex-a78
     --cc=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}${ANDROID_API_LEVEL}-clang
     --cxx=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}${ANDROID_API_LEVEL}-clang++
     --nm=${ANDROID_TOOLCHAIN_ROOT}/bin/llvm-nm
-    --ar=${ANDROID_TOOLCHAIN_ROOT}/bin/llvm-ar  # 改为 llvm-ar
+    --ar=${ANDROID_TOOLCHAIN_ROOT}/bin/llvm-ar
+    --ranlib=${ANDROID_TOOLCHAIN_ROOT}/bin/llvm-ranlib
     --strip=${ANDROID_TOOLCHAIN_ROOT}/bin/llvm-strip
     --enable-cross-compile
     --sysroot=${ANDROID_SYSROOT}
@@ -66,7 +82,10 @@ set(FFMPEG_CONFIGURE_COMMAND
     --extra-cflags=-Wno-macro-redefined
     --extra-cflags=-Wno-incompatible-pointer-types-discards-qualifiers
     --extra-cflags=-Wno-implicit-const-int-float-conversion
+    --extra-cflags=-Wno-implicit-int-float-conversion
+    --extra-cflags=-Wno-error=implicit-int-float-conversion
     --extra-ldflags=-Wl,--hash-style=both
+    --extra-ldflags=-Wl,--gc-sections
     --extra-ldexeflags=-pie
     
     # 静态库配置
@@ -116,16 +135,29 @@ set(FFMPEG_CONFIGURE_COMMAND
     
     # 压缩库
     --enable-zlib
+    --disable-bzlib
+    --disable-lzma
     
     # 性能优化
     --disable-small
     --enable-optimizations
+    --disable-runtime-cpudetect
     
     # 调试信息
     --disable-debug
     --disable-stripping
     
-    --pkg-config=pkg-config
+    # 其他
+    --disable-symver
+    --disable-w32threads
+    --disable-schannel
+    --disable-securetransport
+    --disable-xlib
+    --disable-iconv
+    --disable-sdl2
+    
+    # 添加 pkg-config 配置
+    --pkg-config=$(which pkg-config)
 )
 
 # 添加配置验证步骤
@@ -183,4 +215,3 @@ add_dependencies(swscale-static ffmpeg-static)
 
 # 添加头文件目录
 set(FFMPEG_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/include)
-    
