@@ -9,7 +9,7 @@ set(ANDROID_SYSROOT ${ANDROID_TOOLCHAIN_ROOT}/sysroot)
 set(ANDROID_PLATFORM aarch64-linux-android)
 
 # 使用 Android API 级别 30
-set(ANDROID_API_LEVEL 30)
+set(ANDROID_API_LEVEL 36)
 
 if (CMAKE_HOST_WIN32)
     set(ProgramFiles_x86 "$ENV{ProgramFiles\(x86\)}")
