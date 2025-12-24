@@ -9,7 +9,7 @@ set(ANDROID_SYSROOT ${ANDROID_TOOLCHAIN_ROOT}/sysroot)
 set(ANDROID_PLATFORM aarch64-linux-android)
 
 # 使用 Android API 级别 30
-set(ANDROID_API_LEVEL 36)
+set(ANDROID_API_LEVEL 30)
 
 if (CMAKE_HOST_WIN32)
     set(ProgramFiles_x86 "$ENV{ProgramFiles\(x86\)}")
@@ -42,12 +42,13 @@ endif ()
 set(FFMPEG_CONFIGURE_COMMAND
     <SOURCE_DIR>/configure
     --prefix=${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install
-    --cross-prefix=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}${ANDROID_API_LEVEL}-
+    --cross-prefix=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}-
     --target-os=android
     --arch=aarch64
     --cc=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}${ANDROID_API_LEVEL}-clang
     --cxx=${ANDROID_TOOLCHAIN_ROOT}/bin/${ANDROID_PLATFORM}${ANDROID_API_LEVEL}-clang++
     --nm=${ANDROID_TOOLCHAIN_ROOT}/bin/llvm-nm
+    --ar=${ANDROID_TOOLCHAIN_ROOT}/bin/llvm-ar  # 改为 llvm-ar
     --strip=${ANDROID_TOOLCHAIN_ROOT}/bin/llvm-strip
     --enable-cross-compile
     --sysroot=${ANDROID_SYSROOT}
@@ -59,6 +60,12 @@ set(FFMPEG_CONFIGURE_COMMAND
     --extra-cflags=-mtune=cortex-a78
     --extra-cflags=-DANDROID
     # 注意：移除了 -D__ANDROID_API__=${ANDROID_API_LEVEL}，避免与工具链冲突
+    --extra-cflags=-Wno-unused-function
+    --extra-cflags=-Wno-unused-variable
+    --extra-cflags=-Wno-unused-but-set-variable
+    --extra-cflags=-Wno-macro-redefined
+    --extra-cflags=-Wno-incompatible-pointer-types-discards-qualifiers
+    --extra-cflags=-Wno-implicit-const-int-float-conversion
     --extra-ldflags=-Wl,--hash-style=both
     --extra-ldexeflags=-pie
     
@@ -76,6 +83,11 @@ set(FFMPEG_CONFIGURE_COMMAND
     --enable-avutil
     --enable-swresample
     --enable-swscale
+    
+    # 禁用不需要的库以减少体积和警告
+    --disable-avdevice
+    --disable-postproc
+    --disable-avfilter
     
     # ARM 优化
     --enable-asm
@@ -171,3 +183,4 @@ add_dependencies(swscale-static ffmpeg-static)
 
 # 添加头文件目录
 set(FFMPEG_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/include)
+    
