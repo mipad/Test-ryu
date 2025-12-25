@@ -76,7 +76,12 @@ static void initialize_ffmpeg() {
 
 extern "C" {
 
-// 初始化函数
+// 初始化函数 - 使用 constructor 属性自动调用
+__attribute__((constructor)) void ffmpeg_auto_init() {
+    std::call_once(ffmpeg_init_flag, initialize_ffmpeg);
+}
+
+// 手动初始化函数（可选）
 void ffmpeg_init() {
     std::call_once(ffmpeg_init_flag, initialize_ffmpeg);
 }
@@ -98,54 +103,45 @@ int ffmpeg_avformat_version() {
     return avformat_version();
 }
 
-// 注意：以下函数在 FFmpeg 静态库中已定义，不要在这里重新定义
-// 只定义 C# 代码中通过 FFmpegApi.cs 直接调用的函数
-
-// avutil 函数（根据 C# 需要定义）
-AVFrame* av_frame_alloc() {
+// C# 代码需要的函数 - 使用弱符号避免冲突
+__attribute__((weak)) AVFrame* av_frame_alloc() {
     return ::av_frame_alloc();
 }
 
-void av_frame_unref(AVFrame* frame) {
+__attribute__((weak)) void av_frame_unref(AVFrame* frame) {
     ::av_frame_unref(frame);
 }
 
-// avcodec 函数（根据 C# 需要定义）
-const AVCodec* avcodec_find_decoder(enum AVCodecID id) {
+__attribute__((weak)) const AVCodec* avcodec_find_decoder(enum AVCodecID id) {
     return ::avcodec_find_decoder(id);
 }
 
-AVCodecContext* avcodec_alloc_context3(const AVCodec* codec) {
+__attribute__((weak)) AVCodecContext* avcodec_alloc_context3(const AVCodec* codec) {
     return ::avcodec_alloc_context3(codec);
 }
 
-int avcodec_open2(AVCodecContext* avctx, const AVCodec* codec, AVDictionary** options) {
+__attribute__((weak)) int avcodec_open2(AVCodecContext* avctx, const AVCodec* codec, AVDictionary** options) {
     return ::avcodec_open2(avctx, codec, options);
 }
 
-int avcodec_close(AVCodecContext* avctx) {
+__attribute__((weak)) int avcodec_close(AVCodecContext* avctx) {
     return ::avcodec_close(avctx);
 }
 
-void avcodec_free_context(AVCodecContext** avctx) {
+__attribute__((weak)) void avcodec_free_context(AVCodecContext** avctx) {
     ::avcodec_free_context(avctx);
 }
 
-AVPacket* av_packet_alloc() {
+__attribute__((weak)) AVPacket* av_packet_alloc() {
     return ::av_packet_alloc();
 }
 
-void av_packet_unref(AVPacket* pkt) {
+__attribute__((weak)) void av_packet_unref(AVPacket* pkt) {
     ::av_packet_unref(pkt);
 }
 
-void av_packet_free(AVPacket** pkt) {
+__attribute__((weak)) void av_packet_free(AVPacket** pkt) {
     ::av_packet_free(pkt);
-}
-
-// 修复：avcodec_version 返回 unsigned（根据 FFmpeg 头文件）
-unsigned avcodec_version() {
-    return ::avcodec_version();
 }
 
 } // extern "C" 结束
