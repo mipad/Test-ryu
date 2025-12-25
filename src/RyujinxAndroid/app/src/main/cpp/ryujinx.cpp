@@ -1,11 +1,30 @@
 #include "ryuijnx.h"
+#include "oboe_audio_renderer.h"
 #include <chrono>
 #include <csignal>
-#include "oboe_audio_renderer.h"
 #include <android/log.h>
 #include <stdarg.h>
 #include <sys/system_properties.h>
+#include <map>
+#include <memory>
+#include <vector>
+#include <queue>
+#include <mutex>
+#include <condition_variable>
+#include <thread>
+#include <atomic>
 
+// MediaCodec 解码器实现
+#include <media/NdkMediaCodec.h>
+#include <media/NdkMediaFormat.h>
+
+#define LOG_TAG "RyujinxNative"
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
+#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
+
+// 全局变量定义
 long _renderingThreadId = 0;
 JavaVM *_vm = nullptr;
 jobject _mainActivity = nullptr;
@@ -14,8 +33,584 @@ pthread_t _renderingThreadIdNative;
 std::chrono::time_point<std::chrono::steady_clock, std::chrono::nanoseconds> _currentTimePoint;
 bool isInitialOrientationFlipped = true;
 
-// 全局单例实例（保持向后兼容）
+// Oboe音频渲染器单例
 static RyujinxOboe::OboeAudioRenderer* g_singleton_renderer = nullptr;
+
+// ========== MediaCodec 解码器实现 ==========
+
+// 解码器管理器
+class MediaCodecDecoderManager {
+private:
+    std::map<MediaCodecDecoderHandle, AMediaCodec*> decoders_;
+    std::map<MediaCodecDecoderHandle, AMediaFormat*> formats_;
+    std::map<MediaCodecDecoderHandle, std::thread*> outputThreads_;
+    std::map<MediaCodecDecoderHandle, std::atomic<bool>> runningFlags_;
+    std::map<MediaCodecDecoderHandle, std::queue<std::vector<uint8_t>>> frameQueues_;
+    std::map<MediaCodecDecoderHandle, std::mutex*> queueMutexes_;
+    std::map<MediaCodecDecoderHandle, std::condition_variable*> queueCVs_;
+    std::atomic<long> nextHandleId_{1};
+    std::mutex managerMutex_;
+    
+public:
+    static MediaCodecDecoderManager& GetInstance() {
+        static MediaCodecDecoderManager instance;
+        return instance;
+    }
+    
+    MediaCodecDecoderHandle CreateDecoder(MediaCodecType codec_type) {
+        std::lock_guard<std::mutex> lock(managerMutex_);
+        
+        MediaCodecDecoderHandle handle = reinterpret_cast<MediaCodecDecoderHandle>(nextHandleId_++);
+        
+        // 根据编解码器类型创建 MediaCodec
+        const char* mime_type = nullptr;
+        switch (codec_type) {
+            case MEDIACODEC_H264:
+                mime_type = "video/avc";
+                break;
+            case MEDIACODEC_VP8:
+                mime_type = "video/x-vnd.on2.vp8";
+                break;
+            case MEDIACODEC_VP9:
+                mime_type = "video/x-vnd.on2.vp9";
+                break;
+            case MEDIACODEC_HEVC:
+                mime_type = "video/hevc";
+                break;
+            case MEDIACODEC_AV1:
+                mime_type = "video/av01";
+                break;
+            default:
+                LOGE("Unsupported codec type: %d", codec_type);
+                return nullptr;
+        }
+        
+        AMediaCodec* codec = AMediaCodec_createDecoderByType(mime_type);
+        if (!codec) {
+            LOGE("Failed to create MediaCodec decoder for %s", mime_type);
+            return nullptr;
+        }
+        
+        decoders_[handle] = codec;
+        formats_[handle] = nullptr;
+        runningFlags_[handle] = false;
+        queueMutexes_[handle] = new std::mutex();
+        queueCVs_[handle] = new std::condition_variable();
+        
+        LOGI("Created MediaCodec decoder handle: %p for %s", handle, mime_type);
+        return handle;
+    }
+    
+    bool InitDecoder(MediaCodecDecoderHandle handle,
+                    int width, int height,
+                    int frame_rate,
+                    int color_format,
+                    const uint8_t* csd0, int csd0_size,
+                    const uint8_t* csd1, int csd1_size,
+                    const uint8_t* csd2, int csd2_size) {
+        std::lock_guard<std::mutex> lock(managerMutex_);
+        
+        auto it = decoders_.find(handle);
+        if (it == decoders_.end()) {
+            LOGE("Decoder not found: %p", handle);
+            return false;
+        }
+        
+        AMediaCodec* codec = it->second;
+        
+        // 创建 MediaFormat
+        AMediaFormat* format = AMediaFormat_new();
+        if (!format) {
+            LOGE("Failed to create MediaFormat");
+            return false;
+        }
+        
+        // 设置基础参数
+        const char* mime_type = "video/avc"; // 默认 H.264
+        auto decoderIt = decoders_.find(handle);
+        // 这里可以根据需要确定实际的 MIME 类型
+        AMediaFormat_setString(format, AMEDIAFORMAT_KEY_MIME, mime_type);
+        AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_WIDTH, width);
+        AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_HEIGHT, height);
+        AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_FRAME_RATE, frame_rate);
+        AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_COLOR_FORMAT, color_format);
+        
+        // 设置 CSD 数据
+        if (csd0 && csd0_size > 0) {
+            AMediaFormat_setBuffer(format, "csd-0", csd0, csd0_size);
+        }
+        
+        if (csd1 && csd1_size > 0) {
+            AMediaFormat_setBuffer(format, "csd-1", csd1, csd1_size);
+        }
+        
+        if (csd2 && csd2_size > 0) {
+            AMediaFormat_setBuffer(format, "csd-2", csd2, csd2_size);
+        }
+        
+        // 配置解码器
+        media_status_t status = AMediaCodec_configure(codec, format, nullptr, nullptr, 0);
+        if (status != AMEDIA_OK) {
+            LOGE("AMediaCodec_configure failed: %d", status);
+            AMediaFormat_delete(format);
+            return false;
+        }
+        
+        // 保存格式
+        formats_[handle] = format;
+        
+        LOGI("Initialized MediaCodec decoder %p: %dx%d", handle, width, height);
+        return true;
+    }
+    
+    bool StartDecoder(MediaCodecDecoderHandle handle) {
+        std::lock_guard<std::mutex> lock(managerMutex_);
+        
+        auto it = decoders_.find(handle);
+        if (it == decoders_.end()) {
+            LOGE("Decoder not found: %p", handle);
+            return false;
+        }
+        
+        AMediaCodec* codec = it->second;
+        
+        // 启动解码器
+        media_status_t status = AMediaCodec_start(codec);
+        if (status != AMEDIA_OK) {
+            LOGE("AMediaCodec_start failed: %d", status);
+            return false;
+        }
+        
+        // 设置运行标志
+        runningFlags_[handle] = true;
+        
+        // 启动输出线程
+        std::thread* outputThread = new std::thread([this, handle]() {
+            OutputThreadFunc(handle);
+        });
+        outputThreads_[handle] = outputThread;
+        
+        LOGI("Started MediaCodec decoder: %p", handle);
+        return true;
+    }
+    
+    bool DecodeFrame(MediaCodecDecoderHandle handle,
+                    const uint8_t* frame_data, int frame_size,
+                    long long presentation_time_us,
+                    int flags) {
+        std::lock_guard<std::mutex> lock(managerMutex_);
+        
+        auto it = decoders_.find(handle);
+        if (it == decoders_.end()) {
+            LOGE("Decoder not found: %p", handle);
+            return false;
+        }
+        
+        if (!runningFlags_[handle]) {
+            LOGE("Decoder not running: %p", handle);
+            return false;
+        }
+        
+        AMediaCodec* codec = it->second;
+        
+        // 获取输入缓冲区
+        ssize_t inputBufferIndex = AMediaCodec_dequeueInputBuffer(codec, 10000);
+        if (inputBufferIndex < 0) {
+            if (inputBufferIndex == AMEDIACODEC_INFO_TRY_AGAIN_LATER) {
+                LOGD("No input buffer available");
+            }
+            return false;
+        }
+        
+        // 获取输入缓冲区
+        size_t bufferSize = 0;
+        uint8_t* inputBuffer = AMediaCodec_getInputBuffer(codec, inputBufferIndex, &bufferSize);
+        if (!inputBuffer) {
+            LOGE("Failed to get input buffer");
+            return false;
+        }
+        
+        if (frame_size > static_cast<int>(bufferSize)) {
+            LOGE("Frame too large: %d > %zu", frame_size, bufferSize);
+            return false;
+        }
+        
+        // 复制数据
+        memcpy(inputBuffer, frame_data, frame_size);
+        
+        // 提交输入缓冲区
+        media_status_t status = AMediaCodec_queueInputBuffer(codec,
+                                                            inputBufferIndex,
+                                                            0,
+                                                            frame_size,
+                                                            presentation_time_us,
+                                                            flags);
+        if (status != AMEDIA_OK) {
+            LOGE("AMediaCodec_queueInputBuffer failed: %d", status);
+            return false;
+        }
+        
+        return true;
+    }
+    
+    bool GetDecodedFrameYUV(MediaCodecDecoderHandle handle,
+                           uint8_t** yuv_data, int* yuv_size,
+                           int* width, int* height,
+                           int timeout_us) {
+        auto mutexIt = queueMutexes_.find(handle);
+        auto cvIt = queueCVs_.find(handle);
+        auto queueIt = frameQueues_.find(handle);
+        
+        if (mutexIt == queueMutexes_.end() || cvIt == queueCVs_.end() || queueIt == frameQueues_.end()) {
+            return false;
+        }
+        
+        std::unique_lock<std::mutex> lock(*(mutexIt->second));
+        
+        // 等待帧可用
+        if (queueIt->second.empty()) {
+            if (timeout_us > 0) {
+                auto timeout = std::chrono::microseconds(timeout_us);
+                if (!cvIt->second->wait_for(lock, timeout, [&queueIt]() { return !queueIt->second.empty(); })) {
+                    return false; // 超时
+                }
+            } else {
+                cvIt->second->wait(lock, [&queueIt]() { return !queueIt->second.empty(); });
+            }
+        }
+        
+        if (queueIt->second.empty()) {
+            return false;
+        }
+        
+        // 获取帧数据
+        std::vector<uint8_t> frame = std::move(queueIt->second.front());
+        queueIt->second.pop();
+        
+        // 分配输出内存
+        *yuv_size = static_cast<int>(frame.size());
+        *yuv_data = static_cast<uint8_t*>(malloc(*yuv_size));
+        if (!*yuv_data) {
+            return false;
+        }
+        
+        memcpy(*yuv_data, frame.data(), *yuv_size);
+        
+        // 这里简化处理，实际需要从帧中提取宽度和高度
+        // 这里假设宽度和高度已经知道，或者可以从其他方式获取
+        *width = 0;
+        *height = 0;
+        
+        return true;
+    }
+    
+    bool StopDecoder(MediaCodecDecoderHandle handle) {
+        std::lock_guard<std::mutex> lock(managerMutex_);
+        
+        auto it = decoders_.find(handle);
+        if (it == decoders_.end()) {
+            LOGE("Decoder not found: %p", handle);
+            return false;
+        }
+        
+        // 停止运行标志
+        runningFlags_[handle] = false;
+        
+        // 停止输出线程
+        auto threadIt = outputThreads_.find(handle);
+        if (threadIt != outputThreads_.end() && threadIt->second) {
+            threadIt->second->join();
+            delete threadIt->second;
+            outputThreads_.erase(handle);
+        }
+        
+        // 停止解码器
+        AMediaCodec_stop(it->second);
+        
+        // 清空帧队列
+        auto queueIt = frameQueues_.find(handle);
+        if (queueIt != frameQueues_.end()) {
+            std::queue<std::vector<uint8_t>> emptyQueue;
+            queueIt->second.swap(emptyQueue);
+        }
+        
+        LOGI("Stopped MediaCodec decoder: %p", handle);
+        return true;
+    }
+    
+    void DestroyDecoder(MediaCodecDecoderHandle handle) {
+        std::lock_guard<std::mutex> lock(managerMutex_);
+        
+        // 停止解码器
+        StopDecoder(handle);
+        
+        // 清理资源
+        auto decoderIt = decoders_.find(handle);
+        if (decoderIt != decoders_.end()) {
+            AMediaCodec_delete(decoderIt->second);
+            decoders_.erase(handle);
+        }
+        
+        auto formatIt = formats_.find(handle);
+        if (formatIt != formats_.end()) {
+            AMediaFormat_delete(formatIt->second);
+            formats_.erase(handle);
+        }
+        
+        auto mutexIt = queueMutexes_.find(handle);
+        if (mutexIt != queueMutexes_.end()) {
+            delete mutexIt->second;
+            queueMutexes_.erase(handle);
+        }
+        
+        auto cvIt = queueCVs_.find(handle);
+        if (cvIt != queueCVs_.end()) {
+            delete cvIt->second;
+            queueCVs_.erase(handle);
+        }
+        
+        frameQueues_.erase(handle);
+        runningFlags_.erase(handle);
+        
+        LOGI("Destroyed MediaCodec decoder: %p", handle);
+    }
+    
+    bool IsCodecSupported(MediaCodecType codec_type) {
+        const char* mime_type = nullptr;
+        switch (codec_type) {
+            case MEDIACODEC_H264:
+                mime_type = "video/avc";
+                break;
+            case MEDIACODEC_VP8:
+                mime_type = "video/x-vnd.on2.vp8";
+                break;
+            case MEDIACODEC_VP9:
+                mime_type = "video/x-vnd.on2.vp9";
+                break;
+            case MEDIACODEC_HEVC:
+                mime_type = "video/hevc";
+                break;
+            default:
+                return false;
+        }
+        
+        AMediaCodec* codec = AMediaCodec_createDecoderByType(mime_type);
+        if (codec) {
+            AMediaCodec_delete(codec);
+            LOGI("Codec %s is supported", mime_type);
+            return true;
+        }
+        
+        LOGW("Codec %s is not supported", mime_type);
+        return false;
+    }
+    
+    DecoderStatus GetDecoderStatus(MediaCodecDecoderHandle handle) {
+        std::lock_guard<std::mutex> lock(managerMutex_);
+        
+        auto it = decoders_.find(handle);
+        if (it == decoders_.end()) {
+            return DECODER_STATUS_ERROR;
+        }
+        
+        auto runningIt = runningFlags_.find(handle);
+        if (runningIt == runningFlags_.end()) {
+            return DECODER_STATUS_UNINITIALIZED;
+        }
+        
+        if (runningIt->second) {
+            return DECODER_STATUS_RUNNING;
+        }
+        
+        auto formatIt = formats_.find(handle);
+        if (formatIt != formats_.end() && formatIt->second) {
+            return DECODER_STATUS_INITIALIZED;
+        }
+        
+        return DECODER_STATUS_STOPPED;
+    }
+    
+    bool FlushDecoder(MediaCodecDecoderHandle handle) {
+        std::lock_guard<std::mutex> lock(managerMutex_);
+        
+        auto it = decoders_.find(handle);
+        if (it == decoders_.end()) {
+            return false;
+        }
+        
+        media_status_t status = AMediaCodec_flush(it->second);
+        if (status != AMEDIA_OK) {
+            LOGE("AMediaCodec_flush failed: %d", status);
+            return false;
+        }
+        
+        // 清空帧队列
+        auto queueIt = frameQueues_.find(handle);
+        if (queueIt != frameQueues_.end()) {
+            std::queue<std::vector<uint8_t>> emptyQueue;
+            queueIt->second.swap(emptyQueue);
+        }
+        
+        LOGI("Flushed MediaCodec decoder: %p", handle);
+        return true;
+    }
+    
+private:
+    void OutputThreadFunc(MediaCodecDecoderHandle handle) {
+        LOGD("Output thread started for decoder: %p", handle);
+        
+        auto decoderIt = decoders_.find(handle);
+        auto runningIt = runningFlags_.find(handle);
+        auto mutexIt = queueMutexes_.find(handle);
+        auto cvIt = queueCVs_.find(handle);
+        auto queueIt = frameQueues_.find(handle);
+        
+        if (decoderIt == decoders_.end() || runningIt == runningFlags_.end() ||
+            mutexIt == queueMutexes_.end() || cvIt == queueCVs_.end() || queueIt == frameQueues_.end()) {
+            return;
+        }
+        
+        AMediaCodec* codec = decoderIt->second;
+        
+        while (runningIt->second) {
+            AMediaCodecBufferInfo bufferInfo;
+            ssize_t outputBufferIndex = AMediaCodec_dequeueOutputBuffer(codec, &bufferInfo, 10000);
+            
+            if (outputBufferIndex >= 0) {
+                // 获取输出缓冲区
+                size_t bufferSize = 0;
+                uint8_t* outputBuffer = AMediaCodec_getOutputBuffer(codec, outputBufferIndex, &bufferSize);
+                
+                if (outputBuffer && bufferInfo.size > 0) {
+                    // 提取 YUV 数据
+                    std::vector<uint8_t> yuvData(bufferInfo.size);
+                    memcpy(yuvData.data(), outputBuffer + bufferInfo.offset, bufferInfo.size);
+                    
+                    // 添加到队列
+                    {
+                        std::lock_guard<std::mutex> lock(*(mutexIt->second));
+                        queueIt->second.push(std::move(yuvData));
+                    }
+                    cvIt->second->notify_one();
+                }
+                
+                // 释放输出缓冲区
+                AMediaCodec_releaseOutputBuffer(codec, outputBufferIndex, false);
+                
+                // 检查结束标志
+                if ((bufferInfo.flags & AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM) != 0) {
+                    LOGD("End of stream for decoder: %p", handle);
+                    break;
+                }
+            } else if (outputBufferIndex == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED) {
+                // 输出格式改变
+                AMediaFormat* format = AMediaCodec_getOutputFormat(codec);
+                if (format) {
+                    int width, height, colorFormat;
+                    AMediaFormat_getInt32(format, AMEDIAFORMAT_KEY_WIDTH, &width);
+                    AMediaFormat_getInt32(format, AMEDIAFORMAT_KEY_HEIGHT, &height);
+                    AMediaFormat_getInt32(format, AMEDIAFORMAT_KEY_COLOR_FORMAT, &colorFormat);
+                    
+                    LOGI("Output format changed: %dx%d, color: %d", width, height, colorFormat);
+                    AMediaFormat_delete(format);
+                }
+            } else if (outputBufferIndex == AMEDIACODEC_INFO_TRY_AGAIN_LATER) {
+                // 没有可用输出缓冲区，短暂休眠
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            } else {
+                // 其他错误
+                LOGE("Error dequeueing output buffer: %zd", outputBufferIndex);
+                break;
+            }
+        }
+        
+        LOGD("Output thread stopped for decoder: %p", handle);
+    }
+};
+
+// ========== C 接口函数实现 ==========
+
+MediaCodecDecoderHandle CreateMediaCodecDecoder(MediaCodecType codec_type) {
+    return MediaCodecDecoderManager::GetInstance().CreateDecoder(codec_type);
+}
+
+bool InitMediaCodecDecoder(MediaCodecDecoderHandle decoder,
+                          int width, int height,
+                          int frame_rate,
+                          int color_format,
+                          const uint8_t* csd0, int csd0_size,
+                          const uint8_t* csd1, int csd1_size,
+                          const uint8_t* csd2, int csd2_size) {
+    return MediaCodecDecoderManager::GetInstance().InitDecoder(decoder,
+                                                              width, height,
+                                                              frame_rate,
+                                                              color_format,
+                                                              csd0, csd0_size,
+                                                              csd1, csd1_size,
+                                                              csd2, csd2_size);
+}
+
+bool StartMediaCodecDecoder(MediaCodecDecoderHandle decoder) {
+    return MediaCodecDecoderManager::GetInstance().StartDecoder(decoder);
+}
+
+bool DecodeMediaCodecFrame(MediaCodecDecoderHandle decoder,
+                          const uint8_t* frame_data, int frame_size,
+                          long long presentation_time_us,
+                          int flags) {
+    return MediaCodecDecoderManager::GetInstance().DecodeFrame(decoder,
+                                                              frame_data, frame_size,
+                                                              presentation_time_us,
+                                                              flags);
+}
+
+bool GetDecodedFrameYUV(MediaCodecDecoderHandle decoder,
+                       uint8_t** yuv_data, int* yuv_size,
+                       int* width, int* height,
+                       int timeout_us) {
+    return MediaCodecDecoderManager::GetInstance().GetDecodedFrameYUV(decoder,
+                                                                     yuv_data, yuv_size,
+                                                                     width, height,
+                                                                     timeout_us);
+}
+
+bool StopMediaCodecDecoder(MediaCodecDecoderHandle decoder) {
+    return MediaCodecDecoderManager::GetInstance().StopDecoder(decoder);
+}
+
+void DestroyMediaCodecDecoder(MediaCodecDecoderHandle decoder) {
+    MediaCodecDecoderManager::GetInstance().DestroyDecoder(decoder);
+}
+
+bool IsMediaCodecSupported(MediaCodecType codec_type) {
+    return MediaCodecDecoderManager::GetInstance().IsCodecSupported(codec_type);
+}
+
+const char* GetMediaCodecDeviceInfo() {
+    static char deviceInfo[256] = {0};
+    if (deviceInfo[0] == '\0') {
+        char manufacturer[PROP_VALUE_MAX] = {0};
+        char model[PROP_VALUE_MAX] = {0};
+        char platform[PROP_VALUE_MAX] = {0};
+        
+        __system_property_get("ro.product.manufacturer", manufacturer);
+        __system_property_get("ro.product.model", model);
+        __system_property_get("ro.board.platform", platform);
+        
+        snprintf(deviceInfo, sizeof(deviceInfo), "%s %s (%s)", manufacturer, model, platform);
+    }
+    return deviceInfo;
+}
+
+DecoderStatus GetMediaCodecDecoderStatus(MediaCodecDecoderHandle decoder) {
+    return MediaCodecDecoderManager::GetInstance().GetDecoderStatus(decoder);
+}
+
+bool FlushMediaCodecDecoder(MediaCodecDecoderHandle decoder) {
+    return MediaCodecDecoderManager::GetInstance().FlushDecoder(decoder);
+}
+
+// ========== JNI 函数实现 ==========
 
 extern "C" {
 
@@ -165,7 +760,7 @@ Java_org_ryujinx_android_NativeHelpers_setIsInitialOrientationFlipped(JNIEnv *en
     isInitialOrientationFlipped = is_flipped;
 }
 
-// ========== 单例 Oboe Audio JNI接口 (保持向后兼容) ==========
+// ========== 单例 Oboe Audio JNI接口 ==========
 
 JNIEXPORT jboolean JNICALL
 Java_org_ryujinx_android_NativeHelpers_initOboeAudio(JNIEnv *env, jobject thiz, jint sample_rate, jint channel_count) {
@@ -348,6 +943,185 @@ Java_org_ryujinx_android_NativeHelpers_getAndroidDeviceBrand(JNIEnv *env, jobjec
     char brand[PROP_VALUE_MAX];
     __system_property_get("ro.product.brand", brand);
     return env->NewStringUTF(brand);
+}
+
+// ========== MediaCodec JNI接口 ==========
+
+JNIEXPORT jlong JNICALL
+Java_org_ryujinx_android_NativeHelpers_createMediaCodecDecoder(
+    JNIEnv* env, jobject thiz, jint codec_type) {
+    MediaCodecType type = static_cast<MediaCodecType>(codec_type);
+    MediaCodecDecoderHandle handle = CreateMediaCodecDecoder(type);
+    return reinterpret_cast<jlong>(handle);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_initMediaCodecDecoder(
+    JNIEnv* env, jobject thiz,
+    jlong decoder_id,
+    jint width, jint height,
+    jint frame_rate,
+    jint color_format,
+    jbyteArray csd0,
+    jbyteArray csd1,
+    jbyteArray csd2) {
+    
+    MediaCodecDecoderHandle handle = reinterpret_cast<MediaCodecDecoderHandle>(decoder_id);
+    
+    uint8_t* csd0_data = nullptr;
+    int csd0_size = 0;
+    uint8_t* csd1_data = nullptr;
+    int csd1_size = 0;
+    uint8_t* csd2_data = nullptr;
+    int csd2_size = 0;
+    
+    if (csd0) {
+        csd0_size = env->GetArrayLength(csd0);
+        csd0_data = new uint8_t[csd0_size];
+        jbyte* csd0_bytes = env->GetByteArrayElements(csd0, nullptr);
+        memcpy(csd0_data, csd0_bytes, csd0_size);
+        env->ReleaseByteArrayElements(csd0, csd0_bytes, JNI_ABORT);
+    }
+    
+    if (csd1) {
+        csd1_size = env->GetArrayLength(csd1);
+        csd1_data = new uint8_t[csd1_size];
+        jbyte* csd1_bytes = env->GetByteArrayElements(csd1, nullptr);
+        memcpy(csd1_data, csd1_bytes, csd1_size);
+        env->ReleaseByteArrayElements(csd1, csd1_bytes, JNI_ABORT);
+    }
+    
+    if (csd2) {
+        csd2_size = env->GetArrayLength(csd2);
+        csd2_data = new uint8_t[csd2_size];
+        jbyte* csd2_bytes = env->GetByteArrayElements(csd2, nullptr);
+        memcpy(csd2_data, csd2_bytes, csd2_size);
+        env->ReleaseByteArrayElements(csd2, csd2_bytes, JNI_ABORT);
+    }
+    
+    bool result = InitMediaCodecDecoder(handle, width, height, frame_rate, color_format,
+                                       csd0_data, csd0_size, csd1_data, csd1_size, csd2_data, csd2_size);
+    
+    if (csd0_data) delete[] csd0_data;
+    if (csd1_data) delete[] csd1_data;
+    if (csd2_data) delete[] csd2_data;
+    
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_startMediaCodecDecoder(
+    JNIEnv* env, jobject thiz,
+    jlong decoder_id) {
+    MediaCodecDecoderHandle handle = reinterpret_cast<MediaCodecDecoderHandle>(decoder_id);
+    bool result = StartMediaCodecDecoder(handle);
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_decodeMediaCodecFrame(
+    JNIEnv* env, jobject thiz,
+    jlong decoder_id,
+    jbyteArray frame_data,
+    jlong presentation_time_us,
+    jint flags) {
+    
+    MediaCodecDecoderHandle handle = reinterpret_cast<MediaCodecDecoderHandle>(decoder_id);
+    
+    jsize frame_size = env->GetArrayLength(frame_data);
+    jbyte* frame_bytes = env->GetByteArrayElements(frame_data, nullptr);
+    
+    bool result = DecodeMediaCodecFrame(handle, 
+                                       reinterpret_cast<uint8_t*>(frame_bytes), 
+                                       frame_size,
+                                       presentation_time_us,
+                                       flags);
+    
+    env->ReleaseByteArrayElements(frame_data, frame_bytes, JNI_ABORT);
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_org_ryujinx_android_NativeHelpers_getDecodedFrameYUV(
+    JNIEnv* env, jobject thiz,
+    jlong decoder_id,
+    jint timeout_us,
+    jintArray dimensions) {
+    
+    MediaCodecDecoderHandle handle = reinterpret_cast<MediaCodecDecoderHandle>(decoder_id);
+    
+    uint8_t* yuv_data = nullptr;
+    int yuv_size = 0;
+    int width = 0, height = 0;
+    
+    bool result = GetDecodedFrameYUV(handle, &yuv_data, &yuv_size, &width, &height, timeout_us);
+    
+    if (!result || !yuv_data || yuv_size <= 0) {
+        if (yuv_data) free(yuv_data);
+        return nullptr;
+    }
+    
+    // 设置维度
+    jint dims[2] = {width, height};
+    env->SetIntArrayRegion(dimensions, 0, 2, dims);
+    
+    // 创建返回数组
+    jbyteArray resultArray = env->NewByteArray(yuv_size);
+    env->SetByteArrayRegion(resultArray, 0, yuv_size, reinterpret_cast<const jbyte*>(yuv_data));
+    
+    free(yuv_data);
+    return resultArray;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_stopMediaCodecDecoder(
+    JNIEnv* env, jobject thiz,
+    jlong decoder_id) {
+    MediaCodecDecoderHandle handle = reinterpret_cast<MediaCodecDecoderHandle>(decoder_id);
+    bool result = StopMediaCodecDecoder(handle);
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_destroyMediaCodecDecoder(
+    JNIEnv* env, jobject thiz,
+    jlong decoder_id) {
+    MediaCodecDecoderHandle handle = reinterpret_cast<MediaCodecDecoderHandle>(decoder_id);
+    DestroyMediaCodecDecoder(handle);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_isMediaCodecSupported(
+    JNIEnv* env, jobject thiz,
+    jint codec_type) {
+    MediaCodecType type = static_cast<MediaCodecType>(codec_type);
+    bool supported = IsMediaCodecSupported(type);
+    return supported ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jstring JNICALL
+Java_org_ryujinx_android_NativeHelpers_getMediaCodecDeviceInfo(
+    JNIEnv* env, jobject thiz) {
+    const char* info = GetMediaCodecDeviceInfo();
+    return env->NewStringUTF(info);
+}
+
+JNIEXPORT jint JNICALL
+Java_org_ryujinx_android_NativeHelpers_getDecoderStatus(
+    JNIEnv* env, jobject thiz,
+    jlong decoder_id) {
+    MediaCodecDecoderHandle handle = reinterpret_cast<MediaCodecDecoderHandle>(decoder_id);
+    DecoderStatus status = GetMediaCodecDecoderStatus(handle);
+    return static_cast<jint>(status);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_flushMediaCodecDecoder(
+    JNIEnv* env, jobject thiz,
+    jlong decoder_id) {
+    MediaCodecDecoderHandle handle = reinterpret_cast<MediaCodecDecoderHandle>(decoder_id);
+    bool result = FlushMediaCodecDecoder(handle);
+    return result ? JNI_TRUE : JNI_FALSE;
 }
 
 } // extern "C" 结束
