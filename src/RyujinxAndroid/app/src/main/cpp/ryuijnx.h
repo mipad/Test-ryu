@@ -38,8 +38,13 @@ extern bool isInitialOrientationFlipped;
 // 时间点变量
 extern std::chrono::time_point<std::chrono::steady_clock, std::chrono::nanoseconds> _currentTimePoint;
 
+// Oboe音频渲染器前向声明
+namespace RyujinxOboe {
+    class OboeAudioRenderer;
+}
+
 // Oboe音频渲染器全局实例
-static class RyujinxOboe::OboeAudioRenderer* g_singleton_renderer = nullptr;
+extern class RyujinxOboe::OboeAudioRenderer* g_singleton_renderer;
 
 // MediaCodec解码器相关定义
 #ifdef __cplusplus

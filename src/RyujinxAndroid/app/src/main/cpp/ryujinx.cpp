@@ -34,7 +34,7 @@ std::chrono::time_point<std::chrono::steady_clock, std::chrono::nanoseconds> _cu
 bool isInitialOrientationFlipped = true;
 
 // Oboe音频渲染器单例
-static RyujinxOboe::OboeAudioRenderer* g_singleton_renderer = nullptr;
+RyujinxOboe::OboeAudioRenderer* g_singleton_renderer = nullptr;
 
 // ========== MediaCodec 解码器实现 ==========
 
