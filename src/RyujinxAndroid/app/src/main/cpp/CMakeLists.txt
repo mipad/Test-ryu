@@ -1,12 +1,7 @@
 include(FetchContent)
 
-# For more information about using CMake with Android Studio, read the
-# documentation: https://d.android.com/studio/projects/add-native-code.html
-
-# Sets the minimum version of CMake required to build the native library.
 cmake_minimum_required(VERSION 3.22.1)
 
-# Declares and names the project.
 project("ryujinxjni")
 
 # 设置构建类型
@@ -85,6 +80,14 @@ add_library(
     vulkan_wrapper.cpp
     ryujinx.cpp
     oboe_audio_renderer.cpp
+    # MediaCodec 解码器
+    mediacodec/mediacodec_decoder.cpp
+    mediacodec/mediacodec_h264.cpp
+    mediacodec/mediacodec_vp8.cpp
+    mediacodec/mediacodec_vp9.cpp
+    mediacodec/mediacodec_common.cpp
+    mediacodec/yuv_converter.cpp
+    mediacodec/mediacodec_jni.cpp
 )
 
 # 添加编译定义以优化音频处理
@@ -112,9 +115,13 @@ find_library(log-lib log)
 find_library(opensles-lib OpenSLES)
 find_library(aaudio-lib aaudio)
 find_library(android-lib android)
+find_library(mediandk-lib mediandk)
 
 # 添加 Oboe 包含目录
 include_directories(${oboe_SOURCE_DIR}/include)
+
+# 添加 MediaCodec 包含目录
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/mediacodec)
 
 # 链接库
 target_link_libraries(
@@ -123,6 +130,7 @@ target_link_libraries(
     ${opensles-lib}
     ${aaudio-lib}
     ${android-lib}
+    ${mediandk-lib}
     -lvulkan
     adrenotools
     oboe
@@ -148,3 +156,99 @@ set_target_properties(OpenAL PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
     RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
 )
+
+# 设置输出目录
+set_target_properties(ryujinxjni PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
+    ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
+    RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
+)
+
+# 添加 MediaCodec 特定的编译定义
+target_compile_definitions(ryujinxjni PRIVATE
+    MEDIACODEC_ENABLED=1
+    ANDROID_NDK_MEDIACODEC=1
+)
+
+# 确保所有源文件都正确包含头文件
+include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+
+# 为 MediaCodec 文件添加特定的编译选项
+set_source_files_properties(
+    mediacodec/mediacodec_decoder.cpp
+    mediacodec/mediacodec_h264.cpp
+    mediacodec/mediacodec_vp8.cpp
+    mediacodec/mediacodec_vp9.cpp
+    mediacodec/mediacodec_common.cpp
+    mediacodec/mediacodec_jni.cpp
+    PROPERTIES
+    COMPILE_FLAGS "-Wno-deprecated-declarations -Wno-sign-conversion"
+)
+
+# 确保编译器能找到 Android NDK 头文件
+if(ANDROID_NDK)
+    include_directories(${ANDROID_NDK}/sources/android/native_app_glue)
+    include_directories(${ANDROID_NDK}/sources/third_party/vulkan/src/include)
+    include_directories(${ANDROID_NDK}/sources/android/cpufeatures)
+    include_directories(${ANDROID_NDK}/sources/cxx-stl/llvm-libc++/include)
+    
+    # MediaCodec NDK 头文件路径
+    if(EXISTS "${ANDROID_NDK}/sources/third_party/android_ndk_media/include")
+        include_directories(${ANDROID_NDK}/sources/third_party/android_ndk_media/include)
+    endif()
+    
+    # 如果使用较新的 NDK，MediaCodec 头文件可能在以下路径
+    if(EXISTS "${ANDROID_NDK}/sysroot/usr/include")
+        include_directories(${ANDROID_NDK}/sysroot/usr/include)
+    endif()
+endif()
+
+# 如果找不到 mediandk 库，尝试替代方案
+if(NOT mediandk-lib)
+    message(WARNING "libmediandk not found, trying alternative")
+    find_library(media-lib media)
+    if(media-lib)
+        target_link_libraries(ryujinxjni ${media-lib})
+    else()
+        message(WARNING "Neither libmediandk nor libmedia found, MediaCodec may not work")
+    endif()
+endif()
+
+# 添加构建后步骤，确保库文件被正确复制
+add_custom_command(TARGET ryujinxjni POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    $<TARGET_FILE:ryujinxjni>
+    ${JNI_PATH}/libryujinxjni.so
+    COMMENT "Copying ryujinxjni library to JNI directory"
+)
+
+# 确保所有依赖库也被复制
+if(TARGET OpenAL)
+    add_custom_command(TARGET OpenAL POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:OpenAL>
+        ${JNI_PATH}/libopenal.so
+        COMMENT "Copying OpenAL library to JNI directory"
+    )
+endif()
+
+# 添加测试目标（可选）
+if(BUILD_TESTS)
+    enable_testing()
+    
+    # 创建测试可执行文件
+    add_executable(mediacodec_test
+        mediacodec/test/test_mediacodec.cpp
+    )
+    
+    # 链接测试库
+    target_link_libraries(mediacodec_test
+        ${log-lib}
+        ${android-lib}
+        ${mediandk-lib}
+        ryujinxjni
+    )
+    
+    # 添加测试
+    add_test(NAME MediaCodecTest COMMAND mediacodec_test)
+endif()
