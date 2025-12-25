@@ -24,8 +24,31 @@ set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 set(ANDROID_STL c++_shared)
 set(ANDROID_ARM_NEON TRUE)
 
-# 包含 FFmpeg 静态库构建
-include(../../../../libryujinx/libs/FFmpegStatic.cmake)
+# 尝试包含 FFmpeg 静态库构建，如果失败则继续
+set(FFMPEG_ENABLED TRUE)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/../../../../libryujinx/libs/FFmpegStatic.cmake)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/../../../../libryujinx/libs/FFmpegStatic.cmake)
+    
+    # 检查 FFmpeg 头文件是否存在
+    if(EXISTS ${FFMPEG_INCLUDE_DIR}/libavcodec/avcodec.h)
+        message(STATUS "FFmpeg headers found at: ${FFMPEG_INCLUDE_DIR}")
+        set(HAVE_FFMPEG_HEADERS TRUE)
+    else()
+        message(WARNING "FFmpeg headers not found at: ${FFMPEG_INCLUDE_DIR}/libavcodec/avcodec.h")
+        set(HAVE_FFMPEG_HEADERS FALSE)
+        set(FFMPEG_ENABLED FALSE)
+    endif()
+else()
+    message(WARNING "FFmpegStatic.cmake not found, FFmpeg will be disabled")
+    set(FFMPEG_ENABLED FALSE)
+    set(HAVE_FFMPEG_HEADERS FALSE)
+endif()
+
+# 如果没有 FFmpeg 头文件，定义 NO_FFMPEG
+if(NOT HAVE_FFMPEG_HEADERS)
+    add_definitions(-DNO_FFMPEG)
+    message(STATUS "Defining NO_FFMPEG - FFmpeg functionality will be disabled")
+endif()
 
 # 使用 FetchContent 获取 adrenotools
 FetchContent_Declare(
@@ -95,12 +118,15 @@ find_library(vulkan-lib vulkan)
 # 添加 Oboe 包含目录
 include_directories(${oboe_SOURCE_DIR}/include)
 
-# 添加 FFmpeg 包含目录
-target_include_directories(ryujinxjni PRIVATE
-    ${FFMPEG_INCLUDE_DIR}
-)
+# 如果有 FFmpeg 头文件，添加包含目录
+if(HAVE_FFMPEG_HEADERS)
+    target_include_directories(ryujinxjni PRIVATE
+        ${FFMPEG_INCLUDE_DIR}
+    )
+    message(STATUS "Adding FFmpeg include directory: ${FFMPEG_INCLUDE_DIR}")
+endif()
 
-# 链接库 - 关键修复：使用完整的库路径
+# 链接库
 target_link_libraries(
     ryujinxjni
     ${log-lib}
@@ -110,18 +136,34 @@ target_link_libraries(
     ${vulkan-lib}
     adrenotools
     oboe
-    # 直接链接 FFmpeg 静态库
-    ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavcodec.a
-    ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavformat.a
-    ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavutil.a
-    ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libswresample.a
-    ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libswscale.a
-    ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavfilter.a
-    # 添加必要的系统库
-    -lm
-    -lz
-    -latomic
 )
+
+# 如果 FFmpeg 可用，链接 FFmpeg 静态库
+if(FFMPEG_ENABLED AND HAVE_FFMPEG_HEADERS)
+    # 确保 ryujinxjni 依赖于 FFmpeg 静态库
+    add_dependencies(ryujinxjni ffmpeg-static)
+    
+    # 链接 FFmpeg 静态库
+    target_link_libraries(ryujinxjni
+        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavcodec.a
+        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavformat.a
+        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavutil.a
+        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libswresample.a
+        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libswscale.a
+        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavfilter.a
+    )
+    
+    # 添加必要的系统库
+    target_link_libraries(ryujinxjni
+        -lm
+        -lz
+        -latomic
+    )
+    
+    message(STATUS "FFmpeg static libraries will be linked")
+else()
+    message(STATUS "FFmpeg static libraries will NOT be linked (disabled)")
+endif()
 
 # 设置 JNI 库输出路径
 set(JNI_PATH ../jniLibs/${CMAKE_ANDROID_ARCH_ABI})
@@ -138,5 +180,10 @@ endif ()
 
 # 输出构建信息
 message(STATUS "Building for Android ABI: ${CMAKE_ANDROID_ARCH_ABI}")
-message(STATUS "FFmpeg include directory: ${FFMPEG_INCLUDE_DIR}")
-message(STATUS "FFmpeg libraries will be linked from: ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/")
+message(STATUS "FFmpeg enabled: ${FFMPEG_ENABLED}")
+message(STATUS "Have FFmpeg headers: ${HAVE_FFMPEG_HEADERS}")
+if(HAVE_FFMPEG_HEADERS)
+    message(STATUS "FFmpeg include directory: ${FFMPEG_INCLUDE_DIR}")
+endif()
+message(STATUS "Oboe source directory: ${oboe_SOURCE_DIR}")
+message(STATUS "Output directory: ${JNI_PATH}")
