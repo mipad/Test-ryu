@@ -24,7 +24,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 set(ANDROID_STL c++_shared)
 set(ANDROID_ARM_NEON TRUE)
 
-# 包含 FFmpeg 静态库构建 - 使用相对路径
+# 包含 FFmpeg 静态库构建
 include(../../../../libryujinx/libs/FFmpegStatic.cmake)
 
 # 使用 FetchContent 获取 adrenotools
@@ -43,12 +43,6 @@ endif()
 
 if(TARGET linkernsbypass)
     target_compile_definitions(linkernsbypass PRIVATE PAGE_SIZE=4096)
-endif()
-
-# 为 adrenotools 的子目录目标也添加定义
-get_target_property(adrenotools_sources adrenotools SOURCES)
-if(adrenotools_sources)
-    target_compile_definitions(adrenotools PRIVATE PAGE_SIZE=4096)
 endif()
 
 # 使用 FetchContent 获取 Oboe 源码
@@ -73,9 +67,6 @@ add_library(
     ffmpeg_static_wrapper.cpp  # 新增的 FFmpeg 静态库包装器
 )
 
-# 确保主库依赖于 FFmpeg 静态库
-add_dependencies(ryujinxjni ffmpeg-static)
-
 # 添加编译定义以优化音频处理
 target_compile_definitions(ryujinxjni PRIVATE
     RYUJINX_AUDIO_OPTIMIZE=1
@@ -84,11 +75,6 @@ target_compile_definitions(ryujinxjni PRIVATE
 # 为音频渲染器文件单独启用激进优化
 set_source_files_properties(oboe_audio_renderer.cpp PROPERTIES
     COMPILE_FLAGS "-Ofast"
-)
-
-# 为 FFmpeg 包装器启用优化
-set_source_files_properties(ffmpeg_static_wrapper.cpp PROPERTIES
-    COMPILE_FLAGS "-O3 -ffast-math"
 )
 
 # 为主目标添加编译选项
@@ -114,7 +100,7 @@ target_include_directories(ryujinxjni PRIVATE
     ${FFMPEG_INCLUDE_DIR}
 )
 
-# 链接库 - 直接链接 FFmpeg 静态库文件
+# 链接库 - 关键修复：使用完整的库路径
 target_link_libraries(
     ryujinxjni
     ${log-lib}
@@ -124,19 +110,17 @@ target_link_libraries(
     ${vulkan-lib}
     adrenotools
     oboe
-    # 直接链接 FFmpeg 静态库文件
+    # 直接链接 FFmpeg 静态库
     ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavcodec.a
     ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavformat.a
     ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavutil.a
     ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libswresample.a
     ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libswscale.a
     ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavfilter.a
-)
-
-# 添加必要的系统库（FFmpeg 可能需要这些）
-target_link_libraries(ryujinxjni
-    -lm  # 数学库
-    -lz  # zlib 压缩库
+    # 添加必要的系统库
+    -lm
+    -lz
+    -latomic
 )
 
 # 设置 JNI 库输出路径
@@ -155,19 +139,4 @@ endif ()
 # 输出构建信息
 message(STATUS "Building for Android ABI: ${CMAKE_ANDROID_ARCH_ABI}")
 message(STATUS "FFmpeg include directory: ${FFMPEG_INCLUDE_DIR}")
-message(STATUS "FFmpeg static libraries:")
-message(STATUS "  - ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavcodec.a")
-message(STATUS "  - ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavformat.a")
-message(STATUS "  - ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavutil.a")
-message(STATUS "Oboe source directory: ${oboe_SOURCE_DIR}")
-message(STATUS "Output directory: ${JNI_PATH}")
-
-# 添加构建后检查
-add_custom_command(TARGET ryujinxjni POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E echo "=== 构建完成 ==="
-    COMMAND ${CMAKE_COMMAND} -E echo "库文件大小:"
-    COMMAND sh -c "ls -lh $<TARGET_FILE:ryujinxjni>"
-    COMMAND ${CMAKE_COMMAND} -E echo "检查 FFmpeg 符号:"
-    COMMAND sh -c "${CMAKE_OBJDUMP} -T $<TARGET_FILE:ryujinxjni> | grep -i avcodec | head -5 || true"
-    COMMAND sh -c "${CMAKE_OBJDUMP} -T $<TARGET_FILE:ryujinxjni> | grep -i avformat | head -5 || true"
-)
+message(STATUS "FFmpeg libraries will be linked from: ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/")
