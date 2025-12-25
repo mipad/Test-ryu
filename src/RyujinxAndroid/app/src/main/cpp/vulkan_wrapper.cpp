@@ -301,6 +301,9 @@ int InitVulkan(void) {
     vkCmdBeginConditionalRenderingEXT = reinterpret_cast<PFN_vkCmdBeginConditionalRenderingEXT>(dlsym(libvulkan, "vkCmdBeginConditionalRenderingEXT"));
     vkCmdEndConditionalRenderingEXT = reinterpret_cast<PFN_vkCmdEndConditionalRenderingEXT>(dlsym(libvulkan, "vkCmdEndConditionalRenderingEXT"));
 
+    // VK_EXT_astc_decode_mode
+    vkCmdSetASTCDecodeModeEXT = reinterpret_cast<PFN_vkCmdSetASTCDecodeModeEXT>(dlsym(libvulkan, "vkCmdSetASTCDecodeModeEXT"));
+
 #ifdef VK_USE_PLATFORM_XLIB_KHR
     vkCreateXlibSurfaceKHR = reinterpret_cast<PFN_vkCreateXlibSurfaceKHR>(dlsym(libvulkan, "vkCreateXlibSurfaceKHR"));
     vkGetPhysicalDeviceXlibPresentationSupportKHR = reinterpret_cast<PFN_vkGetPhysicalDeviceXlibPresentationSupportKHR>(dlsym(libvulkan, "vkGetPhysicalDeviceXlibPresentationSupportKHR"));
@@ -613,6 +616,9 @@ PFN_vkCmdDrawIndirectByteCountEXT vkCmdDrawIndirectByteCountEXT;
 // VK_EXT_conditional_rendering
 PFN_vkCmdBeginConditionalRenderingEXT vkCmdBeginConditionalRenderingEXT;
 PFN_vkCmdEndConditionalRenderingEXT vkCmdEndConditionalRenderingEXT;
+
+// VK_EXT_astc_decode_mode
+PFN_vkCmdSetASTCDecodeModeEXT vkCmdSetASTCDecodeModeEXT;
 
 #ifdef VK_USE_PLATFORM_XLIB_KHR
 PFN_vkCreateXlibSurfaceKHR vkCreateXlibSurfaceKHR;

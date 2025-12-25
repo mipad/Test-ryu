@@ -305,6 +305,9 @@ extern PFN_vkCmdDrawIndirectByteCountEXT vkCmdDrawIndirectByteCountEXT;
 extern PFN_vkCmdBeginConditionalRenderingEXT vkCmdBeginConditionalRenderingEXT;
 extern PFN_vkCmdEndConditionalRenderingEXT vkCmdEndConditionalRenderingEXT;
 
+// VK_EXT_astc_decode_mode
+extern PFN_vkCmdSetASTCDecodeModeEXT vkCmdSetASTCDecodeModeEXT;
+
 // VK_EXT_shader_stencil_export
 // No functions, just enables shader stencil export
 
