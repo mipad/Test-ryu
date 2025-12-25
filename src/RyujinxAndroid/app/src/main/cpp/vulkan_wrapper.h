@@ -20,25 +20,23 @@
 
 #include <vulkan/vulkan.h>
 
-// 在包含 Vulkan 头文件后，添加缺失的 ASTC decode mode 类型定义
+// ASTC decode mode 扩展的兼容性定义
+// 由于 Android NDK 的 Vulkan 头文件可能不包含此扩展，我们提供简单的定义
 #ifndef VK_EXT_astc_decode_mode
-// ASTC 解码模式常量定义
+// 扩展标志
 #define VK_EXT_astc_decode_mode 1
-#define VK_EXT_ASTC_DECODE_MODE_EXTENSION_NAME "VK_EXT_astc_decode_mode"
 
+// 解码模式类型
 typedef uint32_t VkASTCDecodeModeEXT;
 
-// ASTC 解码模式值
+// 解码模式值
 #define VK_ASTC_DECODE_MODE_LDR_EXT 0
 #define VK_ASTC_DECODE_MODE_HDR_EXT 1
+#endif
 
-// 函数指针类型定义
-typedef void (VKAPI_PTR *PFN_vkCmdSetASTCDecodeModeEXT)(VkCommandBuffer commandBuffer, VkASTCDecodeModeEXT decodeMode);
-#else
-// 如果系统头文件已定义，确保 PFN_vkCmdSetASTCDecodeModeEXT 存在
+// 函数指针类型定义（如果尚未定义）
 #ifndef PFN_vkCmdSetASTCDecodeModeEXT
 typedef void (VKAPI_PTR *PFN_vkCmdSetASTCDecodeModeEXT)(VkCommandBuffer commandBuffer, VkASTCDecodeModeEXT decodeMode);
-#endif
 #endif
 
 /* Initialize the Vulkan function pointer variables declared in this header.
