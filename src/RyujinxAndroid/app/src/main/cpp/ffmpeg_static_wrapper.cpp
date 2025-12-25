@@ -4,6 +4,10 @@
 #include <string>
 #include <mutex>
 
+// 先检查是否定义了 NO_FFMPEG，如果没有定义再包含 FFmpeg 头文件
+#ifndef NO_FFMPEG
+
+// 使用 extern "C" 包装所有 FFmpeg 头文件包含
 extern "C" {
 // 包含所有需要的 FFmpeg 头文件
 #include <libavcodec/avcodec.h>
@@ -20,6 +24,8 @@ extern "C" {
 #include <libavfilter/buffersink.h>
 }
 
+#endif // NO_FFMPEG
+
 #define LOG_TAG "FFmpegStatic"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
@@ -28,6 +34,8 @@ extern "C" {
 
 // 全局初始化标志
 static std::once_flag ffmpeg_init_flag;
+
+#ifndef NO_FFMPEG
 
 // 自定义日志回调
 static void ffmpeg_log_callback(void* ptr, int level, const char* fmt, va_list vl) {
@@ -69,8 +77,10 @@ static void initialize_ffmpeg() {
     av_log_set_level(AV_LOG_VERBOSE);
 #endif
     
-    LOGI("FFmpeg static wrapper initialized, version: %s", av_version_info());
+    LOGI("FFmpeg static wrapper initialized");
 }
+
+#endif // NO_FFMPEG
 
 // ==================== C 函数导出，供 C# P/Invoke 直接调用 ====================
 
@@ -78,30 +88,56 @@ extern "C" {
 
 // 初始化函数 - 使用 constructor 属性自动调用
 __attribute__((constructor)) void ffmpeg_auto_init() {
+#ifdef NO_FFMPEG
+    LOGW("FFmpeg not available (NO_FFMPEG defined)");
+#else
     std::call_once(ffmpeg_init_flag, initialize_ffmpeg);
+#endif
 }
 
 // 手动初始化函数（可选）
 void ffmpeg_init() {
+#ifdef NO_FFMPEG
+    LOGW("FFmpeg not available (NO_FFMPEG defined)");
+#else
     std::call_once(ffmpeg_init_flag, initialize_ffmpeg);
+#endif
 }
 
 // 版本信息
 const char* ffmpeg_version() {
+#ifdef NO_FFMPEG
+    return "FFmpeg not available";
+#else
     return av_version_info();
+#endif
 }
 
 int ffmpeg_avcodec_version() {
+#ifdef NO_FFMPEG
+    return 0;
+#else
     return avcodec_version();
+#endif
 }
 
 int ffmpeg_avutil_version() {
+#ifdef NO_FFMPEG
+    return 0;
+#else
     return avutil_version();
+#endif
 }
 
 int ffmpeg_avformat_version() {
+#ifdef NO_FFMPEG
+    return 0;
+#else
     return avformat_version();
+#endif
 }
+
+#ifndef NO_FFMPEG
 
 // C# 代码需要的函数 - 使用弱符号避免冲突
 __attribute__((weak)) AVFrame* av_frame_alloc() {
@@ -143,5 +179,46 @@ __attribute__((weak)) void av_packet_unref(AVPacket* pkt) {
 __attribute__((weak)) void av_packet_free(AVPacket** pkt) {
     ::av_packet_free(pkt);
 }
+
+__attribute__((weak)) void av_free(void* ptr) {
+    ::av_free(ptr);
+}
+
+__attribute__((weak)) void av_log_set_level(int level) {
+    ::av_log_set_level(level);
+}
+
+__attribute__((weak)) int av_log_get_level() {
+    return ::av_log_get_level();
+}
+
+__attribute__((weak)) void av_log_format_line(void* ptr, int level, const char* fmt, va_list vl, char* line, int line_size, int* print_prefix) {
+    ::av_log_format_line(ptr, level, fmt, vl, line, line_size, print_prefix);
+}
+
+__attribute__((weak)) unsigned avcodec_version() {
+    return ::avcodec_version();
+}
+
+#else
+
+// 当 NO_FFMPEG 定义时的空实现
+void* av_frame_alloc() { return nullptr; }
+void av_frame_unref(void* frame) {}
+void* avcodec_find_decoder(int id) { return nullptr; }
+void* avcodec_alloc_context3(void* codec) { return nullptr; }
+int avcodec_open2(void* avctx, void* codec, void** options) { return -1; }
+int avcodec_close(void* avctx) { return -1; }
+void avcodec_free_context(void** avctx) {}
+void* av_packet_alloc() { return nullptr; }
+void av_packet_unref(void* pkt) {}
+void av_packet_free(void** pkt) {}
+void av_free(void* ptr) {}
+void av_log_set_level(int level) {}
+int av_log_get_level() { return 0; }
+void av_log_format_line(void* ptr, int level, const char* fmt, void* vl, char* line, int line_size, int* print_prefix) {}
+unsigned avcodec_version() { return 0; }
+
+#endif // NO_FFMPEG
 
 } // extern "C" 结束
