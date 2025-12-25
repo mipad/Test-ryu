@@ -52,7 +52,7 @@ add_library(
     mediacodec/mediacodec_vp9.cpp
     mediacodec/mediacodec_common.cpp
     mediacodec/yuv_converter.cpp
-    mediacodec/mediacodec_jni.cpp
+    
 )
 
 # 优化选项
