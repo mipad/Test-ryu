@@ -17,6 +17,10 @@
 #define VULKAN_WRAPPER_H
 
 #define VK_NO_PROTOTYPES 1
+
+// 手动添加缺失的 ASTC decode mode 类型定义
+typedef void (VKAPI_PTR *PFN_vkCmdSetASTCDecodeModeEXT)(VkCommandBuffer commandBuffer, uint32_t decodeMode);
+
 #include <vulkan/vulkan.h>
 
 /* Initialize the Vulkan function pointer variables declared in this header.
