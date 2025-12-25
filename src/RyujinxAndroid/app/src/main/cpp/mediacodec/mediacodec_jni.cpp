@@ -1,3 +1,6 @@
+#include <jni.h>
+#include "mediacodec_common.h"
+#include "mediacodec_decoder.h"
 #include "mediacodec_h264.cpp"
 #include "mediacodec_vp8.cpp"
 #include "mediacodec_vp9.cpp"
