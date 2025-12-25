@@ -73,6 +73,9 @@ add_library(
     ffmpeg_static_wrapper.cpp  # 新增的 FFmpeg 静态库包装器
 )
 
+# 确保主库依赖于 FFmpeg 静态库
+add_dependencies(ryujinxjni ffmpeg-static)
+
 # 添加编译定义以优化音频处理
 target_compile_definitions(ryujinxjni PRIVATE
     RYUJINX_AUDIO_OPTIMIZE=1
@@ -111,7 +114,7 @@ target_include_directories(ryujinxjni PRIVATE
     ${FFMPEG_INCLUDE_DIR}
 )
 
-# 链接库
+# 链接库 - 直接链接 FFmpeg 静态库文件
 target_link_libraries(
     ryujinxjni
     ${log-lib}
@@ -121,7 +124,19 @@ target_link_libraries(
     ${vulkan-lib}
     adrenotools
     oboe
-    ffmpeg-static-combined  # 链接 FFmpeg 静态库
+    # 直接链接 FFmpeg 静态库文件
+    ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavcodec.a
+    ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavformat.a
+    ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavutil.a
+    ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libswresample.a
+    ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libswscale.a
+    ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavfilter.a
+)
+
+# 添加必要的系统库（FFmpeg 可能需要这些）
+target_link_libraries(ryujinxjni
+    -lm  # 数学库
+    -lz  # zlib 压缩库
 )
 
 # 设置 JNI 库输出路径
@@ -140,5 +155,19 @@ endif ()
 # 输出构建信息
 message(STATUS "Building for Android ABI: ${CMAKE_ANDROID_ARCH_ABI}")
 message(STATUS "FFmpeg include directory: ${FFMPEG_INCLUDE_DIR}")
+message(STATUS "FFmpeg static libraries:")
+message(STATUS "  - ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavcodec.a")
+message(STATUS "  - ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavformat.a")
+message(STATUS "  - ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-static-install/lib/libavutil.a")
 message(STATUS "Oboe source directory: ${oboe_SOURCE_DIR}")
 message(STATUS "Output directory: ${JNI_PATH}")
+
+# 添加构建后检查
+add_custom_command(TARGET ryujinxjni POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E echo "=== 构建完成 ==="
+    COMMAND ${CMAKE_COMMAND} -E echo "库文件大小:"
+    COMMAND sh -c "ls -lh $<TARGET_FILE:ryujinxjni>"
+    COMMAND ${CMAKE_COMMAND} -E echo "检查 FFmpeg 符号:"
+    COMMAND sh -c "${CMAKE_OBJDUMP} -T $<TARGET_FILE:ryujinxjni> | grep -i avcodec | head -5 || true"
+    COMMAND sh -c "${CMAKE_OBJDUMP} -T $<TARGET_FILE:ryujinxjni> | grep -i avformat | head -5 || true"
+)
