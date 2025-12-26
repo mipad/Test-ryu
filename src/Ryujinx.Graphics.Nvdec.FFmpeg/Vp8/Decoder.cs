@@ -4,23 +4,27 @@ using System;
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg.Vp8
 {
-    public sealed class Decoder : IDecoder
+    public sealed class Decoder : HardwareDecoder, IDecoder
     {
-        public bool IsHardwareAccelerated => false;
+        public override bool IsHardwareAccelerated => _context?.HasHardwareAcceleration ?? false;
 
-        private readonly FFmpegContext _context = new(AVCodecID.AV_CODEC_ID_VP8);
+        private readonly FFmpegContext _fallbackContext;
+        private bool _useFallback;
 
-        public ISurface CreateSurface(int width, int height)
+        public Decoder() : base(AVCodecID.AV_CODEC_ID_VP8, HardwareAccelerationMode.Auto)
         {
-            return new Surface(width, height);
+            // 创建备用软件解码器
+            _fallbackContext = new FFmpegContext(AVCodecID.AV_CODEC_ID_VP8, HardwareAccelerationMode.Software);
         }
+
+        protected override AVCodecID GetCodecId() => AVCodecID.AV_CODEC_ID_VP8;
 
         public bool Decode(ref Vp8PictureInfo pictureInfo, ISurface output, ReadOnlySpan<byte> bitstream)
         {
             Surface outSurf = (Surface)output;
 
+            // 重建 VP8 帧头
             int uncompHeaderSize = pictureInfo.KeyFrame ? 10 : 3;
-
             byte[] frame = new byte[bitstream.Length + uncompHeaderSize];
 
             uint firstPartSizeShifted = pictureInfo.FirstPartSize << 5;
@@ -45,9 +49,26 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Vp8
 
             bitstream.CopyTo(new Span<byte>(frame)[uncompHeaderSize..]);
 
-            return _context.DecodeFrame(outSurf, frame) == 0;
+            // 尝试硬件解码，如果失败则使用软件解码
+            if (!_useFallback)
+            {
+                if (_context?.DecodeFrame(outSurf, frame) == 0)
+                {
+                    return true;
+                }
+                
+                // 硬件解码失败，切换到软件解码
+                _useFallback = true;
+            }
+
+            // 使用软件解码
+            return _fallbackContext?.DecodeFrame(outSurf, frame) == 0;
         }
 
-        public void Dispose() => _context.Dispose();
+        public override void Dispose()
+        {
+            base.Dispose();
+            _fallbackContext?.Dispose();
+        }
     }
 }
