@@ -1,4 +1,5 @@
 using System;
+using Ryujinx.Graphics.Nvdec.MediaCodec.Common;
 
 namespace Ryujinx.Graphics.Nvdec.MediaCodec.Interfaces
 {
