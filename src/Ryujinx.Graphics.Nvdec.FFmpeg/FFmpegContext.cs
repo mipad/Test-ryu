@@ -105,8 +105,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             // 新版API更稳定，优先使用
             _useNewApi = avCodecMajorVersion >= 58;
             
+            // 修复：将 useNewApi 改为 _useNewApi
             Logger.Info?.Print(LogClass.FFmpeg, 
-                $"FFmpeg v{avCodecMajorVersion}, using {(useNewApi ? "new" : "old")} API, " +
+                $"FFmpeg v{avCodecMajorVersion}, using {(_useNewApi ? "new" : "old")} API, " +
                 $"bitrate={_context->BitRate}, refs={_context->Refs}, bframes={_context->MaxBFrames}");
         }
 
@@ -173,7 +174,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
             int result;
             
-            if (_useNewApi)
+            if (_useNewApi) // 使用成员变量 _useNewApi
             {
                 result = DecodeWithNewApi(output, bitstream);
             }
