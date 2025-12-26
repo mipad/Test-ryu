@@ -16,10 +16,6 @@
   </PropertyGroup>
   
   <ItemGroup>
-    <PackageReference Include="System.Memory" Version="4.5.5" />
-  </ItemGroup>
-  
-  <ItemGroup>
     <ProjectReference Include="..\Ryujinx.Common\Ryujinx.Common.csproj" />
     <ProjectReference Include="..\Ryujinx.Graphics.Video\Ryujinx.Graphics.Video.csproj" />
   </ItemGroup>
