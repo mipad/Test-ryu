@@ -7,7 +7,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 {
     unsafe class FFmpegContext : IDisposable
     {
-        // 恢复使用旧的解码委托
         private unsafe delegate int AVCodec_decode(AVCodecContext* avctx, AVFrame* frame, int* got_frame_ptr, AVPacket* avpkt);
         
         private readonly AVCodec_decode _decodeFrame;
@@ -41,8 +40,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             _context->ThreadType = 0; // 禁用多线程
             
             // 设置时间基为微秒，避免分数计算
-            _context->TimeBase.Num = 1;
-            _context->TimeBase.Den = 1000000;
+            // 注意：字段名是 Numerator 和 Denominator，不是 Num 和 Den
+            _context->TimeBase.Numerator = 1;
+            _context->TimeBase.Denominator = 1000000;
 
             // 设置低延迟标志
             _context->Flags |= FFmpegApi.AV_CODEC_FLAG_LOW_DELAY;
@@ -71,6 +71,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             int avCodecMinorVersion = (avCodecRawVersion >> 8) & 0xFF;
 
             // 根据版本选择正确的解码函数指针
+            // 注意：这里需要确保 FFCodec、FFCodecLegacy 等结构体已正确定义
             if (avCodecMajorVersion > 59 || (avCodecMajorVersion == 59 && avCodecMinorVersion > 24))
             {
                 // 新版FFmpeg - 使用新的结构体布局
@@ -137,6 +138,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
         public int DecodeFrame(Surface output, ReadOnlySpan<byte> bitstream)
         {
+            Logger.Debug?.Print(LogClass.FFmpeg, 
+                $"DecodeFrame: bitstream={bitstream.Length} bytes, PTS={output.Frame->Pts}, DTS={output.Frame->PktDts}");
+
             FFmpegApi.av_frame_unref(output.Frame);
 
             int result;
@@ -156,6 +160,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             // 强制清除任何延迟帧
             if (gotFrame == 0)
             {
+                Logger.Debug?.Print(LogClass.FFmpeg, "No frame received, trying to flush decoder");
+                
                 // 如果有延迟帧，尝试获取
                 _packet->Data = null;
                 _packet->Size = 0;
@@ -172,9 +178,13 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
             if (gotFrame == 0)
             {
+                Logger.Debug?.Print(LogClass.FFmpeg, "Still no frame received");
                 FFmpegApi.av_frame_unref(output.Frame);
                 return -1;
             }
+
+            Logger.Debug?.Print(LogClass.FFmpeg, 
+                $"Got frame: width={output.Frame->Width}, height={output.Frame->Height}, PTS={output.Frame->Pts}, result={result}");
 
             return result < 0 ? result : 0;
         }
