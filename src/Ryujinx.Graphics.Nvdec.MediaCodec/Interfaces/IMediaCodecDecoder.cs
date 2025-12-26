@@ -1,3 +1,5 @@
+using System;
+
 namespace Ryujinx.Graphics.Nvdec.MediaCodec.Interfaces
 {
     public interface IMediaCodecDecoder : IDecoder
