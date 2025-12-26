@@ -1,6 +1,7 @@
 using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.Nvdec.FFmpeg.Native;
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg
@@ -11,6 +12,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private readonly AVCodec* _codec;
         private readonly AVPacket* _packet;
         private readonly AVCodecContext* _context;
+        
+        // 帧队列，用于处理延迟帧
+        private readonly Queue<IntPtr> _frameQueue = new Queue<IntPtr>();
+        private bool _flushing = false;
 
         public FFmpegContext(AVCodecID codecId)
         {
@@ -18,7 +23,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             if (_codec == null)
             {
                 Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Codec wasn't found. Make sure you have the {codecId} codec present in your FFmpeg installation.");
-
                 return;
             }
 
@@ -26,21 +30,27 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             if (_context == null)
             {
                 Logger.Error?.PrintMsg(LogClass.FFmpeg, "Codec context couldn't be allocated.");
-
                 return;
             }
 
-            // 设置低延迟解码参数（类似yuzu）
-            // 注意：需要在avcodec_open2之前设置
-            // 注意：字段名是PascalCase，需要与AVCodecContext结构体一致
+            // 设置解码器参数以优化视频解码
+            // 禁用B帧以减少延迟和重排序问题
+            _context->MaxBFrames = 0;
+            
+            // 设置低延迟解码参数
             FFmpegApi.av_opt_set(_context->PrivData.ToPointer(), "tune", "zerolatency", 0);
+            
+            // 设置线程参数
             _context->ThreadCount = 0; // 自动选择线程数
             _context->ThreadType &= ~FFmpegApi.FF_THREAD_FRAME; // 禁用帧级多线程
+            
+            // 设置其他优化参数
+            _context->Refs = 1; // 限制参考帧数量
+            _context->Flags |= FFmpegApi.AV_CODEC_FLAG_LOW_DELAY; // 低延迟标志
 
             if (FFmpegApi.avcodec_open2(_context, _codec, null) != 0)
             {
                 Logger.Error?.PrintMsg(LogClass.FFmpeg, "Codec couldn't be opened.");
-
                 return;
             }
 
@@ -48,7 +58,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             if (_packet == null)
             {
                 Logger.Error?.PrintMsg(LogClass.FFmpeg, "Packet couldn't be allocated.");
-
                 return;
             }
         }
@@ -102,50 +111,138 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
         public int DecodeFrame(Surface output, ReadOnlySpan<byte> bitstream)
         {
+            // 首先检查帧队列中是否有缓存的帧
+            if (_frameQueue.Count > 0)
+            {
+                IntPtr framePtr = _frameQueue.Dequeue();
+                AVFrame* cachedFrame = (AVFrame*)framePtr;
+                
+                // 将缓存的帧复制到输出
+                CopyFrame(output.Frame, cachedFrame);
+                FFmpegApi.av_frame_unref(cachedFrame);
+                FFmpegApi.av_free(cachedFrame);
+                return 0;
+            }
+
             FFmpegApi.av_frame_unref(output.Frame);
             
             int result = 0;
+            bool hasData = bitstream.Length > 0;
             
-            fixed (byte* ptr = bitstream)
+            if (hasData)
             {
-                _packet->Data = ptr;
-                _packet->Size = bitstream.Length;
-                
-                // 发送数据包到解码器
-                result = FFmpegApi.avcodec_send_packet(_context, _packet);
-                
-                if (result < 0 && result != FFmpegApi.AVERROR_EAGAIN)
+                fixed (byte* ptr = bitstream)
                 {
-                    // 发送失败（非EAGAIN错误）
-                    FFmpegApi.av_packet_unref(_packet);
-                    FFmpegApi.av_frame_unref(output.Frame);
-                    return result;
+                    _packet->Data = ptr;
+                    _packet->Size = bitstream.Length;
+                    
+                    // 发送数据包到解码器
+                    result = FFmpegApi.avcodec_send_packet(_context, _packet);
+                    
+                    if (result < 0 && result != FFmpegApi.AVERROR_EAGAIN)
+                    {
+                        // 发送失败（非EAGAIN错误）
+                        FFmpegApi.av_packet_unref(_packet);
+                        return result;
+                    }
+                }
+                FFmpegApi.av_packet_unref(_packet);
+                _flushing = false;
+            }
+            else if (!_flushing)
+            {
+                // 发送空包刷新解码器
+                _packet->Data = null;
+                _packet->Size = 0;
+                result = FFmpegApi.avcodec_send_packet(_context, _packet);
+                _flushing = true;
+            }
+
+            // 尝试接收解码后的帧
+            AVFrame* decodedFrame = FFmpegApi.av_frame_alloc();
+            result = FFmpegApi.avcodec_receive_frame(_context, decodedFrame);
+            
+            while (result == 0)
+            {
+                // 成功接收到一帧
+                if (_frameQueue.Count == 0)
+                {
+                    // 第一帧直接返回
+                    CopyFrame(output.Frame, decodedFrame);
+                    FFmpegApi.av_frame_unref(decodedFrame);
+                    FFmpegApi.av_free(decodedFrame);
+                    return 0;
+                }
+                else
+                {
+                    // 后续帧缓存起来
+                    AVFrame* cachedFrame = FFmpegApi.av_frame_alloc();
+                    CopyFrame(cachedFrame, decodedFrame);
+                    _frameQueue.Enqueue((IntPtr)cachedFrame);
+                    FFmpegApi.av_frame_unref(decodedFrame);
+                    
+                    // 继续接收下一帧
+                    decodedFrame = FFmpegApi.av_frame_alloc();
+                    result = FFmpegApi.avcodec_receive_frame(_context, decodedFrame);
                 }
             }
             
-            FFmpegApi.av_packet_unref(_packet);
-            
-            // 尝试接收解码后的帧
-            result = FFmpegApi.avcodec_receive_frame(_context, output.Frame);
+            FFmpegApi.av_frame_unref(decodedFrame);
+            FFmpegApi.av_free(decodedFrame);
             
             if (result == FFmpegApi.AVERROR_EAGAIN || result == FFmpegApi.AVERROR_EOF)
             {
                 // 需要更多数据或已结束
-                FFmpegApi.av_frame_unref(output.Frame);
                 return -1;
             }
             else if (result < 0)
             {
                 // 其他错误
-                FFmpegApi.av_frame_unref(output.Frame);
                 return result;
             }
             
-            return 0; // 成功解码一帧
+            return 0;
+        }
+
+        private unsafe void CopyFrame(AVFrame* dst, AVFrame* src)
+        {
+            // 复制帧数据
+            FFmpegApi.av_frame_unref(dst);
+            
+            // 复制基本信息
+            dst->Width = src->Width;
+            dst->Height = src->Height;
+            dst->Format = src->Format;
+            dst->Pts = src->Pts;
+            dst->PktDts = src->PktDts;
+            dst->BestEffortTimestamp = src->BestEffortTimestamp;
+            dst->SampleAspectRatio = src->SampleAspectRatio;
+            
+            // 复制数据平面
+            for (int i = 0; i < 4; i++)
+            {
+                if (src->Data[i] != null)
+                {
+                    dst->Data[i] = src->Data[i];
+                    dst->Linesize[i] = src->Linesize[i];
+                }
+            }
+            
+            // 复制缓冲引用
+            FFmpegApi.av_frame_ref(dst, src);
         }
 
         public void Dispose()
         {
+            // 清理帧队列
+            while (_frameQueue.Count > 0)
+            {
+                IntPtr framePtr = _frameQueue.Dequeue();
+                AVFrame* frame = (AVFrame*)framePtr;
+                FFmpegApi.av_frame_unref(frame);
+                FFmpegApi.av_free(frame);
+            }
+
             fixed (AVPacket** ppPacket = &_packet)
             {
                 FFmpegApi.av_packet_free(ppPacket);
@@ -160,4 +257,3 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         }
     }
 }
-
