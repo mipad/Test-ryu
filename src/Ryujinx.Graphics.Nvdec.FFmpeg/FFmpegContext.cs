@@ -7,9 +7,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 {
     unsafe class FFmpegContext : IDisposable
     {
-        private unsafe delegate int AVCodec_decode(AVCodecContext* avctx, void* outdata, int* got_frame_ptr, AVPacket* avpkt);
-
-        private readonly AVCodec_decode _decodeFrame;
         private static readonly FFmpegApi.av_log_set_callback_callback _logFunc;
         private readonly AVCodec* _codec;
         private readonly AVPacket* _packet;
@@ -33,6 +30,13 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return;
             }
 
+            // 设置低延迟解码参数（类似yuzu）
+            // 注意：需要在avcodec_open2之前设置
+            // 注意：字段名是PascalCase，需要与AVCodecContext结构体一致
+            FFmpegApi.av_opt_set(_context->PrivData.ToPointer(), "tune", "zerolatency", 0);
+            _context->ThreadCount = 0; // 自动选择线程数
+            _context->ThreadType &= ~FFmpegApi.FF_THREAD_FRAME; // 禁用帧级多线程
+
             if (FFmpegApi.avcodec_open2(_context, _codec, null) != 0)
             {
                 Logger.Error?.PrintMsg(LogClass.FFmpeg, "Codec couldn't be opened.");
@@ -46,26 +50,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 Logger.Error?.PrintMsg(LogClass.FFmpeg, "Packet couldn't be allocated.");
 
                 return;
-            }
-
-            int avCodecRawVersion = FFmpegApi.avcodec_version();
-            int avCodecMajorVersion = avCodecRawVersion >> 16;
-            int avCodecMinorVersion = (avCodecRawVersion >> 8) & 0xFF;
-
-            // libavcodec 59.24 changed AvCodec to move its private API and also move the codec function to an union.
-            if (avCodecMajorVersion > 59 || (avCodecMajorVersion == 59 && avCodecMinorVersion > 24))
-            {
-                _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodec<AVCodec>*)_codec)->CodecCallback);
-            }
-            // libavcodec 59.x changed AvCodec private API layout.
-            else if (avCodecMajorVersion == 59)
-            {
-                _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec501>*)_codec)->Decode);
-            }
-            // libavcodec 58.x and lower
-            else
-            {
-                _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec>*)_codec)->Decode);
             }
         }
 
@@ -119,42 +103,45 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         public int DecodeFrame(Surface output, ReadOnlySpan<byte> bitstream)
         {
             FFmpegApi.av_frame_unref(output.Frame);
-
-            int result;
-            int gotFrame;
-
+            
+            int result = 0;
+            
             fixed (byte* ptr = bitstream)
             {
                 _packet->Data = ptr;
                 _packet->Size = bitstream.Length;
-                result = _decodeFrame(_context, output.Frame, &gotFrame, _packet);
+                
+                // 发送数据包到解码器
+                result = FFmpegApi.avcodec_send_packet(_context, _packet);
+                
+                if (result < 0 && result != FFmpegApi.AVERROR_EAGAIN)
+                {
+                    // 发送失败（非EAGAIN错误）
+                    FFmpegApi.av_packet_unref(_packet);
+                    FFmpegApi.av_frame_unref(output.Frame);
+                    return result;
+                }
             }
-
-            if (gotFrame == 0)
-            {
-                FFmpegApi.av_frame_unref(output.Frame);
-
-                // If the frame was not delivered, it was probably delayed.
-                // Get the next delayed frame by passing a 0 length packet.
-                _packet->Data = null;
-                _packet->Size = 0;
-                result = _decodeFrame(_context, output.Frame, &gotFrame, _packet);
-
-                // We need to set B frames to 0 as we already consumed all delayed frames.
-                // This prevents the decoder from trying to return a delayed frame next time.
-                _context->HasBFrames = 0;
-            }
-
+            
             FFmpegApi.av_packet_unref(_packet);
-
-            if (gotFrame == 0)
+            
+            // 尝试接收解码后的帧
+            result = FFmpegApi.avcodec_receive_frame(_context, output.Frame);
+            
+            if (result == FFmpegApi.AVERROR_EAGAIN || result == FFmpegApi.AVERROR_EOF)
             {
+                // 需要更多数据或已结束
                 FFmpegApi.av_frame_unref(output.Frame);
-
                 return -1;
             }
-
-            return result < 0 ? result : 0;
+            else if (result < 0)
+            {
+                // 其他错误
+                FFmpegApi.av_frame_unref(output.Frame);
+                return result;
+            }
+            
+            return 0; // 成功解码一帧
         }
 
         public void Dispose()
@@ -173,3 +160,4 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         }
     }
 }
+
