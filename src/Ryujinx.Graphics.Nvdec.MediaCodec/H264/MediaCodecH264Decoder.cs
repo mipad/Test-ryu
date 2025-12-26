@@ -1,3 +1,8 @@
+using System;
+using Ryujinx.Graphics.Nvdec.MediaCodec.Common;
+using Ryujinx.Graphics.Nvdec.MediaCodec.Interfaces;
+
+
 namespace Ryujinx.Graphics.Nvdec.MediaCodec.H264
 {
     public sealed class MediaCodecH264Decoder : IMediaCodecDecoder, IDecoder
