@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Threading;
+using Ryujinx.Graphics.Nvdec.MediaCodec;
 using Ryujinx.Graphics.Nvdec.MediaCodec.Common;
 using Ryujinx.Graphics.Nvdec.MediaCodec.Interfaces;
 
