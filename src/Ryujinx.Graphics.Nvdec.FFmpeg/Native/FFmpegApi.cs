@@ -80,6 +80,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         internal const int AVERROR_EOF = -541478725; // MKTAG('E','O','F',' ')
         internal const int AVERROR_EAGAIN = -11;
         
+        // 编解码器标志
+        internal const int AV_CODEC_FLAG_LOW_DELAY = 0x00001000;
+        
         // 委托
         public unsafe delegate void av_log_set_callback_callback(void* a0, AVLog level, [MarshalAs(UnmanagedType.LPUTF8Str)] string a2, byte* a3);
 
@@ -91,7 +94,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         internal static unsafe partial void av_frame_unref(AVFrame* frame);
 
         [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial void av_free(AVFrame* frame);
+        internal static unsafe partial void av_free(void* ptr);
 
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial void av_log_set_level(AVLog level);
@@ -107,6 +110,13 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
 
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial int av_opt_set(void* obj, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, [MarshalAs(UnmanagedType.LPUTF8Str)] string val, int search_flags);
+
+        // 帧引用和克隆
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial int av_frame_ref(AVFrame* dst, AVFrame* src);
+
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial AVFrame* av_frame_clone(AVFrame* src);
 
         // avcodec 函数
         [LibraryImport(AvCodecLibraryName)]
@@ -144,4 +154,3 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         internal static unsafe partial int avcodec_receive_frame(AVCodecContext* avctx, AVFrame* frame);
     }
 }
-
