@@ -26,6 +26,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
         {
             Surface outSurf = (Surface)output;
 
+            // 检查是否需要重新创建解码器上下文（如果分辨率改变）
             if (outSurf.RequestedWidth != _oldOutputWidth ||
                 outSurf.RequestedHeight != _oldOutputHeight)
             {
@@ -36,19 +37,16 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
                 _oldOutputHeight = outSurf.RequestedHeight;
             }
 
-            Span<byte> bs = Prepend(bitstream, SpsAndPpsReconstruction.Reconstruct(ref pictureInfo, _workBuffer));
+            // 重建SPS和PPS并添加到比特流前面
+            Span<byte> reconstructedSpsPps = SpsAndPpsReconstruction.Reconstruct(ref pictureInfo, _workBuffer);
+            
+            // 创建包含SPS/PPS和原始比特流的完整数据
+            byte[] completeBitstream = new byte[reconstructedSpsPps.Length + bitstream.Length];
+            reconstructedSpsPps.CopyTo(completeBitstream);
+            bitstream.CopyTo(new Span<byte>(completeBitstream)[reconstructedSpsPps.Length..]);
 
-            return _context.DecodeFrame(outSurf, bs) == 0;
-        }
-
-        private static byte[] Prepend(ReadOnlySpan<byte> data, ReadOnlySpan<byte> prep)
-        {
-            byte[] output = new byte[data.Length + prep.Length];
-
-            prep.CopyTo(output);
-            data.CopyTo(new Span<byte>(output)[prep.Length..]);
-
-            return output;
+            // 解码帧
+            return _context.DecodeFrame(outSurf, completeBitstream) == 0;
         }
 
         public void Dispose() => _context.Dispose();
