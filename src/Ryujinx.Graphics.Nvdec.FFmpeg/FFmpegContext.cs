@@ -32,9 +32,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
             // 设置低延迟解码参数（类似yuzu）
             // 注意：需要在avcodec_open2之前设置
-            FFmpegApi.av_opt_set(_context->priv_data, "tune", "zerolatency", 0);
-            _context->thread_count = 0; // 自动选择线程数
-            _context->thread_type &= ~FFmpegApi.FF_THREAD_FRAME; // 禁用帧级多线程
+            // 注意：字段名是PascalCase，需要与AVCodecContext结构体一致
+            FFmpegApi.av_opt_set(_context->PrivData.ToPointer(), "tune", "zerolatency", 0);
+            _context->ThreadCount = 0; // 自动选择线程数
+            _context->ThreadType &= ~FFmpegApi.FF_THREAD_FRAME; // 禁用帧级多线程
 
             if (FFmpegApi.avcodec_open2(_context, _codec, null) != 0)
             {
