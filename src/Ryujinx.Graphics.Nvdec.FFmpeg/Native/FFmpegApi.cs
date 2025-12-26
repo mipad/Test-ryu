@@ -36,7 +36,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
             }
         }
 
-
         private static bool TryLoadWhitelistedLibrary(string libraryName, Assembly assembly, DllImportSearchPath? searchPath, out IntPtr handle)
         {
             handle = IntPtr.Zero;
@@ -61,7 +60,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         {
             NativeLibrary.SetDllImportResolver(typeof(FFmpegApi).Assembly, (name, assembly, path) =>
             {
-
                 if (name == AvUtilLibraryName && TryLoadWhitelistedLibrary(AvUtilLibraryName, assembly, path, out nint handle))
                 {
                     return handle;
@@ -75,8 +73,17 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
             });
         }
 
+        // 常量定义
+        internal const int FF_THREAD_FRAME = 0x0001;
+        
+        // FFmpeg错误码
+        internal const int AVERROR_EOF = -541478725; // MKTAG('E','O','F',' ')
+        internal const int AVERROR_EAGAIN = -11;
+        
+        // 委托
         public unsafe delegate void av_log_set_callback_callback(void* a0, AVLog level, [MarshalAs(UnmanagedType.LPUTF8Str)] string a2, byte* a3);
 
+        // avutil 函数
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial AVFrame* av_frame_alloc();
 
@@ -98,6 +105,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial void av_log_format_line(void* ptr, AVLog level, [MarshalAs(UnmanagedType.LPUTF8Str)] string fmt, byte* vl, byte* line, int lineSize, int* printPrefix);
 
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial int av_opt_set(void* obj, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, [MarshalAs(UnmanagedType.LPUTF8Str)] string val, int search_flags);
+
+        // avcodec 函数
         [LibraryImport(AvCodecLibraryName)]
         internal static unsafe partial AVCodec* avcodec_find_decoder(AVCodecID id);
 
@@ -124,5 +135,13 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
 
         [LibraryImport(AvCodecLibraryName)]
         internal static unsafe partial int avcodec_version();
+
+        // 新的现代API
+        [LibraryImport(AvCodecLibraryName)]
+        internal static unsafe partial int avcodec_send_packet(AVCodecContext* avctx, AVPacket* avpkt);
+
+        [LibraryImport(AvCodecLibraryName)]
+        internal static unsafe partial int avcodec_receive_frame(AVCodecContext* avctx, AVFrame* frame);
     }
 }
+
