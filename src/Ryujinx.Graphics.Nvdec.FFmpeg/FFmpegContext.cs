@@ -3,6 +3,8 @@ using Ryujinx.Graphics.Nvdec.FFmpeg.Native;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+// 在文件顶部添加
+using AndroidJavaClass = Ryujinx.Graphics.Nvdec.FFmpeg.AndroidJavaClass;
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg
 {
