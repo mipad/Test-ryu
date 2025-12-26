@@ -17,27 +17,7 @@
 #define VULKAN_WRAPPER_H
 
 #define VK_NO_PROTOTYPES 1
-
 #include <vulkan/vulkan.h>
-
-// ASTC decode mode 扩展的兼容性定义
-// 由于 Android NDK 的 Vulkan 头文件可能不包含此扩展，我们提供简单的定义
-#ifndef VK_EXT_astc_decode_mode
-// 扩展标志
-#define VK_EXT_astc_decode_mode 1
-
-// 解码模式类型
-typedef uint32_t VkASTCDecodeModeEXT;
-
-// 解码模式值
-#define VK_ASTC_DECODE_MODE_LDR_EXT 0
-#define VK_ASTC_DECODE_MODE_HDR_EXT 1
-#endif
-
-// 函数指针类型定义（如果尚未定义）
-#ifndef PFN_vkCmdSetASTCDecodeModeEXT
-typedef void (VKAPI_PTR *PFN_vkCmdSetASTCDecodeModeEXT)(VkCommandBuffer commandBuffer, VkASTCDecodeModeEXT decodeMode);
-#endif
 
 /* Initialize the Vulkan function pointer variables declared in this header.
  * Returns 0 if vulkan is not available, non-zero if it is available.
@@ -324,9 +304,6 @@ extern PFN_vkCmdDrawIndirectByteCountEXT vkCmdDrawIndirectByteCountEXT;
 // VK_EXT_conditional_rendering
 extern PFN_vkCmdBeginConditionalRenderingEXT vkCmdBeginConditionalRenderingEXT;
 extern PFN_vkCmdEndConditionalRenderingEXT vkCmdEndConditionalRenderingEXT;
-
-// VK_EXT_astc_decode_mode
-extern PFN_vkCmdSetASTCDecodeModeEXT vkCmdSetASTCDecodeModeEXT;
 
 // VK_EXT_shader_stencil_export
 // No functions, just enables shader stencil export
