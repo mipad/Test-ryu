@@ -4,41 +4,41 @@ using System;
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
 {
-    public sealed class Decoder : IH264Decoder
+    public sealed class Decoder : HardwareDecoder, IH264Decoder
     {
-        public bool IsHardwareAccelerated => false;
+        public override bool IsHardwareAccelerated => _context?.HasHardwareAcceleration ?? false;
 
         private const int WorkBufferSize = 0x200;
-
         private readonly byte[] _workBuffer = new byte[WorkBufferSize];
-
-        private FFmpegContext _context = new(AVCodecID.AV_CODEC_ID_H264);
 
         private int _oldOutputWidth;
         private int _oldOutputHeight;
 
-        public ISurface CreateSurface(int width, int height)
+        public Decoder() : base(AVCodecID.AV_CODEC_ID_H264, HardwareAccelerationMode.Auto)
         {
-            return new Surface(width, height);
         }
+
+        protected override AVCodecID GetCodecId() => AVCodecID.AV_CODEC_ID_H264;
 
         public bool Decode(ref H264PictureInfo pictureInfo, ISurface output, ReadOnlySpan<byte> bitstream)
         {
             Surface outSurf = (Surface)output;
 
+            // 检查尺寸变化，需要重新初始化解码器
             if (outSurf.RequestedWidth != _oldOutputWidth ||
                 outSurf.RequestedHeight != _oldOutputHeight)
             {
-                _context.Dispose();
-                _context = new FFmpegContext(AVCodecID.AV_CODEC_ID_H264);
-
+                Dispose();
+                InitializeContext(AVCodecID.AV_CODEC_ID_H264);
+                
                 _oldOutputWidth = outSurf.RequestedWidth;
                 _oldOutputHeight = outSurf.RequestedHeight;
             }
 
+            // 重建 SPS/PPS
             Span<byte> bs = Prepend(bitstream, SpsAndPpsReconstruction.Reconstruct(ref pictureInfo, _workBuffer));
 
-            return _context.DecodeFrame(outSurf, bs) == 0;
+            return DecodeFrame(output, bs);
         }
 
         private static byte[] Prepend(ReadOnlySpan<byte> data, ReadOnlySpan<byte> prep)
@@ -50,7 +50,5 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
 
             return output;
         }
-
-        public void Dispose() => _context.Dispose();
     }
 }
