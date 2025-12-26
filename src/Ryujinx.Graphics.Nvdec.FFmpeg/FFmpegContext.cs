@@ -7,13 +7,17 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 {
     unsafe class FFmpegContext : IDisposable
     {
-        private unsafe delegate int AVCodec_decode(AVCodecContext* avctx, AVFrame* frame, int* got_frame_ptr, AVPacket* avpkt);
-        
-        private readonly AVCodec_decode _decodeFrame;
+        // 新版API委托
         private static readonly FFmpegApi.av_log_set_callback_callback _logFunc;
         private readonly AVCodec* _codec;
         private readonly AVPacket* _packet;
         private readonly AVCodecContext* _context;
+        
+        // 状态跟踪
+        private int _frameCount = 0;
+        private long _lastPts = -1;
+        private bool _flushing = false;
+        private bool _useNewApi = true; // 默认使用新版API
 
         public FFmpegContext(AVCodecID codecId)
         {
@@ -31,26 +35,55 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return;
             }
 
-            // 关键配置：完全禁用B帧和缓冲
+            // ============ 关键参数设置 ============
+            
+            // 1. 设置码率参数 - 这是最重要的！
+            _context->BitRate = 5000000; // 5 Mbps，根据视频质量调整
+            _context->RcBufferSize = 0; // 禁用缓冲区大小限制
+            _context->RcMaxRate = _context->BitRate;
+            _context->RcMinRate = _context->BitRate / 2;
+            _context->BitRateTolerance = (int)(_context->BitRate * 0.1); // 10%容差
+            
+            // 2. 禁用B帧和重排序 - 减少延迟和抽搐
             _context->HasBFrames = 0;
             _context->MaxBFrames = 0;
-            _context->Refs = 1; // 只允许1个参考帧
-            _context->Delay = 0; // 零延迟
+            _context->GopSize = 12; // GOP大小设为12，平衡压缩和延迟
+            
+            // 3. 设置参考帧数量
+            _context->Refs = 1; // 只使用1个参考帧
+            
+            // 4. 线程设置
             _context->ThreadCount = 1; // 单线程避免同步问题
-            _context->ThreadType = 0; // 禁用多线程
+            _context->ThreadType = 0; // 完全禁用多线程
             
-            // 设置时间基为微秒，避免分数计算
-            // 注意：字段名是 Numerator 和 Denominator，不是 Num 和 Den
+            // 5. 时间相关设置
             _context->TimeBase.Numerator = 1;
-            _context->TimeBase.Denominator = 1000000;
-
-            // 设置低延迟标志
-            _context->Flags |= FFmpegApi.AV_CODEC_FLAG_LOW_DELAY;
+            _context->TimeBase.Denominator = 90000; // 使用90kHz时钟
+            _context->TicksPerFrame = 1;
+            _context->Delay = 0; // 零解码延迟
             
-            // 设置私有数据选项
+            // 6. 质量相关设置
+            _context->QMin = 2;
+            _context->QMax = 31;
+            _context->MaxQdiff = 3;
+            
+            // 7. 设置低延迟标志
+            _context->Flags |= FFmpegApi.AV_CODEC_FLAG_LOW_DELAY;
+            _context->Flags2 |= FFmpegApi.AV_CODEC_FLAG2_FAST; // 快速解码标志
+            
+            // 8. 设置私有选项
             FFmpegApi.av_opt_set(_context->PrivData.ToPointer(), "tune", "zerolatency", 0);
             FFmpegApi.av_opt_set(_context->PrivData.ToPointer(), "preset", "ultrafast", 0);
-            FFmpegApi.av_opt_set(_context->PrivData.ToPointer(), "sync", "ext", 0); // 使用外部时间戳
+            FFmpegApi.av_opt_set(_context->PrivData.ToPointer(), "profile", "baseline", 0); // 使用基线配置减少复杂度
+            
+            // 对于H.264，设置特定选项
+            if (codecId == AVCodecID.AV_CODEC_ID_H264)
+            {
+                FFmpegApi.av_opt_set(_context->PrivData.ToPointer(), "coder", "0", 0); // CABAC=0, CAVLC=1
+                FFmpegApi.av_opt_set(_context->PrivData.ToPointer(), "flags", "+low_delay", 0);
+                FFmpegApi.av_opt_set(_context->PrivData.ToPointer(), "flags2", "+fast", 0);
+                FFmpegApi.av_opt_set(_context->PrivData.ToPointer(), "weightp", "0", 0); // 禁用加权预测
+            }
 
             if (FFmpegApi.avcodec_open2(_context, _codec, null) != 0)
             {
@@ -64,29 +97,17 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 Logger.Error?.PrintMsg(LogClass.FFmpeg, "Packet couldn't be allocated.");
                 return;
             }
-
-            // 检测FFmpeg版本并选择合适的解码函数
+            
+            // 检测FFmpeg版本，选择合适的API
             int avCodecRawVersion = FFmpegApi.avcodec_version();
             int avCodecMajorVersion = avCodecRawVersion >> 16;
-            int avCodecMinorVersion = (avCodecRawVersion >> 8) & 0xFF;
-
-            // 根据版本选择正确的解码函数指针
-            // 注意：这里需要确保 FFCodec、FFCodecLegacy 等结构体已正确定义
-            if (avCodecMajorVersion > 59 || (avCodecMajorVersion == 59 && avCodecMinorVersion > 24))
-            {
-                // 新版FFmpeg - 使用新的结构体布局
-                _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodec<AVCodec>*)_codec)->CodecCallback);
-            }
-            else if (avCodecMajorVersion == 59)
-            {
-                // 59.x版本 - 使用旧的结构体布局
-                _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec501>*)_codec)->Decode);
-            }
-            else
-            {
-                // 58.x及更早版本
-                _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec>*)_codec)->Decode);
-            }
+            
+            // 新版API更稳定，优先使用
+            _useNewApi = avCodecMajorVersion >= 58;
+            
+            Logger.Info?.Print(LogClass.FFmpeg, 
+                $"FFmpeg v{avCodecMajorVersion}, using {(useNewApi ? "new" : "old")} API, " +
+                $"bitrate={_context->BitRate}, refs={_context->Refs}, bframes={_context->MaxBFrames}");
         }
 
         static FFmpegContext()
@@ -138,59 +159,158 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
         public int DecodeFrame(Surface output, ReadOnlySpan<byte> bitstream)
         {
-            Logger.Debug?.Print(LogClass.FFmpeg, 
-                $"DecodeFrame: bitstream={bitstream.Length} bytes, PTS={output.Frame->Pts}, DTS={output.Frame->PktDts}");
+            _frameCount++;
+            
+            // 每100帧记录一次状态
+            if (_frameCount % 100 == 0)
+            {
+                Logger.Debug?.Print(LogClass.FFmpeg, 
+                    $"Frame {_frameCount}: decoding {bitstream.Length} bytes, " +
+                    $"last PTS={_lastPts}, flushing={_flushing}");
+            }
 
             FFmpegApi.av_frame_unref(output.Frame);
 
             int result;
-            int gotFrame = 0;
-
-            fixed (byte* ptr = bitstream)
+            
+            if (_useNewApi)
             {
-                _packet->Data = ptr;
-                _packet->Size = bitstream.Length;
-                _packet->Pts = 0; // 强制设置PTS为0，避免时间戳问题
-                _packet->Dts = 0;
-                
-                // 使用旧版API解码
-                result = _decodeFrame(_context, output.Frame, &gotFrame, _packet);
+                result = DecodeWithNewApi(output, bitstream);
+            }
+            else
+            {
+                result = DecodeWithOldApi(output, bitstream);
+            }
+            
+            // 更新最后PTS
+            if (result == 0 && output.Frame->Pts > 0)
+            {
+                _lastPts = output.Frame->Pts;
             }
 
-            // 强制清除任何延迟帧
-            if (gotFrame == 0)
+            return result;
+        }
+
+        private int DecodeWithNewApi(Surface output, ReadOnlySpan<byte> bitstream)
+        {
+            int result = 0;
+            
+            // 清理解码器缓冲（如果有）
+            if (_flushing)
             {
-                Logger.Debug?.Print(LogClass.FFmpeg, "No frame received, trying to flush decoder");
-                
-                // 如果有延迟帧，尝试获取
+                FlushDecoder();
+                _flushing = false;
+            }
+            
+            // 如果有数据，发送数据包
+            if (bitstream.Length > 0)
+            {
+                fixed (byte* ptr = bitstream)
+                {
+                    // 设置数据包参数
+                    _packet->Data = ptr;
+                    _packet->Size = bitstream.Length;
+                    
+                    // 生成合理的PTS（基于帧计数）
+                    long pts = _frameCount * 3000; // 假设30fps，每帧33ms≈3000时间单位
+                    _packet->Pts = pts;
+                    _packet->Dts = pts; // DTS和PTS相同，避免重排序
+                    _packet->Duration = 3000;
+                    
+                    // 发送数据包
+                    result = FFmpegApi.avcodec_send_packet(_context, _packet);
+                    
+                    if (result < 0 && result != FFmpegApi.AVERROR_EAGAIN)
+                    {
+                        Logger.Warning?.Print(LogClass.FFmpeg, 
+                            $"avcodec_send_packet failed: {result}, size={bitstream.Length}");
+                        FFmpegApi.av_packet_unref(_packet);
+                        return result;
+                    }
+                }
+                FFmpegApi.av_packet_unref(_packet);
+            }
+            else if (!_flushing)
+            {
+                // 开始刷新解码器
                 _packet->Data = null;
                 _packet->Size = 0;
-                _packet->Pts = 0;
-                _packet->Dts = 0;
+                _packet->Pts = _frameCount * 3000;
+                _packet->Dts = _packet->Pts;
                 
-                result = _decodeFrame(_context, output.Frame, &gotFrame, _packet);
-                
-                // 无论是否成功，都清除B帧标志
-                _context->HasBFrames = 0;
+                result = FFmpegApi.avcodec_send_packet(_context, _packet);
+                _flushing = true;
             }
-
-            FFmpegApi.av_packet_unref(_packet);
-
-            if (gotFrame == 0)
+            
+            // 接收帧
+            result = FFmpegApi.avcodec_receive_frame(_context, output.Frame);
+            
+            if (result == 0)
             {
-                Logger.Debug?.Print(LogClass.FFmpeg, "Still no frame received");
-                FFmpegApi.av_frame_unref(output.Frame);
+                // 成功接收到帧
+                // 如果帧的PTS不合理，修正它
+                if (output.Frame->Pts < _lastPts)
+                {
+                    output.Frame->Pts = _lastPts + 3000;
+                }
+                return 0;
+            }
+            else if (result == FFmpegApi.AVERROR_EAGAIN)
+            {
+                // 需要更多数据
                 return -1;
             }
+            else if (result == FFmpegApi.AVERROR_EOF)
+            {
+                // 解码器结束
+                _flushing = false;
+                return -1;
+            }
+            else
+            {
+                // 其他错误
+                Logger.Warning?.Print(LogClass.FFmpeg, 
+                    $"avcodec_receive_frame failed: {result}");
+                return result;
+            }
+        }
+        
+        private void FlushDecoder()
+        {
+            // 清空解码器中的所有缓冲帧
+            while (true)
+            {
+                AVFrame* tempFrame = FFmpegApi.av_frame_alloc();
+                int flushResult = FFmpegApi.avcodec_receive_frame(_context, tempFrame);
+                FFmpegApi.av_frame_unref(tempFrame);
+                FFmpegApi.av_free(tempFrame);
+                
+                if (flushResult == FFmpegApi.AVERROR_EAGAIN || flushResult == FFmpegApi.AVERROR_EOF)
+                    break;
+            }
+        }
 
-            Logger.Debug?.Print(LogClass.FFmpeg, 
-                $"Got frame: width={output.Frame->Width}, height={output.Frame->Height}, PTS={output.Frame->Pts}, result={result}");
-
-            return result < 0 ? result : 0;
+        private int DecodeWithOldApi(Surface output, ReadOnlySpan<byte> bitstream)
+        {
+            // 恢复旧的解码委托（如果可用）
+            // 这里需要根据实际的结构体定义来实现
+            // 暂时用新版API替代
+            Logger.Info?.Print(LogClass.FFmpeg, "Old API not implemented, using new API instead");
+            return DecodeWithNewApi(output, bitstream);
         }
 
         public void Dispose()
         {
+            // 发送空包刷新解码器
+            if (!_flushing)
+            {
+                _packet->Data = null;
+                _packet->Size = 0;
+                FFmpegApi.avcodec_send_packet(_context, _packet);
+                _flushing = true;
+            }
+            
+            // 清理资源
             fixed (AVPacket** ppPacket = &_packet)
             {
                 FFmpegApi.av_packet_free(ppPacket);
@@ -202,6 +322,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             {
                 FFmpegApi.avcodec_free_context(ppContext);
             }
+            
+            Logger.Info?.Print(LogClass.FFmpeg, $"FFmpegContext disposed after {_frameCount} frames");
         }
     }
 }
