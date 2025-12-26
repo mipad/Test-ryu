@@ -1,3 +1,7 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
 namespace Ryujinx.Graphics.Nvdec.MediaCodec.Common
 {
     public static class MediaCodecConfig
