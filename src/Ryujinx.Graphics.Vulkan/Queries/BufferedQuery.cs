@@ -146,7 +146,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
             if (wakeSignal == null)
             {
-                while (WaitingForValue(data))
+                if (WaitingForValue(data))
                 {
                     data = Marshal.ReadInt64(_bufferMap);
                 }
