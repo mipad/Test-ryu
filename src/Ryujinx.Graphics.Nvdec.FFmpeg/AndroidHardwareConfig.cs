@@ -5,26 +5,23 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 {
     using Native;
 
-    public static class AndroidHardwareConfig
+    internal static class AndroidHardwareConfig
     {
         // Android MediaCodec 支持的编解码器
-        public static readonly HashSet<AVCodecID> SupportedCodecs = new()
+        internal static readonly HashSet<AVCodecID> SupportedCodecs = new()
         {
             AVCodecID.AV_CODEC_ID_H264,
-            AVCodecID.AV_CODEC_ID_HEVC,
             AVCodecID.AV_CODEC_ID_VP8,
-            AVCodecID.AV_CODEC_ID_VP9,
-            AVCodecID.AV_CODEC_ID_MPEG4,
         };
 
         // 检查是否支持硬件解码
-        public static bool IsHardwareDecodingSupported(AVCodecID codecId)
+        internal static bool IsHardwareDecodingSupported(AVCodecID codecId)
         {
             return SupportedCodecs.Contains(codecId);
         }
 
         // 获取推荐的硬件加速模式
-        public static HardwareAccelerationMode GetRecommendedAccelerationMode(AVCodecID codecId)
+        internal static HardwareAccelerationMode GetRecommendedAccelerationMode(AVCodecID codecId)
         {
             if (IsHardwareDecodingSupported(codecId))
             {
@@ -35,7 +32,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         }
 
         // 检查设备是否支持特定编解码器的硬件解码
-        public static bool CheckDeviceCapability(AVCodecID codecId)
+        internal static bool CheckDeviceCapability(AVCodecID codecId)
         {
             try
             {
