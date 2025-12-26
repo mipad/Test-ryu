@@ -4,7 +4,7 @@ using System;
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg
 {
-    public abstract class HardwareDecoder : IDisposable
+    internal abstract class HardwareDecoder : IDisposable
     {
         public abstract bool IsHardwareAccelerated { get; }
         
