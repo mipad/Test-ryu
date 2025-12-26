@@ -4,7 +4,7 @@ using System;
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg.Vp8
 {
-    public sealed class Decoder : HardwareDecoder, IDecoder
+    internal sealed class Decoder : HardwareDecoder, IDecoder
     {
         public override bool IsHardwareAccelerated => _context?.HasHardwareAcceleration ?? false;
 
