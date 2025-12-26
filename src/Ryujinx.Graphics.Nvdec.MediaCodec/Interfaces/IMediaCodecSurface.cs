@@ -1,6 +1,5 @@
 using System;
 
-
 namespace Ryujinx.Graphics.Nvdec.MediaCodec.Interfaces
 {
     public interface IMediaCodecSurface : IDisposable
