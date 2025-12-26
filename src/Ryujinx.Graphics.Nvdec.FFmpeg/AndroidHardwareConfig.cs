@@ -3,6 +3,8 @@ using System.Collections.Generic;
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg
 {
+    using Native;
+
     public static class AndroidHardwareConfig
     {
         // Android MediaCodec 支持的编解码器
