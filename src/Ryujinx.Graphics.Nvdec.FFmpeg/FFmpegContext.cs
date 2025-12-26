@@ -36,17 +36,22 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             // 设置解码器参数以优化视频解码
             // 禁用B帧以减少延迟和重排序问题
             _context->MaxBFrames = 0;
+            _context->HasBFrames = 0; // 明确设置没有B帧
             
             // 设置低延迟解码参数
             FFmpegApi.av_opt_set(_context->PrivData.ToPointer(), "tune", "zerolatency", 0);
+            FFmpegApi.av_opt_set(_context->PrivData.ToPointer(), "preset", "ultrafast", 0);
             
             // 设置线程参数
-            _context->ThreadCount = 0; // 自动选择线程数
+            _context->ThreadCount = 1; // 固定为1线程，避免同步问题
             _context->ThreadType &= ~FFmpegApi.FF_THREAD_FRAME; // 禁用帧级多线程
+            
+            // 设置低延迟标志
+            _context->Flags |= FFmpegApi.AV_CODEC_FLAG_LOW_DELAY;
             
             // 设置其他优化参数
             _context->Refs = 1; // 限制参考帧数量
-            _context->Flags |= FFmpegApi.AV_CODEC_FLAG_LOW_DELAY; // 低延迟标志
+            _context->Delay = 0; // 设置解码延迟为0
 
             if (FFmpegApi.avcodec_open2(_context, _codec, null) != 0)
             {
@@ -135,6 +140,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 {
                     _packet->Data = ptr;
                     _packet->Size = bitstream.Length;
+                    _packet->Pts = 0; // 设置PTS，避免解码器使用内部时间戳
                     
                     // 发送数据包到解码器
                     result = FFmpegApi.avcodec_send_packet(_context, _packet);
@@ -154,6 +160,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 // 发送空包刷新解码器
                 _packet->Data = null;
                 _packet->Size = 0;
+                _packet->Pts = 0;
                 result = FFmpegApi.avcodec_send_packet(_context, _packet);
                 _flushing = true;
             }
@@ -206,30 +213,25 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
         private unsafe void CopyFrame(AVFrame* dst, AVFrame* src)
         {
-            // 复制帧数据
-            FFmpegApi.av_frame_unref(dst);
-            
-            // 复制基本信息
-            dst->Width = src->Width;
-            dst->Height = src->Height;
-            dst->Format = src->Format;
-            dst->Pts = src->Pts;
-            dst->PktDts = src->PktDts;
-            dst->BestEffortTimestamp = src->BestEffortTimestamp;
-            dst->SampleAspectRatio = src->SampleAspectRatio;
-            
-            // 复制数据平面
-            for (int i = 0; i < 4; i++)
+            // 使用av_frame_ref复制帧，这会增加引用计数，而不是深拷贝
+            int ret = FFmpegApi.av_frame_ref(dst, src);
+            if (ret < 0)
             {
-                if (src->Data[i] != null)
+                // 如果av_frame_ref失败，手动复制关键字段
+                dst->Width = src->Width;
+                dst->Height = src->Height;
+                dst->Format = src->Format;
+                dst->Pts = src->Pts;
+                dst->PktDts = src->PktDts;
+                dst->SampleAspectRatio = src->SampleAspectRatio;
+                
+                // 复制数据平面
+                for (int i = 0; i < 8; i++)
                 {
                     dst->Data[i] = src->Data[i];
-                    dst->Linesize[i] = src->Linesize[i];
+                    dst->LineSize[i] = src->LineSize[i];
                 }
             }
-            
-            // 复制缓冲引用
-            FFmpegApi.av_frame_ref(dst, src);
         }
 
         public void Dispose()
