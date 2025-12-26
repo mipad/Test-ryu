@@ -20,9 +20,8 @@
   </ItemGroup>
   
   <ItemGroup>
-    <ProjectReference Include="..\Ryujinx.Graphics.Nvdec\Ryujinx.Graphics.Nvdec.csproj" />
+    <ProjectReference Include="..\Ryujinx.Common\Ryujinx.Common.csproj" />
     <ProjectReference Include="..\Ryujinx.Graphics.Video\Ryujinx.Graphics.Video.csproj" />
-    <ProjectReference Include="..\Ryujinx.Graphics.Device\Ryujinx.Graphics.Device.csproj" />
   </ItemGroup>
   
   <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
