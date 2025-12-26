@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+
 namespace Ryujinx.Graphics.Nvdec.MediaCodec.Common
 {
     public class MediaCodecContext
