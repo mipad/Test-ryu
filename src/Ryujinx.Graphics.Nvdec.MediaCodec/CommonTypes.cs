@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;  // 添加这个
 
 namespace Ryujinx.Graphics.Nvdec.MediaCodec
 {
@@ -46,51 +47,42 @@ namespace Ryujinx.Graphics.Nvdec.MediaCodec
         public bool IsKeyFrame => (Flags & 0x1) != 0;
     }
 
-    // 解码相关类型
-    public class FrameQueue<T>
+    // Android 相关的包装类
+    public class AndroidJavaObject : IDisposable
     {
-        private readonly Queue<T> _queue = new Queue<T>();
-        
-        public void Enqueue(T frame) => _queue.Enqueue(frame);
-        public T Dequeue() => _queue.Dequeue();
-        public bool TryDequeue(out T frame) => _queue.TryDequeue(out frame);
-        public int Count => _queue.Count;
-        public void Clear() => _queue.Clear();
-    }
+        private IntPtr _jniObject;
+        private string _className;
 
-    public class H264ParameterSets
-    {
-        public byte[] Sps { get; set; }
-        public byte[] Pps { get; set; }
-        public int Width { get; set; }
-        public int Height { get; set; }
-    }
+        public AndroidJavaObject(string className, params object[] args)
+        {
+            _className = className;
+            // 这里应该调用 JNI 创建对象，暂时简化
+        }
 
-    public class H264PictureInfo
-    {
-        public int Width { get; set; }
-        public int Height { get; set; }
-        public byte[] Data { get; set; }
-        public long Timestamp { get; set; }
-        public bool IsKeyFrame { get; set; }
-    }
+        public T Call<T>(string methodName, params object[] args)
+        {
+            // 这里应该通过 JNI 调用方法，暂时返回默认值
+            return default(T);
+        }
 
-    // Surface 相关
-    public interface ISurface
-    {
-        int Width { get; }
-        int Height { get; }
-        void Render();
-    }
+        public void Call(string methodName, params object[] args)
+        {
+            // 这里应该通过 JNI 调用方法
+        }
 
-    // MediaFormat 相关
-    public class MediaFormatConfig
-    {
-        private readonly Dictionary<string, object> _values = new Dictionary<string, object>();
+        public T Get<T>(string fieldName)
+        {
+            // 这里应该通过 JNI 获取字段值
+            return default(T);
+        }
 
-        public void SetString(string key, string value) => _values[key] = value;
-        public void SetInteger(string key, int value) => _values[key] = value;
-        public void SetLong(string key, long value) => _values[key] = value;
-        public object GetValue(string key) => _values.TryGetValue(key, out var value) ? value : null;
+        public void Dispose()
+        {
+            if (_jniObject != IntPtr.Zero)
+            {
+                // 释放 JNI 引用
+                _jniObject = IntPtr.Zero;
+            }
+        }
     }
 }
