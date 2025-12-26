@@ -73,7 +73,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
             });
         }
 
-        // 常量定义
+        // ============ 常量定义 ============
         internal const int FF_THREAD_FRAME = 0x0001;
         
         // FFmpeg错误码
@@ -82,6 +82,33 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         
         // 编解码器标志
         internal const int AV_CODEC_FLAG_LOW_DELAY = 0x00001000;
+        internal const int AV_CODEC_FLAG_GLOBAL_HEADER = 0x00400000;
+        
+        // 编解码器标志2
+        internal const int AV_CODEC_FLAG2_FAST = 0x00000001;
+        internal const int AV_CODEC_FLAG2_NO_OUTPUT = 0x00000004;
+        internal const int AV_CODEC_FLAG2_LOCAL_HEADER = 0x00000008;
+        internal const int AV_CODEC_FLAG2_DROP_FRAME_TIMECODE = 0x00002000;
+        internal const int AV_CODEC_FLAG2_CHUNKS = 0x00008000;
+        internal const int AV_CODEC_FLAG2_IGNORE_CROP = 0x00010000;
+        internal const int AV_CODEC_FLAG2_SHOW_ALL = 0x00400000;
+        internal const int AV_CODEC_FLAG2_EXPORT_MVS = 0x10000000;
+        internal const int AV_CODEC_FLAG2_SKIP_MANUAL = 0x20000000;
+        
+        // 帧类型
+        internal const int AV_PICTURE_TYPE_NONE = 0;
+        internal const int AV_PICTURE_TYPE_I = 1;
+        internal const int AV_PICTURE_TYPE_P = 2;
+        internal const int AV_PICTURE_TYPE_B = 3;
+        
+        // 像素格式
+        internal const int AV_PIX_FMT_NONE = -1;
+        internal const int AV_PIX_FMT_YUV420P = 0;
+        internal const int AV_PIX_FMT_NV12 = 23;
+        internal const int AV_PIX_FMT_YUVJ420P = 12;
+        
+        // 解码器选项
+        internal const int AV_OPT_SEARCH_CHILDREN = 0x0001;
         
         // 委托
         public unsafe delegate void av_log_set_callback_callback(void* a0, AVLog level, [MarshalAs(UnmanagedType.LPUTF8Str)] string a2, byte* a3);
