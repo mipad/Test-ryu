@@ -1,4 +1,4 @@
-// Decoder.cs (VP8) - 修改为硬件解码器
+// Decoder.cs (VP8) - 修改为使用简化硬件解码器
 using Ryujinx.Graphics.Nvdec.FFmpeg.Native;
 using Ryujinx.Graphics.Video;
 using System;
@@ -7,9 +7,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Vp8
 {
     public sealed class Decoder : IDecoder
     {
-        // 硬件解码器
-        private HardwareDecoder _hardwareDecoder;
-        private HardwareSurface _hardwareSurface;
+        // 简化硬件解码器
+        private SimpleHardwareDecoder _hardwareDecoder;
+        private SimpleSurface _hardwareSurface;
         
         // 软件解码器作为回退
         private FFmpegContext _softwareContext;
@@ -17,13 +17,43 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Vp8
         
         private bool _useHardware = true;
         private bool _hardwareInitialized = false;
+        private int _width;
+        private int _height;
         
-        public bool IsHardwareAccelerated => _hardwareInitialized && _hardwareDecoder?.IsHardwareAccelerated == true;
+        public bool IsHardwareAccelerated => _hardwareInitialized && _useHardware;
         
         public ISurface CreateSurface(int width, int height)
         {
-            _hardwareSurface = new HardwareSurface(width, height);
-            return _hardwareSurface;
+            _width = width;
+            _height = height;
+            
+            // 尝试初始化硬件解码器
+            if (_useHardware && !_hardwareInitialized)
+            {
+                InitializeHardwareDecoder(width, height);
+            }
+            
+            // 创建硬件表面
+            if (_hardwareInitialized && _hardwareSurface == null)
+            {
+                _hardwareSurface = new SimpleSurface(width, height);
+                return _hardwareSurface;
+            }
+            
+            // 软件解码回退
+            if (_softwareContext == null)
+            {
+                _softwareContext = new FFmpegContext(AVCodecID.AV_CODEC_ID_VP8);
+            }
+            
+            if (_softwareSurface == null || 
+                _softwareSurface.RequestedWidth != width ||
+                _softwareSurface.RequestedHeight != height)
+            {
+                _softwareSurface = new Surface(width, height);
+            }
+            
+            return _softwareSurface;
         }
         
         public bool Decode(ref Vp8PictureInfo pictureInfo, ISurface output, ReadOnlySpan<byte> bitstream)
@@ -55,18 +85,14 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Vp8
             bitstream.CopyTo(new Span<byte>(frame)[uncompHeaderSize..]);
             
             // 尝试硬件解码
-            if (_useHardware && _hardwareDecoder != null)
+            if (_useHardware && _hardwareDecoder != null && output is SimpleSurface hwSurface)
             {
                 try
                 {
-                    if (_hardwareDecoder.DecodeFrame(frame, out var frameData))
+                    if (_hardwareDecoder.Decode(frame, out var hwFrame))
                     {
-                        var hwSurface = output as HardwareSurface;
-                        if (hwSurface != null)
-                        {
-                            hwSurface.UpdateFromFrameData(ref frameData);
-                            return true;
-                        }
+                        hwSurface.UpdateFromFrame(ref hwFrame);
+                        return true;
                     }
                 }
                 catch (Exception ex)
@@ -113,7 +139,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Vp8
         {
             try
             {
-                _hardwareDecoder = new HardwareDecoder(HWCodecType.HW_CODEC_VP8, width, height, true);
+                _hardwareDecoder = new SimpleHardwareDecoder(SimpleHWCodecType.VP8, width, height);
                 _hardwareInitialized = true;
                 _useHardware = true;
                 Console.WriteLine($"Initialized hardware VP8 decoder for {width}x{height}");
@@ -122,7 +148,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Vp8
             {
                 _hardwareInitialized = false;
                 _useHardware = false;
-                _softwareContext = new FFmpegContext(AVCodecID.AV_CODEC_ID_VP8);
+                _hardwareDecoder = null;
                 Console.WriteLine($"Falling back to software VP8 decoder: {ex.Message}");
             }
         }
