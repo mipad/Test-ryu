@@ -78,6 +78,9 @@ set(ALSOFT_CPUEXT_NEON ON CACHE BOOL "Enable NEON optimizations")
 
 FetchContent_MakeAvailable(openal)
 
+# 包含FFmpeg构建
+include(FFmpeg.cmake)
+
 # 创建主库
 add_library(
     ryujinxjni
@@ -85,26 +88,33 @@ add_library(
     vulkan_wrapper.cpp
     ryujinx.cpp
     oboe_audio_renderer.cpp
+    simple_hardware_decoder.cpp  # 添加硬件解码器
 )
 
 # 添加编译定义以优化音频处理
 target_compile_definitions(ryujinxjni PRIVATE
     RYUJINX_AUDIO_OPTIMIZE=1
-    # 如果需要，可以添加更多音频优化标志
+    ANDROID=1
+    __ANDROID__=1
 )
+
 # 为音频渲染器文件单独启用激进优化
-# 注意：如果某些游戏出现杂音，可以回退到 "-O3" 或 "-O3 -ffast-math"
 set_source_files_properties(oboe_audio_renderer.cpp PROPERTIES
     COMPILE_FLAGS "-Ofast"
 )
 
-# 为主目标添加编译选项（其他文件保持 -O3，不包含 -ffast-math）
+# 为主目标添加编译选项
 target_compile_options(ryujinxjni PRIVATE
     -std=c++20
     -O3
     -DNDEBUG
     -march=armv8-a
-    #-Ofast
+    -fPIC
+)
+
+# 添加FFmpeg头文件路径
+target_include_directories(ryujinxjni PRIVATE
+    ${FFMPEG_INCLUDE_DIR}
 )
 
 # 查找系统库
@@ -127,7 +137,17 @@ target_link_libraries(
     adrenotools
     oboe
     OpenAL
+    # 链接FFmpeg库
+    avcodec
+    avutil
+    avformat
+    swscale
+    swresample
+    avfilter
 )
+
+# 添加对FFmpeg的依赖
+add_dependencies(ryujinxjni ffmpeg)
 
 # 设置 JNI 库输出路径
 set(JNI_PATH ../jniLibs/${CMAKE_ANDROID_ARCH_ABI})
@@ -147,4 +167,34 @@ set_target_properties(OpenAL PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
     ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
     RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
+)
+
+# 设置 ryujinxjni 输出目录
+set_target_properties(ryujinxjni PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
+    ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
+    RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
+    OUTPUT_NAME "libhardware_decoder"  # 改名为libhardware_decoder.so以匹配C#代码
+)
+
+# 确保FFmpeg库也被复制到JNI目录
+add_custom_command(TARGET ryujinxjni POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libavcodec.so
+        ${JNI_PATH}/libavcodec.so
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libavutil.so
+        ${JNI_PATH}/libavutil.so
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libavformat.so
+        ${JNI_PATH}/libavformat.so
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libswscale.so
+        ${JNI_PATH}/libswscale.so
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libswresample.so
+        ${JNI_PATH}/libswresample.so
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/lib/libavfilter.so
+        ${JNI_PATH}/libavfilter.so
 )
