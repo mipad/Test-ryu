@@ -14,29 +14,38 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private readonly AVCodec* _codec;
         private readonly AVPacket* _packet;
         private readonly AVCodecContext* _context;
+        private static bool _initialized = false;
 
         public FFmpegContext(AVCodecID codecId)
         {
+            Console.WriteLine($"FFmpegContext constructor for codec: {codecId}");
+            
+            // 确保FFmpeg库已初始化
+            EnsureInitialized();
+            
             _codec = FFmpegApi.avcodec_find_decoder(codecId);
             if (_codec == null)
             {
-                Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Codec wasn't found. Make sure you have the {codecId} codec present in your FFmpeg installation.");
-
+                string error = $"Codec wasn't found. Make sure you have the {codecId} codec present in your FFmpeg installation.";
+                Logger.Error?.PrintMsg(LogClass.FFmpeg, error);
+                Console.WriteLine(error);
                 return;
             }
+
+            Console.WriteLine($"Found codec: {Marshal.PtrToStringAnsi((IntPtr)_codec->name)}");
 
             _context = FFmpegApi.avcodec_alloc_context3(_codec);
             if (_context == null)
             {
                 Logger.Error?.PrintMsg(LogClass.FFmpeg, "Codec context couldn't be allocated.");
-
+                Console.WriteLine("Codec context couldn't be allocated.");
                 return;
             }
 
             if (FFmpegApi.avcodec_open2(_context, _codec, null) != 0)
             {
                 Logger.Error?.PrintMsg(LogClass.FFmpeg, "Codec couldn't be opened.");
-
+                Console.WriteLine("Codec couldn't be opened.");
                 return;
             }
 
@@ -44,13 +53,15 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             if (_packet == null)
             {
                 Logger.Error?.PrintMsg(LogClass.FFmpeg, "Packet couldn't be allocated.");
-
+                Console.WriteLine("Packet couldn't be allocated.");
                 return;
             }
 
             int avCodecRawVersion = FFmpegApi.avcodec_version();
             int avCodecMajorVersion = avCodecRawVersion >> 16;
             int avCodecMinorVersion = (avCodecRawVersion >> 8) & 0xFF;
+
+            Console.WriteLine($"FFmpeg version: {avCodecMajorVersion}.{avCodecMinorVersion}");
 
             // libavcodec 59.24 changed AvCodec to move its private API and also move the codec function to an union.
             if (avCodecMajorVersion > 59 || (avCodecMajorVersion == 59 && avCodecMinorVersion > 24))
@@ -67,10 +78,23 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             {
                 _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec>*)_codec)->Decode);
             }
+
+            Console.WriteLine("FFmpegContext initialized successfully");
+        }
+
+        private static void EnsureInitialized()
+        {
+            if (!_initialized)
+            {
+                Console.WriteLine("Initializing FFmpeg context...");
+                // 静态构造函数已经确保库加载，这里只是标记
+                _initialized = true;
+            }
         }
 
         static FFmpegContext()
         {
+            Console.WriteLine("FFmpegContext static constructor");
             _logFunc = Log;
 
             // Redirect log output.
@@ -159,6 +183,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
         public void Dispose()
         {
+            Console.WriteLine($"Disposing FFmpegContext");
+            
             fixed (AVPacket** ppPacket = &_packet)
             {
                 FFmpegApi.av_packet_free(ppPacket);
