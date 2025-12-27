@@ -1,4 +1,4 @@
-// Decoder.cs (VP8) - 修复软件解码回退
+// Decoder.cs (VP8)
 using Ryujinx.Graphics.Nvdec.FFmpeg.Native;
 using Ryujinx.Graphics.Video;
 using System;
@@ -7,14 +7,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Vp8
 {
     public sealed class Decoder : IDecoder
     {
-        // 硬件解码器
         private SimpleHardwareDecoder _hardwareDecoder;
         private SimpleSurface _hardwareSurface;
-        
-        // 软件解码器
         private FFmpegContext _softwareContext;
         private Surface _softwareSurface;
-        
         private bool _useHardware = true;
         private bool _hardwareInitialized = false;
         private int _width;
@@ -27,34 +23,29 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Vp8
             _width = width;
             _height = height;
             
-            // 尝试初始化硬件解码器
             if (_useHardware && !_hardwareInitialized)
             {
                 InitializeHardwareDecoder(width, height);
             }
             
-            // 硬件可用：创建硬件表面
             if (_hardwareInitialized && _useHardware)
             {
                 if (_hardwareSurface == null || 
-                    _hardwareSurface.RequestedWidth != width ||
-                    _hardwareSurface.RequestedHeight != height)
+                    _hardwareSurface.Width != width ||
+                    _hardwareSurface.Height != height)
                 {
                     _hardwareSurface = new SimpleSurface(width, height);
                 }
                 return _hardwareSurface;
             }
             
-            // 软件回退：创建软件表面
             return CreateSoftwareSurface(width, height);
         }
         
         public bool Decode(ref Vp8PictureInfo pictureInfo, ISurface output, ReadOnlySpan<byte> bitstream)
         {
-            // 重建帧头
             byte[] frame = ReconstructFrameHeader(ref pictureInfo, bitstream);
             
-            // 尝试硬件解码
             if (_useHardware && _hardwareDecoder != null && output is SimpleSurface hwSurface)
             {
                 try
@@ -69,12 +60,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Vp8
                 {
                     Console.WriteLine($"Hardware VP8 decode failed: {ex.Message}");
                     _useHardware = false;
-                    // 硬件失败后，确保软件解码器就绪
                     EnsureSoftwareDecoderReady();
                 }
             }
             
-            // 软件解码回退
             return DecodeSoftware(output, frame);
         }
         
@@ -111,30 +100,25 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Vp8
         {
             try
             {
-                // 确保软件解码器就绪
                 EnsureSoftwareDecoderReady();
                 
-                // 确保我们有正确的软件表面
-                if (_softwareSurface == null || 
-                    _softwareSurface.RequestedWidth != output.RequestedWidth ||
-                    _softwareSurface.RequestedHeight != output.RequestedHeight)
+                // 如果输出是软件表面，直接解码到它
+                if (output is Surface swSurface)
                 {
-                    _softwareSurface = new Surface(output.RequestedWidth, output.RequestedHeight);
-                }
-                
-                // 解码到软件表面
-                int result = _softwareContext.DecodeFrame(_softwareSurface, frame);
-                
-                // 如果输出是软件表面，直接返回结果
-                if (output is Surface swSurface && swSurface == _softwareSurface)
-                {
+                    int result = _softwareContext.DecodeFrame(swSurface, frame);
                     return result == 0;
                 }
                 
-                // 如果输出是硬件表面但需要软件解码，这里无法直接转换
-                // 这种情况下，解码会失败，因为表面类型不匹配
-                Console.WriteLine("Warning: Output surface type mismatch in software fallback");
-                return false;
+                // 如果输出是硬件表面但需要软件解码，创建新的软件表面
+                if (_softwareSurface == null || 
+                    _softwareSurface.Width != output.Width ||
+                    _softwareSurface.Height != output.Height)
+                {
+                    _softwareSurface = new Surface(output.Width, output.Height);
+                }
+                
+                int decodeResult = _softwareContext.DecodeFrame(_softwareSurface, frame);
+                return decodeResult == 0;
             }
             catch (Exception ex)
             {
@@ -148,8 +132,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Vp8
             EnsureSoftwareDecoderReady();
             
             if (_softwareSurface == null || 
-                _softwareSurface.RequestedWidth != width || 
-                _softwareSurface.RequestedHeight != height)
+                _softwareSurface.Width != width || 
+                _softwareSurface.Height != height)
             {
                 _softwareSurface = new Surface(width, height);
             }
@@ -165,7 +149,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Vp8
             }
         }
         
-        // 初始化硬件解码器
         private void InitializeHardwareDecoder(int width, int height)
         {
             try
