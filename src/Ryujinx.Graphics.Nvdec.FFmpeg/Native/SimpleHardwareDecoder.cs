@@ -1,4 +1,4 @@
-// SimpleHardwareDecoder.cs - Android专用硬件解码器
+// SimpleHardwareDecoder.cs - 添加详细日志
 using System;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
@@ -62,20 +62,32 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         
         public SimpleHardwareDecoder(SimpleHWCodecType codec, int width, int height)
         {
-            if (!SimpleHardwareDecoderApi.hw_is_available())
+            Console.WriteLine($"SimpleHardwareDecoder constructor: codec={codec}, width={width}, height={height}");
+            
+            bool hwAvailable = SimpleHardwareDecoderApi.hw_is_available();
+            Console.WriteLine($"Hardware decoder available: {hwAvailable}");
+            
+            if (!hwAvailable)
                 throw new NotSupportedException("Hardware decoder not available on this platform");
             
             _handle = SimpleHardwareDecoderApi.hw_create(codec, width, height, true);
+            Console.WriteLine($"hw_create returned: {_handle}");
+            
             if (_handle == IntPtr.Zero)
             {
                 IntPtr errorPtr = SimpleHardwareDecoderApi.hw_get_last_error(_handle);
                 string error = Marshal.PtrToStringAnsi(errorPtr) ?? "Unknown error";
+                Console.WriteLine($"hw_create error: {error}");
                 throw new InvalidOperationException($"Failed to create hardware decoder: {error}");
             }
+            
+            Console.WriteLine($"SimpleHardwareDecoder created successfully");
         }
         
         public bool Decode(byte[] data, out SimpleHWFrame frame)
         {
+            Console.WriteLine($"SimpleHardwareDecoder.Decode called, data length: {data?.Length ?? 0}");
+            
             frame = new SimpleHWFrame
             {
                 Data = new IntPtr[3],
@@ -83,9 +95,14 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
             };
             
             if (_disposed || _handle == IntPtr.Zero)
+            {
+                Console.WriteLine($"Decoder is disposed or handle is zero");
                 return false;
+            }
             
             int result = SimpleHardwareDecoderApi.hw_decode(_handle, data, data.Length, ref frame);
+            Console.WriteLine($"hw_decode returned: {result}, frame: {frame.Width}x{frame.Height}, format={frame.Format}");
+            
             return result == 0;
         }
         
@@ -99,6 +116,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         {
             if (!_disposed)
             {
+                Console.WriteLine($"Disposing SimpleHardwareDecoder");
                 if (_handle != IntPtr.Zero)
                 {
                     SimpleHardwareDecoderApi.hw_destroy(_handle);
@@ -114,22 +132,43 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
                 return "No handle";
                 
             IntPtr errorPtr = SimpleHardwareDecoderApi.hw_get_last_error(_handle);
-            return Marshal.PtrToStringAnsi(errorPtr) ?? "Unknown error";
+            string error = Marshal.PtrToStringAnsi(errorPtr) ?? "Unknown error";
+            Console.WriteLine($"GetLastError: {error}");
+            return error;
         }
     }
 #else
     // 非Android平台返回空实现
     public static class SimpleHardwareDecoderApi
     {
-        public static IntPtr hw_create(SimpleHWCodecType codec, int width, int height, bool use_hw) => IntPtr.Zero;
+        public static IntPtr hw_create(SimpleHWCodecType codec, int width, int height, bool use_hw) 
+        {
+            Console.WriteLine($"hw_create called but not on Android: codec={codec}, width={width}, height={height}");
+            return IntPtr.Zero;
+        }
         
-        public static int hw_decode(IntPtr handle, byte[] data, int size, ref SimpleHWFrame frame) => -1;
+        public static int hw_decode(IntPtr handle, byte[] data, int size, ref SimpleHWFrame frame) 
+        {
+            Console.WriteLine($"hw_decode called but not on Android");
+            return -1;
+        }
         
-        public static void hw_destroy(IntPtr handle) { }
+        public static void hw_destroy(IntPtr handle) 
+        {
+            Console.WriteLine($"hw_destroy called but not on Android");
+        }
         
-        public static bool hw_is_available() => false;
+        public static bool hw_is_available() 
+        {
+            Console.WriteLine($"hw_is_available called but not on Android");
+            return false;
+        }
         
-        public static IntPtr hw_get_last_error(IntPtr handle) => IntPtr.Zero;
+        public static IntPtr hw_get_last_error(IntPtr handle) 
+        {
+            Console.WriteLine($"hw_get_last_error called but not on Android");
+            return IntPtr.Zero;
+        }
     }
     
     // 非Android平台返回空实现
@@ -137,20 +176,26 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
     {
         public SimpleHardwareDecoder(SimpleHWCodecType codec, int width, int height)
         {
+            Console.WriteLine($"SimpleHardwareDecoder constructor called but not on Android");
             throw new PlatformNotSupportedException("Hardware decoder is only supported on Android");
         }
         
         public bool Decode(byte[] data, out SimpleHWFrame frame)
         {
+            Console.WriteLine($"Decode called but not on Android");
             throw new PlatformNotSupportedException("Hardware decoder is only supported on Android");
         }
         
         public bool Decode(ReadOnlySpan<byte> data, out SimpleHWFrame frame)
         {
+            Console.WriteLine($"Decode called but not on Android");
             throw new PlatformNotSupportedException("Hardware decoder is only supported on Android");
         }
         
-        public void Dispose() { }
+        public void Dispose() 
+        {
+            Console.WriteLine($"Dispose called but not on Android");
+        }
         
         public string GetLastError() => "Not supported on this platform";
     }
