@@ -1,4 +1,4 @@
-// Decoder.cs (H264)
+// Decoder.cs (H264) - 修复硬件解码器使用
 using Ryujinx.Graphics.Nvdec.FFmpeg.Native;
 using Ryujinx.Graphics.Video;
 using System;
@@ -18,30 +18,61 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
         private int _height;
         private bool _useHardware = true;
         private bool _hardwareInitialized = false;
+        private bool _hardwareAvailable = false;
         
-        public bool IsHardwareAccelerated => _hardwareInitialized && _useHardware;
+        public bool IsHardwareAccelerated => _hardwareInitialized && _useHardware && _hardwareAvailable;
         
         public ISurface CreateSurface(int width, int height)
         {
             _width = width;
             _height = height;
             
+            // 检查硬件解码器是否可用
             if (_useHardware && !_hardwareInitialized)
             {
-                InitializeHardwareDecoder(width, height);
+                _hardwareAvailable = PlatformHelper.IsHardwareDecoderAvailable;
+                
+                if (_hardwareAvailable)
+                {
+                    try
+                    {
+                        Console.WriteLine($"Creating hardware decoder for H264, size: {width}x{height}");
+                        _hwDecoder = new SimpleHardwareDecoder(SimpleHWCodecType.H264, width, height);
+                        _hardwareInitialized = true;
+                        _useHardware = true;
+                        Console.WriteLine($"Hardware decoder initialized successfully");
+                    }
+                    catch (Exception ex)
+                    {
+                        _hardwareInitialized = false;
+                        _useHardware = false;
+                        Console.WriteLine($"Failed to initialize hardware decoder: {ex.Message}");
+                        EnsureSoftwareDecoderReady();
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("Hardware decoder not available on this platform");
+                    _useHardware = false;
+                    EnsureSoftwareDecoderReady();
+                }
             }
             
+            // 使用硬件解码器
             if (_hardwareInitialized && _useHardware)
             {
                 if (_hwSurface == null || 
                     _hwSurface.Width != width ||
                     _hwSurface.Height != height)
                 {
+                    Console.WriteLine($"Creating hardware surface: {width}x{height}");
                     _hwSurface = new SimpleSurface(width, height);
                 }
                 return _hwSurface;
             }
             
+            // 回退到软件解码器
+            Console.WriteLine($"Creating software surface: {width}x{height}");
             return CreateSoftwareSurface(width, height);
         }
         
@@ -49,14 +80,24 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
         {
             byte[] frame = ReconstructFrame(ref pictureInfo, bitstream);
             
-            if (_useHardware && _hwDecoder != null && output is SimpleSurface hwSurface)
+            // 尝试硬件解码
+            if (_useHardware && _hardwareInitialized && _hwDecoder != null && output is SimpleSurface hwSurface)
             {
                 try
                 {
+                    Console.WriteLine($"Attempting hardware decode for {_width}x{_height}");
+                    
                     if (_hwDecoder.Decode(frame, out var hwFrame))
                     {
+                        Console.WriteLine($"Hardware decode successful, frame: {hwFrame.Width}x{hwFrame.Height}");
                         hwSurface.UpdateFromFrame(ref hwFrame);
                         return true;
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Hardware decode returned false");
+                        _useHardware = false;
+                        EnsureSoftwareDecoderReady();
                     }
                 }
                 catch (Exception ex)
@@ -67,6 +108,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
                 }
             }
             
+            // 软件解码回退
+            Console.WriteLine($"Falling back to software decode");
             return DecodeSoftware(output, frame);
         }
         
@@ -90,6 +133,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
                 // 如果输出是软件表面，直接解码到它
                 if (output is Surface swSurface)
                 {
+                    Console.WriteLine($"Decoding to software surface: {swSurface.Width}x{swSurface.Height}");
                     int result = _swContext.DecodeFrame(swSurface, frame);
                     return result == 0;
                 }
@@ -99,9 +143,11 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
                     _swSurface.Width != output.Width ||
                     _swSurface.Height != output.Height)
                 {
+                    Console.WriteLine($"Creating new software surface for fallback: {output.Width}x{output.Height}");
                     _swSurface = new Surface(output.Width, output.Height);
                 }
                 
+                Console.WriteLine($"Decoding to fallback software surface");
                 int decodeResult = _swContext.DecodeFrame(_swSurface, frame);
                 return decodeResult == 0;
             }
@@ -130,32 +176,27 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
         {
             if (_swContext == null)
             {
+                Console.WriteLine($"Creating software FFmpeg context for H264");
                 _swContext = new FFmpegContext(AVCodecID.AV_CODEC_ID_H264);
-            }
-        }
-        
-        private void InitializeHardwareDecoder(int width, int height)
-        {
-            try
-            {
-                _hwDecoder = new SimpleHardwareDecoder(SimpleHWCodecType.H264, width, height);
-                _hardwareInitialized = true;
-                _useHardware = true;
-                Console.WriteLine($"Initialized hardware H264 decoder for {width}x{height}");
-            }
-            catch (Exception ex)
-            {
-                _hardwareInitialized = false;
-                _useHardware = false;
-                Console.WriteLine($"Falling back to software H264 decoder: {ex.Message}");
-                EnsureSoftwareDecoderReady();
             }
         }
         
         public void Dispose()
         {
-            _hwDecoder?.Dispose();
-            _swContext?.Dispose();
+            if (_hwDecoder != null)
+            {
+                Console.WriteLine($"Disposing hardware decoder");
+                _hwDecoder.Dispose();
+                _hwDecoder = null;
+            }
+            
+            if (_swContext != null)
+            {
+                Console.WriteLine($"Disposing software context");
+                _swContext.Dispose();
+                _swContext = null;
+            }
+            
             _hwSurface?.Dispose();
             _swSurface?.Dispose();
         }
