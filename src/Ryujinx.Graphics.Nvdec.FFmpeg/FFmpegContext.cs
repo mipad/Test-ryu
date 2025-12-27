@@ -32,7 +32,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return;
             }
 
-            Console.WriteLine($"Found codec: {Marshal.PtrToStringAnsi((IntPtr)_codec->name)}");
+            // 修复这里：使用 Name 而不是 name
+            string codecName = Marshal.PtrToStringAnsi((IntPtr)_codec->Name) ?? "unknown";
+            Console.WriteLine($"Found codec: {codecName}");
 
             _context = FFmpegApi.avcodec_alloc_context3(_codec);
             if (_context == null)
