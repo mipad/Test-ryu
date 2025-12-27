@@ -10,6 +10,8 @@ extern "C" {
 #include <libavutil/avutil.h>
 #include <libavutil/pixdesc.h>
 #include <libavutil/hwcontext_mediacodec.h>
+#include <libswscale/swscale.h>      
+#include <libswresample/swresample.h>
 }
 
 #define LOG_TAG "HardwareDecoder"
