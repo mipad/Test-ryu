@@ -1,4 +1,4 @@
-// Decoder.cs (H264) - 与VP8保持一致的错误处理
+// Decoder.cs (H264)
 using Ryujinx.Graphics.Nvdec.FFmpeg.Native;
 using Ryujinx.Graphics.Video;
 using System;
@@ -10,14 +10,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
         private const int WorkBufferSize = 0x200;
         private readonly byte[] _workBuffer = new byte[WorkBufferSize];
         
-        // 硬件解码器
         private SimpleHardwareDecoder _hwDecoder;
         private SimpleSurface _hwSurface;
-        
-        // 软件解码器
         private FFmpegContext _swContext;
         private Surface _swSurface;
-        
         private int _width;
         private int _height;
         private bool _useHardware = true;
@@ -30,34 +26,29 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
             _width = width;
             _height = height;
             
-            // 尝试初始化硬件解码器
             if (_useHardware && !_hardwareInitialized)
             {
                 InitializeHardwareDecoder(width, height);
             }
             
-            // 硬件可用：创建硬件表面
             if (_hardwareInitialized && _useHardware)
             {
                 if (_hwSurface == null || 
-                    _hwSurface.RequestedWidth != width ||
-                    _hwSurface.RequestedHeight != height)
+                    _hwSurface.Width != width ||
+                    _hwSurface.Height != height)
                 {
                     _hwSurface = new SimpleSurface(width, height);
                 }
                 return _hwSurface;
             }
             
-            // 软件回退：创建软件表面
             return CreateSoftwareSurface(width, height);
         }
         
         public bool Decode(ref H264PictureInfo pictureInfo, ISurface output, ReadOnlySpan<byte> bitstream)
         {
-            // 重建SPS/PPS
             byte[] frame = ReconstructFrame(ref pictureInfo, bitstream);
             
-            // 尝试硬件解码
             if (_useHardware && _hwDecoder != null && output is SimpleSurface hwSurface)
             {
                 try
@@ -76,7 +67,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
                 }
             }
             
-            // 软件解码回退
             return DecodeSoftware(output, frame);
         }
         
@@ -95,28 +85,25 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
         {
             try
             {
-                // 确保软件解码器就绪
                 EnsureSoftwareDecoderReady();
                 
-                // 确保我们有正确的软件表面
-                if (_swSurface == null || 
-                    _swSurface.RequestedWidth != output.RequestedWidth ||
-                    _swSurface.RequestedHeight != output.RequestedHeight)
+                // 如果输出是软件表面，直接解码到它
+                if (output is Surface swSurface)
                 {
-                    _swSurface = new Surface(output.RequestedWidth, output.RequestedHeight);
-                }
-                
-                // 解码到软件表面
-                int result = _swContext.DecodeFrame(_swSurface, frame);
-                
-                // 如果输出是软件表面，直接返回结果
-                if (output is Surface swSurface && swSurface == _swSurface)
-                {
+                    int result = _swContext.DecodeFrame(swSurface, frame);
                     return result == 0;
                 }
                 
-                Console.WriteLine("Warning: Output surface type mismatch in software fallback");
-                return false;
+                // 如果输出是硬件表面但需要软件解码，创建新的软件表面
+                if (_swSurface == null || 
+                    _swSurface.Width != output.Width ||
+                    _swSurface.Height != output.Height)
+                {
+                    _swSurface = new Surface(output.Width, output.Height);
+                }
+                
+                int decodeResult = _swContext.DecodeFrame(_swSurface, frame);
+                return decodeResult == 0;
             }
             catch (Exception ex)
             {
@@ -130,8 +117,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
             EnsureSoftwareDecoderReady();
             
             if (_swSurface == null || 
-                _swSurface.RequestedWidth != width || 
-                _swSurface.RequestedHeight != height)
+                _swSurface.Width != width || 
+                _swSurface.Height != height)
             {
                 _swSurface = new Surface(width, height);
             }
