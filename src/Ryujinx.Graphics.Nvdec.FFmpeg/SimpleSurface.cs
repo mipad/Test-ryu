@@ -1,5 +1,6 @@
 // SimpleSurface.cs
 using Ryujinx.Graphics.Video;
+using Ryujinx.Graphics.Nvdec.FFmpeg.Native; // 添加这行
 using System;
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg
