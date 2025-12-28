@@ -9,7 +9,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
     unsafe class FFmpegContext : IDisposable
     {
         private unsafe delegate int AVCodec_decode(AVCodecContext* avctx, void* outdata, int* got_frame_ptr, AVPacket* avpkt);
-        private unsafe delegate int GetFormatDelegate(AVCodecContext* ctx, int* pix_fmts); // 注意：改为int* 而不是FFmpegApi.AVPixelFormat*
+        private unsafe delegate int GetFormatDelegate(AVCodecContext* ctx, int* pix_fmts); // 使用int*而不是FFmpegApi.AVPixelFormat*
 
         private readonly AVCodec_decode _decodeFrame;
         private static readonly FFmpegApi.av_log_set_callback_callback _logFunc;
@@ -197,7 +197,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 string deviceTypeName = $"Unknown({hwConfig->DeviceType})";
                 try
                 {
-                    deviceTypeName = FFmpegApi.av_hwdevice_get_type_name((FFmpegApi.AVHWDeviceType)hwConfig->DeviceType) ?? deviceTypeName;
+                    deviceTypeName = ((FFmpegApi.AVHWDeviceType)hwConfig->DeviceType).ToString();
                 }
                 catch { }
                 
@@ -554,3 +554,4 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         }
     }
 }
+
