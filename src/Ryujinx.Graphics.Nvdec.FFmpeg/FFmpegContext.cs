@@ -3,6 +3,7 @@ using Ryujinx.Graphics.Nvdec.FFmpeg.Native;
 using System;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
+using System.Text;
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg
 {
@@ -173,6 +174,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             
             Logger.Info?.PrintMsg(LogClass.FFmpeg, "Checking available hardware configurations...");
             
+            // 先检查所有可用的硬件配置
+            var availableConfigs = new List<string>();
             for (int i = 0; ; i++)
             {
                 hwConfig = FFmpegApi.avcodec_get_hw_config(_codec, i);
@@ -191,48 +194,94 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 }
                 catch { }
                 
-                Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Hardware config {i}: DeviceType={deviceTypeName}, PixFmt={hwConfig->PixFmt}, Methods={hwConfig->Methods}");
-                
+                string configInfo = $"Config {i}: DeviceType={deviceTypeName}, PixFmt={hwConfig->PixFmt}, Methods={hwConfig->Methods}";
+                availableConfigs.Add(configInfo);
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, configInfo);
+            }
+            
+            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Available hardware configurations: {string.Join("; ", availableConfigs)}");
+            
+            // 现在尝试初始化
+            for (int i = 0; i <= configIndex; i++)
+            {
+                hwConfig = FFmpegApi.avcodec_get_hw_config(_codec, i);
+                if (hwConfig == null)
+                    continue;
+                    
                 var deviceType = (FFmpegApi.AVHWDeviceType)hwConfig->DeviceType;
+                
+                // 如果这个设备类型在我们的优先列表中，并且支持硬件设备上下文
                 if (preferredDeviceTypes.Contains(deviceType) && 
                     (hwConfig->Methods & 0x01) != 0) // AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX
                 {
                     Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Found matching hardware configuration at index {i}: {deviceType}");
                     
-                    AVBufferRef* hwDeviceCtx = FFmpegApi.av_hwdevice_ctx_alloc(deviceType);
-                    if (hwDeviceCtx == null)
+                    // 尝试创建硬件设备上下文
+                    if (TryCreateHardwareContext(deviceType, hwConfig->PixFmt))
                     {
-                        Logger.Warning?.PrintMsg(LogClass.FFmpeg, $"Failed to allocate hardware device context for {deviceType}");
-                        continue;
+                        return true;
                     }
+                }
+            }
+            
+            // 如果没有找到优先的设备类型，尝试任何可用的硬件解码器
+            Logger.Info?.PrintMsg(LogClass.FFmpeg, "No preferred hardware decoder found, trying any available hardware decoder...");
+            for (int i = 0; i <= configIndex; i++)
+            {
+                hwConfig = FFmpegApi.avcodec_get_hw_config(_codec, i);
+                if (hwConfig == null)
+                    continue;
                     
-                    int initResult = FFmpegApi.av_hwdevice_ctx_init(hwDeviceCtx);
-                    if (initResult < 0)
+                var deviceType = (FFmpegApi.AVHWDeviceType)hwConfig->DeviceType;
+                
+                if ((hwConfig->Methods & 0x01) != 0) // AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX
+                {
+                    Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Trying alternative hardware configuration at index {i}: {deviceType}");
+                    
+                    if (TryCreateHardwareContext(deviceType, hwConfig->PixFmt))
                     {
-                        Logger.Warning?.PrintMsg(LogClass.FFmpeg, $"Failed to initialize hardware device context for {deviceType}, error code: {initResult}");
-                        FFmpegApi.av_buffer_unref(&hwDeviceCtx);
-                        continue;
+                        return true;
                     }
-                    
-                    _context->HwDeviceCtx = hwDeviceCtx;
-                    _hwPixelFormat = (int)hwConfig->PixFmt;
-                    _hwDeviceType = deviceType;
-                    
-                    Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Hardware pixel format: {_hwPixelFormat}");
-                    
-                    GetFormatDelegate getFormatDelegate = GetHardwareFormat;
-                    IntPtr getFormatPtr = Marshal.GetFunctionPointerForDelegate(getFormatDelegate);
-                    _context->GetFormat = getFormatPtr;
-                    
-                    GC.KeepAlive(getFormatDelegate);
-                    
-                    Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Initialized hardware decoder successfully: DeviceType={deviceType}, PixelFormat={_hwPixelFormat}");
-                    return true;
                 }
             }
             
             Logger.Warning?.PrintMsg(LogClass.FFmpeg, $"No suitable hardware configuration found. Checked {configIndex + 1} configurations.");
             return false;
+        }
+        
+        private bool TryCreateHardwareContext(FFmpegApi.AVHWDeviceType deviceType, FFmpegApi.AVPixelFormat pixelFormat)
+        {
+            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Attempting to create hardware context for {deviceType} with pixel format {pixelFormat}");
+            
+            AVBufferRef* hwDeviceCtx = FFmpegApi.av_hwdevice_ctx_alloc(deviceType);
+            if (hwDeviceCtx == null)
+            {
+                Logger.Warning?.PrintMsg(LogClass.FFmpeg, $"Failed to allocate hardware device context for {deviceType}");
+                return false;
+            }
+            
+            int initResult = FFmpegApi.av_hwdevice_ctx_init(hwDeviceCtx);
+            if (initResult < 0)
+            {
+                Logger.Warning?.PrintMsg(LogClass.FFmpeg, $"Failed to initialize hardware device context for {deviceType}, error code: {initResult}");
+                FFmpegApi.av_buffer_unref(&hwDeviceCtx);
+                return false;
+            }
+            
+            _context->HwDeviceCtx = hwDeviceCtx;
+            _hwPixelFormat = (int)pixelFormat;
+            _hwDeviceType = deviceType;
+            
+            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Hardware pixel format: {_hwPixelFormat}");
+            
+            GetFormatDelegate getFormatDelegate = GetHardwareFormat;
+            IntPtr getFormatPtr = Marshal.GetFunctionPointerForDelegate(getFormatDelegate);
+            _context->GetFormat = getFormatPtr;
+            
+            GC.KeepAlive(getFormatDelegate);
+            
+            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Initialized hardware decoder successfully: DeviceType={deviceType}, PixelFormat={_hwPixelFormat}");
+            return true;
         }
         
         private List<FFmpegApi.AVHWDeviceType> GetPreferredDeviceTypes()
@@ -241,9 +290,31 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             
             if (IsAndroidRuntime())
             {
-                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Android platform detected, preferring MediaCodec and Vulkan hardware decoders");
-                preferredTypes.Add(FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_MEDIACODEC);
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Android platform detected");
+                
+                // Android API级别检查
+                int androidApiLevel = GetAndroidApiLevel();
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Android API Level: {androidApiLevel}");
+                
+                // MediaCodec需要API级别16+，但更好的支持需要21+
+                if (androidApiLevel >= 21)
+                {
+                    Logger.Info?.PrintMsg(LogClass.FFmpeg, "API level >= 21, preferring MediaCodec hardware decoder");
+                    preferredTypes.Add(FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_MEDIACODEC);
+                }
+                else
+                {
+                    Logger.Warning?.PrintMsg(LogClass.FFmpeg, $"API level {androidApiLevel} is too low for reliable MediaCodec support");
+                }
+                
+                // 添加Vulkan作为备用
                 preferredTypes.Add(FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_VULKAN);
+                
+                // 如果是Android 9+，还可以尝试Vulkan
+                if (androidApiLevel >= 28) // Android 9 (Pie)
+                {
+                    Logger.Info?.PrintMsg(LogClass.FFmpeg, "API level >= 28, also considering Vulkan hardware decoder");
+                }
             }
             else if (OperatingSystem.IsLinux())
             {
@@ -266,6 +337,43 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             }
             
             return preferredTypes;
+        }
+        
+        private int GetAndroidApiLevel()
+        {
+            try
+            {
+                // 尝试从环境变量获取API级别
+                string apiLevelStr = Environment.GetEnvironmentVariable("ANDROID_API_LEVEL");
+                if (!string.IsNullOrEmpty(apiLevelStr) && int.TryParse(apiLevelStr, out int apiLevel))
+                {
+                    return apiLevel;
+                }
+                
+                // 尝试从构建属性获取
+                string buildPropPath = "/system/build.prop";
+                if (System.IO.File.Exists(buildPropPath))
+                {
+                    var lines = System.IO.File.ReadAllLines(buildPropPath);
+                    foreach (var line in lines)
+                    {
+                        if (line.StartsWith("ro.build.version.sdk="))
+                        {
+                            if (int.TryParse(line.Substring("ro.build.version.sdk=".Length), out apiLevel))
+                            {
+                                return apiLevel;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Failed to get Android API level: {ex.Message}");
+            }
+            
+            // 默认返回一个合理的API级别
+            return 30; // Android 11
         }
         
         private int GetHardwareFormat(AVCodecContext* ctx, int* pix_fmts)
