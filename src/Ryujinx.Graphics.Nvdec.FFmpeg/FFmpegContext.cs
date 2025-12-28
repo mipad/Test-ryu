@@ -3,6 +3,7 @@ using Ryujinx.Graphics.Nvdec.FFmpeg.Native;
 using System;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
+using System.Reflection;
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg
 {
@@ -121,11 +122,14 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
         private bool ShouldUseHardwareDecoding(AVCodecID codecId)
         {
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Checking hardware decoding for codec {codecId} on platform: Android={OperatingSystem.IsAndroid()}, Linux={OperatingSystem.IsLinux()}, Windows={OperatingSystem.IsWindows()}, macOS={OperatingSystem.IsMacOS()}");
+            // 检测是否为Android环境
+            bool isAndroid = IsAndroidRuntime();
+            
+            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Checking hardware decoding for codec {codecId} on platform: Android={isAndroid}, RID={RuntimeInformation.RuntimeIdentifier}");
             
             // 在Android平台上为H264和VP8启用硬件解码
             // 在Linux平台上也为H264和VP8启用硬件解码（使用VAAPI/VDPAU/CUDA等）
-            bool platformSupported = OperatingSystem.IsAndroid() || OperatingSystem.IsLinux();
+            bool platformSupported = isAndroid || OperatingSystem.IsLinux();
             
             if (!platformSupported)
             {
@@ -142,6 +146,42 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 
             Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Hardware decoding enabled for codec {codecId} on current platform");
             return true;
+        }
+
+        private bool IsAndroidRuntime()
+        {
+            // 检查运行时标识符（RID）
+            string rid = RuntimeInformation.RuntimeIdentifier.ToLowerInvariant();
+            
+            // Android RID通常是: android, android-arm, android-arm64, android-x64等
+            // linux-bionic-arm64也是Android（Bionic是Android的C库）
+            if (rid.Contains("android") || rid.Contains("bionic"))
+            {
+                return true;
+            }
+            
+            // 检查环境变量（备用方法）
+            if (Environment.GetEnvironmentVariable("ANDROID_ROOT") != null ||
+                Environment.GetEnvironmentVariable("ANDROID_DATA") != null)
+            {
+                return true;
+            }
+            
+            // 检查文件系统（备用方法）
+            try
+            {
+                if (System.IO.File.Exists("/system/build.prop") ||
+                    System.IO.Directory.Exists("/system/app"))
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+                // 忽略文件系统访问异常
+            }
+            
+            return false;
         }
 
         private bool TryInitializeHardwareDecoder()
@@ -220,14 +260,16 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         {
             var preferredTypes = new List<FFmpegApi.AVHWDeviceType>();
             
-            if (OperatingSystem.IsAndroid())
+            if (IsAndroidRuntime())
             {
                 // Android平台优先使用MediaCodec
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Android platform detected, preferring MediaCodec hardware decoder");
                 preferredTypes.Add(FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_MEDIACODEC);
             }
             else if (OperatingSystem.IsLinux())
             {
                 // Linux平台硬件解码器优先级（参考yuzu）
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Linux platform detected, preferring CUDA/VAAPI/VDPAU hardware decoders");
                 preferredTypes.Add(FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_CUDA);
                 preferredTypes.Add(FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_VAAPI);
                 preferredTypes.Add(FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_VDPAU);
@@ -348,6 +390,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private int DecodeFrameHardware(Surface output, ReadOnlySpan<byte> bitstream)
         {
             Logger.Debug?.PrintMsg(LogClass.FFmpeg, "DecodeFrameHardware called");
+            
+            if (_hwFrame == null || _swFrame == null)
+            {
+                Logger.Error?.PrintMsg(LogClass.FFmpeg, "Hardware or software frames not allocated");
+                return DecodeFrameSoftware(output, bitstream);
+            }
             
             FFmpegApi.av_frame_unref(_hwFrame);
             FFmpegApi.av_frame_unref(_swFrame);
@@ -516,4 +564,3 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         }
     }
 }
-
