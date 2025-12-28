@@ -21,6 +21,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private AVFrame* _swFrame;
         private int _hwPixelFormat;
         private FFmpegApi.AVHWDeviceType _hwDeviceType;
+        private bool _hardwareDecoderInitialized;
 
         public FFmpegContext(AVCodecID codecId)
         {
@@ -49,7 +50,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             if (_useHardwareDecoding)
             {
                 Logger.Info?.PrintMsg(LogClass.FFmpeg, "Attempting to initialize hardware decoder...");
-                if (TryInitializeHardwareDecoder())
+                _hardwareDecoderInitialized = TryInitializeHardwareDecoder();
+                if (_hardwareDecoderInitialized)
                 {
                     Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Using hardware decoder for {codecName} with device type: {_hwDeviceType}");
                 }
@@ -69,7 +71,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return;
             }
             
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Codec opened successfully. Pixel format: {_context->PixFmt}");
+            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Codec opened successfully. Pixel format: {_context->PixFmt}, Hardware device context: {(_context->HwDeviceCtx != null ? "Set" : "Not set")}");
 
             _packet = FFmpegApi.av_packet_alloc();
             if (_packet == null)
@@ -78,7 +80,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return;
             }
 
-            if (_useHardwareDecoding && _context->HwDeviceCtx != null)
+            if (_hardwareDecoderInitialized && _context->HwDeviceCtx != null)
             {
                 Logger.Info?.PrintMsg(LogClass.FFmpeg, "Creating hardware and software frames...");
                 _hwFrame = FFmpegApi.av_frame_alloc();
@@ -87,6 +89,11 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 if (_hwFrame == null || _swFrame == null)
                 {
                     Logger.Warning?.PrintMsg(LogClass.FFmpeg, "Failed to allocate hardware/software frames");
+                    _hardwareDecoderInitialized = false;
+                }
+                else
+                {
+                    Logger.Info?.PrintMsg(LogClass.FFmpeg, "Hardware and software frames allocated successfully");
                 }
             }
 
@@ -188,7 +195,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 
                 var deviceType = (FFmpegApi.AVHWDeviceType)hwConfig->DeviceType;
                 if (preferredDeviceTypes.Contains(deviceType) && 
-                    (hwConfig->Methods & 0x01) != 0)
+                    (hwConfig->Methods & 0x01) != 0) // AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX
                 {
                     Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Found matching hardware configuration at index {i}: {deviceType}");
                     
@@ -199,15 +206,16 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                         continue;
                     }
                     
-                    if (FFmpegApi.av_hwdevice_ctx_init(hwDeviceCtx) < 0)
+                    int initResult = FFmpegApi.av_hwdevice_ctx_init(hwDeviceCtx);
+                    if (initResult < 0)
                     {
-                        Logger.Warning?.PrintMsg(LogClass.FFmpeg, $"Failed to initialize hardware device context for {deviceType}");
+                        Logger.Warning?.PrintMsg(LogClass.FFmpeg, $"Failed to initialize hardware device context for {deviceType}, error code: {initResult}");
                         FFmpegApi.av_buffer_unref(&hwDeviceCtx);
                         continue;
                     }
                     
                     _context->HwDeviceCtx = hwDeviceCtx;
-                    _hwPixelFormat = (int)hwConfig->PixFmt; // 修复这里：添加显式转换
+                    _hwPixelFormat = (int)hwConfig->PixFmt;
                     _hwDeviceType = deviceType;
                     
                     Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Hardware pixel format: {_hwPixelFormat}");
@@ -268,6 +276,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             {
                 Logger.Warning?.PrintMsg(LogClass.FFmpeg, "pix_fmts is null, falling back to software");
                 FFmpegApi.av_buffer_unref(&ctx->HwDeviceCtx);
+                _hardwareDecoderInitialized = false;
                 return (int)FFmpegApi.AVPixelFormat.AV_PIX_FMT_YUV420P;
             }
             
@@ -285,6 +294,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             
             Logger.Warning?.PrintMsg(LogClass.FFmpeg, $"Hardware pixel format {_hwPixelFormat} not found in supported list, falling back to software");
             FFmpegApi.av_buffer_unref(&ctx->HwDeviceCtx);
+            _hardwareDecoderInitialized = false;
             return (int)FFmpegApi.AVPixelFormat.AV_PIX_FMT_YUV420P;
         }
 
@@ -340,7 +350,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
         public int DecodeFrame(Surface output, ReadOnlySpan<byte> bitstream)
         {
-            if (_useHardwareDecoding && _context->HwDeviceCtx != null)
+            if (_hardwareDecoderInitialized && _context->HwDeviceCtx != null)
             {
                 Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Using hardware decoding path with device type: {_hwDeviceType}");
                 return DecodeFrameHardware(output, bitstream);
@@ -391,6 +401,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
             if (gotFrame == 0)
             {
+                Logger.Warning?.PrintMsg(LogClass.FFmpeg, "No frame decoded");
                 return -1;
             }
 
