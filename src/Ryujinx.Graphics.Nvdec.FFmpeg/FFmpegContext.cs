@@ -2,13 +2,13 @@ using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.Nvdec.FFmpeg.Native;
 using System;
 using System.Runtime.InteropServices;
-using System.Collections.Generic;
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg
 {
     unsafe class FFmpegContext : IDisposable
     {
         private unsafe delegate int AVCodec_decode(AVCodecContext* avctx, void* outdata, int* got_frame_ptr, AVPacket* avpkt);
+        private unsafe delegate int GetFormatDelegate(AVCodecContext* ctx, FFmpegApi.AVPixelFormat* pix_fmts);
 
         private readonly AVCodec_decode _decodeFrame;
         private static readonly FFmpegApi.av_log_set_callback_callback _logFunc;
@@ -105,7 +105,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private bool TryInitializeHardwareDecoder()
         {
             // 尝试查找MediaCodec硬件解码器
-            AVHWDeviceType deviceType = FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_MEDIACODEC;
+            FFmpegApi.AVHWDeviceType deviceType = FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_MEDIACODEC;
             
             // 检查解码器是否支持硬件解码
             AVCodecHWConfig* hwConfig = null;
@@ -115,8 +115,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 if (hwConfig == null)
                     break;
                     
-                if (hwConfig->DeviceType == deviceType && 
-                    (hwConfig->Methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) != 0)
+                if ((FFmpegApi.AVHWDeviceType)hwConfig->DeviceType == deviceType && 
+                    (hwConfig->Methods & 0x01) != 0) // AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX
                 {
                     // 创建硬件设备上下文
                     AVBufferRef* hwDeviceCtx = FFmpegApi.av_hwdevice_ctx_alloc(deviceType);
@@ -138,8 +138,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     _context->PixFmt = (int)FFmpegApi.AVPixelFormat.AV_PIX_FMT_MEDIACODEC;
                     
                     // 设置get_format回调
-                    _context->GetFormat = (IntPtr)Marshal.GetFunctionPointerForDelegate(
-                        new GetFormatDelegate(GetHardwareFormat));
+                    GetFormatDelegate getFormatDelegate = GetHardwareFormat;
+                    IntPtr getFormatPtr = Marshal.GetFunctionPointerForDelegate(getFormatDelegate);
+                    _context->GetFormat = getFormatPtr;
+                    
+                    // 保持委托的引用，防止被垃圾回收
+                    GC.KeepAlive(getFormatDelegate);
                     
                     Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Initialized MediaCodec hardware decoder");
                     return true;
@@ -149,8 +153,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             Logger.Warning?.PrintMsg(LogClass.FFmpeg, "No MediaCodec hardware configuration found");
             return false;
         }
-        
-        private delegate int GetFormatDelegate(AVCodecContext* ctx, FFmpegApi.AVPixelFormat* pix_fmts);
         
         private int GetHardwareFormat(AVCodecContext* ctx, FFmpegApi.AVPixelFormat* pix_fmts)
         {
