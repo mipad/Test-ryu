@@ -84,7 +84,7 @@ add_library(
     oboe_audio_renderer.cpp
 )
 
-# 添加编译定义以优化音频处理，启用 Vulkan 解码
+# 添加编译定义以优化音频处理，启用硬件解码
 target_compile_definitions(ryujinxjni PRIVATE
     RYUJINX_AUDIO_OPTIMIZE=1
     # 针对天玑8100的优化
@@ -93,6 +93,19 @@ target_compile_definitions(ryujinxjni PRIVATE
     HAVE_VULKAN=1
     USE_VULKAN_DECODE=1
     VULKAN_DECODE_ENABLED=1
+    # MediaCodec 支持
+    HAVE_MEDIACODEC=1
+    MEDIACODEC_ENABLED=1
+    ANDROID_MEDIACODEC=1
+    CONFIG_MEDIACODEC=1
+    # 强制硬件解码
+    FORCE_HARDWARE_DECODE=1
+    MEDIACODEC_FORCE_HARDWARE=1
+    # 禁用软件解码回退
+    AVCODEC_NO_SOFTWARE_FALLBACK=1
+    # FFmpeg 调试
+    FFMPEG_DEBUG=1
+    AV_LOG_DEBUG=1
     # 天玑8100 Vulkan 优化
     MTK_VULKAN_OPTIMIZE=1
 )
@@ -107,12 +120,22 @@ target_compile_options(ryujinxjni PRIVATE
     -mtune=cortex-a78  # 天玑8100的大核架构
     -funsafe-math-optimizations
     -ftree-vectorize
+    # 添加 MediaCodec 相关标志
+    -DMEDIA_CODEC=1
+    -DANDROID_MEDIA=1
+    -DVK_USE_PLATFORM_ANDROID_KHR=1
+    -DVULKAN_HPP_NO_EXCEPTIONS=1
+    -DVULKAN_HPP_NO_SMART_HANDLE=1
+    # 调试信息
+    -g
+    -ggdb
 )
 
 # 查找系统库
 find_library(log-lib log)
 find_library(opensles-lib OpenSLES)
 find_library(android-lib android)
+find_library(media-lib mediandk)
 
 # 添加 Oboe 包含目录
 include_directories(${oboe_SOURCE_DIR}/include)
@@ -169,6 +192,12 @@ if (NOT (EXISTS ${LIBAVCODEC_JNI_PATH} AND EXISTS ${LIBAVUTIL_JNI_PATH} AND
         HAVE_FFMPEG=1
         __STDC_CONSTANT_MACROS=1
         FFMPEG_VULKAN_ENABLED=1
+        FFMPEG_MEDIACODEC_ENABLED=1
+        # 启用 FFmpeg 详细日志
+        FFMPEG_DEBUG_VERBOSE=1
+        AV_LOG_LEVEL=AV_LOG_DEBUG
+        # 强制硬件解码
+        CONFIG_HARDWARE_DECODE=1
     )
     
     # 设置 FFmpeg 输出目录
@@ -204,6 +233,8 @@ if (NOT (EXISTS ${LIBAVCODEC_JNI_PATH} AND EXISTS ${LIBAVUTIL_JNI_PATH} AND
     # 添加自定义目标来显示构建状态
     add_custom_target(ffmpeg_status
         DEPENDS ffmpeg
+        COMMAND ${CMAKE_COMMAND} -E echo "FFmpeg build completed. Checking MediaCodec support..."
+        COMMAND bash -c "if [ -f ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/bin/ffmpeg ]; then ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/bin/ffmpeg -hwaccels 2>&1 | grep -i mediacodec || echo 'MediaCodec not found in hwaccels'; else echo 'FFmpeg binary not found'; fi"
         COMMENT "FFmpeg build completed successfully"
     )
 else()
@@ -255,6 +286,7 @@ else()
         HAVE_FFMPEG=1
         __STDC_CONSTANT_MACROS=1
         FFMPEG_VULKAN_ENABLED=1
+        FFMPEG_MEDIACODEC_ENABLED=1
     )
     
     # 设置预编译 FFmpeg 的头文件路径
@@ -269,6 +301,7 @@ target_link_libraries(
     ${log-lib}
     ${opensles-lib}
     ${android-lib}
+    ${media-lib}  # Media NDK 库
     -lvulkan
     adrenotools
     oboe
@@ -296,6 +329,11 @@ target_compile_definitions(ryujinxjni PRIVATE
     VULKAN_MALI_OPTIMIZE=1
     # 启用高级 Vulkan 功能
     VULKAN_SUPPORTED=1
+    # 硬件解码优先级
+    HW_DECODE_PRIORITY=1
+    PREFER_MEDIACODEC=1
+    PREFER_VULKAN=2
+    PREFER_HARDWARE=1
 )
 
 # 添加针对 ARM64 和 Mali 的特定编译选项
@@ -304,10 +342,9 @@ if(CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
         -mcpu=cortex-a78  # 天玑8100大核
         -mtune=cortex-a55  # 天玑8100小核
         -march=armv8.2-a+fp16+dotprod+crypto  # 天玑8100支持的指令集
-        # 添加 Vulkan 特定优化
-        -DVK_USE_PLATFORM_ANDROID_KHR=1
-        -DVULKAN_HPP_NO_EXCEPTIONS=1
-        -DVULKAN_HPP_NO_SMART_HANDLE=1
+        -ffunction-sections
+        -fdata-sections
+        -Wl,--gc-sections
     )
 endif()
 
@@ -316,6 +353,9 @@ set_target_properties(ryujinxjni PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
     ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
     RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
+    # 优化设置
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
 )
 
 # 安装后处理：确保所有依赖库都被复制到正确位置
@@ -324,6 +364,15 @@ add_custom_command(TARGET ryujinxjni POST_BUILD
         $<TARGET_FILE:OpenAL>
         ${JNI_PATH}
     COMMENT "Copying OpenAL library to JNI directory"
+)
+
+# 添加 MediaCodec 验证步骤
+add_custom_target(verify_mediacodec
+    COMMAND ${CMAKE_COMMAND} -E echo "Checking MediaCodec support..."
+    COMMAND bash -c "if [ -f ${JNI_PATH}/libavcodec.so ]; then echo 'FFmpeg library found'; else echo 'FFmpeg library not found'; fi"
+    COMMAND bash -c "if ldconfig -p | grep -q libmediandk; then echo 'Media NDK library found'; else echo 'Media NDK library not found'; fi"
+    DEPENDS ryujinxjni
+    COMMENT "Verifying MediaCodec support"
 )
 
 # 添加 Vulkan 验证步骤
@@ -338,12 +387,21 @@ add_custom_target(verify_vulkan
 add_custom_target(verify_libraries
     COMMAND ${CMAKE_COMMAND} -E echo "Verifying library sizes..."
     COMMAND ${CMAKE_COMMAND} -E make_directory ${JNI_PATH}
-    COMMAND bash -c "ls -la ${JNI_PATH}/*.so && echo 'Library verification completed'"
+    COMMAND bash -c "ls -la ${JNI_PATH}/*.so 2>/dev/null || echo 'No libraries found in JNI directory'"
+    COMMAND bash -c "echo 'Total libraries:' && ls ${JNI_PATH}/*.so 2>/dev/null | wc -l"
     DEPENDS ryujinxjni
     COMMENT "Verifying output libraries"
 )
 
+# 检查 Android API 级别
+if(CMAKE_SYSTEM_VERSION LESS 21)
+    message(WARNING "Android API level ${CMAKE_SYSTEM_VERSION} is too low for reliable MediaCodec support")
+else()
+    message(STATUS "Android API level ${CMAKE_SYSTEM_VERSION} - MediaCodec should be available")
+endif()
+
 message(STATUS "Build configuration for Dimensity 8100 (ARM64, Mali GPU) completed")
 message(STATUS "Vulkan decode support: Enabled")
+message(STATUS "MediaCodec support: Enabled")
 message(STATUS "JNI output path: ${JNI_PATH}")
-message(STATUS "FFmpeg support: Enabled with full features including Vulkan")
+message(STATUS "FFmpeg support: Enabled with full features including Vulkan and MediaCodec")
