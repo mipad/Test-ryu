@@ -184,14 +184,5 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial AVHWDeviceType av_hwdevice_iterate_types(AVHWDeviceType prev);
-        
-        [LibraryImport(AvUtilLibraryName, EntryPoint = "av_hwdevice_get_type_name")]
-        internal static unsafe partial byte* av_hwdevice_get_type_name_ptr(AVHWDeviceType type);
-        
-        internal static unsafe string? av_hwdevice_get_type_name(AVHWDeviceType type)
-        {
-            var ptr = av_hwdevice_get_type_name_ptr(type);
-            return ptr != null ? Marshal.PtrToStringUTF8((IntPtr)ptr) : null;
-        }
     }
 }
