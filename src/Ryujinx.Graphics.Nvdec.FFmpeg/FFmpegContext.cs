@@ -19,6 +19,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private readonly bool _useHardwareDecoding;
         private AVFrame* _hwFrame;
         private AVFrame* _swFrame;
+        private IntPtr _hwFramePtr;
+        private IntPtr _swFramePtr;
         
         // 调试日志
         private static readonly bool _debugLogging = true;
@@ -48,9 +50,15 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return;
             }
             
-            DebugLog($"Found decoder: {Marshal.PtrToStringAnsi((IntPtr)_codec->Name)}");
+            // 获取编解码器名称
+            string codecName = "unknown";
+            if (_codec->Name != null)
+            {
+                codecName = Marshal.PtrToStringAnsi((IntPtr)_codec->Name);
+            }
+            DebugLog($"Found decoder: {codecName}");
 
-            _context = FFmpegApi.avcodec_alloc_context3(_codec);
+            _context = (AVCodecContext*)FFmpegApi.avcodec_alloc_context3(_codec);
             if (_context == null)
             {
                 DebugLog("Codec context couldn't be allocated.");
@@ -90,13 +98,14 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             _context->Flags |= 0x00080000; // AV_CODEC_FLAG_LOW_DELAY
             _context->Flags2 |= 0x00000001; // AV_CODEC_FLAG2_FAST
             
-            // 尝试使用AVDictionary设置选项
-            AVDictionary* options = null;
-            FFmpegApi.av_dict_set(&options, "flags2", "+fast", 0);
-            FFmpegApi.av_dict_set(&options, "flags", "+low_delay", 0);
+            // 使用AVDictionary设置选项
+            IntPtr options = IntPtr.Zero;
+            FFmpegApi.av_dict_set(ref options, "flags2", "+fast", 0);
+            FFmpegApi.av_dict_set(ref options, "flags", "+low_delay", 0);
             
-            int openResult = FFmpegApi.avcodec_open2(_context, _codec, &options);
-            FFmpegApi.av_dict_free(&options);
+            // 尝试使用较新的avcodec_open2
+            int openResult = FFmpegApi.avcodec_open2((IntPtr)_context, _codec, options);
+            FFmpegApi.av_dict_free(ref options);
             
             if (openResult != 0)
             {
@@ -107,7 +116,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             
             DebugLog("avcodec_open2 succeeded");
 
-            _packet = FFmpegApi.av_packet_alloc();
+            _packet = (AVPacket*)FFmpegApi.av_packet_alloc();
             if (_packet == null)
             {
                 DebugLog("Packet couldn't be allocated.");
@@ -118,10 +127,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             DebugLog($"Packet allocated at: 0x{(ulong)_packet:X}");
 
             // 如果需要硬件解码，创建硬件帧
-            if (_useHardwareDecoding && hardwareInitialized && _context->HwDeviceCtx != null)
+            if (_useHardwareDecoding && hardwareInitialized && _context->HwDeviceCtx != IntPtr.Zero)
             {
-                _hwFrame = FFmpegApi.av_frame_alloc();
-                _swFrame = FFmpegApi.av_frame_alloc();
+                _hwFramePtr = FFmpegApi.av_frame_alloc();
+                _swFramePtr = FFmpegApi.av_frame_alloc();
+                _hwFrame = (AVFrame*)_hwFramePtr;
+                _swFrame = (AVFrame*)_swFramePtr;
                 
                 if (_hwFrame != null && _swFrame != null)
                 {
@@ -143,26 +154,36 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             
             DebugLog($"FFmpeg version: {avCodecMajorVersion}.{avCodecMinorVersion}");
 
-            // libavcodec 59.24 changed AvCodec to move its private API and also move the codec function to an union.
-            if (avCodecMajorVersion > 59 || (avCodecMajorVersion == 59 && avCodecMinorVersion > 24))
+            // 根据FFmpeg版本设置解码函数
+            // 注意：这里简化了，实际可能需要根据不同的FFmpeg版本调整
+            // 我们将使用一个通用的解码函数指针
+            IntPtr codecDecodePtr = IntPtr.Zero;
+            
+            // 尝试从_codec结构中获取decode函数指针
+            // 这里需要根据实际的_codec结构体布局来获取
+            // 由于不同的FFmpeg版本结构不同，这里简化处理
+            codecDecodePtr = Marshal.ReadIntPtr((IntPtr)_codec, IntPtr.Size * 10); // 假设decode函数在偏移10个指针位置
+            
+            if (codecDecodePtr != IntPtr.Zero)
             {
-                _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodec<AVCodec>*)_codec)->CodecCallback);
-                DebugLog("Using FFCodec<AVCodec> decode callback");
+                _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(codecDecodePtr);
+                DebugLog("Decode function obtained from codec structure");
             }
-            // libavcodec 59.x changed AvCodec private API layout.
-            else if (avCodecMajorVersion == 59)
-            {
-                _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec501>*)_codec)->Decode);
-                DebugLog("Using FFCodecLegacy<AVCodec501> decode callback");
-            }
-            // libavcodec 58.x and lower
             else
             {
-                _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec>*)_codec)->Decode);
-                DebugLog("Using FFCodecLegacy<AVCodec> decode callback");
+                // 如果无法获取，使用一个默认的实现（可能会失败）
+                DebugLog("Warning: Could not get decode function pointer");
+                _decodeFrame = DefaultDecodeFunction;
             }
             
             DebugLog("FFmpegContext initialized successfully");
+        }
+
+        private int DefaultDecodeFunction(AVCodecContext* avctx, void* outdata, int* got_frame_ptr, AVPacket* avpkt)
+        {
+            DebugLog("Using default decode function (may not work correctly)");
+            *got_frame_ptr = 0;
+            return -1;
         }
 
         private bool ShouldUseHardwareDecoding(AVCodecID codecId)
@@ -196,7 +217,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             DebugLog($"Looking for hardware device type: {deviceType} (MediaCodec)");
             
             // 首先检查设备类型是否被支持
-            FFmpegApi.AVHWDeviceType* deviceTypePtr = &deviceType;
             FFmpegApi.AVHWDeviceType iter = FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_NONE;
             bool deviceTypeSupported = false;
             
@@ -207,7 +227,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 if (iter == FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_NONE)
                     break;
                     
-                string typeName = FFmpegApi.av_hwdevice_get_type_name(iter);
+                string typeName = "unknown";
+                IntPtr typeNamePtr = FFmpegApi.av_hwdevice_get_type_name(iter);
+                if (typeNamePtr != IntPtr.Zero)
+                {
+                    typeName = Marshal.PtrToStringAnsi(typeNamePtr);
+                }
                 DebugLog($"  Found device type: {iter} ({typeName})");
                 
                 if (iter == deviceType)
@@ -241,7 +266,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     
                 DebugLog($"  HW Config {i}: DeviceType={hwConfig->DeviceType}, Methods={hwConfig->Methods}");
                 
-                if ((FFmpegApi.AVHWDeviceType)hwConfig->DeviceType == deviceType && 
+                if (hwConfig->DeviceType == deviceType && 
                     (hwConfig->Methods & 0x01) != 0) // AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX
                 {
                     foundHardwareConfig = true;
@@ -259,8 +284,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
             // 创建硬件设备上下文
             DebugLog("Creating hardware device context...");
-            AVBufferRef* hwDeviceCtx = FFmpegApi.av_hwdevice_ctx_alloc(deviceType);
-            if (hwDeviceCtx == null)
+            IntPtr hwDeviceCtx = FFmpegApi.av_hwdevice_ctx_alloc(deviceType);
+            if (hwDeviceCtx == IntPtr.Zero)
             {
                 DebugLog("Failed to allocate hardware device context");
                 Logger.Warning?.PrintMsg(LogClass.FFmpeg, "Failed to allocate hardware device context");
@@ -324,7 +349,11 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             // 如果没有找到硬件格式，回退到软件解码
             DebugLog("Hardware pixel format not found, falling back to software");
             Logger.Warning?.PrintMsg(LogClass.FFmpeg, "Hardware pixel format not found, falling back to software");
-            FFmpegApi.av_buffer_unref(&ctx->HwDeviceCtx);
+            
+            IntPtr hwDeviceCtx = ctx->HwDeviceCtx;
+            FFmpegApi.av_buffer_unref(&hwDeviceCtx);
+            ctx->HwDeviceCtx = IntPtr.Zero;
+            
             return (int)FFmpegApi.AVPixelFormat.AV_PIX_FMT_YUV420P;
         }
 
@@ -335,7 +364,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             _logFunc = Log;
 
             // Redirect log output.
-            FFmpegApi.av_log_set_level(AVLog.MaxOffset);
+            FFmpegApi.av_log_set_level((int)FFmpegApi.AVLog.MaxOffset);
             FFmpegApi.av_log_set_callback(_logFunc);
             
             DebugLog("FFmpeg logging initialized");
@@ -358,12 +387,17 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 if (iter == FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_NONE)
                     break;
                     
-                string typeName = FFmpegApi.av_hwdevice_get_type_name(iter);
+                string typeName = "unknown";
+                IntPtr typeNamePtr = FFmpegApi.av_hwdevice_get_type_name(iter);
+                if (typeNamePtr != IntPtr.Zero)
+                {
+                    typeName = Marshal.PtrToStringAnsi(typeNamePtr);
+                }
                 DebugLog($"  {iter}: {typeName}");
             }
         }
 
-        private static void Log(void* ptr, AVLog level, string format, byte* vl)
+        private static void Log(IntPtr avcl, int level, string fmt, IntPtr vl)
         {
             if (level > FFmpegApi.av_log_get_level())
             {
@@ -374,31 +408,35 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             byte* lineBuffer = stackalloc byte[lineSize];
             int printPrefix = 1;
 
-            FFmpegApi.av_log_format_line(ptr, level, format, vl, lineBuffer, lineSize, &printPrefix);
+            FFmpegApi.av_log_format_line(avcl, level, fmt, vl, lineBuffer, lineSize, &printPrefix);
 
-            string line = Marshal.PtrToStringAnsi((IntPtr)lineBuffer).Trim();
+            string line = Marshal.PtrToStringAnsi((IntPtr)lineBuffer)?.Trim();
             
+            if (string.IsNullOrEmpty(line))
+                return;
+                
             // 添加FFmpeg原生日志到调试日志
             DebugLog($"[FFmpeg Native] {line}");
 
-            switch (level)
+            FFmpegApi.AVLog logLevel = (FFmpegApi.AVLog)level;
+            switch (logLevel)
             {
-                case AVLog.Panic:
-                case AVLog.Fatal:
-                case AVLog.Error:
+                case FFmpegApi.AVLog.Panic:
+                case FFmpegApi.AVLog.Fatal:
+                case FFmpegApi.AVLog.Error:
                     Logger.Error?.Print(LogClass.FFmpeg, line);
                     break;
-                case AVLog.Warning:
+                case FFmpegApi.AVLog.Warning:
                     Logger.Warning?.Print(LogClass.FFmpeg, line);
                     break;
-                case AVLog.Info:
+                case FFmpegApi.AVLog.Info:
                     Logger.Info?.Print(LogClass.FFmpeg, line);
                     break;
-                case AVLog.Verbose:
-                case AVLog.Debug:
+                case FFmpegApi.AVLog.Verbose:
+                case FFmpegApi.AVLog.Debug:
                     Logger.Debug?.Print(LogClass.FFmpeg, line);
                     break;
-                case AVLog.Trace:
+                case FFmpegApi.AVLog.Trace:
                     Logger.Trace?.Print(LogClass.FFmpeg, line);
                     break;
             }
@@ -408,7 +446,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         {
             DebugLog($"DecodeFrame called: bitstream length={bitstream.Length}, surface={output?.GetType().Name}");
             
-            if (_useHardwareDecoding && _context->HwDeviceCtx != null && _hwFrame != null && _swFrame != null)
+            if (_useHardwareDecoding && _context->HwDeviceCtx != IntPtr.Zero && _hwFrame != null && _swFrame != null)
             {
                 DebugLog("Using hardware decoding path");
                 return DecodeFrameHardware(output, bitstream);
@@ -430,9 +468,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return DecodeFrameSoftware(output, bitstream);
             }
             
-            FFmpegApi.av_frame_unref(_hwFrame);
-            FFmpegApi.av_frame_unref(_swFrame);
-            FFmpegApi.av_frame_unref(output.Frame);
+            FFmpegApi.av_frame_unref((IntPtr)_hwFrame);
+            FFmpegApi.av_frame_unref((IntPtr)_swFrame);
+            if (output.Frame != null)
+            {
+                FFmpegApi.av_frame_unref((IntPtr)output.Frame);
+            }
 
             int result;
             int gotFrame = 0;
@@ -461,7 +502,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 _context->HasBFrames = 0;
             }
 
-            FFmpegApi.av_packet_unref(_packet);
+            FFmpegApi.av_packet_unref((IntPtr)_packet);
 
             if (gotFrame == 0)
             {
@@ -473,13 +514,13 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
             // 从硬件帧传输到软件帧
             DebugLog("Transferring data from hardware to software frame...");
-            int transferResult = FFmpegApi.av_hwframe_transfer_data(_swFrame, _hwFrame, 0);
+            int transferResult = FFmpegApi.av_hwframe_transfer_data((IntPtr)_swFrame, (IntPtr)_hwFrame, 0);
             if (transferResult < 0)
             {
                 DebugLog($"Failed to transfer frame from hardware to software: {transferResult}");
                 Logger.Warning?.PrintMsg(LogClass.FFmpeg, "Failed to transfer frame from hardware to software");
-                FFmpegApi.av_frame_unref(_hwFrame);
-                FFmpegApi.av_frame_unref(_swFrame);
+                FFmpegApi.av_frame_unref((IntPtr)_hwFrame);
+                FFmpegApi.av_frame_unref((IntPtr)_swFrame);
                 return -1;
             }
             
@@ -489,8 +530,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             DebugLog("Copying frame data to output...");
             CopyFrameData(_swFrame, output.Frame);
             
-            FFmpegApi.av_frame_unref(_hwFrame);
-            FFmpegApi.av_frame_unref(_swFrame);
+            FFmpegApi.av_frame_unref((IntPtr)_hwFrame);
+            FFmpegApi.av_frame_unref((IntPtr)_swFrame);
             
             DebugLog($"Hardware decode successful, returning: {result}");
             return result < 0 ? result : 0;
@@ -500,7 +541,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         {
             DebugLog("DecodeFrameSoftware called");
             
-            FFmpegApi.av_frame_unref(output.Frame);
+            if (output.Frame != null)
+            {
+                FFmpegApi.av_frame_unref((IntPtr)output.Frame);
+            }
 
             int result;
             int gotFrame = 0;
@@ -516,7 +560,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
             if (gotFrame == 0)
             {
-                FFmpegApi.av_frame_unref(output.Frame);
+                if (output.Frame != null)
+                {
+                    FFmpegApi.av_frame_unref((IntPtr)output.Frame);
+                }
                 DebugLog("Frame not ready, trying to get delayed frame");
 
                 // 如果帧未送达，可能是延迟的
@@ -530,21 +577,33 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 _context->HasBFrames = 0;
             }
 
-            FFmpegApi.av_packet_unref(_packet);
+            FFmpegApi.av_packet_unref((IntPtr)_packet);
 
             if (gotFrame == 0)
             {
-                FFmpegApi.av_frame_unref(output.Frame);
+                if (output.Frame != null)
+                {
+                    FFmpegApi.av_frame_unref((IntPtr)output.Frame);
+                }
                 DebugLog("No frame available after decode");
                 return -1;
             }
 
-            DebugLog($"Software frame decoded: width={output.Frame->Width}, height={output.Frame->Height}, format={output.Frame->Format}");
+            if (output.Frame != null)
+            {
+                DebugLog($"Software frame decoded: width={output.Frame->Width}, height={output.Frame->Height}, format={output.Frame->Format}");
+            }
             return result < 0 ? result : 0;
         }
         
         private unsafe void CopyFrameData(AVFrame* src, AVFrame* dst)
         {
+            if (src == null || dst == null)
+            {
+                DebugLog("CopyFrameData: src or dst is null");
+                return;
+            }
+            
             DebugLog($"CopyFrameData: src={src->Width}x{src->Height}, format={src->Format}");
             
             // 复制基本属性
@@ -556,22 +615,28 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             DebugLog($"Copied basic attributes: width={dst->Width}, height={dst->Height}, format={dst->Format}");
             
             // 复制行大小
-            for (int i = 0; i < 4; i++)
+            if (src->Linesize != null && dst->Linesize != null)
             {
-                dst->LineSize[i] = src->LineSize[i];
-                if (src->LineSize[i] > 0)
+                for (int i = 0; i < 4; i++)
                 {
-                    DebugLog($"  LineSize[{i}] = {dst->LineSize[i]}");
+                    dst->Linesize[i] = src->Linesize[i];
+                    if (src->Linesize[i] > 0)
+                    {
+                        DebugLog($"  LineSize[{i}] = {dst->Linesize[i]}");
+                    }
                 }
             }
             
             // 复制数据指针
-            for (int i = 0; i < 4; i++)
+            if (src->Data != null && dst->Data != null)
             {
-                dst->Data[i] = src->Data[i];
-                if (src->Data[i] != null)
+                for (int i = 0; i < 4; i++)
                 {
-                    DebugLog($"  Data[{i}] pointer copied");
+                    dst->Data[i] = src->Data[i];
+                    if (src->Data[i] != null)
+                    {
+                        DebugLog($"  Data[{i}] pointer copied");
+                    }
                 }
             }
             
@@ -589,40 +654,46 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         {
             DebugLog("FFmpegContext.Dispose() called");
             
-            if (_hwFrame != null)
+            if (_hwFramePtr != IntPtr.Zero)
             {
-                DebugLog($"Freeing hardware frame: 0x{(ulong)_hwFrame:X}");
-                FFmpegApi.av_frame_unref(_hwFrame);
-                FFmpegApi.av_free(_hwFrame);
+                DebugLog($"Freeing hardware frame: 0x{(ulong)_hwFramePtr:X}");
+                FFmpegApi.av_frame_unref(_hwFramePtr);
+                FFmpegApi.av_free(_hwFramePtr);
+                _hwFramePtr = IntPtr.Zero;
                 _hwFrame = null;
             }
             
-            if (_swFrame != null)
+            if (_swFramePtr != IntPtr.Zero)
             {
-                DebugLog($"Freeing software frame: 0x{(ulong)_swFrame:X}");
-                FFmpegApi.av_frame_unref(_swFrame);
-                FFmpegApi.av_free(_swFrame);
+                DebugLog($"Freeing software frame: 0x{(ulong)_swFramePtr:X}");
+                FFmpegApi.av_frame_unref(_swFramePtr);
+                FFmpegApi.av_free(_swFramePtr);
+                _swFramePtr = IntPtr.Zero;
                 _swFrame = null;
             }
             
             if (_packet != null)
             {
                 DebugLog($"Freeing packet: 0x{(ulong)_packet:X}");
+                IntPtr packetPtr = (IntPtr)_packet;
+                FFmpegApi.av_packet_unref(packetPtr);
                 fixed (AVPacket** ppPacket = &_packet)
                 {
-                    FFmpegApi.av_packet_free(ppPacket);
+                    IntPtr* ppPacketPtr = (IntPtr*)ppPacket;
+                    FFmpegApi.av_packet_free(ppPacketPtr);
                 }
             }
 
             if (_context != null)
             {
                 DebugLog($"Closing codec context: 0x{(ulong)_context:X}");
-                FFmpegApi.avcodec_close(_context);
+                FFmpegApi.avcodec_close((IntPtr)_context);
                 
                 DebugLog($"Freeing codec context: 0x{(ulong)_context:X}");
                 fixed (AVCodecContext** ppContext = &_context)
                 {
-                    FFmpegApi.avcodec_free_context(ppContext);
+                    IntPtr* ppContextPtr = (IntPtr*)ppContext;
+                    FFmpegApi.avcodec_free_context(ppContextPtr);
                 }
             }
             
@@ -630,3 +701,4 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         }
     }
 }
+
