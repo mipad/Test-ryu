@@ -30,6 +30,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
             {
                 return $"lib{libraryName}.{version}.dylib";
             }
+            else if (OperatingSystem.IsAndroid())
+            {
+                return $"lib{libraryName}.so.{version}";
+            }
             else
             {
                 throw new NotImplementedException($"Unsupported OS for FFmpeg: {RuntimeInformation.RuntimeIdentifier}");
@@ -61,7 +65,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         {
             NativeLibrary.SetDllImportResolver(typeof(FFmpegApi).Assembly, (name, assembly, path) =>
             {
-
                 if (name == AvUtilLibraryName && TryLoadWhitelistedLibrary(AvUtilLibraryName, assembly, path, out nint handle))
                 {
                     return handle;
@@ -76,6 +79,32 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         }
 
         public unsafe delegate void av_log_set_callback_callback(void* a0, AVLog level, [MarshalAs(UnmanagedType.LPUTF8Str)] string a2, byte* a3);
+        
+        // 硬件解码相关枚举
+        internal enum AVHWDeviceType
+        {
+            AV_HWDEVICE_TYPE_NONE,
+            AV_HWDEVICE_TYPE_VDPAU,
+            AV_HWDEVICE_TYPE_CUDA,
+            AV_HWDEVICE_TYPE_VAAPI,
+            AV_HWDEVICE_TYPE_DXVA2,
+            AV_HWDEVICE_TYPE_QSV,
+            AV_HWDEVICE_TYPE_VIDEOTOOLBOX,
+            AV_HWDEVICE_TYPE_D3D11VA,
+            AV_HWDEVICE_TYPE_DRM,
+            AV_HWDEVICE_TYPE_OPENCL,
+            AV_HWDEVICE_TYPE_MEDIACODEC,
+            AV_HWDEVICE_TYPE_VULKAN,
+            AV_HWDEVICE_TYPE_D3D12VA,
+        }
+        
+        internal enum AVPixelFormat
+        {
+            AV_PIX_FMT_NONE = -1,
+            AV_PIX_FMT_YUV420P = 0,
+            AV_PIX_FMT_NV12 = 23,
+            AV_PIX_FMT_MEDIACODEC = 165,
+        }
 
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial AVFrame* av_frame_alloc();
@@ -124,5 +153,27 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
 
         [LibraryImport(AvCodecLibraryName)]
         internal static unsafe partial int avcodec_version();
+        
+        // 硬件解码相关API
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial AVBufferRef* av_hwdevice_ctx_alloc(AVHWDeviceType type);
+        
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial int av_hwdevice_ctx_init(AVBufferRef* @ref);
+        
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial void av_buffer_unref(AVBufferRef** @ref);
+        
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial AVBufferRef* av_buffer_ref(AVBufferRef* @ref);
+        
+        [LibraryImport(AvCodecLibraryName)]
+        internal static unsafe partial AVCodecHWConfig* avcodec_get_hw_config(AVCodec* codec, int index);
+        
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial int av_hwframe_transfer_data(AVFrame* dst, AVFrame* src, int flags);
+        
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial AVHWDeviceType av_hwdevice_iterate_types(AVHWDeviceType prev);
     }
 }
