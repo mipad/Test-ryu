@@ -6,7 +6,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
 {
     public sealed class Decoder : IH264Decoder
     {
-        public bool IsHardwareAccelerated => false;
+        public bool IsHardwareAccelerated => true;
 
         private const int WorkBufferSize = 0x200;
 
