@@ -37,7 +37,7 @@ else ()
     list(APPEND PROJECT_ENV "PATH=${ANDROID_TOOLCHAIN_ROOT}/bin:$ENV{PATH}")
 endif ()
 
-# 设置 FFmpeg 配置选项 - 针对 Ryujinx 模拟器优化，启用 Vulkan 解码
+# 设置 FFmpeg 配置选项 - 针对 Ryujinx 模拟器优化，启用完整硬件解码
 set(FFMPEG_CONFIGURE_COMMAND
     <SOURCE_DIR>/configure
     --prefix=${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install
@@ -56,9 +56,18 @@ set(FFMPEG_CONFIGURE_COMMAND
     --extra-cflags=-mtune=cortex-a78
     --extra-cflags=-DANDROID
     --extra-cflags=-D__ANDROID_API__=${ANDROID_API_LEVEL}
-    --extra-cflags=-I${ANDROID_SYSROOT}/usr/include/vulkan  # 添加 Vulkan 头文件路径
+    --extra-cflags=-I${ANDROID_SYSROOT}/usr/include
+    --extra-cflags=-I${ANDROID_SYSROOT}/usr/include/android
+    --extra-cflags=-I${ANDROID_SYSROOT}/usr/include/media
+    --extra-cflags=-I${ANDROID_SYSROOT}/usr/include/hardware
+    --extra-cflags=-I${CMAKE_ANDROID_NDK}/sources/android/cpufeatures
+    --extra-cflags=-I${ANDROID_SYSROOT}/usr/include/vulkan
     --extra-ldflags=-Wl,--hash-style=both
     --extra-ldexeflags=-pie
+    --extra-ldflags=-landroid
+    --extra-ldflags=-llog
+    --extra-ldflags=-lmediandk
+    --extra-ldflags=-lvulkan
     --enable-runtime-cpudetect
     --disable-static
     --enable-shared
@@ -82,18 +91,34 @@ set(FFMPEG_CONFIGURE_COMMAND
     --enable-inline-asm
     --enable-jni
     --enable-mediacodec
+    --enable-decoder=h264
+    --enable-decoder=h264_mediacodec
+    --enable-decoder=hevc
+    --enable-decoder=hevc_mediacodec
+    --enable-decoder=vp8
+    --enable-decoder=vp8_mediacodec
+    --enable-decoder=vp9
+    --enable-decoder=vp9_mediacodec
+    --enable-decoder=av1
+    --enable-decoder=av1_mediacodec
     --enable-hwaccels
-    --enable-vulkan  # 启用 Vulkan 支持
-    --enable-decoder=h264,h264_v4l2m2m,h264_vulkan,hevc,hevc_vulkan,vp9,vp9_vulkan,av1,av1_vulkan  # 启用 Vulkan 解码器
-    --enable-decoder=*
-    --disable-encoder=*
+    --enable-hwaccel=h264_mediacodec
+    --enable-hwaccel=vp8_mediacodec
+    --enable-hwaccel=vp9_mediacodec
+    --enable-hwaccel=hevc_mediacodec
+    --enable-hwaccel=av1_mediacodec
+    --enable-vulkan
+    --enable-decoder=h264_vulkan
+    --enable-decoder=hevc_vulkan
+    --enable-decoder=vp9_vulkan
+    --enable-decoder=av1_vulkan
     --enable-demuxer=*
     --enable-muxer=*
     --enable-parser=*
     --enable-bsf=*
     --enable-zlib
-    --disable-bzlib      # 修复：禁用 bzlib
-    --disable-lzma       # 修复：禁用 lzma
+    --disable-bzlib
+    --disable-lzma
     --disable-small
     --enable-optimizations
     --disable-debug
