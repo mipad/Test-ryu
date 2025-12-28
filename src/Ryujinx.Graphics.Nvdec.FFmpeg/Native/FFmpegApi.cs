@@ -103,7 +103,16 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
             AV_PIX_FMT_NONE = -1,
             AV_PIX_FMT_YUV420P = 0,
             AV_PIX_FMT_NV12 = 23,
+            AV_PIX_FMT_YUV420P10LE = 62,
+            AV_PIX_FMT_YUV420P12LE = 77,
+            AV_PIX_FMT_VAAPI = 77, // 注意：实际值可能需要根据FFmpeg版本调整
+            AV_PIX_FMT_CUDA = 78,
+            AV_PIX_FMT_D3D11 = 79,
+            AV_PIX_FMT_DXVA2_VLD = 80,
+            AV_PIX_FMT_VDPAU = 81,
+            AV_PIX_FMT_VIDEOTOOLBOX = 82,
             AV_PIX_FMT_MEDIACODEC = 165,
+            AV_PIX_FMT_VULKAN = 166,
         }
 
         [LibraryImport(AvUtilLibraryName)]
@@ -177,4 +186,3 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         internal static unsafe partial AVHWDeviceType av_hwdevice_iterate_types(AVHWDeviceType prev);
     }
 }
-
