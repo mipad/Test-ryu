@@ -37,7 +37,7 @@ else ()
     list(APPEND PROJECT_ENV "PATH=${ANDROID_TOOLCHAIN_ROOT}/bin:$ENV{PATH}")
 endif ()
 
-# 设置 FFmpeg 配置选项 - 针对 Ryujinx 模拟器优化
+# 设置 FFmpeg 配置选项 - 针对 Ryujinx 模拟器优化，启用 Vulkan 解码
 set(FFMPEG_CONFIGURE_COMMAND
     <SOURCE_DIR>/configure
     --prefix=${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install
@@ -56,6 +56,7 @@ set(FFMPEG_CONFIGURE_COMMAND
     --extra-cflags=-mtune=cortex-a78
     --extra-cflags=-DANDROID
     --extra-cflags=-D__ANDROID_API__=${ANDROID_API_LEVEL}
+    --extra-cflags=-I${ANDROID_SYSROOT}/usr/include/vulkan  # 添加 Vulkan 头文件路径
     --extra-ldflags=-Wl,--hash-style=both
     --extra-ldexeflags=-pie
     --enable-runtime-cpudetect
@@ -82,6 +83,8 @@ set(FFMPEG_CONFIGURE_COMMAND
     --enable-jni
     --enable-mediacodec
     --enable-hwaccels
+    --enable-vulkan  # 启用 Vulkan 支持
+    --enable-decoder=h264,h264_v4l2m2m,h264_vulkan,hevc,hevc_vulkan,vp9,vp9_vulkan,av1,av1_vulkan  # 启用 Vulkan 解码器
     --enable-decoder=*
     --disable-encoder=*
     --enable-demuxer=*
@@ -160,4 +163,3 @@ add_dependencies(avfilter ffmpeg)
 
 # 添加头文件目录
 set(FFMPEG_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/include)
-
