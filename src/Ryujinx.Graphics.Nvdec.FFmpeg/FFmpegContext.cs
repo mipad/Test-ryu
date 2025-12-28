@@ -3,14 +3,13 @@ using Ryujinx.Graphics.Nvdec.FFmpeg.Native;
 using System;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
-using System.Reflection;
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg
 {
     unsafe class FFmpegContext : IDisposable
     {
         private unsafe delegate int AVCodec_decode(AVCodecContext* avctx, void* outdata, int* got_frame_ptr, AVPacket* avpkt);
-        private unsafe delegate int GetFormatDelegate(AVCodecContext* ctx, FFmpegApi.AVPixelFormat* pix_fmts);
+        private unsafe delegate int GetFormatDelegate(AVCodecContext* ctx, int* pix_fmts); // 注意：改为int* 而不是FFmpegApi.AVPixelFormat*
 
         private readonly AVCodec_decode _decodeFrame;
         private static readonly FFmpegApi.av_log_set_callback_callback _logFunc;
@@ -20,7 +19,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private readonly bool _useHardwareDecoding;
         private AVFrame* _hwFrame;
         private AVFrame* _swFrame;
-        private FFmpegApi.AVPixelFormat _hwPixelFormat;
+        private int _hwPixelFormat; // 改为int类型存储像素格式
         private FFmpegApi.AVHWDeviceType _hwDeviceType;
 
         public FFmpegContext(AVCodecID codecId)
@@ -128,7 +127,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Checking hardware decoding for codec {codecId} on platform: Android={isAndroid}, RID={RuntimeInformation.RuntimeIdentifier}");
             
             // 在Android平台上为H264和VP8启用硬件解码
-            // 在Linux平台上也为H264和VP8启用硬件解码（使用VAAPI/VDPAU/CUDA等）
             bool platformSupported = isAndroid || OperatingSystem.IsLinux();
             
             if (!platformSupported)
@@ -167,20 +165,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return true;
             }
             
-            // 检查文件系统（备用方法）
-            try
-            {
-                if (System.IO.File.Exists("/system/build.prop") ||
-                    System.IO.Directory.Exists("/system/app"))
-                {
-                    return true;
-                }
-            }
-            catch
-            {
-                // 忽略文件系统访问异常
-            }
-            
             return false;
         }
 
@@ -208,7 +192,16 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 }
                 
                 configIndex = i;
-                Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Hardware config {i}: DeviceType={(FFmpegApi.AVHWDeviceType)hwConfig->DeviceType}, PixFmt={(FFmpegApi.AVPixelFormat)hwConfig->PixFmt}, Methods={hwConfig->Methods}");
+                
+                // 获取设备类型名称用于日志
+                string deviceTypeName = $"Unknown({hwConfig->DeviceType})";
+                try
+                {
+                    deviceTypeName = FFmpegApi.av_hwdevice_get_type_name((FFmpegApi.AVHWDeviceType)hwConfig->DeviceType) ?? deviceTypeName;
+                }
+                catch { }
+                
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Hardware config {i}: DeviceType={deviceTypeName}, PixFmt={hwConfig->PixFmt}, Methods={hwConfig->Methods}");
                 
                 // 检查这个配置是否在我们优先列表中
                 var deviceType = (FFmpegApi.AVHWDeviceType)hwConfig->DeviceType;
@@ -236,8 +229,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     
                     // 设置硬件设备上下文
                     _context->HwDeviceCtx = hwDeviceCtx;
-                    _hwPixelFormat = (FFmpegApi.AVPixelFormat)hwConfig->PixFmt;
+                    _hwPixelFormat = hwConfig->PixFmt; // 直接存储整数像素格式
                     _hwDeviceType = deviceType;
+                    
+                    Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Hardware pixel format: {_hwPixelFormat}");
                     
                     // 设置get_format回调
                     GetFormatDelegate getFormatDelegate = GetHardwareFormat;
@@ -262,9 +257,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             
             if (IsAndroidRuntime())
             {
-                // Android平台优先使用MediaCodec
-                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Android platform detected, preferring MediaCodec hardware decoder");
+                // Android平台优先使用MediaCodec，然后尝试Vulkan
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Android platform detected, preferring MediaCodec and Vulkan hardware decoders");
                 preferredTypes.Add(FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_MEDIACODEC);
+                preferredTypes.Add(FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_VULKAN);
             }
             else if (OperatingSystem.IsLinux())
             {
@@ -292,7 +288,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             return preferredTypes;
         }
         
-        private int GetHardwareFormat(AVCodecContext* ctx, FFmpegApi.AVPixelFormat* pix_fmts)
+        private int GetHardwareFormat(AVCodecContext* ctx, int* pix_fmts)
         {
             Logger.Info?.PrintMsg(LogClass.FFmpeg, $"GetHardwareFormat callback called. Looking for pixel format: {_hwPixelFormat}");
             
@@ -305,13 +301,13 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             
             // 查找支持的像素格式
             int index = 0;
-            for (FFmpegApi.AVPixelFormat* p = pix_fmts; *p != FFmpegApi.AVPixelFormat.AV_PIX_FMT_NONE; p++)
+            for (int* p = pix_fmts; *p != (int)FFmpegApi.AVPixelFormat.AV_PIX_FMT_NONE; p++)
             {
                 Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Checking pixel format {index}: {*p}");
                 if (*p == _hwPixelFormat)
                 {
                     Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Found requested pixel format: {*p}");
-                    return (int)*p;
+                    return *p;
                 }
                 index++;
             }
@@ -521,12 +517,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             for (int i = 0; i < 4; i++)
             {
                 dst->Data[i] = src->Data[i];
-            }
-            
-            // 对于YUV420P格式，我们需要确保正确的平面排列
-            if (src->Format == (int)FFmpegApi.AVPixelFormat.AV_PIX_FMT_YUV420P)
-            {
-                // YUV420P格式已经正确处理
             }
         }
 
