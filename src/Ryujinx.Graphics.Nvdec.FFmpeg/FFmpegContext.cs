@@ -2,6 +2,7 @@ using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.Nvdec.FFmpeg.Native;
 using System;
 using System.Runtime.InteropServices;
+using System.Collections.Generic;
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg
 {
@@ -18,6 +19,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private readonly bool _useHardwareDecoding;
         private AVFrame* _hwFrame;
         private AVFrame* _swFrame;
+        private FFmpegApi.AVPixelFormat _hwPixelFormat;
+        private FFmpegApi.AVHWDeviceType _hwDeviceType;
 
         public FFmpegContext(AVCodecID codecId)
         {
@@ -34,7 +37,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return;
             }
             
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Found codec: {Marshal.PtrToStringUTF8((IntPtr)_codec->Name)}");
+            string codecName = Marshal.PtrToStringUTF8((IntPtr)_codec->Name) ?? "Unknown";
+            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Found codec: {codecName}");
 
             _context = FFmpegApi.avcodec_alloc_context3(_codec);
             if (_context == null)
@@ -49,16 +53,16 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 Logger.Info?.PrintMsg(LogClass.FFmpeg, "Attempting to initialize hardware decoder...");
                 if (TryInitializeHardwareDecoder())
                 {
-                    Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Using hardware decoder for {codecId}");
+                    Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Using hardware decoder for {codecName} with device type: {_hwDeviceType}");
                 }
                 else
                 {
-                    Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Hardware decoder initialization failed, falling back to software for {codecId}");
+                    Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Hardware decoder initialization failed, falling back to software for {codecName}");
                 }
             }
             else
             {
-                Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Using software decoder for {codecId}");
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Using software decoder for {codecName}");
             }
 
             if (FFmpegApi.avcodec_open2(_context, _codec, null) != 0)
@@ -119,10 +123,13 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         {
             Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Checking hardware decoding for codec {codecId} on platform: Android={OperatingSystem.IsAndroid()}, Linux={OperatingSystem.IsLinux()}, Windows={OperatingSystem.IsWindows()}, macOS={OperatingSystem.IsMacOS()}");
             
-            // 仅在Android平台上为H264和VP8启用硬件解码
-            if (!OperatingSystem.IsAndroid())
+            // 在Android平台上为H264和VP8启用硬件解码
+            // 在Linux平台上也为H264和VP8启用硬件解码（使用VAAPI/VDPAU/CUDA等）
+            bool platformSupported = OperatingSystem.IsAndroid() || OperatingSystem.IsLinux();
+            
+            if (!platformSupported)
             {
-                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Hardware decoding disabled: Not on Android platform");
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Hardware decoding disabled: Platform not supported for hardware decoding");
                 return false;
             }
                 
@@ -133,15 +140,16 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return false;
             }
                 
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Hardware decoding enabled for codec {codecId} on Android platform");
+            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Hardware decoding enabled for codec {codecId} on current platform");
             return true;
         }
 
         private bool TryInitializeHardwareDecoder()
         {
-            // 尝试查找MediaCodec硬件解码器
-            FFmpegApi.AVHWDeviceType deviceType = FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_MEDIACODEC;
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Looking for hardware decoder type: {deviceType}");
+            // 根据平台选择优先的硬件解码器类型
+            List<FFmpegApi.AVHWDeviceType> preferredDeviceTypes = GetPreferredDeviceTypes();
+            
+            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Preferred hardware device types for platform: {string.Join(", ", preferredDeviceTypes)}");
             
             // 检查解码器是否支持硬件解码
             AVCodecHWConfig* hwConfig = null;
@@ -149,6 +157,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             
             Logger.Info?.PrintMsg(LogClass.FFmpeg, "Checking available hardware configurations...");
             
+            // 遍历所有硬件配置
             for (int i = 0; ; i++)
             {
                 hwConfig = FFmpegApi.avcodec_get_hw_config(_codec, i);
@@ -159,35 +168,36 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 }
                 
                 configIndex = i;
-                Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Hardware config {i}: DeviceType={hwConfig->DeviceType}, PixFmt={hwConfig->PixFmt}, Methods={hwConfig->Methods}");
-                    
-                if ((FFmpegApi.AVHWDeviceType)hwConfig->DeviceType == deviceType && 
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Hardware config {i}: DeviceType={(FFmpegApi.AVHWDeviceType)hwConfig->DeviceType}, PixFmt={(FFmpegApi.AVPixelFormat)hwConfig->PixFmt}, Methods={hwConfig->Methods}");
+                
+                // 检查这个配置是否在我们优先列表中
+                var deviceType = (FFmpegApi.AVHWDeviceType)hwConfig->DeviceType;
+                if (preferredDeviceTypes.Contains(deviceType) && 
                     (hwConfig->Methods & 0x01) != 0) // AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX
                 {
-                    Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Found matching MediaCodec hardware configuration at index {i}");
+                    Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Found matching hardware configuration at index {i}: {deviceType}");
                     
                     // 创建硬件设备上下文
-                    Logger.Info?.PrintMsg(LogClass.FFmpeg, "Allocating hardware device context...");
+                    Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Allocating hardware device context for {deviceType}...");
                     AVBufferRef* hwDeviceCtx = FFmpegApi.av_hwdevice_ctx_alloc(deviceType);
                     if (hwDeviceCtx == null)
                     {
-                        Logger.Warning?.PrintMsg(LogClass.FFmpeg, "Failed to allocate hardware device context");
-                        return false;
+                        Logger.Warning?.PrintMsg(LogClass.FFmpeg, $"Failed to allocate hardware device context for {deviceType}");
+                        continue; // 尝试下一个配置
                     }
                     
-                    Logger.Info?.PrintMsg(LogClass.FFmpeg, "Initializing hardware device context...");
+                    Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Initializing hardware device context for {deviceType}...");
                     if (FFmpegApi.av_hwdevice_ctx_init(hwDeviceCtx) < 0)
                     {
-                        Logger.Warning?.PrintMsg(LogClass.FFmpeg, "Failed to initialize hardware device context");
+                        Logger.Warning?.PrintMsg(LogClass.FFmpeg, $"Failed to initialize hardware device context for {deviceType}");
                         FFmpegApi.av_buffer_unref(&hwDeviceCtx);
-                        return false;
+                        continue; // 尝试下一个配置
                     }
                     
                     // 设置硬件设备上下文
                     _context->HwDeviceCtx = hwDeviceCtx;
-                    _context->PixFmt = (int)FFmpegApi.AVPixelFormat.AV_PIX_FMT_MEDIACODEC;
-                    
-                    Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Set hardware device context. PixFmt set to: {_context->PixFmt}");
+                    _hwPixelFormat = (FFmpegApi.AVPixelFormat)hwConfig->PixFmt;
+                    _hwDeviceType = deviceType;
                     
                     // 设置get_format回调
                     GetFormatDelegate getFormatDelegate = GetHardwareFormat;
@@ -197,22 +207,57 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     // 保持委托的引用，防止被垃圾回收
                     GC.KeepAlive(getFormatDelegate);
                     
-                    Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Initialized MediaCodec hardware decoder successfully");
+                    Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Initialized hardware decoder successfully: DeviceType={deviceType}, PixelFormat={_hwPixelFormat}");
                     return true;
                 }
             }
             
-            Logger.Warning?.PrintMsg(LogClass.FFmpeg, $"No MediaCodec hardware configuration found. Checked {configIndex + 1} configurations.");
+            Logger.Warning?.PrintMsg(LogClass.FFmpeg, $"No suitable hardware configuration found. Checked {configIndex + 1} configurations.");
             return false;
+        }
+        
+        private List<FFmpegApi.AVHWDeviceType> GetPreferredDeviceTypes()
+        {
+            var preferredTypes = new List<FFmpegApi.AVHWDeviceType>();
+            
+            if (OperatingSystem.IsAndroid())
+            {
+                // Android平台优先使用MediaCodec
+                preferredTypes.Add(FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_MEDIACODEC);
+            }
+            else if (OperatingSystem.IsLinux())
+            {
+                // Linux平台硬件解码器优先级（参考yuzu）
+                preferredTypes.Add(FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_CUDA);
+                preferredTypes.Add(FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_VAAPI);
+                preferredTypes.Add(FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_VDPAU);
+                preferredTypes.Add(FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_VULKAN);
+            }
+            else if (OperatingSystem.IsWindows())
+            {
+                // Windows平台硬件解码器
+                preferredTypes.Add(FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_CUDA);
+                preferredTypes.Add(FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_D3D11VA);
+                preferredTypes.Add(FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_DXVA2);
+                preferredTypes.Add(FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_D3D12VA);
+            }
+            else if (OperatingSystem.IsMacOS())
+            {
+                // macOS平台硬件解码器
+                preferredTypes.Add(FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_VIDEOTOOLBOX);
+            }
+            
+            return preferredTypes;
         }
         
         private int GetHardwareFormat(AVCodecContext* ctx, FFmpegApi.AVPixelFormat* pix_fmts)
         {
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, "GetHardwareFormat callback called");
+            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"GetHardwareFormat callback called. Looking for pixel format: {_hwPixelFormat}");
             
             if (pix_fmts == null)
             {
-                Logger.Warning?.PrintMsg(LogClass.FFmpeg, "pix_fmts is null");
+                Logger.Warning?.PrintMsg(LogClass.FFmpeg, "pix_fmts is null, falling back to software");
+                FFmpegApi.av_buffer_unref(&ctx->HwDeviceCtx);
                 return (int)FFmpegApi.AVPixelFormat.AV_PIX_FMT_YUV420P;
             }
             
@@ -220,17 +265,17 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             int index = 0;
             for (FFmpegApi.AVPixelFormat* p = pix_fmts; *p != FFmpegApi.AVPixelFormat.AV_PIX_FMT_NONE; p++)
             {
-                Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Checking pixel format {index}: {*p}");
-                if (*p == FFmpegApi.AVPixelFormat.AV_PIX_FMT_MEDIACODEC)
+                Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Checking pixel format {index}: {*p}");
+                if (*p == _hwPixelFormat)
                 {
-                    Logger.Info?.PrintMsg(LogClass.FFmpeg, "Found MediaCodec pixel format");
+                    Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Found requested pixel format: {*p}");
                     return (int)*p;
                 }
                 index++;
             }
             
             // 如果没有找到硬件格式，回退到软件解码
-            Logger.Warning?.PrintMsg(LogClass.FFmpeg, "Hardware pixel format not found, falling back to software");
+            Logger.Warning?.PrintMsg(LogClass.FFmpeg, $"Hardware pixel format {_hwPixelFormat} not found in supported list, falling back to software");
             FFmpegApi.av_buffer_unref(&ctx->HwDeviceCtx);
             return (int)FFmpegApi.AVPixelFormat.AV_PIX_FMT_YUV420P;
         }
@@ -290,7 +335,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         {
             if (_useHardwareDecoding && _context->HwDeviceCtx != null)
             {
-                Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Using hardware decoding path");
+                Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Using hardware decoding path with device type: {_hwDeviceType}");
                 return DecodeFrameHardware(output, bitstream);
             }
             else
