@@ -105,14 +105,14 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
             AV_PIX_FMT_NV12 = 23,
             AV_PIX_FMT_YUV420P10LE = 62,
             AV_PIX_FMT_YUV420P12LE = 77,
-            AV_PIX_FMT_VAAPI = 77, // 注意：实际值可能需要根据FFmpeg版本调整
+            AV_PIX_FMT_VAAPI = 77,
             AV_PIX_FMT_CUDA = 78,
             AV_PIX_FMT_D3D11 = 79,
             AV_PIX_FMT_DXVA2_VLD = 80,
             AV_PIX_FMT_VDPAU = 81,
             AV_PIX_FMT_VIDEOTOOLBOX = 82,
             AV_PIX_FMT_MEDIACODEC = 165,
-            AV_PIX_FMT_VULKAN = 166,
+            AV_PIX_FMT_VULKAN = 191,
         }
 
         [LibraryImport(AvUtilLibraryName)]
@@ -138,6 +138,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
 
         [LibraryImport(AvCodecLibraryName)]
         internal static unsafe partial AVCodec* avcodec_find_decoder(AVCodecID id);
+
+        [LibraryImport(AvCodecLibraryName, EntryPoint = "avcodec_find_decoder_by_name")]
+        internal static unsafe partial AVCodec* avcodec_find_decoder_by_name([MarshalAs(UnmanagedType.LPUTF8Str)] string name);
 
         [LibraryImport(AvCodecLibraryName)]
         internal static unsafe partial AVCodecContext* avcodec_alloc_context3(AVCodec* codec);
