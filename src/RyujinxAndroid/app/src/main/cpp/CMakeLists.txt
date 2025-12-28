@@ -67,15 +67,7 @@ FetchContent_Declare(
     GIT_TAG        1.24.3  # 使用稳定版本
 )
 
-# 设置 OpenAL 构建选项 - 优化以减少杂音和延迟
-set(ALSOFT_REQUIRE_OPENSL ON CACHE BOOL "Enable OpenSL backend")
-set(ALSOFT_BACKEND_OPENSL ON CACHE BOOL "Enable OpenSL backend")
-set(ALSOFT_BACKEND_AAUDIO ON CACHE BOOL "Enable AAudio backend")
-set(ALSOFT_TESTS OFF CACHE BOOL "Disable tests")
-
-# 添加优化选项以减少杂音和延迟
-set(ALSOFT_CPUEXT_NEON ON CACHE BOOL "Enable NEON optimizations")
-
+# 移除自定义的 OpenAL 选项，使用默认配置
 FetchContent_MakeAvailable(openal)
 
 # 创建主库
@@ -90,12 +82,12 @@ add_library(
 # 添加编译定义以优化音频处理
 target_compile_definitions(ryujinxjni PRIVATE
     RYUJINX_AUDIO_OPTIMIZE=1
-    # 如果需要，可以添加更多音频优化标志
 )
+
 # 为音频渲染器文件单独启用激进优化
 # 注意：如果某些游戏出现杂音，可以回退到 "-O3" 或 "-O3 -ffast-math"
 set_source_files_properties(oboe_audio_renderer.cpp PROPERTIES
-    COMPILE_FLAGS "-Ofast"
+    COMPILE_FLAGS "-O3"
 )
 
 # 为主目标添加编译选项（其他文件保持 -O3，不包含 -ffast-math）
@@ -104,7 +96,6 @@ target_compile_options(ryujinxjni PRIVATE
     -O3
     -DNDEBUG
     -march=armv8-a
-    #-Ofast
 )
 
 # 查找系统库
