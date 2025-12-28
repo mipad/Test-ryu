@@ -113,7 +113,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         public int ErrRecognition;
         public long ReorderedOpaque;
         public IntPtr HwAccel;
-        public IntPtr HwAccelContext;
+        public unsafe AVBufferRef* HwAccelContext;
         public Array8<ulong> Error;
         public int DctAlgo;
         public int IdctAlgo;
@@ -154,11 +154,11 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         public uint Properties;
         public IntPtr CodedSideData;
         public int NbCodedSideData;
-        public IntPtr HwFramesCtx;
+        public unsafe AVBufferRef* HwFramesCtx;
         public int SubTextFormat;
         public int TrailingPadding;
         public long MaxPixels;
-        public IntPtr HwDeviceCtx;
+        public unsafe AVBufferRef* HwDeviceCtx;
         public int HwAccelFlags;
         public int applyCropping;
         public int ExtraHwFrames;
