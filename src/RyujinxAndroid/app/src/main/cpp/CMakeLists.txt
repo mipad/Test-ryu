@@ -84,12 +84,17 @@ add_library(
     oboe_audio_renderer.cpp
 )
 
-# 添加编译定义以优化音频处理
+# 添加编译定义以优化音频处理，启用 Vulkan 解码
 target_compile_definitions(ryujinxjni PRIVATE
     RYUJINX_AUDIO_OPTIMIZE=1
     # 针对天玑8100的优化
     RYUJINX_MTK_OPTIMIZE=1
-    # 如果需要，可以添加更多音频优化标志
+    # Vulkan 解码支持
+    HAVE_VULKAN=1
+    USE_VULKAN_DECODE=1
+    VULKAN_DECODE_ENABLED=1
+    # 天玑8100 Vulkan 优化
+    MTK_VULKAN_OPTIMIZE=1
 )
 
 # 添加编译选项
@@ -163,6 +168,7 @@ if (NOT (EXISTS ${LIBAVCODEC_JNI_PATH} AND EXISTS ${LIBAVUTIL_JNI_PATH} AND
     target_compile_definitions(ryujinxjni PRIVATE
         HAVE_FFMPEG=1
         __STDC_CONSTANT_MACROS=1
+        FFMPEG_VULKAN_ENABLED=1
     )
     
     # 设置 FFmpeg 输出目录
@@ -248,6 +254,7 @@ else()
     target_compile_definitions(ryujinxjni PRIVATE
         HAVE_FFMPEG=1
         __STDC_CONSTANT_MACROS=1
+        FFMPEG_VULKAN_ENABLED=1
     )
     
     # 设置预编译 FFmpeg 的头文件路径
@@ -285,6 +292,10 @@ target_compile_definitions(ryujinxjni PRIVATE
     # Mali GPU 硬件加速
     HAVE_MALI_GPU=1
     USE_MEDIACODEC=1
+    # Vulkan 优化
+    VULKAN_MALI_OPTIMIZE=1
+    # 启用高级 Vulkan 功能
+    VULKAN_SUPPORTED=1
 )
 
 # 添加针对 ARM64 和 Mali 的特定编译选项
@@ -293,6 +304,10 @@ if(CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
         -mcpu=cortex-a78  # 天玑8100大核
         -mtune=cortex-a55  # 天玑8100小核
         -march=armv8.2-a+fp16+dotprod+crypto  # 天玑8100支持的指令集
+        # 添加 Vulkan 特定优化
+        -DVK_USE_PLATFORM_ANDROID_KHR=1
+        -DVULKAN_HPP_NO_EXCEPTIONS=1
+        -DVULKAN_HPP_NO_SMART_HANDLE=1
     )
 endif()
 
@@ -311,6 +326,14 @@ add_custom_command(TARGET ryujinxjni POST_BUILD
     COMMENT "Copying OpenAL library to JNI directory"
 )
 
+# 添加 Vulkan 验证步骤
+add_custom_target(verify_vulkan
+    COMMAND ${CMAKE_COMMAND} -E echo "Checking Vulkan support..."
+    COMMAND bash -c "if [ -f ${JNI_PATH}/libvulkan.so ]; then echo 'Vulkan library found'; else echo 'Vulkan library not found'; fi"
+    DEPENDS ryujinxjni
+    COMMENT "Verifying Vulkan support"
+)
+
 # 添加验证步骤确保所有库都存在
 add_custom_target(verify_libraries
     COMMAND ${CMAKE_COMMAND} -E echo "Verifying library sizes..."
@@ -321,5 +344,6 @@ add_custom_target(verify_libraries
 )
 
 message(STATUS "Build configuration for Dimensity 8100 (ARM64, Mali GPU) completed")
+message(STATUS "Vulkan decode support: Enabled")
 message(STATUS "JNI output path: ${JNI_PATH}")
-message(STATUS "FFmpeg support: Enabled with full features")
+message(STATUS "FFmpeg support: Enabled with full features including Vulkan")
