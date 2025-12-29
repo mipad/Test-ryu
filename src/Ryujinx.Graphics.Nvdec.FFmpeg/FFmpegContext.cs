@@ -66,6 +66,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return;
             }
 
+            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Allocated codec context: 0x{(ulong)_context:X}");
+
             // 配置硬件解码
             if (_useHardwareDecoding && _isMediaCodecDecoder)
             {
@@ -74,7 +76,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
             if (_context->PrivData != IntPtr.Zero)
             {
+                Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Setting zero latency tune, PrivData: 0x{(ulong)_context->PrivData:X}");
                 FFmpegApi.av_opt_set((void*)_context->PrivData, "tune", "zerolatency", 0);
+            }
+            else
+            {
+                Logger.Debug?.PrintMsg(LogClass.FFmpeg, "PrivData is null, skipping zero latency tune");
             }
             
             _context->ThreadCount = 0;
@@ -92,13 +99,16 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
             Logger.Info?.PrintMsg(LogClass.FFmpeg, "Opening codec...");
             
-            if (FFmpegApi.avcodec_open2(_context, _codec, null) != 0)
+            int openResult = FFmpegApi.avcodec_open2(_context, _codec, null);
+            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"avcodec_open2 result: {openResult}");
+            
+            if (openResult != 0)
             {
-                Logger.Error?.PrintMsg(LogClass.FFmpeg, "Codec couldn't be opened.");
+                Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Codec couldn't be opened. Error code: {openResult}");
                 return;
             }
             
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Codec opened successfully. Pixel format: {_context->PixFmt}");
+            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Codec opened successfully. Pixel format: {_context->PixFmt}, Hardware device context: 0x{(ulong)_context->HwDeviceCtx:X}");
 
             _packet = FFmpegApi.av_packet_alloc();
             if (_packet == null)
@@ -106,6 +116,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 Logger.Error?.PrintMsg(LogClass.FFmpeg, "Packet couldn't be allocated.");
                 return;
             }
+            
+            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Allocated packet: 0x{(ulong)_packet:X}");
 
             // 分配硬件帧
             if (_useHardwareDecoding && _isMediaCodecDecoder)
@@ -115,6 +127,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 {
                     Logger.Error?.PrintMsg(LogClass.FFmpeg, "Failed to allocate hardware frame");
                     _useHardwareDecoding = false;
+                }
+                else
+                {
+                    Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Allocated hardware frame: 0x{(ulong)_hwFrame:X}");
                 }
             }
 
@@ -134,6 +150,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_MEDIACODEC, 
                     null, null, 0);
                 
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, $"av_hwdevice_ctx_create result: {result}, deviceCtx: 0x{(ulong)deviceCtx:X}");
+                
                 if (result < 0)
                 {
                     Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Failed to create hardware device context: {result}");
@@ -143,7 +161,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 
                 _hwDeviceCtx = deviceCtx;
                 
-                // 设置硬件设备上下文到编解码器上下文 - 注意字段名是 HwDeviceCtx，不是 hw_device_ctx
+                // 设置硬件设备上下文到编解码器上下文
                 _context->HwDeviceCtx = (AVBufferRef*)_hwDeviceCtx;
                 
                 if (_context->HwDeviceCtx == null)
@@ -153,22 +171,30 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     return;
                 }
                 
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Set hardware device context: 0x{(ulong)_context->HwDeviceCtx:X}");
+                
                 // 查找硬件配置
                 for (int i = 0; ; i++)
                 {
                     var hwConfigPtr = FFmpegApi.avcodec_get_hw_config(_codec, i);
                     if (hwConfigPtr == IntPtr.Zero)
+                    {
+                        Logger.Info?.PrintMsg(LogClass.FFmpeg, $"No more hardware configs at index {i}");
                         break;
+                    }
                     
-                    // 注意：这里需要将 IntPtr 转换为 AVCodecHWConfig* 来访问字段
+                    Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Found hardware config at index {i}: 0x{(ulong)hwConfigPtr:X}");
+                    
                     unsafe
                     {
                         var hwConfig = (AVCodecHWConfig*)hwConfigPtr;
+                        Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Hardware config: PixFmt={hwConfig->PixFmt}, Methods={hwConfig->Methods}, DeviceType={hwConfig->DeviceType}");
+                        
                         if ((hwConfig->Methods & FFmpegApi.AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) != 0 &&
-                            hwConfig->DeviceType == (int)FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_MEDIACODEC) // 修复：将枚举转换为 int 进行比较
+                            hwConfig->DeviceType == (int)FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_MEDIACODEC)
                         {
                             _context->PixFmt = hwConfig->PixFmt;
-                            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Found hardware config: PixelFormat={hwConfig->PixFmt}");
+                            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Found matching hardware config: PixelFormat={hwConfig->PixFmt}");
                             break;
                         }
                     }
@@ -178,7 +204,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             }
             catch (Exception ex)
             {
-                Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Exception configuring hardware decoding: {ex.Message}");
+                Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Exception configuring hardware decoding: {ex.Message}\n{ex.StackTrace}");
                 _useHardwareDecoding = false;
             }
         }
@@ -323,13 +349,22 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         {
             Logger.Debug?.PrintMsg(LogClass.FFmpeg, "DecodeFrameHardware called");
             
-            if (output.Frame == null || _hwFrame == null)
+            if (output.Frame == null)
             {
-                Logger.Error?.PrintMsg(LogClass.FFmpeg, "Output frame or hardware frame is null");
+                Logger.Error?.PrintMsg(LogClass.FFmpeg, "Output frame is null");
                 return -1;
             }
             
+            if (_hwFrame == null)
+            {
+                Logger.Error?.PrintMsg(LogClass.FFmpeg, "Hardware frame is null");
+                return -1;
+            }
+            
+            Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Hardware frame address: 0x{(ulong)_hwFrame:X}");
+            
             FFmpegApi.av_frame_unref(_hwFrame);
+            Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Unref hardware frame");
 
             try
             {
@@ -337,44 +372,52 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 {
                     _packet->Data = ptr;
                     _packet->Size = bitstream.Length;
-                    Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Decoding packet with size: {bitstream.Length}");
+                    Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Decoding packet with size: {bitstream.Length}, data ptr: 0x{(ulong)ptr:X}");
                     
                     int sendResult = FFmpegApi.avcodec_send_packet(_context, _packet);
-                    Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"avcodec_send_packet result: {sendResult}");
+                    Logger.Info?.PrintMsg(LogClass.FFmpeg, $"avcodec_send_packet result: {sendResult}");
+                    
+                    // 检查特定错误码
+                    if (sendResult == FFmpegApi.AVERROR.EAGAIN)
+                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, "EAGAIN: Decoder needs more packets");
+                    else if (sendResult == FFmpegApi.AVERROR.EOF)
+                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, "EOF: End of stream");
+                    else if (sendResult == FFmpegApi.AVERROR.EINVAL)
+                        Logger.Error?.PrintMsg(LogClass.FFmpeg, "EINVAL: Invalid argument");
+                    else if (sendResult == FFmpegApi.AVERROR.INVALIDDATA)
+                        Logger.Error?.PrintMsg(LogClass.FFmpeg, "INVALIDDATA: Invalid data found");
                     
                     _packet->Data = null;
                     _packet->Size = 0;
                     FFmpegApi.av_packet_unref(_packet);
                     
-                    if (sendResult < 0)
+                    if (sendResult < 0 && sendResult != FFmpegApi.AVERROR.EAGAIN && sendResult != FFmpegApi.AVERROR.EOF)
                     {
-                        if (sendResult == FFmpegApi.AVERROR.EAGAIN)
-                        {
-                            Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Decoder needs more packets (EAGAIN)");
-                            return sendResult;
-                        }
-                        else if (sendResult == FFmpegApi.AVERROR.EOF)
-                        {
-                            Logger.Debug?.PrintMsg(LogClass.FFmpeg, "End of stream (EOF)");
-                            return 0;
-                        }
-                        else
-                        {
-                            Logger.Error?.PrintMsg(LogClass.FFmpeg, $"avcodec_send_packet failed: {sendResult}");
-                            return sendResult;
-                        }
+                        Logger.Error?.PrintMsg(LogClass.FFmpeg, $"avcodec_send_packet failed: {sendResult}");
+                        return sendResult;
                     }
                     
                     int receiveResult = FFmpegApi.avcodec_receive_frame(_context, _hwFrame);
-                    Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"avcodec_receive_frame result: {receiveResult}");
+                    Logger.Info?.PrintMsg(LogClass.FFmpeg, $"avcodec_receive_frame result: {receiveResult}");
+                    
+                    // 检查特定错误码
+                    if (receiveResult == FFmpegApi.AVERROR.EAGAIN)
+                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, "EAGAIN: No frame available yet");
+                    else if (receiveResult == FFmpegApi.AVERROR.EOF)
+                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, "EOF: End of stream");
+                    else if (receiveResult == FFmpegApi.AVERROR.EINVAL)
+                        Logger.Error?.PrintMsg(LogClass.FFmpeg, "EINVAL: Invalid argument");
+                    else if (receiveResult == FFmpegApi.AVERROR.INVALIDDATA)
+                        Logger.Error?.PrintMsg(LogClass.FFmpeg, "INVALIDDATA: Invalid data found");
                     
                     if (receiveResult == 0)
                     {
                         Logger.Debug?.PrintMsg(LogClass.FFmpeg, 
                             $"Hardware decode successful. Frame: Width={_hwFrame->Width}, Height={_hwFrame->Height}, " +
-                            $"Format={_hwFrame->Format}");
+                            $"Format={_hwFrame->Format}, Linesize0={_hwFrame->LineSize[0]}");
                         
                         // 从硬件帧转换到软件帧
+                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Starting hardware frame transfer to software frame");
                         if (output.TransferFromHardwareFrame(_hwFrame))
                         {
                             Logger.Debug?.PrintMsg(LogClass.FFmpeg, 
