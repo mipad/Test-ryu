@@ -102,7 +102,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         {
             AV_PIX_FMT_NONE = -1,
             AV_PIX_FMT_YUV420P = 0,
+            AV_PIX_FMT_YUVA420P = 1,
             AV_PIX_FMT_NV12 = 23,
+            AV_PIX_FMT_NV21 = 24,
             AV_PIX_FMT_YUV420P10LE = 62,
             AV_PIX_FMT_YUV420P12LE = 77,
             AV_PIX_FMT_VAAPI = 77,
@@ -115,6 +117,14 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
             AV_PIX_FMT_VULKAN = 166,
         }
 
+        // 错误码定义
+        internal static class AVERROR
+        {
+            public const int EAGAIN = -11; // 资源暂时不可用
+            public const int EOF = -541478725; // 文件结束
+            public const int EINVAL = -22; // 无效参数
+        }
+
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial AVFrame* av_frame_alloc();
 
@@ -123,6 +133,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
 
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial void av_free(AVFrame* frame);
+
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial int av_frame_get_buffer(AVFrame* frame, int align);
 
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial void av_log_set_level(AVLog level);
@@ -194,5 +207,21 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         
         [LibraryImport(AvCodecLibraryName)]
         internal static unsafe partial int avcodec_receive_frame(AVCodecContext* avctx, AVFrame* frame);
+        
+        // 格式转换API
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial IntPtr sws_getContext(
+            int srcW, int srcH, AVPixelFormat srcFormat,
+            int dstW, int dstH, AVPixelFormat dstFormat,
+            int flags, IntPtr srcFilter, IntPtr dstFilter, double* param);
+        
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial int sws_scale(
+            IntPtr swsContext, byte** srcSlice, int* srcStride,
+            int srcSliceY, int srcSliceH,
+            byte** dstSlice, int* dstStride);
+        
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial void sws_freeContext(IntPtr swsContext);
     }
 }
