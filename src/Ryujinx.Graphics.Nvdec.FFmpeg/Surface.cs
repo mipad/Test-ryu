@@ -12,9 +12,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         public int RequestedWidth { get; }
         public int RequestedHeight { get; }
         
-        public Plane YPlane => new((IntPtr)Frame->Data0, Stride * Height);
-        public Plane UPlane => new((IntPtr)Frame->Data1, UvStride * UvHeight);
-        public Plane VPlane => new((IntPtr)Frame->Data2, UvStride * UvHeight);
+        // 使用正确的 AVFrame.Data 访问方式
+        public Plane YPlane => new((IntPtr)Frame->Data[0], Stride * Height);
+        public Plane UPlane => new((IntPtr)Frame->Data[1], UvStride * UvHeight);
+        public Plane VPlane => new((IntPtr)Frame->Data[2], UvStride * UvHeight);
 
         public FrameField Field => Frame->InterlacedFrame != 0 ? FrameField.Interlaced : FrameField.Progressive;
 
@@ -91,22 +92,11 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             Frame->Format = SwFrame->Format;
             Frame->Pts = SwFrame->Pts;
             
-            // 复制数据
+            // 复制数据指针和行大小
             for (int i = 0; i < 8; i++)
             {
-                Frame->Data(i) = SwFrame->Data(i);
-                if (Frame->LineSize != null)
-                    Frame->LineSize[i] = SwFrame->LineSize[i];
-            }
-            
-            // 增加引用计数
-            for (int i = 0; i < 8 && SwFrame->Data(i) != IntPtr.Zero; i++)
-            {
-                var buf = (FFmpegApi.AVBufferRef*)SwFrame->Buf(i);
-                if (buf != null)
-                {
-                    Frame->Buf(i) = (IntPtr)FFmpegApi.av_buffer_ref(buf);
-                }
+                Frame->Data[i] = SwFrame->Data[i];
+                Frame->LineSize[i] = SwFrame->LineSize[i];
             }
             
             return true;

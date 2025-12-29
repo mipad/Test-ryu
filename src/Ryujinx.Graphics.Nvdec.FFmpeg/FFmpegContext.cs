@@ -142,9 +142,11 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 }
                 
                 _hwDeviceCtx = deviceCtx;
-                _context->hw_device_ctx = FFmpegApi.av_buffer_ref(_hwDeviceCtx);
                 
-                if (_context->hw_device_ctx == null)
+                // 设置硬件设备上下文到编解码器上下文
+                _context->hw_device_ctx = (IntPtr)FFmpegApi.av_buffer_ref(_hwDeviceCtx);
+                
+                if (_context->hw_device_ctx == IntPtr.Zero)
                 {
                     Logger.Error?.PrintMsg(LogClass.FFmpeg, "Failed to set hardware device context");
                     _useHardwareDecoding = false;
