@@ -143,10 +143,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 
                 _hwDeviceCtx = deviceCtx;
                 
-                // 设置硬件设备上下文到编解码器上下文
-                _context->hw_device_ctx = FFmpegApi.av_buffer_ref(_hwDeviceCtx);
+                // 设置硬件设备上下文到编解码器上下文 - 注意字段名是 HwDeviceCtx，不是 hw_device_ctx
+                _context->HwDeviceCtx = (AVBufferRef*)_hwDeviceCtx;
                 
-                if (_context->hw_device_ctx == IntPtr.Zero)
+                if (_context->HwDeviceCtx == null)
                 {
                     Logger.Error?.PrintMsg(LogClass.FFmpeg, "Failed to set hardware device context");
                     _useHardwareDecoding = false;
@@ -161,14 +161,13 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                         break;
                     
                     // 注意：这里需要将 IntPtr 转换为 AVCodecHWConfig* 来访问字段
-                    // 但由于 AVCodecHWConfig 结构体已存在，我们可以使用 unsafe 转换
                     unsafe
                     {
                         var hwConfig = (AVCodecHWConfig*)hwConfigPtr;
                         if ((hwConfig->Methods & FFmpegApi.AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) != 0 &&
-                            hwConfig->DeviceType == FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_MEDIACODEC)
+                            hwConfig->DeviceType == (int)FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_MEDIACODEC) // 修复：将枚举转换为 int 进行比较
                         {
-                            _context->PixFmt = (int)hwConfig->PixFmt;
+                            _context->PixFmt = hwConfig->PixFmt;
                             Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Found hardware config: PixelFormat={hwConfig->PixFmt}");
                             break;
                         }
