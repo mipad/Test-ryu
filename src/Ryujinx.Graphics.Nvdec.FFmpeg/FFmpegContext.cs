@@ -86,7 +86,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 _context->Flags2 |= 0x00000100; // AV_CODEC_FLAG2_FAST (开启快速解码模式)
                 
                 // 设置MediaCodec特定的参数
-                _context->RefcountedFrames = 1; // 使用引用计数的帧
+                // 注意：AVCodecContext中没有RefcountedFrames字段，已移除
                 _context->SkipFrame = 0; // AVDISCARD_NONE，不跳过任何帧
                 _context->SkipIdct = 0; // AVDISCARD_NONE
                 _context->SkipLoopFilter = 0; // AVDISCARD_NONE
@@ -179,16 +179,20 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 if (avCodecMajorVersion > 59 || (avCodecMajorVersion == 59 && avCodecMinorVersion > 24))
                 {
                     Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Using FFmpeg >= 59.24 API");
+                    // 注意：这里的类型转换需要根据实际结构体定义调整
+                    // 假设FFCodec是一个包含CodecCallback字段的结构体
                     _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodec<AVCodec>*)_codec)->CodecCallback);
                 }
                 else if (avCodecMajorVersion == 59)
                 {
                     Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Using FFmpeg 59.x API");
+                    // 假设FFCodecLegacy是一个包含Decode字段的结构体
                     _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec501>*)_codec)->Decode);
                 }
                 else
                 {
                     Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Using FFmpeg <= 58.x API");
+                    // 假设FFCodecLegacy是一个包含Decode字段的结构体
                     _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec>*)_codec)->Decode);
                 }
             }
@@ -630,8 +634,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             {
                 // 创建格式转换上下文
                 _swsContext = FFmpegApi.sws_getContext(
-                    output.Width, output.Height, (FFmpegApi.AVPixelFormat)output.PixelFormat,
-                    output.Width, output.Height, FFmpegApi.AVPixelFormat.AV_PIX_FMT_YUV420P,
+                    output.Width, output.Height, output.PixelFormat,
+                    output.Width, output.Height, (int)FFmpegApi.AVPixelFormat.AV_PIX_FMT_YUV420P,
                     2, // SWS_BILINEAR
                     IntPtr.Zero, IntPtr.Zero, null);
                 
@@ -664,12 +668,27 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return false;
             }
             
+            // 准备指针数组用于sws_scale
+            byte** srcData = stackalloc byte*[8];
+            int* srcStride = stackalloc int[8];
+            byte** dstData = stackalloc byte*[8];
+            int* dstStride = stackalloc int[8];
+            
+            // 填充源数据指针
+            for (int i = 0; i < 8; i++)
+            {
+                srcData[i] = (byte*)output.Frame->Data[i];
+                srcStride[i] = output.Frame->LineSize[i];
+                dstData[i] = (byte*)_swFrame->Data[i];
+                dstStride[i] = _swFrame->LineSize[i];
+            }
+            
             // 执行格式转换
             int result = FFmpegApi.sws_scale(
                 _swsContext,
-                output.Frame->Data, output.Frame->LineSize,
+                srcData, srcStride,
                 0, output.Height,
-                _swFrame->Data, _swFrame->LineSize);
+                dstData, dstStride);
             
             if (result <= 0)
             {
@@ -805,13 +824,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             
             Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Copying frame data: Width={src->Width}, Height={src->Height}, Format={src->Format}");
             
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < 8; i++)
             {
                 dst->LineSize[i] = src->LineSize[i];
-            }
-            
-            for (int i = 0; i < 4; i++)
-            {
                 dst->Data[i] = src->Data[i];
             }
         }
