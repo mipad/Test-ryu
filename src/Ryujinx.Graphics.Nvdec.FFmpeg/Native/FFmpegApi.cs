@@ -181,22 +181,22 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         internal static unsafe partial int avcodec_version();
         
         [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial AVBufferRef* av_hwdevice_ctx_alloc(AVHWDeviceType type);
+        internal static unsafe partial IntPtr av_hwdevice_ctx_alloc(AVHWDeviceType type);
         
         [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial int av_hwdevice_ctx_create(AVBufferRef** device_ctx, AVHWDeviceType type, [MarshalAs(UnmanagedType.LPUTF8Str)] string device, void* opts, int flags);
+        internal static unsafe partial int av_hwdevice_ctx_create(IntPtr* device_ctx, AVHWDeviceType type, [MarshalAs(UnmanagedType.LPUTF8Str)] string device, void* opts, int flags);
         
         [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial int av_hwdevice_ctx_init(AVBufferRef* @ref);
+        internal static unsafe partial int av_hwdevice_ctx_init(IntPtr @ref);
         
         [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial void av_buffer_unref(AVBufferRef** @ref);
+        internal static unsafe partial void av_buffer_unref(IntPtr* @ref);
         
         [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial AVBufferRef* av_buffer_ref(AVBufferRef* @ref);
+        internal static unsafe partial IntPtr av_buffer_ref(IntPtr @ref);
         
         [LibraryImport(AvCodecLibraryName)]
-        internal static unsafe partial AVCodecHWConfig* avcodec_get_hw_config(AVCodec* codec, int index);
+        internal static unsafe partial IntPtr avcodec_get_hw_config(AVCodec* codec, int index);
         
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial int av_hwframe_transfer_data(AVFrame* dst, AVFrame* src, int flags);
@@ -221,7 +221,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         
         // 添加用于设置硬件设备上下文的函数
         [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial void av_opt_set_bin(void* obj, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, byte* val, int size, int search_flags);
+        internal static unsafe partial int av_opt_set_bin(void* obj, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, byte* val, int size, int search_flags);
         
         // 添加用于获取/设置帧格式的函数
         [LibraryImport(AvUtilLibraryName)]
