@@ -29,6 +29,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
             if (outSurf.RequestedWidth != _oldOutputWidth ||
                 outSurf.RequestedHeight != _oldOutputHeight)
             {
+                Ryujinx.Common.Logging.Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Resolution changed from {_oldOutputWidth}x{_oldOutputHeight} to {outSurf.RequestedWidth}x{outSurf.RequestedHeight}. Recreating FFmpegContext.");
                 _context.Dispose();
                 _context = new FFmpegContext(AVCodecID.AV_CODEC_ID_H264);
 
@@ -37,8 +38,14 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
             }
 
             Span<byte> bs = Prepend(bitstream, SpsAndPpsReconstruction.Reconstruct(ref pictureInfo, _workBuffer));
-
-            return _context.DecodeFrame(outSurf, bs) == 0;
+            
+            Ryujinx.Common.Logging.Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Starting decode. Bitstream size: {bs.Length}, Output surface: {outSurf.RequestedWidth}x{outSurf.RequestedHeight}");
+            
+            int result = _context.DecodeFrame(outSurf, bs);
+            
+            Ryujinx.Common.Logging.Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Decode result: {result}");
+            
+            return result == 0;
         }
 
         private static byte[] Prepend(ReadOnlySpan<byte> data, ReadOnlySpan<byte> prep)
