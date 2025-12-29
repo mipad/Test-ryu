@@ -20,8 +20,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
         
         // 失败计数器，用于自动切换到软件解码
         private int _hardwareDecodeFailures = 0;
-        private const int MaxHardwareFailures = 10;
+        private const int MaxHardwareFailures = 5;
         private bool _forceSoftwareDecode = false;
+        private bool _hardwareDecodeInitialized = false;
 
         public ISurface CreateSurface(int width, int height)
         {
@@ -36,26 +37,23 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
                 outSurf.RequestedHeight != _oldOutputHeight)
             {
                 Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Resolution changed from {_oldOutputWidth}x{_oldOutputHeight} to {outSurf.RequestedWidth}x{outSurf.RequestedHeight}. Recreating FFmpegContext.");
+                
                 _context.Dispose();
-                _context = new FFmpegContext(AVCodecID.AV_CODEC_ID_H264);
+                
+                // 重置失败计数器
                 _hardwareDecodeFailures = 0;
                 _forceSoftwareDecode = false;
-
+                _hardwareDecodeInitialized = false;
+                
+                // 重新创建上下文
+                _context = new FFmpegContext(AVCodecID.AV_CODEC_ID_H264);
+                
                 _oldOutputWidth = outSurf.RequestedWidth;
                 _oldOutputHeight = outSurf.RequestedHeight;
             }
 
-            // 如果硬件解码失败次数过多，强制使用软件解码
-            if (_hardwareDecodeFailures >= MaxHardwareFailures && !_forceSoftwareDecode)
-            {
-                Logger.Warning?.PrintMsg(LogClass.FFmpeg, $"Hardware decode failed {_hardwareDecodeFailures} times, forcing software decode");
-                _forceSoftwareDecode = true;
-                
-                // 重新创建上下文，强制软件解码
-                _context.Dispose();
-                Environment.SetEnvironmentVariable("RYUJINX_FORCE_SOFTWARE_DECODE", "1");
-                _context = new FFmpegContext(AVCodecID.AV_CODEC_ID_H264);
-            }
+            // 检查是否应该强制使用软件解码
+            CheckHardwareDecodeFallback();
 
             Span<byte> bs = Prepend(bitstream, SpsAndPpsReconstruction.Reconstruct(ref pictureInfo, _workBuffer));
             
@@ -65,13 +63,22 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
             
             Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Decode result: {result}");
             
+            // 处理解码结果
             if (result == 0)
             {
-                // 解码成功，重置失败计数器
+                // 解码成功
+                if (!_hardwareDecodeInitialized)
+                {
+                    _hardwareDecodeInitialized = true;
+                }
+                
+                // 重置失败计数器
                 if (_hardwareDecodeFailures > 0)
                 {
                     _hardwareDecodeFailures = 0;
+                    Logger.Info?.PrintMsg(LogClass.FFmpeg, "Hardware decode recovered, resetting failure counter");
                 }
+                
                 return true;
             }
             else
@@ -81,8 +88,36 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
                 {
                     _hardwareDecodeFailures++;
                     Logger.Warning?.PrintMsg(LogClass.FFmpeg, $"Hardware decode failure {_hardwareDecodeFailures}/{MaxHardwareFailures}");
+                    
+                    // 如果这是第一次失败，尝试重新初始化解码器
+                    if (_hardwareDecodeFailures == 1)
+                    {
+                        Logger.Info?.PrintMsg(LogClass.FFmpeg, "First hardware decode failure, trying to recover...");
+                    }
                 }
+                else
+                {
+                    Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Software decode failure");
+                }
+                
                 return false;
+            }
+        }
+        
+        private void CheckHardwareDecodeFallback()
+        {
+            // 如果硬件解码失败次数过多，强制使用软件解码
+            if (_hardwareDecodeFailures >= MaxHardwareFailures && !_forceSoftwareDecode)
+            {
+                Logger.Warning?.PrintMsg(LogClass.FFmpeg, $"Hardware decode failed {_hardwareDecodeFailures} times, forcing software decode");
+                _forceSoftwareDecode = true;
+                
+                // 设置环境变量强制软件解码
+                Environment.SetEnvironmentVariable("RYUJINX_FORCE_SOFTWARE_DECODE", "1");
+                
+                // 重新创建上下文
+                _context.Dispose();
+                _context = new FFmpegContext(AVCodecID.AV_CODEC_ID_H264);
             }
         }
 
@@ -99,3 +134,4 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
         public void Dispose() => _context.Dispose();
     }
 }
+
