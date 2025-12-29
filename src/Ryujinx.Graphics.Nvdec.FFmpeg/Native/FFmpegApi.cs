@@ -133,7 +133,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         internal static unsafe partial void av_frame_unref(AVFrame* frame);
 
         [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial void av_free(AVFrame* frame);
+        internal static unsafe partial void av_free(void* ptr);
 
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial int av_frame_get_buffer(AVFrame* frame, int align);
@@ -218,5 +218,13 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         internal static unsafe partial int av_opt_set(void* obj, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, [MarshalAs(UnmanagedType.LPUTF8Str)] string val, int search_flags);
         
         internal const int AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX = 0x0001;
+        
+        // 添加用于设置硬件设备上下文的函数
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial void av_opt_set_bin(void* obj, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, byte* val, int size, int search_flags);
+        
+        // 添加用于获取/设置帧格式的函数
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial int av_get_pix_fmt([MarshalAs(UnmanagedType.LPUTF8Str)] string name);
     }
 }

@@ -1,10 +1,11 @@
 namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
 {
-    struct AVRational
+    unsafe struct AVCodecHWConfig
     {
 #pragma warning disable CS0649
-        public int Num;
-        public int Den;
+        public int PixFmt;
+        public int Methods;
+        public int DeviceType;
 #pragma warning restore CS0649
     }
 }
