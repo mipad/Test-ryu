@@ -13,10 +13,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private readonly AVCodec* _codec;
         private readonly AVPacket* _packet;
         private readonly AVCodecContext* _context;
+        private AVBufferRef* _hwDeviceCtx;
         private bool _useHardwareDecoding;
         private bool _isMediaCodecDecoder;
         private bool _forceSoftwareDecode;
         private object _decodeLock = new object();
+        private AVFrame* _hwFrame;
 
         private static readonly Dictionary<AVCodecID, string[]> AndroidHardwareDecoders = new()
         {
@@ -64,6 +66,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return;
             }
 
+            // 配置硬件解码
+            if (_useHardwareDecoding && _isMediaCodecDecoder)
+            {
+                ConfigureHardwareDecoding();
+            }
+
             if (_context->PrivData != IntPtr.Zero)
             {
                 FFmpegApi.av_opt_set((void*)_context->PrivData, "tune", "zerolatency", 0);
@@ -99,9 +107,73 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return;
             }
 
+            // 分配硬件帧
+            if (_useHardwareDecoding && _isMediaCodecDecoder)
+            {
+                _hwFrame = FFmpegApi.av_frame_alloc();
+                if (_hwFrame == null)
+                {
+                    Logger.Error?.PrintMsg(LogClass.FFmpeg, "Failed to allocate hardware frame");
+                    _useHardwareDecoding = false;
+                }
+            }
+
             Logger.Info?.PrintMsg(LogClass.FFmpeg, "Using new FFmpeg API (avcodec_send_packet/avcodec_receive_frame)");
-            
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"FFmpegContext created successfully. IsMediaCodec: {_isMediaCodecDecoder}");
+            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"FFmpegContext created successfully. IsMediaCodec: {_isMediaCodecDecoder}, HardwareDecoding: {_useHardwareDecoding}");
+        }
+
+        private void ConfigureHardwareDecoding()
+        {
+            try
+            {
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Configuring MediaCodec hardware decoding");
+                
+                // 创建硬件设备上下文
+                AVBufferRef* deviceCtx = null;
+                int result = FFmpegApi.av_hwdevice_ctx_create(&deviceCtx, 
+                    FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_MEDIACODEC, 
+                    null, null, 0);
+                
+                if (result < 0)
+                {
+                    Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Failed to create hardware device context: {result}");
+                    _useHardwareDecoding = false;
+                    return;
+                }
+                
+                _hwDeviceCtx = deviceCtx;
+                _context->hw_device_ctx = FFmpegApi.av_buffer_ref(_hwDeviceCtx);
+                
+                if (_context->hw_device_ctx == null)
+                {
+                    Logger.Error?.PrintMsg(LogClass.FFmpeg, "Failed to set hardware device context");
+                    _useHardwareDecoding = false;
+                    return;
+                }
+                
+                // 查找硬件配置
+                for (int i = 0; ; i++)
+                {
+                    var hwConfig = FFmpegApi.avcodec_get_hw_config(_codec, i);
+                    if (hwConfig == null)
+                        break;
+                    
+                    if ((hwConfig->Methods & FFmpegApi.AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) != 0 &&
+                        hwConfig->DeviceType == FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_MEDIACODEC)
+                    {
+                        _context->PixFmt = hwConfig->PixFmt;
+                        Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Found hardware config: PixelFormat={hwConfig->PixFmt}");
+                        break;
+                    }
+                }
+                
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Hardware decoding configured successfully");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Exception configuring hardware decoding: {ex.Message}");
+                _useHardwareDecoding = false;
+            }
         }
 
         private unsafe AVCodec* FindHardwareDecoder(AVCodecID codecId)
@@ -227,12 +299,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         {
             lock (_decodeLock)
             {
-                Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"DecodeFrame called. Bitstream size: {bitstream.Length}, IsMediaCodec: {_isMediaCodecDecoder}");
+                Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"DecodeFrame called. Bitstream size: {bitstream.Length}, IsMediaCodec: {_isMediaCodecDecoder}, UseHardware: {_useHardwareDecoding}");
                 
                 if (_isMediaCodecDecoder && _useHardwareDecoding && !_forceSoftwareDecode)
                 {
                     Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Using MediaCodec hardware decoder");
-                    return DecodeFrameMediaCodec(output, bitstream);
+                    return DecodeFrameHardware(output, bitstream);
                 }
                 
                 Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Using software decoding path");
@@ -240,23 +312,17 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             }
         }
         
-        private int DecodeFrameMediaCodec(Surface output, ReadOnlySpan<byte> bitstream)
+        private int DecodeFrameHardware(Surface output, ReadOnlySpan<byte> bitstream)
         {
-            Logger.Debug?.PrintMsg(LogClass.FFmpeg, "DecodeFrameMediaCodec called");
+            Logger.Debug?.PrintMsg(LogClass.FFmpeg, "DecodeFrameHardware called");
             
-            if (output.Frame == null)
+            if (output.Frame == null || _hwFrame == null)
             {
-                Logger.Error?.PrintMsg(LogClass.FFmpeg, "Output frame is null");
+                Logger.Error?.PrintMsg(LogClass.FFmpeg, "Output frame or hardware frame is null");
                 return -1;
             }
             
-            FFmpegApi.av_frame_unref(output.Frame);
-            
-            if (!output.AllocateBuffer())
-            {
-                Logger.Error?.PrintMsg(LogClass.FFmpeg, "Failed to allocate output frame buffer");
-                return -1;
-            }
+            FFmpegApi.av_frame_unref(_hwFrame);
 
             try
             {
@@ -266,7 +332,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     _packet->Size = bitstream.Length;
                     Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Decoding packet with size: {bitstream.Length}");
                     
-                    // 总是使用新的API
                     int sendResult = FFmpegApi.avcodec_send_packet(_context, _packet);
                     Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"avcodec_send_packet result: {sendResult}");
                     
@@ -293,15 +358,28 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                         }
                     }
                     
-                    int receiveResult = FFmpegApi.avcodec_receive_frame(_context, output.Frame);
+                    int receiveResult = FFmpegApi.avcodec_receive_frame(_context, _hwFrame);
                     Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"avcodec_receive_frame result: {receiveResult}");
                     
                     if (receiveResult == 0)
                     {
                         Logger.Debug?.PrintMsg(LogClass.FFmpeg, 
-                            $"MediaCodec decode successful. Frame: Width={output.Frame->Width}, Height={output.Frame->Height}, " +
-                            $"Format={output.Frame->Format}, Linesize0={output.Frame->LineSize[0]}");
-                        return 0;
+                            $"Hardware decode successful. Frame: Width={_hwFrame->Width}, Height={_hwFrame->Height}, " +
+                            $"Format={_hwFrame->Format}");
+                        
+                        // 从硬件帧转换到软件帧
+                        if (output.TransferFromHardwareFrame(_hwFrame))
+                        {
+                            Logger.Debug?.PrintMsg(LogClass.FFmpeg, 
+                                $"Frame converted to software format. Output: Width={output.Frame->Width}, Height={output.Frame->Height}, " +
+                                $"Format={output.Frame->Format}, Linesize0={output.Frame->LineSize[0]}");
+                            return 0;
+                        }
+                        else
+                        {
+                            Logger.Error?.PrintMsg(LogClass.FFmpeg, "Failed to transfer frame from hardware");
+                            return -1;
+                        }
                     }
                     else if (receiveResult == FFmpegApi.AVERROR.EAGAIN)
                     {
@@ -322,7 +400,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             }
             catch (Exception ex)
             {
-                Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Exception in DecodeFrameMediaCodec: {ex.Message}\n{ex.StackTrace}");
+                Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Exception in DecodeFrameHardware: {ex.Message}\n{ex.StackTrace}");
                 return -1;
             }
         }
@@ -365,7 +443,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     
                     if (receiveResult == 0)
                     {
-                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Software decode completed successfully");
+                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, 
+                            $"Software decode completed successfully. Frame: Width={output.Frame->Width}, Height={output.Frame->Height}, " +
+                            $"Format={output.Frame->Format}, Linesize0={output.Frame->LineSize[0]}");
                         return 0;
                     }
                     else if (receiveResult == FFmpegApi.AVERROR.EAGAIN)
@@ -396,6 +476,22 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         {
             Logger.Info?.PrintMsg(LogClass.FFmpeg, "Disposing FFmpegContext");
             
+            if (_hwFrame != null)
+            {
+                FFmpegApi.av_frame_unref(_hwFrame);
+                FFmpegApi.av_free(_hwFrame);
+                _hwFrame = null;
+            }
+
+            if (_hwDeviceCtx != null)
+            {
+                fixed (AVBufferRef** ppRef = &_hwDeviceCtx)
+                {
+                    FFmpegApi.av_buffer_unref(ppRef);
+                }
+                _hwDeviceCtx = null;
+            }
+
             fixed (AVPacket** ppPacket = &_packet)
             {
                 FFmpegApi.av_packet_free(ppPacket);
