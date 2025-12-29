@@ -123,6 +123,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
             public const int EAGAIN = -11; // 资源暂时不可用
             public const int EOF = -541478725; // 文件结束
             public const int EINVAL = -22; // 无效参数
+            public const int INVALIDDATA = -1094995529; // 无效数据
         }
 
         [LibraryImport(AvUtilLibraryName)]
@@ -211,8 +212,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         // 格式转换API
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial IntPtr sws_getContext(
-            int srcW, int srcH, AVPixelFormat srcFormat,
-            int dstW, int dstH, AVPixelFormat dstFormat,
+            int srcW, int srcH, int srcFormat,
+            int dstW, int dstH, int dstFormat,
             int flags, IntPtr srcFilter, IntPtr dstFilter, double* param);
         
         [LibraryImport(AvUtilLibraryName)]
