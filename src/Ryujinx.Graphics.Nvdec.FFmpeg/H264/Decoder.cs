@@ -20,9 +20,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
         
         // 失败计数器，用于自动切换到软件解码
         private int _hardwareDecodeFailures = 0;
-        private const int MaxHardwareFailures = 5;
+        private const int MaxHardwareFailures = 3;
         private bool _forceSoftwareDecode = false;
         private bool _hardwareDecodeInitialized = false;
+        private bool _shouldReinitialize = false;
 
         public ISurface CreateSurface(int width, int height)
         {
@@ -44,12 +45,29 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
                 _hardwareDecodeFailures = 0;
                 _forceSoftwareDecode = false;
                 _hardwareDecodeInitialized = false;
+                _shouldReinitialize = false;
                 
                 // 重新创建上下文
                 _context = new FFmpegContext(AVCodecID.AV_CODEC_ID_H264);
                 
                 _oldOutputWidth = outSurf.RequestedWidth;
                 _oldOutputHeight = outSurf.RequestedHeight;
+            }
+            else if (_shouldReinitialize)
+            {
+                // 需要重新初始化解码器
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Reinitializing FFmpegContext due to previous failures");
+                
+                _context.Dispose();
+                
+                // 重置失败计数器
+                _hardwareDecodeFailures = 0;
+                _forceSoftwareDecode = false;
+                _hardwareDecodeInitialized = false;
+                _shouldReinitialize = false;
+                
+                // 重新创建上下文
+                _context = new FFmpegContext(AVCodecID.AV_CODEC_ID_H264);
             }
 
             // 检查是否应该强制使用软件解码
@@ -93,6 +111,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
                     if (_hardwareDecodeFailures == 1)
                     {
                         Logger.Info?.PrintMsg(LogClass.FFmpeg, "First hardware decode failure, trying to recover...");
+                        _shouldReinitialize = true;
                     }
                 }
                 else
@@ -115,9 +134,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
                 // 设置环境变量强制软件解码
                 Environment.SetEnvironmentVariable("RYUJINX_FORCE_SOFTWARE_DECODE", "1");
                 
-                // 重新创建上下文
-                _context.Dispose();
-                _context = new FFmpegContext(AVCodecID.AV_CODEC_ID_H264);
+                // 标记需要重新初始化
+                _shouldReinitialize = true;
             }
         }
 
