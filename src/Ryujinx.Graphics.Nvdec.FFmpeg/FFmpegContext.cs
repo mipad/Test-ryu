@@ -410,7 +410,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             AVBufferRef* deviceCtx = null;
             
             // 创建设备上下文
-            int result = FFmpegApi.av_hwdevice_ctx_create((void**)&deviceCtx, type, null, null, 0);
+            int result = FFmpegApi.av_hwdevice_ctx_create(&deviceCtx, type, null, null, 0); 
             if (result < 0)
             {
                 string typeName = "Unknown";
