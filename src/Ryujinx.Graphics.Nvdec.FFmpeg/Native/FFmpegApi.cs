@@ -112,7 +112,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
             AV_PIX_FMT_VDPAU = 81,
             AV_PIX_FMT_VIDEOTOOLBOX = 82,
             AV_PIX_FMT_MEDIACODEC = 165,
-            AV_PIX_FMT_VULKAN = 191,
+            AV_PIX_FMT_VULKAN = 166,
         }
 
         [LibraryImport(AvUtilLibraryName)]
@@ -187,5 +187,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial AVHWDeviceType av_hwdevice_iterate_types(AVHWDeviceType prev);
+        
+        // 新的解码API（FFmpeg 4.0+）
+        [LibraryImport(AvCodecLibraryName)]
+        internal static unsafe partial int avcodec_send_packet(AVCodecContext* avctx, AVPacket* avpkt);
+        
+        [LibraryImport(AvCodecLibraryName)]
+        internal static unsafe partial int avcodec_receive_frame(AVCodecContext* avctx, AVFrame* frame);
     }
 }
