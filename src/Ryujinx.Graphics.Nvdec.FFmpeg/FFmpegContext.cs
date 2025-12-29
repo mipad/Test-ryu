@@ -3,6 +3,7 @@ using Ryujinx.Graphics.Nvdec.FFmpeg.Native;
 using System;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg
 {
@@ -24,19 +25,25 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private bool _hardwareDecoderInitialized;
         private bool _isMediaCodecDecoder;
         private bool _useNewApi;
+        private IntPtr _swsContext;
+        private bool _forceSoftwareDecode;
+        private object _decodeLock = new object();
 
         // Android硬件解码器名称映射
         private static readonly Dictionary<AVCodecID, string[]> AndroidHardwareDecoders = new()
         {
-            { AVCodecID.AV_CODEC_ID_H264, new[] { "h264_mediacodec", "h264_vulkan" } },
-            { AVCodecID.AV_CODEC_ID_VP8, new[] { "vp8_mediacodec", "vp8_vulkan" } },
+            { AVCodecID.AV_CODEC_ID_H264, new[] { "h264_mediacodec" } },
+            { AVCodecID.AV_CODEC_ID_VP8, new[] { "vp8_mediacodec" } },
         };
 
         public FFmpegContext(AVCodecID codecId)
         {
             Logger.Info?.PrintMsg(LogClass.FFmpeg, $"FFmpegContext constructor called for codec: {codecId}");
             
-            _useHardwareDecoding = ShouldUseHardwareDecoding(codecId);
+            // 检查是否强制使用软件解码
+            _forceSoftwareDecode = Environment.GetEnvironmentVariable("RYUJINX_FORCE_SOFTWARE_DECODE") == "1";
+            
+            _useHardwareDecoding = !_forceSoftwareDecode && ShouldUseHardwareDecoding(codecId);
             Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Hardware decoding enabled: {_useHardwareDecoding}");
             
             // 首先尝试查找硬件解码器
@@ -54,8 +61,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             }
             else
             {
-                _isMediaCodecDecoder = Marshal.PtrToStringUTF8((IntPtr)_codec->Name)?.Contains("mediacodec") ?? false;
-                Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Using hardware decoder: {Marshal.PtrToStringUTF8((IntPtr)_codec->Name)}, IsMediaCodec: {_isMediaCodecDecoder}");
+                string codecName = Marshal.PtrToStringUTF8((IntPtr)_codec->Name) ?? "unknown";
+                _isMediaCodecDecoder = codecName.Contains("mediacodec");
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Using hardware decoder: {codecName}, IsMediaCodec: {_isMediaCodecDecoder}");
             }
 
             _context = FFmpegApi.avcodec_alloc_context3(_codec);
@@ -71,14 +79,22 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             
             if (_isMediaCodecDecoder)
             {
-                // MediaCodec解码器通常需要零延迟模式
+                // MediaCodec解码器优化设置
                 _context->ThreadCount = 1; // MediaCodec最好使用单线程
                 _context->ThreadType = 0; // 禁用多线程
                 _context->Flags |= 0x0001; // CODEC_FLAG_LOW_DELAY
-                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Set MediaCodec decoder options: single thread, low delay mode");
+                _context->Flags2 |= 0x00000100; // AV_CODEC_FLAG2_FAST (开启快速解码模式)
+                
+                // 设置MediaCodec特定的参数
+                _context->RefcountedFrames = 1; // 使用引用计数的帧
+                _context->SkipFrame = 0; // AVDISCARD_NONE，不跳过任何帧
+                _context->SkipIdct = 0; // AVDISCARD_NONE
+                _context->SkipLoopFilter = 0; // AVDISCARD_NONE
+                
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Set MediaCodec decoder options: single thread, low delay mode, fast decoding");
             }
 
-            // 如果是Vulkan解码器，尝试初始化硬件设备上下文
+            // 尝试初始化硬件设备上下文（主要用于非MediaCodec的硬件解码器）
             if (_useHardwareDecoding && !_isMediaCodecDecoder)
             {
                 Logger.Info?.PrintMsg(LogClass.FFmpeg, "Attempting to initialize Vulkan hardware decoder context...");
@@ -94,6 +110,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             }
             else if (_isMediaCodecDecoder)
             {
+                // MediaCodec不需要额外的硬件设备上下文
                 _hardwareDecoderInitialized = true;
                 _hwDeviceType = FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_MEDIACODEC;
                 Logger.Info?.PrintMsg(LogClass.FFmpeg, "Using MediaCodec hardware decoder (no additional context needed)");
@@ -115,10 +132,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return;
             }
 
-            // 如果需要硬件解码，创建硬件帧和软件帧（仅Vulkan需要）
-            if (_hardwareDecoderInitialized && !_isMediaCodecDecoder && _context->HwDeviceCtx != null)
+            // 如果需要硬件解码，创建硬件帧和软件帧（仅非MediaCodec需要）
+            if (_hardwareDecoderInitialized && !_isMediaCodecDecoder)
             {
-                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Creating hardware and software frames for Vulkan decoder...");
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Creating hardware and software frames for hardware decoder...");
                 _hwFrame = FFmpegApi.av_frame_alloc();
                 _swFrame = FFmpegApi.av_frame_alloc();
                 
@@ -130,6 +147,15 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 else
                 {
                     Logger.Info?.PrintMsg(LogClass.FFmpeg, "Hardware and software frames allocated successfully");
+                }
+            }
+            else if (_isMediaCodecDecoder)
+            {
+                // 为MediaCodec创建软件帧用于可能的格式转换
+                _swFrame = FFmpegApi.av_frame_alloc();
+                if (_swFrame == null)
+                {
+                    Logger.Warning?.PrintMsg(LogClass.FFmpeg, "Failed to allocate software frame for MediaCodec");
                 }
             }
 
@@ -407,24 +433,27 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
         public int DecodeFrame(Surface output, ReadOnlySpan<byte> bitstream)
         {
-            Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"DecodeFrame called. Bitstream size: {bitstream.Length}, Hardware decoder initialized: {_hardwareDecoderInitialized}, IsMediaCodec: {_isMediaCodecDecoder}, UseNewApi: {_useNewApi}");
-            
-            if (_hardwareDecoderInitialized)
+            lock (_decodeLock) // 防止多线程并发调用
             {
-                if (_isMediaCodecDecoder)
+                Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"DecodeFrame called. Bitstream size: {bitstream.Length}, Hardware decoder initialized: {_hardwareDecoderInitialized}, IsMediaCodec: {_isMediaCodecDecoder}, UseNewApi: {_useNewApi}");
+                
+                if (_hardwareDecoderInitialized && !_forceSoftwareDecode)
                 {
-                    Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Using MediaCodec hardware decoder");
-                    return DecodeFrameMediaCodec(output, bitstream);
+                    if (_isMediaCodecDecoder)
+                    {
+                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Using MediaCodec hardware decoder");
+                        return DecodeFrameMediaCodec(output, bitstream);
+                    }
+                    else if (_context->HwDeviceCtx != null)
+                    {
+                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Using Vulkan hardware decoder");
+                        return DecodeFrameHardware(output, bitstream);
+                    }
                 }
-                else if (_context->HwDeviceCtx != null)
-                {
-                    Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Using Vulkan hardware decoder");
-                    return DecodeFrameHardware(output, bitstream);
-                }
+                
+                Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Using software decoding path");
+                return DecodeFrameSoftware(output, bitstream);
             }
-            
-            Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Using software decoding path");
-            return DecodeFrameSoftware(output, bitstream);
         }
         
         private int DecodeFrameMediaCodec(Surface output, ReadOnlySpan<byte> bitstream)
@@ -438,6 +467,13 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             }
             
             FFmpegApi.av_frame_unref(output.Frame);
+            
+            // 确保输出帧有缓冲区
+            if (!output.AllocateBuffer())
+            {
+                Logger.Error?.PrintMsg(LogClass.FFmpeg, "Failed to allocate output frame buffer");
+                return -1;
+            }
 
             try
             {
@@ -453,27 +489,63 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                         int sendResult = FFmpegApi.avcodec_send_packet(_context, _packet);
                         Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"avcodec_send_packet result: {sendResult}");
                         
-                        if (sendResult < 0 && sendResult != -11) // -11 is EAGAIN
+                        // 清空packet
+                        _packet->Data = null;
+                        _packet->Size = 0;
+                        FFmpegApi.av_packet_unref(_packet);
+                        
+                        if (sendResult < 0)
                         {
-                            Logger.Error?.PrintMsg(LogClass.FFmpeg, $"avcodec_send_packet failed: {sendResult}");
-                            FFmpegApi.av_packet_unref(_packet);
-                            return sendResult;
+                            if (sendResult == FFmpegApi.AVERROR.EAGAIN)
+                            {
+                                Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Decoder needs more packets (EAGAIN)");
+                                return sendResult;
+                            }
+                            else if (sendResult == FFmpegApi.AVERROR.EOF)
+                            {
+                                Logger.Debug?.PrintMsg(LogClass.FFmpeg, "End of stream (EOF)");
+                                return 0;
+                            }
+                            else
+                            {
+                                Logger.Error?.PrintMsg(LogClass.FFmpeg, $"avcodec_send_packet failed: {sendResult}");
+                                return sendResult;
+                            }
                         }
                         
+                        // 尝试接收帧
                         int receiveResult = FFmpegApi.avcodec_receive_frame(_context, output.Frame);
                         Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"avcodec_receive_frame result: {receiveResult}");
                         
-                        FFmpegApi.av_packet_unref(_packet);
-                        
                         if (receiveResult == 0)
                         {
-                            Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"MediaCodec decode completed successfully. Frame: Width={output.Frame->Width}, Height={output.Frame->Height}, Format={output.Frame->Format}");
+                            // 解码成功，检查格式
+                            Logger.Debug?.PrintMsg(LogClass.FFmpeg, 
+                                $"MediaCodec decode successful. Frame: Width={output.Frame->Width}, Height={output.Frame->Height}, " +
+                                $"Format={output.Frame->Format}, Linesize0={output.Frame->LineSize[0]}");
+                            
+                            // 检查并转换格式
+                            if (output.Frame->Format != (int)FFmpegApi.AVPixelFormat.AV_PIX_FMT_YUV420P)
+                            {
+                                Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Converting frame format {output.Frame->Format} to YUV420P");
+                                if (!ConvertFrameFormat(output))
+                                {
+                                    Logger.Warning?.PrintMsg(LogClass.FFmpeg, "Frame format conversion failed");
+                                    return -1;
+                                }
+                            }
+                            
                             return 0;
                         }
-                        else if (receiveResult == -11) // EAGAIN
+                        else if (receiveResult == FFmpegApi.AVERROR.EAGAIN)
                         {
                             Logger.Debug?.PrintMsg(LogClass.FFmpeg, "No frame available yet (EAGAIN)");
                             return -1;
+                        }
+                        else if (receiveResult == FFmpegApi.AVERROR.EOF)
+                        {
+                            Logger.Debug?.PrintMsg(LogClass.FFmpeg, "End of stream (EOF)");
+                            return 0;
                         }
                         else
                         {
@@ -490,35 +562,58 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                         result = _decodeFrame(_context, output.Frame, &gotFrame, _packet);
                         Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Legacy decode result: {result}, Got frame: {gotFrame}");
                         
-                        if (gotFrame == 0)
+                        // 清空packet
+                        _packet->Data = null;
+                        _packet->Size = 0;
+                        FFmpegApi.av_packet_unref(_packet);
+
+                        if (gotFrame == 1)
                         {
+                            Logger.Debug?.PrintMsg(LogClass.FFmpeg, 
+                                $"MediaCodec decode completed successfully. Frame: Width={output.Frame->Width}, Height={output.Frame->Height}, " +
+                                $"Format={output.Frame->Format}");
+                            
+                            // 检查并转换格式
+                            if (output.Frame->Format != (int)FFmpegApi.AVPixelFormat.AV_PIX_FMT_YUV420P)
+                            {
+                                Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Converting frame format {output.Frame->Format} to YUV420P");
+                                if (!ConvertFrameFormat(output))
+                                {
+                                    Logger.Warning?.PrintMsg(LogClass.FFmpeg, "Frame format conversion failed");
+                                    return -1;
+                                }
+                            }
+                            
+                            return 0;
+                        }
+                        else
+                        {
+                            // 尝试延迟帧
                             Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Frame not delivered, trying delayed frame...");
-                            _packet->Data = null;
-                            _packet->Size = 0;
                             result = _decodeFrame(_context, output.Frame, &gotFrame, _packet);
                             
                             Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Delayed frame decode result: {result}, Got frame: {gotFrame}");
                             
-                            _context->HasBFrames = 0;
+                            if (gotFrame == 0)
+                            {
+                                Logger.Warning?.PrintMsg(LogClass.FFmpeg, "No frame decoded from MediaCodec");
+                                FFmpegApi.av_frame_unref(output.Frame);
+                                return -1;
+                            }
+                            
+                            // 检查并转换格式
+                            if (output.Frame->Format != (int)FFmpegApi.AVPixelFormat.AV_PIX_FMT_YUV420P)
+                            {
+                                Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Converting frame format {output.Frame->Format} to YUV420P");
+                                if (!ConvertFrameFormat(output))
+                                {
+                                    Logger.Warning?.PrintMsg(LogClass.FFmpeg, "Frame format conversion failed");
+                                    return -1;
+                                }
+                            }
+                            
+                            return 0;
                         }
-
-                        FFmpegApi.av_packet_unref(_packet);
-
-                        if (gotFrame == 0)
-                        {
-                            FFmpegApi.av_frame_unref(output.Frame);
-                            Logger.Warning?.PrintMsg(LogClass.FFmpeg, "No frame decoded");
-                            return -1;
-                        }
-
-                        if (result < 0)
-                        {
-                            Logger.Warning?.PrintMsg(LogClass.FFmpeg, $"Decode error: {result}");
-                            return result;
-                        }
-
-                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"MediaCodec decode completed successfully. Frame: Width={output.Frame->Width}, Height={output.Frame->Height}, Format={output.Frame->Format}");
-                        return 0;
                     }
                 }
             }
@@ -527,6 +622,66 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Exception in DecodeFrameMediaCodec: {ex.Message}\n{ex.StackTrace}");
                 return -1;
             }
+        }
+        
+        private unsafe bool ConvertFrameFormat(Surface output)
+        {
+            if (_swsContext == IntPtr.Zero)
+            {
+                // 创建格式转换上下文
+                _swsContext = FFmpegApi.sws_getContext(
+                    output.Width, output.Height, (FFmpegApi.AVPixelFormat)output.PixelFormat,
+                    output.Width, output.Height, FFmpegApi.AVPixelFormat.AV_PIX_FMT_YUV420P,
+                    2, // SWS_BILINEAR
+                    IntPtr.Zero, IntPtr.Zero, null);
+                
+                if (_swsContext == IntPtr.Zero)
+                {
+                    Logger.Error?.PrintMsg(LogClass.FFmpeg, "Failed to create SWS context for format conversion");
+                    return false;
+                }
+            }
+            
+            // 创建临时帧用于存储转换结果
+            if (_swFrame == null)
+            {
+                _swFrame = FFmpegApi.av_frame_alloc();
+                if (_swFrame == null)
+                {
+                    Logger.Error?.PrintMsg(LogClass.FFmpeg, "Failed to allocate software frame for conversion");
+                    return false;
+                }
+            }
+            
+            FFmpegApi.av_frame_unref(_swFrame);
+            _swFrame->Format = (int)FFmpegApi.AVPixelFormat.AV_PIX_FMT_YUV420P;
+            _swFrame->Width = output.Width;
+            _swFrame->Height = output.Height;
+            
+            if (FFmpegApi.av_frame_get_buffer(_swFrame, 32) < 0)
+            {
+                Logger.Error?.PrintMsg(LogClass.FFmpeg, "Failed to allocate software frame buffer");
+                return false;
+            }
+            
+            // 执行格式转换
+            int result = FFmpegApi.sws_scale(
+                _swsContext,
+                output.Frame->Data, output.Frame->LineSize,
+                0, output.Height,
+                _swFrame->Data, _swFrame->LineSize);
+            
+            if (result <= 0)
+            {
+                Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Failed to convert frame format: {result}");
+                return false;
+            }
+            
+            // 复制转换后的数据回输出帧
+            CopyFrameData(_swFrame, output.Frame);
+            
+            Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Frame format converted successfully: {output.PixelFormat} -> YUV420P");
+            return true;
         }
         
         private int DecodeFrameHardware(Surface output, ReadOnlySpan<byte> bitstream)
@@ -597,6 +752,13 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             Logger.Debug?.PrintMsg(LogClass.FFmpeg, "DecodeFrameSoftware called");
             
             FFmpegApi.av_frame_unref(output.Frame);
+            
+            // 确保输出帧有缓冲区
+            if (!output.AllocateBuffer())
+            {
+                Logger.Error?.PrintMsg(LogClass.FFmpeg, "Failed to allocate output frame buffer");
+                return -1;
+            }
 
             int result;
             int gotFrame;
@@ -657,6 +819,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         public void Dispose()
         {
             Logger.Info?.PrintMsg(LogClass.FFmpeg, "Disposing FFmpegContext");
+            
+            if (_swsContext != IntPtr.Zero)
+            {
+                FFmpegApi.sws_freeContext(_swsContext);
+                _swsContext = IntPtr.Zero;
+            }
             
             if (_hwFrame != null)
             {
