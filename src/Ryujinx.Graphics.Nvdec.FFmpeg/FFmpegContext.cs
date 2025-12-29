@@ -67,6 +67,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             }
 
             Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Allocated codec context: 0x{(ulong)_context:X}");
+            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Codec context fields: ThreadCount={_context->ThreadCount}, ThreadType={_context->ThreadType}, PixFmt={_context->PixFmt}");
 
             // 配置硬件解码
             if (_useHardwareDecoding && _isMediaCodecDecoder)
@@ -98,17 +99,52 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             }
 
             Logger.Info?.PrintMsg(LogClass.FFmpeg, "Opening codec...");
+            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Codec context before open: HwDeviceCtx=0x{(ulong)_context->HwDeviceCtx:X}, PixFmt={_context->PixFmt}");
             
             int openResult = FFmpegApi.avcodec_open2(_context, _codec, null);
             Logger.Info?.PrintMsg(LogClass.FFmpeg, $"avcodec_open2 result: {openResult}");
             
             if (openResult != 0)
             {
-                Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Codec couldn't be opened. Error code: {openResult}");
-                return;
+                // 获取详细的错误信息
+                byte* errorBuffer = stackalloc byte[256];
+                if (FFmpegApi.av_strerror(openResult, errorBuffer, 256) == 0)
+                {
+                    string errorMsg = Marshal.PtrToStringUTF8((IntPtr)errorBuffer) ?? "Unknown error";
+                    Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Codec couldn't be opened. Error: {errorMsg} (code: {openResult})");
+                }
+                else
+                {
+                    Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Codec couldn't be opened. Error code: {openResult}");
+                }
+                
+                // 尝试软件解码作为回退
+                Logger.Warning?.PrintMsg(LogClass.FFmpeg, "Hardware decoder failed to open, trying software decoder...");
+                _useHardwareDecoding = false;
+                _isMediaCodecDecoder = false;
+                
+                // 清理硬件设备上下文
+                if (_context->HwDeviceCtx != null)
+                {
+                    _context->HwDeviceCtx = null;
+                }
+                
+                // 重置像素格式
+                _context->PixFmt = (int)FFmpegApi.AVPixelFormat.AV_PIX_FMT_YUV420P;
+                
+                // 重新打开编解码器
+                openResult = FFmpegApi.avcodec_open2(_context, _codec, null);
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Software avcodec_open2 result: {openResult}");
+                
+                if (openResult != 0)
+                {
+                    Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Software decoder also failed to open. Error code: {openResult}");
+                    return;
+                }
             }
             
             Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Codec opened successfully. Pixel format: {_context->PixFmt}, Hardware device context: 0x{(ulong)_context->HwDeviceCtx:X}");
+            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Codec context after open: ThreadCount={_context->ThreadCount}, ThreadType={_context->ThreadType}");
 
             _packet = FFmpegApi.av_packet_alloc();
             if (_packet == null)
@@ -119,7 +155,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             
             Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Allocated packet: 0x{(ulong)_packet:X}");
 
-            // 分配硬件帧
+            // 分配硬件帧（仅当硬件解码启用时）
             if (_useHardwareDecoding && _isMediaCodecDecoder)
             {
                 _hwFrame = FFmpegApi.av_frame_alloc();
@@ -154,7 +190,17 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 
                 if (result < 0)
                 {
-                    Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Failed to create hardware device context: {result}");
+                    // 获取详细的错误信息
+                    byte* errorBuffer = stackalloc byte[256];
+                    if (FFmpegApi.av_strerror(result, errorBuffer, 256) == 0)
+                    {
+                        string errorMsg = Marshal.PtrToStringUTF8((IntPtr)errorBuffer) ?? "Unknown error";
+                        Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Failed to create hardware device context: {errorMsg} (code: {result})");
+                    }
+                    else
+                    {
+                        Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Failed to create hardware device context: {result}");
+                    }
                     _useHardwareDecoding = false;
                     return;
                 }
@@ -386,6 +432,16 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                         Logger.Error?.PrintMsg(LogClass.FFmpeg, "EINVAL: Invalid argument");
                     else if (sendResult == FFmpegApi.AVERROR.INVALIDDATA)
                         Logger.Error?.PrintMsg(LogClass.FFmpeg, "INVALIDDATA: Invalid data found");
+                    else if (sendResult < 0)
+                    {
+                        // 获取详细的错误信息
+                        byte* errorBuffer = stackalloc byte[256];
+                        if (FFmpegApi.av_strerror(sendResult, errorBuffer, 256) == 0)
+                        {
+                            string errorMsg = Marshal.PtrToStringUTF8((IntPtr)errorBuffer) ?? "Unknown error";
+                            Logger.Error?.PrintMsg(LogClass.FFmpeg, $"avcodec_send_packet failed: {errorMsg} (code: {sendResult})");
+                        }
+                    }
                     
                     _packet->Data = null;
                     _packet->Size = 0;
@@ -409,6 +465,16 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                         Logger.Error?.PrintMsg(LogClass.FFmpeg, "EINVAL: Invalid argument");
                     else if (receiveResult == FFmpegApi.AVERROR.INVALIDDATA)
                         Logger.Error?.PrintMsg(LogClass.FFmpeg, "INVALIDDATA: Invalid data found");
+                    else if (receiveResult < 0)
+                    {
+                        // 获取详细的错误信息
+                        byte* errorBuffer = stackalloc byte[256];
+                        if (FFmpegApi.av_strerror(receiveResult, errorBuffer, 256) == 0)
+                        {
+                            string errorMsg = Marshal.PtrToStringUTF8((IntPtr)errorBuffer) ?? "Unknown error";
+                            Logger.Error?.PrintMsg(LogClass.FFmpeg, $"avcodec_receive_frame failed: {errorMsg} (code: {receiveResult})");
+                        }
+                    }
                     
                     if (receiveResult == 0)
                     {
@@ -478,6 +544,17 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     int sendResult = FFmpegApi.avcodec_send_packet(_context, _packet);
                     Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"avcodec_send_packet result: {sendResult}");
                     
+                    // 获取详细的错误信息
+                    if (sendResult < 0 && sendResult != FFmpegApi.AVERROR.EAGAIN && sendResult != FFmpegApi.AVERROR.EOF)
+                    {
+                        byte* errorBuffer = stackalloc byte[256];
+                        if (FFmpegApi.av_strerror(sendResult, errorBuffer, 256) == 0)
+                        {
+                            string errorMsg = Marshal.PtrToStringUTF8((IntPtr)errorBuffer) ?? "Unknown error";
+                            Logger.Error?.PrintMsg(LogClass.FFmpeg, $"avcodec_send_packet failed: {errorMsg} (code: {sendResult})");
+                        }
+                    }
+                    
                     _packet->Data = null;
                     _packet->Size = 0;
                     FFmpegApi.av_packet_unref(_packet);
@@ -490,6 +567,17 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     
                     int receiveResult = FFmpegApi.avcodec_receive_frame(_context, output.Frame);
                     Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"avcodec_receive_frame result: {receiveResult}");
+                    
+                    // 获取详细的错误信息
+                    if (receiveResult < 0 && receiveResult != FFmpegApi.AVERROR.EAGAIN && receiveResult != FFmpegApi.AVERROR.EOF)
+                    {
+                        byte* errorBuffer = stackalloc byte[256];
+                        if (FFmpegApi.av_strerror(receiveResult, errorBuffer, 256) == 0)
+                        {
+                            string errorMsg = Marshal.PtrToStringUTF8((IntPtr)errorBuffer) ?? "Unknown error";
+                            Logger.Error?.PrintMsg(LogClass.FFmpeg, $"avcodec_receive_frame failed: {errorMsg} (code: {receiveResult})");
+                        }
+                    }
                     
                     if (receiveResult == 0)
                     {
