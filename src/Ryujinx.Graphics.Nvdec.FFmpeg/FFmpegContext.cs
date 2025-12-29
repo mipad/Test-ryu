@@ -91,7 +91,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
             // 设置编解码器选项（参考yuzu）
             // 设置低延迟模式
-            FFmpegApi.av_opt_set(_context->PrivData, "tune", "zerolatency", 0);
+            FFmpegApi.av_opt_set((void*)_context->PrivData, "tune", "zerolatency", 0);
             
             // 设置线程数为0（自动选择）
             _context->ThreadCount = 0;
