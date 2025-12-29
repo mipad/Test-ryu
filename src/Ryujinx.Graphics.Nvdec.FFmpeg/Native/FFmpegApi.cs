@@ -9,6 +9,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
     {
         public const string AvCodecLibraryName = "avcodec";
         public const string AvUtilLibraryName = "avutil";
+        public const string AvDeviceLibraryName = "avdevice";
+        public const string SwScaleLibraryName = "swscale";
 
         private static readonly Dictionary<string, (int, int)> _librariesWhitelist = new()
         {
@@ -39,7 +41,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
                 throw new NotImplementedException($"Unsupported OS for FFmpeg: {RuntimeInformation.RuntimeIdentifier}");
             }
         }
-
 
         private static bool TryLoadWhitelistedLibrary(string libraryName, Assembly assembly, DllImportSearchPath? searchPath, out IntPtr handle)
         {
@@ -72,6 +73,16 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
                 else if (name == AvCodecLibraryName && TryLoadWhitelistedLibrary(AvCodecLibraryName, assembly, path, out handle))
                 {
                     return handle;
+                }
+                else if (name == AvDeviceLibraryName)
+                {
+                    // 尝试加载avdevice
+                    return IntPtr.Zero;
+                }
+                else if (name == SwScaleLibraryName)
+                {
+                    // 尝试加载swscale
+                    return IntPtr.Zero;
                 }
 
                 return IntPtr.Zero;
@@ -130,6 +141,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         internal static unsafe partial AVFrame* av_frame_alloc();
 
         [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial void av_frame_free(AVFrame** frame);
+
+        [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial void av_frame_unref(AVFrame* frame);
 
         [LibraryImport(AvUtilLibraryName)]
@@ -185,6 +199,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         internal static unsafe partial AVBufferRef* av_hwdevice_ctx_alloc(AVHWDeviceType type);
         
         [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial int av_hwdevice_ctx_create(AVBufferRef** device_ctx, AVHWDeviceType type, [MarshalAs(UnmanagedType.LPUTF8Str)] string device, void* opts, int flags);
+        
+        [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial int av_hwdevice_ctx_init(AVBufferRef* @ref);
         
         [LibraryImport(AvUtilLibraryName)]
@@ -201,6 +218,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial AVHWDeviceType av_hwdevice_iterate_types(AVHWDeviceType prev);
+        
+        [LibraryImport(AvUtilLibraryName)]
+        [return: MarshalAs(UnmanagedType.LPUTF8Str)]
+        internal static unsafe partial string av_hwdevice_get_type_name(AVHWDeviceType type);
         
         // 新的解码API（FFmpeg 4.0+）
         [LibraryImport(AvCodecLibraryName)]
@@ -224,5 +245,15 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial void sws_freeContext(IntPtr swsContext);
+        
+        // 私有数据设置API
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial int av_opt_set(void* obj, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, [MarshalAs(UnmanagedType.LPUTF8Str)] string val, int search_flags);
+        
+        // 获取编解码器能力标志
+        internal const int AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX = 0x0001;
+        internal const int AV_CODEC_HW_CONFIG_METHOD_HW_FRAMES_CTX = 0x0002;
+        internal const int AV_CODEC_HW_CONFIG_METHOD_INTERNAL = 0x0004;
+        internal const int AV_CODEC_HW_CONFIG_METHOD_AD_HOC = 0x0008;
     }
 }
