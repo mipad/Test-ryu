@@ -13,7 +13,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private readonly AVCodec* _codec;
         private readonly AVPacket* _packet;
         private readonly AVCodecContext* _context;
-        private AVBufferRef* _hwDeviceCtx;
+        private IntPtr _hwDeviceCtx;
         private bool _useHardwareDecoding;
         private bool _isMediaCodecDecoder;
         private bool _forceSoftwareDecode;
@@ -129,7 +129,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 Logger.Info?.PrintMsg(LogClass.FFmpeg, "Configuring MediaCodec hardware decoding");
                 
                 // 创建硬件设备上下文
-                AVBufferRef* deviceCtx = null;
+                IntPtr deviceCtx = IntPtr.Zero;
                 int result = FFmpegApi.av_hwdevice_ctx_create(&deviceCtx, 
                     FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_MEDIACODEC, 
                     null, null, 0);
@@ -144,7 +144,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 _hwDeviceCtx = deviceCtx;
                 
                 // 设置硬件设备上下文到编解码器上下文
-                _context->hw_device_ctx = (IntPtr)FFmpegApi.av_buffer_ref(_hwDeviceCtx);
+                _context->hw_device_ctx = FFmpegApi.av_buffer_ref(_hwDeviceCtx);
                 
                 if (_context->hw_device_ctx == IntPtr.Zero)
                 {
@@ -156,16 +156,22 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 // 查找硬件配置
                 for (int i = 0; ; i++)
                 {
-                    var hwConfig = FFmpegApi.avcodec_get_hw_config(_codec, i);
-                    if (hwConfig == null)
+                    var hwConfigPtr = FFmpegApi.avcodec_get_hw_config(_codec, i);
+                    if (hwConfigPtr == IntPtr.Zero)
                         break;
                     
-                    if ((hwConfig->Methods & FFmpegApi.AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) != 0 &&
-                        hwConfig->DeviceType == FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_MEDIACODEC)
+                    // 注意：这里需要将 IntPtr 转换为 AVCodecHWConfig* 来访问字段
+                    // 但由于 AVCodecHWConfig 结构体已存在，我们可以使用 unsafe 转换
+                    unsafe
                     {
-                        _context->PixFmt = hwConfig->PixFmt;
-                        Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Found hardware config: PixelFormat={hwConfig->PixFmt}");
-                        break;
+                        var hwConfig = (AVCodecHWConfig*)hwConfigPtr;
+                        if ((hwConfig->Methods & FFmpegApi.AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) != 0 &&
+                            hwConfig->DeviceType == FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_MEDIACODEC)
+                        {
+                            _context->PixFmt = (int)hwConfig->PixFmt;
+                            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Found hardware config: PixelFormat={hwConfig->PixFmt}");
+                            break;
+                        }
                     }
                 }
                 
@@ -485,13 +491,13 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 _hwFrame = null;
             }
 
-            if (_hwDeviceCtx != null)
+            if (_hwDeviceCtx != IntPtr.Zero)
             {
-                fixed (AVBufferRef** ppRef = &_hwDeviceCtx)
+                fixed (IntPtr* ppRef = &_hwDeviceCtx)
                 {
                     FFmpegApi.av_buffer_unref(ppRef);
                 }
-                _hwDeviceCtx = null;
+                _hwDeviceCtx = IntPtr.Zero;
             }
 
             fixed (AVPacket** ppPacket = &_packet)
