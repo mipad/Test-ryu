@@ -62,3 +62,4 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         }
     }
 }
+
