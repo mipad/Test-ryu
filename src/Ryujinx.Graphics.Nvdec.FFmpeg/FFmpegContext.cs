@@ -23,12 +23,13 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private FFmpegApi.AVHWDeviceType _hwDeviceType;
         private bool _hardwareDecoderInitialized;
         private bool _isMediaCodecDecoder;
+        private bool _useNewApi;
 
         // Android硬件解码器名称映射
         private static readonly Dictionary<AVCodecID, string[]> AndroidHardwareDecoders = new()
         {
-            { AVCodecID.AV_CODEC_ID_H264, new[] { "h264_mediacodec" } },
-            { AVCodecID.AV_CODEC_ID_VP8, new[] { "vp8_mediacodec" } },
+            { AVCodecID.AV_CODEC_ID_H264, new[] { "h264_mediacodec", "h264_vulkan" } },
+            { AVCodecID.AV_CODEC_ID_VP8, new[] { "vp8_mediacodec", "vp8_vulkan" } },
         };
 
         public FFmpegContext(AVCodecID codecId)
@@ -53,8 +54,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             }
             else
             {
-                _isMediaCodecDecoder = true;
-                Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Using hardware decoder: {Marshal.PtrToStringUTF8((IntPtr)_codec->Name)}");
+                _isMediaCodecDecoder = Marshal.PtrToStringUTF8((IntPtr)_codec->Name)?.Contains("mediacodec") ?? false;
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Using hardware decoder: {Marshal.PtrToStringUTF8((IntPtr)_codec->Name)}, IsMediaCodec: {_isMediaCodecDecoder}");
             }
 
             _context = FFmpegApi.avcodec_alloc_context3(_codec);
@@ -64,19 +65,31 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return;
             }
 
-            // 如果是MediaCodec解码器，不需要额外的硬件设备上下文初始化
-            // 否则尝试初始化硬件解码器（如Vulkan）
+            // 设置解码器选项
+            _context->ThreadCount = 0; // 自动选择线程数
+            _context->ThreadType = 2; // FF_THREAD_FRAME
+            
+            if (_isMediaCodecDecoder)
+            {
+                // MediaCodec解码器通常需要零延迟模式
+                _context->ThreadCount = 1; // MediaCodec最好使用单线程
+                _context->ThreadType = 0; // 禁用多线程
+                _context->Flags |= 0x0001; // CODEC_FLAG_LOW_DELAY
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Set MediaCodec decoder options: single thread, low delay mode");
+            }
+
+            // 如果是Vulkan解码器，尝试初始化硬件设备上下文
             if (_useHardwareDecoding && !_isMediaCodecDecoder)
             {
-                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Attempting to initialize hardware decoder context...");
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Attempting to initialize Vulkan hardware decoder context...");
                 _hardwareDecoderInitialized = TryInitializeHardwareDecoder();
                 if (_hardwareDecoderInitialized)
                 {
-                    Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Hardware decoder context initialized successfully: {_hwDeviceType}");
+                    Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Vulkan hardware decoder context initialized successfully: {_hwDeviceType}");
                 }
                 else
                 {
-                    Logger.Info?.PrintMsg(LogClass.FFmpeg, "Hardware decoder context initialization failed");
+                    Logger.Info?.PrintMsg(LogClass.FFmpeg, "Vulkan hardware decoder context initialization failed");
                 }
             }
             else if (_isMediaCodecDecoder)
@@ -86,13 +99,14 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 Logger.Info?.PrintMsg(LogClass.FFmpeg, "Using MediaCodec hardware decoder (no additional context needed)");
             }
 
+            Logger.Info?.PrintMsg(LogClass.FFmpeg, "Opening codec...");
             if (FFmpegApi.avcodec_open2(_context, _codec, null) != 0)
             {
                 Logger.Error?.PrintMsg(LogClass.FFmpeg, "Codec couldn't be opened.");
                 return;
             }
             
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Codec opened successfully. Pixel format: {_context->PixFmt}");
+            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Codec opened successfully. Pixel format: {_context->PixFmt}, Width: {_context->Width}, Height: {_context->Height}");
 
             _packet = FFmpegApi.av_packet_alloc();
             if (_packet == null)
@@ -101,7 +115,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return;
             }
 
-            // 如果需要硬件解码，创建硬件帧和软件帧
+            // 如果需要硬件解码，创建硬件帧和软件帧（仅Vulkan需要）
             if (_hardwareDecoderInitialized && !_isMediaCodecDecoder && _context->HwDeviceCtx != null)
             {
                 Logger.Info?.PrintMsg(LogClass.FFmpeg, "Creating hardware and software frames for Vulkan decoder...");
@@ -125,21 +139,35 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             
             Logger.Info?.PrintMsg(LogClass.FFmpeg, $"FFmpeg version: {avCodecMajorVersion}.{avCodecMinorVersion}");
 
-            if (avCodecMajorVersion > 59 || (avCodecMajorVersion == 59 && avCodecMinorVersion > 24))
+            // 检查是否支持新的API（FFmpeg 4.0+）
+            _useNewApi = avCodecMajorVersion >= 58; // FFmpeg 4.0 (58.x) 引入了新API
+            
+            if (_useNewApi)
             {
-                Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Using FFmpeg >= 59.24 API");
-                _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodec<AVCodec>*)_codec)->CodecCallback);
-            }
-            else if (avCodecMajorVersion == 59)
-            {
-                Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Using FFmpeg 59.x API");
-                _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec501>*)_codec)->Decode);
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Using new FFmpeg API (avcodec_send_packet/avcodec_receive_frame)");
             }
             else
             {
-                Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Using FFmpeg <= 58.x API");
-                _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec>*)_codec)->Decode);
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Using legacy FFmpeg API");
+                
+                if (avCodecMajorVersion > 59 || (avCodecMajorVersion == 59 && avCodecMinorVersion > 24))
+                {
+                    Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Using FFmpeg >= 59.24 API");
+                    _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodec<AVCodec>*)_codec)->CodecCallback);
+                }
+                else if (avCodecMajorVersion == 59)
+                {
+                    Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Using FFmpeg 59.x API");
+                    _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec501>*)_codec)->Decode);
+                }
+                else
+                {
+                    Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Using FFmpeg <= 58.x API");
+                    _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec>*)_codec)->Decode);
+                }
             }
+            
+            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"FFmpegContext created successfully. Hardware decoder: {_hardwareDecoderInitialized}, IsMediaCodec: {_isMediaCodecDecoder}, UseNewApi: {_useNewApi}");
         }
 
         private unsafe AVCodec* FindHardwareDecoder(AVCodecID codecId)
@@ -161,7 +189,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     }
                     else
                     {
-                        Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Android hardware decoder not found: {decoderName}");
+                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Android hardware decoder not found: {decoderName}");
                     }
                 }
             }
@@ -379,6 +407,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
         public int DecodeFrame(Surface output, ReadOnlySpan<byte> bitstream)
         {
+            Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"DecodeFrame called. Bitstream size: {bitstream.Length}, Hardware decoder initialized: {_hardwareDecoderInitialized}, IsMediaCodec: {_isMediaCodecDecoder}, UseNewApi: {_useNewApi}");
+            
             if (_hardwareDecoderInitialized)
             {
                 if (_isMediaCodecDecoder)
@@ -401,40 +431,102 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         {
             Logger.Debug?.PrintMsg(LogClass.FFmpeg, "DecodeFrameMediaCodec called");
             
-            FFmpegApi.av_frame_unref(output.Frame);
-
-            int result;
-            int gotFrame;
-
-            fixed (byte* ptr = bitstream)
+            if (output.Frame == null)
             {
-                _packet->Data = ptr;
-                _packet->Size = bitstream.Length;
-                Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Decoding packet with size: {bitstream.Length}");
-                result = _decodeFrame(_context, output.Frame, &gotFrame, _packet);
-            }
-
-            if (gotFrame == 0)
-            {
-                Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Frame not delivered, trying delayed frame...");
-                _packet->Data = null;
-                _packet->Size = 0;
-                result = _decodeFrame(_context, output.Frame, &gotFrame, _packet);
-                
-                _context->HasBFrames = 0;
-            }
-
-            FFmpegApi.av_packet_unref(_packet);
-
-            if (gotFrame == 0)
-            {
-                FFmpegApi.av_frame_unref(output.Frame);
-                Logger.Warning?.PrintMsg(LogClass.FFmpeg, "No frame decoded");
+                Logger.Error?.PrintMsg(LogClass.FFmpeg, "Output frame is null");
                 return -1;
             }
+            
+            FFmpegApi.av_frame_unref(output.Frame);
 
-            Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"MediaCodec decode completed with result: {result}");
-            return result < 0 ? result : 0;
+            try
+            {
+                fixed (byte* ptr = bitstream)
+                {
+                    _packet->Data = ptr;
+                    _packet->Size = bitstream.Length;
+                    Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Decoding packet with size: {bitstream.Length}");
+                    
+                    if (_useNewApi)
+                    {
+                        // 使用新API
+                        int sendResult = FFmpegApi.avcodec_send_packet(_context, _packet);
+                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"avcodec_send_packet result: {sendResult}");
+                        
+                        if (sendResult < 0 && sendResult != -11) // -11 is EAGAIN
+                        {
+                            Logger.Error?.PrintMsg(LogClass.FFmpeg, $"avcodec_send_packet failed: {sendResult}");
+                            FFmpegApi.av_packet_unref(_packet);
+                            return sendResult;
+                        }
+                        
+                        int receiveResult = FFmpegApi.avcodec_receive_frame(_context, output.Frame);
+                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"avcodec_receive_frame result: {receiveResult}");
+                        
+                        FFmpegApi.av_packet_unref(_packet);
+                        
+                        if (receiveResult == 0)
+                        {
+                            Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"MediaCodec decode completed successfully. Frame: Width={output.Frame->Width}, Height={output.Frame->Height}, Format={output.Frame->Format}");
+                            return 0;
+                        }
+                        else if (receiveResult == -11) // EAGAIN
+                        {
+                            Logger.Debug?.PrintMsg(LogClass.FFmpeg, "No frame available yet (EAGAIN)");
+                            return -1;
+                        }
+                        else
+                        {
+                            Logger.Error?.PrintMsg(LogClass.FFmpeg, $"avcodec_receive_frame failed: {receiveResult}");
+                            return receiveResult;
+                        }
+                    }
+                    else
+                    {
+                        // 使用旧API
+                        int result;
+                        int gotFrame = 0;
+                        
+                        result = _decodeFrame(_context, output.Frame, &gotFrame, _packet);
+                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Legacy decode result: {result}, Got frame: {gotFrame}");
+                        
+                        if (gotFrame == 0)
+                        {
+                            Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Frame not delivered, trying delayed frame...");
+                            _packet->Data = null;
+                            _packet->Size = 0;
+                            result = _decodeFrame(_context, output.Frame, &gotFrame, _packet);
+                            
+                            Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Delayed frame decode result: {result}, Got frame: {gotFrame}");
+                            
+                            _context->HasBFrames = 0;
+                        }
+
+                        FFmpegApi.av_packet_unref(_packet);
+
+                        if (gotFrame == 0)
+                        {
+                            FFmpegApi.av_frame_unref(output.Frame);
+                            Logger.Warning?.PrintMsg(LogClass.FFmpeg, "No frame decoded");
+                            return -1;
+                        }
+
+                        if (result < 0)
+                        {
+                            Logger.Warning?.PrintMsg(LogClass.FFmpeg, $"Decode error: {result}");
+                            return result;
+                        }
+
+                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"MediaCodec decode completed successfully. Frame: Width={output.Frame->Width}, Height={output.Frame->Height}, Format={output.Frame->Format}");
+                        return 0;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Exception in DecodeFrameMediaCodec: {ex.Message}\n{ex.StackTrace}");
+                return -1;
+            }
         }
         
         private int DecodeFrameHardware(Surface output, ReadOnlySpan<byte> bitstream)
