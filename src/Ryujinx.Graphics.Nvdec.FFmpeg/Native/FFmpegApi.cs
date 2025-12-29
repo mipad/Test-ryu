@@ -226,5 +226,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         // 添加用于获取/设置帧格式的函数
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial int av_get_pix_fmt([MarshalAs(UnmanagedType.LPUTF8Str)] string name);
+
+        // 在 FFmpegApi.cs 中添加以下函数声明
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial int av_strerror(int errnum, byte* errbuf, int errbuf_size);
     }
 }
