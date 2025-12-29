@@ -247,7 +247,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             // 尝试首选GPU解码器
             foreach (var type in PreferredGpuDecoders)
             {
-                AVPixelFormat hwPixelFormat;
+                FFmpegApi.AVPixelFormat hwPixelFormat;
                 
                 if (!supportedTypes.Contains(type))
                 {
@@ -307,9 +307,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             return types;
         }
         
-        private bool SupportsDecodingOnDevice(out AVPixelFormat hwPixelFormat, FFmpegApi.AVHWDeviceType type)
+        private bool SupportsDecodingOnDevice(out FFmpegApi.AVPixelFormat hwPixelFormat, FFmpegApi.AVHWDeviceType type)
         {
-            hwPixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
+            hwPixelFormat = FFmpegApi.AVPixelFormat.AV_PIX_FMT_NONE;
             
             for (int i = 0; ; i++)
             {
@@ -323,7 +323,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 if ((config->Methods & FFmpegApi.AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) != 0 && 
                     (FFmpegApi.AVHWDeviceType)config->DeviceType == type)
                 {
-                    hwPixelFormat = (AVPixelFormat)config->PixFmt;
+                    hwPixelFormat = (FFmpegApi.AVPixelFormat)config->PixFmt;
                     Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Codec supports device type {type} with pixel format {hwPixelFormat}");
                     return true;
                 }
