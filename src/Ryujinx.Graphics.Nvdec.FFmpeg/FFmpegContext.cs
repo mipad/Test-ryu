@@ -9,27 +9,14 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 {
     unsafe class FFmpegContext : IDisposable
     {
-        private unsafe delegate int AVCodec_decode(AVCodecContext* avctx, void* outdata, int* got_frame_ptr, AVPacket* avpkt);
-        private unsafe delegate int GetFormatDelegate(AVCodecContext* ctx, int* pix_fmts);
-
-        private readonly AVCodec_decode _decodeFrame;
         private static readonly FFmpegApi.av_log_set_callback_callback _logFunc;
         private readonly AVCodec* _codec;
         private readonly AVPacket* _packet;
         private readonly AVCodecContext* _context;
         private bool _useHardwareDecoding;
-        private AVFrame* _hwFrame;
-        private AVFrame* _swFrame;
-        private int _hwPixelFormat;
-        private FFmpegApi.AVHWDeviceType _hwDeviceType;
-        private bool _hardwareDecoderInitialized;
         private bool _isMediaCodecDecoder;
-        private bool _useNewApi;
         private bool _forceSoftwareDecode;
         private object _decodeLock = new object();
-        private bool _isH264Codec;
-
-        private const int PreferredCpuFormat = (int)FFmpegApi.AVPixelFormat.AV_PIX_FMT_YUV420P;
 
         private static readonly Dictionary<AVCodecID, string[]> AndroidHardwareDecoders = new()
         {
@@ -39,8 +26,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
         public FFmpegContext(AVCodecID codecId)
         {
-            _isH264Codec = codecId == AVCodecID.AV_CODEC_ID_H264;
-            
             Logger.Info?.PrintMsg(LogClass.FFmpeg, $"FFmpegContext constructor called for codec: {codecId}");
             
             _forceSoftwareDecode = Environment.GetEnvironmentVariable("RYUJINX_FORCE_SOFTWARE_DECODE") == "1";
@@ -68,8 +53,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 if (_isMediaCodecDecoder && !_forceSoftwareDecode)
                 {
                     _useHardwareDecoding = true;
-                    _hardwareDecoderInitialized = true;
-                    _hwDeviceType = FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_MEDIACODEC;
                     Logger.Info?.PrintMsg(LogClass.FFmpeg, "MediaCodec decoder detected, forcing hardware decoding");
                 }
             }
@@ -99,11 +82,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 Logger.Info?.PrintMsg(LogClass.FFmpeg, "Set MediaCodec decoder options: single thread, low delay mode, fast decoding");
             }
 
-            if (!_useHardwareDecoding)
-            {
-                _context->PixFmt = PreferredCpuFormat;
-            }
-
             Logger.Info?.PrintMsg(LogClass.FFmpeg, "Opening codec...");
             
             if (FFmpegApi.avcodec_open2(_context, _codec, null) != 0)
@@ -121,40 +99,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 return;
             }
 
-            int avCodecRawVersion = FFmpegApi.avcodec_version();
-            int avCodecMajorVersion = avCodecRawVersion >> 16;
-            int avCodecMinorVersion = (avCodecRawVersion >> 8) & 0xFF;
+            Logger.Info?.PrintMsg(LogClass.FFmpeg, "Using new FFmpeg API (avcodec_send_packet/avcodec_receive_frame)");
             
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"FFmpeg version: {avCodecMajorVersion}.{avCodecMinorVersion}");
-
-            _useNewApi = avCodecMajorVersion >= 58;
-            
-            if (_useNewApi)
-            {
-                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Using new FFmpeg API (avcodec_send_packet/avcodec_receive_frame)");
-            }
-            else
-            {
-                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Using legacy FFmpeg API");
-                
-                if (avCodecMajorVersion > 59 || (avCodecMajorVersion == 59 && avCodecMinorVersion > 24))
-                {
-                    Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Using FFmpeg >= 59.24 API");
-                    _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodec<AVCodec>*)_codec)->CodecCallback);
-                }
-                else if (avCodecMajorVersion == 59)
-                {
-                    Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Using FFmpeg 59.x API");
-                    _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec501>*)_codec)->Decode);
-                }
-                else
-                {
-                    Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Using FFmpeg <= 58.x API");
-                    _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec>*)_codec)->Decode);
-                }
-            }
-            
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"FFmpegContext created successfully. Hardware decoder: {_hardwareDecoderInitialized}, IsMediaCodec: {_isMediaCodecDecoder}, UseNewApi: {_useNewApi}");
+            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"FFmpegContext created successfully. IsMediaCodec: {_isMediaCodecDecoder}");
         }
 
         private unsafe AVCodec* FindHardwareDecoder(AVCodecID codecId)
@@ -280,15 +227,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         {
             lock (_decodeLock)
             {
-                Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"DecodeFrame called. Bitstream size: {bitstream.Length}, Hardware decoder initialized: {_hardwareDecoderInitialized}, IsMediaCodec: {_isMediaCodecDecoder}, UseNewApi: {_useNewApi}");
+                Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"DecodeFrame called. Bitstream size: {bitstream.Length}, IsMediaCodec: {_isMediaCodecDecoder}");
                 
-                if (_hardwareDecoderInitialized && !_forceSoftwareDecode)
+                if (_isMediaCodecDecoder && _useHardwareDecoding && !_forceSoftwareDecode)
                 {
-                    if (_isMediaCodecDecoder)
-                    {
-                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Using MediaCodec hardware decoder");
-                        return DecodeFrameMediaCodec(output, bitstream);
-                    }
+                    Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Using MediaCodec hardware decoder");
+                    return DecodeFrameMediaCodec(output, bitstream);
                 }
                 
                 Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Using software decoding path");
@@ -322,95 +266,57 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     _packet->Size = bitstream.Length;
                     Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Decoding packet with size: {bitstream.Length}");
                     
-                    if (_useNewApi)
+                    // 总是使用新的API
+                    int sendResult = FFmpegApi.avcodec_send_packet(_context, _packet);
+                    Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"avcodec_send_packet result: {sendResult}");
+                    
+                    _packet->Data = null;
+                    _packet->Size = 0;
+                    FFmpegApi.av_packet_unref(_packet);
+                    
+                    if (sendResult < 0)
                     {
-                        int sendResult = FFmpegApi.avcodec_send_packet(_context, _packet);
-                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"avcodec_send_packet result: {sendResult}");
-                        
-                        _packet->Data = null;
-                        _packet->Size = 0;
-                        FFmpegApi.av_packet_unref(_packet);
-                        
-                        if (sendResult < 0)
+                        if (sendResult == FFmpegApi.AVERROR.EAGAIN)
                         {
-                            if (sendResult == FFmpegApi.AVERROR.EAGAIN)
-                            {
-                                Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Decoder needs more packets (EAGAIN)");
-                                return sendResult;
-                            }
-                            else if (sendResult == FFmpegApi.AVERROR.EOF)
-                            {
-                                Logger.Debug?.PrintMsg(LogClass.FFmpeg, "End of stream (EOF)");
-                                return 0;
-                            }
-                            else
-                            {
-                                Logger.Error?.PrintMsg(LogClass.FFmpeg, $"avcodec_send_packet failed: {sendResult}");
-                                return sendResult;
-                            }
+                            Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Decoder needs more packets (EAGAIN)");
+                            return sendResult;
                         }
-                        
-                        int receiveResult = FFmpegApi.avcodec_receive_frame(_context, output.Frame);
-                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"avcodec_receive_frame result: {receiveResult}");
-                        
-                        if (receiveResult == 0)
-                        {
-                            Logger.Debug?.PrintMsg(LogClass.FFmpeg, 
-                                $"MediaCodec decode successful. Frame: Width={output.Frame->Width}, Height={output.Frame->Height}, " +
-                                $"Format={output.Frame->Format}, Linesize0={output.Frame->LineSize[0]}");
-                            return 0;
-                        }
-                        else if (receiveResult == FFmpegApi.AVERROR.EAGAIN)
-                        {
-                            Logger.Debug?.PrintMsg(LogClass.FFmpeg, "No frame available yet (EAGAIN)");
-                            return -1;
-                        }
-                        else if (receiveResult == FFmpegApi.AVERROR.EOF)
+                        else if (sendResult == FFmpegApi.AVERROR.EOF)
                         {
                             Logger.Debug?.PrintMsg(LogClass.FFmpeg, "End of stream (EOF)");
                             return 0;
                         }
                         else
                         {
-                            Logger.Error?.PrintMsg(LogClass.FFmpeg, $"avcodec_receive_frame failed: {receiveResult}");
-                            return receiveResult;
+                            Logger.Error?.PrintMsg(LogClass.FFmpeg, $"avcodec_send_packet failed: {sendResult}");
+                            return sendResult;
                         }
+                    }
+                    
+                    int receiveResult = FFmpegApi.avcodec_receive_frame(_context, output.Frame);
+                    Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"avcodec_receive_frame result: {receiveResult}");
+                    
+                    if (receiveResult == 0)
+                    {
+                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, 
+                            $"MediaCodec decode successful. Frame: Width={output.Frame->Width}, Height={output.Frame->Height}, " +
+                            $"Format={output.Frame->Format}, Linesize0={output.Frame->LineSize[0]}");
+                        return 0;
+                    }
+                    else if (receiveResult == FFmpegApi.AVERROR.EAGAIN)
+                    {
+                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, "No frame available yet (EAGAIN)");
+                        return -1;
+                    }
+                    else if (receiveResult == FFmpegApi.AVERROR.EOF)
+                    {
+                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, "End of stream (EOF)");
+                        return 0;
                     }
                     else
                     {
-                        int result;
-                        int gotFrame = 0;
-                        
-                        result = _decodeFrame(_context, output.Frame, &gotFrame, _packet);
-                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Legacy decode result: {result}, Got frame: {gotFrame}");
-                        
-                        _packet->Data = null;
-                        _packet->Size = 0;
-                        FFmpegApi.av_packet_unref(_packet);
-
-                        if (gotFrame == 1)
-                        {
-                            Logger.Debug?.PrintMsg(LogClass.FFmpeg, 
-                                $"MediaCodec decode completed successfully. Frame: Width={output.Frame->Width}, Height={output.Frame->Height}, " +
-                                $"Format={output.Frame->Format}");
-                            return 0;
-                        }
-                        else
-                        {
-                            Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Frame not delivered, trying delayed frame...");
-                            result = _decodeFrame(_context, output.Frame, &gotFrame, _packet);
-                            
-                            Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Delayed frame decode result: {result}, Got frame: {gotFrame}");
-                            
-                            if (gotFrame == 0)
-                            {
-                                Logger.Warning?.PrintMsg(LogClass.FFmpeg, "No frame decoded from MediaCodec");
-                                FFmpegApi.av_frame_unref(output.Frame);
-                                return -1;
-                            }
-                            
-                            return 0;
-                        }
+                        Logger.Error?.PrintMsg(LogClass.FFmpeg, $"avcodec_receive_frame failed: {receiveResult}");
+                        return receiveResult;
                     }
                 }
             }
@@ -441,83 +347,41 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     _packet->Size = bitstream.Length;
                     Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Decoding packet with size: {bitstream.Length}");
                     
-                    int result = 0;
+                    int sendResult = FFmpegApi.avcodec_send_packet(_context, _packet);
+                    Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"avcodec_send_packet result: {sendResult}");
                     
-                    if (_useNewApi)
+                    _packet->Data = null;
+                    _packet->Size = 0;
+                    FFmpegApi.av_packet_unref(_packet);
+                    
+                    if (sendResult < 0 && sendResult != FFmpegApi.AVERROR.EAGAIN && sendResult != FFmpegApi.AVERROR.EOF)
                     {
-                        int sendResult = FFmpegApi.avcodec_send_packet(_context, _packet);
-                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"avcodec_send_packet result: {sendResult}");
-                        
-                        _packet->Data = null;
-                        _packet->Size = 0;
-                        FFmpegApi.av_packet_unref(_packet);
-                        
-                        if (sendResult < 0 && sendResult != FFmpegApi.AVERROR.EAGAIN && sendResult != FFmpegApi.AVERROR.EOF)
-                        {
-                            Logger.Error?.PrintMsg(LogClass.FFmpeg, $"avcodec_send_packet failed: {sendResult}");
-                            return sendResult;
-                        }
-                        
-                        result = FFmpegApi.avcodec_receive_frame(_context, output.Frame);
-                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"avcodec_receive_frame result: {result}");
-                        
-                        if (result == 0)
-                        {
-                            Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Software decode completed successfully");
-                            return 0;
-                        }
-                        else if (result == FFmpegApi.AVERROR.EAGAIN)
-                        {
-                            Logger.Debug?.PrintMsg(LogClass.FFmpeg, "No frame available yet (EAGAIN)");
-                            return -1;
-                        }
-                        else if (result == FFmpegApi.AVERROR.EOF)
-                        {
-                            Logger.Debug?.PrintMsg(LogClass.FFmpeg, "End of stream (EOF)");
-                            return 0;
-                        }
-                        else
-                        {
-                            Logger.Error?.PrintMsg(LogClass.FFmpeg, $"avcodec_receive_frame failed: {result}");
-                            return result;
-                        }
+                        Logger.Error?.PrintMsg(LogClass.FFmpeg, $"avcodec_send_packet failed: {sendResult}");
+                        return sendResult;
+                    }
+                    
+                    int receiveResult = FFmpegApi.avcodec_receive_frame(_context, output.Frame);
+                    Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"avcodec_receive_frame result: {receiveResult}");
+                    
+                    if (receiveResult == 0)
+                    {
+                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Software decode completed successfully");
+                        return 0;
+                    }
+                    else if (receiveResult == FFmpegApi.AVERROR.EAGAIN)
+                    {
+                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, "No frame available yet (EAGAIN)");
+                        return -1;
+                    }
+                    else if (receiveResult == FFmpegApi.AVERROR.EOF)
+                    {
+                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, "End of stream (EOF)");
+                        return 0;
                     }
                     else
                     {
-                        int gotFrame = 0;
-                        
-                        result = _decodeFrame(_context, output.Frame, &gotFrame, _packet);
-                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Legacy decode result: {result}, Got frame: {gotFrame}");
-                        
-                        _packet->Data = null;
-                        _packet->Size = 0;
-                        FFmpegApi.av_packet_unref(_packet);
-                        
-                        if (gotFrame == 0)
-                        {
-                            Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Frame not delivered, trying delayed frame...");
-                            result = _decodeFrame(_context, output.Frame, &gotFrame, _packet);
-                            
-                            Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Delayed frame decode result: {result}, Got frame: {gotFrame}");
-                            
-                            _context->HasBFrames = 0;
-                        }
-                        
-                        if (gotFrame == 0)
-                        {
-                            FFmpegApi.av_frame_unref(output.Frame);
-                            Logger.Warning?.PrintMsg(LogClass.FFmpeg, "No frame decoded");
-                            return -1;
-                        }
-                        
-                        if (result < 0)
-                        {
-                            Logger.Warning?.PrintMsg(LogClass.FFmpeg, $"Decode error: {result}");
-                            return result;
-                        }
-                        
-                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Software decode completed with result: {result}");
-                        return 0;
+                        Logger.Error?.PrintMsg(LogClass.FFmpeg, $"avcodec_receive_frame failed: {receiveResult}");
+                        return receiveResult;
                     }
                 }
             }
@@ -531,24 +395,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         public void Dispose()
         {
             Logger.Info?.PrintMsg(LogClass.FFmpeg, "Disposing FFmpegContext");
-            
-            if (_hwFrame != null)
-            {
-                fixed (AVFrame** ppFrame = &_hwFrame)
-                {
-                    FFmpegApi.av_frame_free(ppFrame);
-                }
-                _hwFrame = null;
-            }
-            
-            if (_swFrame != null)
-            {
-                fixed (AVFrame** ppFrame = &_swFrame)
-                {
-                    FFmpegApi.av_frame_free(ppFrame);
-                }
-                _swFrame = null;
-            }
             
             fixed (AVPacket** ppPacket = &_packet)
             {
