@@ -9,8 +9,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
     {
         public const string AvCodecLibraryName = "avcodec";
         public const string AvUtilLibraryName = "avutil";
-        public const string AvDeviceLibraryName = "avdevice";
-        public const string SwScaleLibraryName = "swscale";
 
         private static readonly Dictionary<string, (int, int)> _librariesWhitelist = new()
         {
@@ -74,16 +72,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
                 {
                     return handle;
                 }
-                else if (name == AvDeviceLibraryName)
-                {
-                    // 尝试加载avdevice
-                    return IntPtr.Zero;
-                }
-                else if (name == SwScaleLibraryName)
-                {
-                    // 尝试加载swscale
-                    return IntPtr.Zero;
-                }
 
                 return IntPtr.Zero;
             });
@@ -91,7 +79,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
 
         public unsafe delegate void av_log_set_callback_callback(void* a0, AVLog level, [MarshalAs(UnmanagedType.LPUTF8Str)] string a2, byte* a3);
         
-        // 硬件解码相关枚举
         internal enum AVHWDeviceType
         {
             AV_HWDEVICE_TYPE_NONE,
@@ -128,13 +115,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
             AV_PIX_FMT_VULKAN = 166,
         }
 
-        // 错误码定义
         internal static class AVERROR
         {
-            public const int EAGAIN = -11; // 资源暂时不可用
-            public const int EOF = -541478725; // 文件结束
-            public const int EINVAL = -22; // 无效参数
-            public const int INVALIDDATA = -1094995529; // 无效数据
+            public const int EAGAIN = -11;
+            public const int EOF = -541478725;
+            public const int EINVAL = -22;
+            public const int INVALIDDATA = -1094995529;
         }
 
         [LibraryImport(AvUtilLibraryName)]
@@ -194,7 +180,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         [LibraryImport(AvCodecLibraryName)]
         internal static unsafe partial int avcodec_version();
         
-        // 硬件解码相关API
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial AVBufferRef* av_hwdevice_ctx_alloc(AVHWDeviceType type);
         
@@ -223,37 +208,15 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         [return: MarshalAs(UnmanagedType.LPUTF8Str)]
         internal static unsafe partial string av_hwdevice_get_type_name(AVHWDeviceType type);
         
-        // 新的解码API（FFmpeg 4.0+）
         [LibraryImport(AvCodecLibraryName)]
         internal static unsafe partial int avcodec_send_packet(AVCodecContext* avctx, AVPacket* avpkt);
         
         [LibraryImport(AvCodecLibraryName)]
         internal static unsafe partial int avcodec_receive_frame(AVCodecContext* avctx, AVFrame* frame);
         
-        // 格式转换API
-        [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial IntPtr sws_getContext(
-            int srcW, int srcH, int srcFormat,
-            int dstW, int dstH, int dstFormat,
-            int flags, IntPtr srcFilter, IntPtr dstFilter, double* param);
-        
-        [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial int sws_scale(
-            IntPtr swsContext, byte** srcSlice, int* srcStride,
-            int srcSliceY, int srcSliceH,
-            byte** dstSlice, int* dstStride);
-        
-        [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial void sws_freeContext(IntPtr swsContext);
-        
-        // 私有数据设置API
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial int av_opt_set(void* obj, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, [MarshalAs(UnmanagedType.LPUTF8Str)] string val, int search_flags);
         
-        // 获取编解码器能力标志
         internal const int AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX = 0x0001;
-        internal const int AV_CODEC_HW_CONFIG_METHOD_HW_FRAMES_CTX = 0x0002;
-        internal const int AV_CODEC_HW_CONFIG_METHOD_INTERNAL = 0x0004;
-        internal const int AV_CODEC_HW_CONFIG_METHOD_AD_HOC = 0x0008;
     }
 }
