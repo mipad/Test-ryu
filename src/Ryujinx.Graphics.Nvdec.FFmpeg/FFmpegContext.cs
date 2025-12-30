@@ -13,6 +13,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private readonly AVPacket* _packet;
         private readonly AVCodecContext* _context;
         private IntPtr _hwDeviceCtx;
+        private object _decodeLock = new object();
         private AVFrame* _hwFrame;
         private AVFrame* _swFrame;
         
