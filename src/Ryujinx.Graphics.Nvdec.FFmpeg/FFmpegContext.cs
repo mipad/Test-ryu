@@ -9,12 +9,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
     unsafe class FFmpegContext : IDisposable
     {
         private static readonly FFmpegApi.av_log_set_callback_callback _logFunc;
-        private readonly AVCodec* _codec;
-        private readonly AVPacket* _packet;
-        private readonly AVCodecContext* _context;
-        private IntPtr _hwDeviceCtx;
-        private AVFrame* _hwFrame;
-        private AVFrame* _swFrame;
+        private AVCodec* _codec;           // 移除 readonly
+        private AVPacket* _packet;         // 移除 readonly
+        private AVCodecContext* _context;  // 移除 readonly
+        private IntPtr _hwDeviceCtx;       // 移除 readonly
+        private AVFrame* _hwFrame;         // 移除 readonly
+        private AVFrame* _swFrame;         // 移除 readonly
         
         // 参考hw_decode.c中的全局变量
         private static FFmpegApi.AVPixelFormat _hwPixelFormat = FFmpegApi.AVPixelFormat.AV_PIX_FMT_NONE;
