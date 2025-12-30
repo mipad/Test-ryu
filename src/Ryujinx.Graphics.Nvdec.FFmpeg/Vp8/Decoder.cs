@@ -23,7 +23,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Vp8
             return new Surface(width, height);
         }
 
-        public bool Decode(ref Vp8PictureInfo, ISurface output, ReadOnlySpan<byte> bitstream)
+        public bool Decode(ref Vp8PictureInfo pictureInfo, ISurface output, ReadOnlySpan<byte> bitstream)
         {
             Surface outSurf = (Surface)output;
 
