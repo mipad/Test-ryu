@@ -54,8 +54,6 @@ set(FFMPEG_CONFIGURE_COMMAND
     --extra-cflags=-fPIC
     --extra-cflags=-march=armv8.2-a+fp16+dotprod
     --extra-cflags=-mtune=cortex-a78
-    --extra-cflags=-DANDROID
-    --extra-cflags=-D__ANDROID_API__=${ANDROID_API_LEVEL}
     --extra-cflags=-I${ANDROID_SYSROOT}/usr/include
     --extra-cflags=-I${ANDROID_SYSROOT}/usr/include/android
     --extra-cflags=-I${ANDROID_SYSROOT}/usr/include/media
@@ -194,3 +192,5 @@ add_dependencies(avfilter ffmpeg)
 # 添加头文件目录
 set(FFMPEG_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install/include)
 
+
+    
