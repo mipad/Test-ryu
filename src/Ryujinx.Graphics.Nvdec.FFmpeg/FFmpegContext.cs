@@ -683,5 +683,5 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
     
     Logger.Info?.PrintMsg(LogClass.FFmpeg, "FFmpegContext disposed");
 }
-    
+    }
 }
