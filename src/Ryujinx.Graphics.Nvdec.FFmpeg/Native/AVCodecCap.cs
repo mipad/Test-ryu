@@ -1,3 +1,5 @@
+namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
+{
 enum AVCodecCap
     {
         AV_CODEC_CAP_DRAW_HORIZ_BAND = 1 << 0,
@@ -18,3 +20,4 @@ enum AVCodecCap
         AV_CODEC_CAP_HYBRID = 1 << 19,
         AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE = 1 << 20,
     }
+}
