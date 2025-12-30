@@ -633,53 +633,55 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         }
 
         public void Dispose()
+{
+    Logger.Info?.PrintMsg(LogClass.FFmpeg, "Disposing FFmpegContext");
+    
+    if (_hwFrame != null)
+    {
+        FFmpegApi.av_frame_unref(_hwFrame);
+        FFmpegApi.av_free(_hwFrame);
+        _hwFrame = null;
+    }
+
+    if (_mediaCodecCtx != null)
+    {
+        FFmpegApi.av_mediacodec_default_free(_context);
+        _mediaCodecCtx = null;
+    }
+
+    if (_hwFrameCtx != null)
+    {
+        // 修复：创建局部指针变量并取其地址
+        AVBufferRef* hwFrameCtxLocal = _hwFrameCtx;
+        FFmpegApi.av_buffer_unref(&hwFrameCtxLocal);
+        _hwFrameCtx = null;
+    }
+
+    if (_hwDeviceCtx != IntPtr.Zero)
+    {
+        fixed (IntPtr* ppRef = &_hwDeviceCtx)
         {
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, "Disposing FFmpegContext");
-            
-            if (_hwFrame != null)
-            {
-                FFmpegApi.av_frame_unref(_hwFrame);
-                FFmpegApi.av_free(_hwFrame);
-                _hwFrame = null;
-            }
+            FFmpegApi.av_buffer_unref(ppRef);
+        }
+        _hwDeviceCtx = IntPtr.Zero;
+    }
 
-            if (_mediaCodecCtx != null)
-            {
-                FFmpegApi.av_mediacodec_default_free(_context);
-                _mediaCodecCtx = null;
-            }
+    fixed (AVPacket** ppPacket = &_packet)
+    {
+        FFmpegApi.av_packet_free(ppPacket);
+    }
 
-            if (_hwFrameCtx != null)
-            {
-                FFmpegApi.av_buffer_unref(&_hwFrameCtx);
-                _hwFrameCtx = null;
-            }
+    if (_context != null)
+    {
+        _ = FFmpegApi.avcodec_close(_context);
 
-            if (_hwDeviceCtx != IntPtr.Zero)
-            {
-                fixed (IntPtr* ppRef = &_hwDeviceCtx)
-                {
-                    FFmpegApi.av_buffer_unref(ppRef);
-                }
-                _hwDeviceCtx = IntPtr.Zero;
-            }
-
-            fixed (AVPacket** ppPacket = &_packet)
-            {
-                FFmpegApi.av_packet_free(ppPacket);
-            }
-
-            if (_context != null)
-            {
-                _ = FFmpegApi.avcodec_close(_context);
-
-                fixed (AVCodecContext** ppContext = &_context)
-                {
-                    FFmpegApi.avcodec_free_context(ppContext);
-                }
-            }
-            
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, "FFmpegContext disposed");
+        fixed (AVCodecContext** ppContext = &_context)
+        {
+            FFmpegApi.avcodec_free_context(ppContext);
         }
     }
+    
+    Logger.Info?.PrintMsg(LogClass.FFmpeg, "FFmpegContext disposed");
+}
+    
 }
