@@ -5,7 +5,7 @@ using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg.Vp8
 {
-    public sealed class Decoder : IVp8Decoder
+    public sealed class Decoder : IDecoder
     {
         public bool IsHardwareAccelerated => true;
 
@@ -23,7 +23,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Vp8
             return new Surface(width, height);
         }
 
-        public bool Decode(IVp8PictureInfo pictureInfo, ISurface output, ReadOnlySpan<byte> bitstream)
+        public bool Decode(ref Vp8PictureInfo, ISurface output, ReadOnlySpan<byte> bitstream)
         {
             Surface outSurf = (Surface)output;
 
