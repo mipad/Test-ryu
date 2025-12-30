@@ -48,9 +48,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 string codecName = codecId switch
                 {
                     AVCodecID.AV_CODEC_ID_H264 => "h264",
-                    AVCodecID.AV_CODEC_ID_HEVC => "hevc",
-                    AVCodecID.AV_CODEC_ID_VP9 => "vp9",
-                    AVCodecID.AV_CODEC_ID_AV1 => "av1",
+                    AVCodecID.AV_CODEC_ID_VP8 => "vp8",
                     _ => null
                 };
 
