@@ -1,9 +1,11 @@
 using Ryujinx.Common.Memory;
 using System;
+using System.Runtime.InteropServices;
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
 {
-    struct AVCodecContext
+    [StructLayout(LayoutKind.Sequential)]
+    unsafe struct AVCodecContext
     {
 #pragma warning disable CS0649 // Field is never assigned to
         public unsafe IntPtr AvClass;
@@ -19,8 +21,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         public int BitRateTolerance;
         public int GlobalQuality;
         public int CompressionLevel;
-        public int Flags;
-        public int Flags2;
+        public int Flags; // flags 字段
+        public int Flags2; // flags2 字段
         public IntPtr ExtraData;
         public int ExtraDataSize;
         public AVRational TimeBase;
@@ -120,7 +122,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         public int BitsPerCodedSample;
         public int BitsPerRawSample;
         public int LowRes;
-        public int ThreadCount;
+        public int ThreadCount; // 多线程相关
         public int ThreadType;
         public int ActiveThreadType;
         public int ThreadSafeCallbacks;
@@ -129,9 +131,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         public int NsseWeight;
         public int Profile;
         public int Level;
-        public int SkipLoopFilter;
-        public int SkipIdct;
-        public int SkipFrame;
+        public int SkipLoopFilter; // skip_loop_filter 字段
+        public int SkipIdct;       // skip_idct 字段
+        public int SkipFrame;      // skip_frame 字段
         public IntPtr SubtitleHeader;
         public int SubtitleHeaderSize;
         public int InitialPadding;
@@ -160,12 +162,26 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         public long MaxPixels;
         public IntPtr HwDeviceCtx;
         public int HwAccelFlags;
-        public int applyCropping;
+        public int ApplyCropping;
         public int ExtraHwFrames;
         public int DiscardDamagedPercentage;
         public long MaxSamples;
         public int ExportSideData;
         public IntPtr GetEncodeBuffer;
+        
+        // 新添加的字段（FFmpeg 6.x 可能需要的）
+        public int Strict;
+        public int CodecWhitelistLength;
+        public int CodecBlacklistLength;
+        public int ThreadCountMax;
+        public int ThreadCountMin;
+        public int ThreadCountAuto;
+        public int ThreadFrameCount;
+        public int ThreadSliceCount;
+        public int RefCountedFrames;
+        public int SideDataOnlyPackets;
+        public int ApplyCroppingAutomatically;
+        public int ExtraHwFramesPadding;
 #pragma warning restore CS0649
     }
 }
