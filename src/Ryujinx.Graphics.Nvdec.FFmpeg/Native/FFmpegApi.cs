@@ -230,5 +230,27 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         // 在 FFmpegApi.cs 中添加以下函数声明
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial int av_strerror(int errnum, byte* errbuf, int errbuf_size);
+
+        // 在 FFmpegApi.cs 中添加以下函数声明
+
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial int av_strerror(int errnum, byte* errbuf, int errbuf_size);
+
+        // MediaCodec相关函数
+        [LibraryImport(AvCodecLibraryName)]
+        internal static unsafe partial AVMediaCodecContext* av_mediacodec_alloc_context();
+ 
+        [LibraryImport(AvCodecLibraryName, EntryPoint = "av_mediacodec_default_init")]
+        internal static unsafe partial int av_mediacodec_default_init(AVCodecContext* avctx, AVMediaCodecContext* ctx, IntPtr surface);
+
+        [LibraryImport(AvCodecLibraryName)]
+        internal static unsafe partial void av_mediacodec_default_free(AVCodecContext* avctx);
+
+        // 添加获取和设置硬件帧上下文的函数
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial int av_hwframe_get_buffer(AVBufferRef* hwframe_ctx, AVFrame* frame, int flags);
+
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial int av_hwframe_ctx_init(AVBufferRef* ref);
     }
 }
