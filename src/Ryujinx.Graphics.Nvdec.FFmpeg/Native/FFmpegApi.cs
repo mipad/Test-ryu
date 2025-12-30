@@ -187,13 +187,13 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         internal static unsafe partial int av_hwdevice_ctx_create(IntPtr* device_ctx, AVHWDeviceType type, [MarshalAs(UnmanagedType.LPUTF8Str)] string device, void* opts, int flags);
         
         [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial int av_hwdevice_ctx_init(IntPtr @ref);
+        internal static unsafe partial int av_hwdevice_ctx_init(IntPtr ctx_ref);
         
         [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial void av_buffer_unref(IntPtr* @ref);
+        internal static unsafe partial void av_buffer_unref(IntPtr* buffer_ref);
         
         [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial IntPtr av_buffer_ref(IntPtr @ref);
+        internal static unsafe partial IntPtr av_buffer_ref(IntPtr buffer_ref);
         
         [LibraryImport(AvCodecLibraryName)]
         internal static unsafe partial IntPtr avcodec_get_hw_config(AVCodec* codec, int index);
@@ -231,11 +231,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial int av_strerror(int errnum, byte* errbuf, int errbuf_size);
 
-        // 在 FFmpegApi.cs 中添加以下函数声明
-
-        [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial int av_strerror(int errnum, byte* errbuf, int errbuf_size);
-
         // MediaCodec相关函数
         [LibraryImport(AvCodecLibraryName)]
         internal static unsafe partial AVMediaCodecContext* av_mediacodec_alloc_context();
@@ -251,6 +246,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         internal static unsafe partial int av_hwframe_get_buffer(AVBufferRef* hwframe_ctx, AVFrame* frame, int flags);
 
         [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial int av_hwframe_ctx_init(AVBufferRef* ref);
+        internal static unsafe partial int av_hwframe_ctx_init(AVBufferRef* buffer_ref);
     }
 }
