@@ -1,3 +1,5 @@
+namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
+
 enum AVMediaType
     {
         AVMEDIA_TYPE_UNKNOWN = -1,
