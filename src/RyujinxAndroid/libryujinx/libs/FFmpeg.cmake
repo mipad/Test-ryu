@@ -135,7 +135,7 @@ set(FFMPEG_CONFIGURE_COMMAND
 ExternalProject_Add(
     ffmpeg
     GIT_REPOSITORY              https://github.com/FFmpeg/FFmpeg.git
-    GIT_TAG                     n6.1.4
+    GIT_TAG                     nn7.1.3
     GIT_PROGRESS                1
     GIT_SHALLOW                 1
     UPDATE_COMMAND              ""
