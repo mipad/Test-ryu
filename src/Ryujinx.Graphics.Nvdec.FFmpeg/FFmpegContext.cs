@@ -14,7 +14,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private readonly AVPacket* _packet;
         private readonly AVCodecContext* _context;
         private IntPtr _hwDeviceCtx;
-        private IntPtr _hwFrameCtx;
+        private AVBufferRef* _hwFrameCtx; // 修改类型
         private bool _useHardwareDecoding;
         private bool _isMediaCodecDecoder;
         private bool _forceSoftwareDecode;
@@ -247,10 +247,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     return false;
                 }
                 
-                _hwFrameCtx = hwFrameCtx;
+                _hwFrameCtx = (AVBufferRef*)hwFrameCtx; // 转换为正确的类型
                 
                 // 初始化硬件帧上下文
-                result = FFmpegApi.av_hwframe_ctx_init(_hwFrameCtx);
+                result = FFmpegApi.av_hwframe_ctx_init(_hwFrameCtx); // 修复：传递AVBufferRef*类型
                 Logger.Info?.PrintMsg(LogClass.FFmpeg, $"av_hwframe_ctx_init result: {result}");
                 
                 if (result < 0)
@@ -260,7 +260,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 }
                 
                 // 设置硬件帧上下文到编解码器上下文
-                _context->HwFramesCtx = (AVBufferRef*)_hwFrameCtx;
+                _context->HwFramesCtx = _hwFrameCtx; // 直接使用AVBufferRef*类型
                 
                 // 查找硬件配置
                 for (int i = 0; ; i++)
@@ -649,13 +649,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 _mediaCodecCtx = null;
             }
 
-            if (_hwFrameCtx != IntPtr.Zero)
+            if (_hwFrameCtx != null)
             {
-                fixed (IntPtr* ppRef = &_hwFrameCtx)
-                {
-                    FFmpegApi.av_buffer_unref(ppRef);
-                }
-                _hwFrameCtx = IntPtr.Zero;
+                FFmpegApi.av_buffer_unref(&_hwFrameCtx);
+                _hwFrameCtx = null;
             }
 
             if (_hwDeviceCtx != IntPtr.Zero)
