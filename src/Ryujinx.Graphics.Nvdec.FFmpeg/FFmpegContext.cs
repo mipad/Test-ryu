@@ -102,32 +102,32 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     _threadCount = Math.Max(1, Environment.ProcessorCount - 1);
                 }
 
-                _context->thread_count = _threadCount;
-                _context->thread_type = 2; // FF_THREAD_SLICE (更高效)
-                _context->CapsInternalOrCbType |= (int)AVCodecCap.AV_CODEC_CAP_FRAME_THREADS;
-                _context->CapsInternalOrCbType |= (int)AVCodecCap.AV_CODEC_CAP_SLICE_THREADS;
-                _context->CapsInternalOrCbType |= (int)AVCodecCap.AV_CODEC_CAP_AUTO_THREADS;
+                _context->ThreadCount = _threadCount;
+                _context->ThreadType = 2; // FF_THREAD_SLICE (更高效)
+                
+                // 注意：AVCodecContext结构体中没有CapsInternalOrCbType字段
+                // 所以移除了相关设置
             }
 
             // 性能优化标志
             if (_lowLatency)
             {
-                _context->flags |= (1 << 0); // CODEC_FLAG_LOW_DELAY
+                _context->Flags |= (1 << 0); // CODEC_FLAG_LOW_DELAY
             }
 
             if (_fastDecode)
             {
-                _context->flags2 |= (1 << 15); // AV_CODEC_FLAG2_FAST
+                _context->Flags2 |= (1 << 15); // AV_CODEC_FLAG2_FAST
             }
 
             // 跳过非参考帧以加速解码
-            _context->skip_frame = 1; // AVDISCARD_NONREF
-            _context->skip_idct = 1;  // AVDISCARD_NONREF
-            _context->skip_loop_filter = 1; // AVDISCARD_NONREF
+            _context->SkipFrame = 1; // AVDISCARD_NONREF
+            _context->SkipIdct = 1;  // AVDISCARD_NONREF
+            _context->SkipLoopFilter = 1; // AVDISCARD_NONREF
 
             // 设置解码器属性
-            _context->workaround_bugs = 0;
-            _context->error_concealment = 3; // FF_EC_GUESS_MVS | FF_EC_DEBLOCK
+            _context->WorkaroundBugs = 0;
+            _context->ErrorConcealment = 3; // FF_EC_GUESS_MVS | FF_EC_DEBLOCK
         }
 
         private void DetectAPIVersion()
