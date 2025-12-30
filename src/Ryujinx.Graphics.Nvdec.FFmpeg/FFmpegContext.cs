@@ -15,7 +15,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             NewAPI      // 使用 avcodec_send_packet/avcodec_receive_frame (推荐)
         }
 
-        private readonly DecodeAPIVersion _apiVersion;
+        private DecodeAPIVersion _apiVersion; // 移除了 readonly
         private readonly AVCodec* _codec;
         private readonly AVPacket* _packet;
         private readonly AVCodecContext* _context;
@@ -27,7 +27,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
         // 用于旧API的委托
         private unsafe delegate int AVCodec_decode(AVCodecContext* avctx, void* outdata, int* got_frame_ptr, AVPacket* avpkt);
-        private AVCodec_decode _decodeFrame;
+        private AVCodec_decode _decodeFrame; // 移除了 readonly
 
         // 日志回调
         private static readonly FFmpegApi.av_log_set_callback_callback _logFunc;
@@ -104,9 +104,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
                 _context->ThreadCount = _threadCount;
                 _context->ThreadType = 2; // FF_THREAD_SLICE (更高效)
-                
-                // 注意：AVCodecContext结构体中没有CapsInternalOrCbType字段
-                // 所以移除了相关设置
             }
 
             // 性能优化标志
