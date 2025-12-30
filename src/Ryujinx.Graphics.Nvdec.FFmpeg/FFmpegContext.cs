@@ -21,116 +21,139 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         
         // 添加缺少的_decodeLock变量
         private object _decodeLock = new object();
+        
+        // 硬件解码器名称常量
+        private const string H264MediaCodecDecoder = "h264_mediacodec";
+        private const string VP8MediaCodecDecoder = "vp8_mediacodec";
 
-        public FFmpegContext(AVCodecID codecId)
+        public FFmpegContext(string hardwareDecoderName)
         {
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"FFmpegContext constructor called for codec: {codecId}");
+            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"FFmpegContext constructor called for hardware decoder: {hardwareDecoderName}");
             
-            // 1. 查找硬件设备类型 - 参考hw_decode.c
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, "Finding MediaCodec device type...");
-            FFmpegApi.AVHWDeviceType hwDeviceType = FindMediaCodecDeviceType();
-            if (hwDeviceType == FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_NONE)
+            // 只尝试硬件解码，不进行软件解码回退
+            if (!InitializeHardwareDecoder(hardwareDecoderName))
             {
-                Logger.Error?.PrintMsg(LogClass.FFmpeg, "MediaCodec device type not supported");
-                return;
+                Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Hardware decoder initialization failed for: {hardwareDecoderName}");
+                throw new InvalidOperationException($"Failed to initialize hardware decoder: {hardwareDecoderName}");
             }
-            
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Found MediaCodec device type: {hwDeviceType}");
-
-            // 2. 查找解码器 - 使用通用解码器
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Finding decoder for {codecId}...");
-            _codec = FFmpegApi.avcodec_find_decoder(codecId);
-            if (_codec == null)
+        }
+        
+        private bool InitializeHardwareDecoder(string decoderName)
+        {
+            try
             {
-                Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Codec not found: {codecId}");
-                return;
-            }
-            
-            string codecName = Marshal.PtrToStringUTF8((IntPtr)_codec->Name) ?? "unknown";
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Found decoder: {codecName}");
-
-            // 3. 查找硬件配置 - 参考hw_decode.c中的循环
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, "Finding hardware configuration...");
-            if (!FindHardwareConfig(hwDeviceType))
-            {
-                Logger.Error?.PrintMsg(LogClass.FFmpeg, "No suitable hardware configuration found");
-                return;
-            }
-
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, "Allocating codec context...");
-            _context = FFmpegApi.avcodec_alloc_context3(_codec);
-            if (_context == null)
-            {
-                Logger.Error?.PrintMsg(LogClass.FFmpeg, "Failed to allocate codec context");
-                return;
-            }
-
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Allocated codec context: 0x{(ulong)_context:X}");
-
-            // 4. 设置解码器参数
-            _context->ThreadCount = 1; // 单线程解码，硬件解码通常不需要多线程
-            _context->ThreadType = 0;
-            _context->Flags |= 0x0001; // CODEC_FLAG_LOW_DELAY
-            _context->Flags2 |= 0x00000100; // AV_CODEC_FLAG2_FAST
-
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Set decoder params: ThreadCount={_context->ThreadCount}, Flags={_context->Flags}, Flags2={_context->Flags2}");
-
-            // 5. 初始化硬件解码器 - 参考hw_decode.c中的hw_decoder_init
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, "Initializing hardware decoder...");
-            if (InitHardwareDecoder(hwDeviceType) < 0)
-            {
-                Logger.Error?.PrintMsg(LogClass.FFmpeg, "Failed to initialize hardware decoder");
-                return;
-            }
-
-            // 6. 打开编解码器
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, "Opening codec...");
-            int openResult = FFmpegApi.avcodec_open2(_context, _codec, null);
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"avcodec_open2 result: {openResult}");
-            
-            if (openResult < 0)
-            {
-                byte* errorBuffer = stackalloc byte[256];
-                if (FFmpegApi.av_strerror(openResult, errorBuffer, 256) == 0)
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Initializing hardware decoder: {decoderName}");
+                
+                // 1. 查找硬件解码器
+                _codec = FFmpegApi.avcodec_find_decoder_by_name(decoderName);
+                if (_codec == null)
                 {
-                    string errorMsg = Marshal.PtrToStringUTF8((IntPtr)errorBuffer) ?? "Unknown error";
-                    Logger.Error?.PrintMsg(LogClass.FFmpeg, 
-                        $"Failed to open codec: {errorMsg} (code: {openResult})");
+                    Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Hardware decoder not found: {decoderName}");
+                    return false;
                 }
-                else
+                
+                string foundCodecName = Marshal.PtrToStringUTF8((IntPtr)_codec->Name) ?? "unknown";
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Found hardware decoder: {foundCodecName}");
+
+                // 2. 查找硬件设备类型
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Finding MediaCodec device type...");
+                FFmpegApi.AVHWDeviceType hwDeviceType = FindMediaCodecDeviceType();
+                if (hwDeviceType == FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_NONE)
                 {
-                    Logger.Error?.PrintMsg(LogClass.FFmpeg, $"Failed to open codec with error code: {openResult}");
+                    Logger.Error?.PrintMsg(LogClass.FFmpeg, "MediaCodec device type not supported");
+                    return false;
                 }
-                return;
+                
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Found MediaCodec device type: {hwDeviceType}");
+
+                // 3. 查找硬件配置 - 参考hw_decode.c中的循环
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Finding hardware configuration...");
+                if (!FindHardwareConfig(hwDeviceType))
+                {
+                    Logger.Error?.PrintMsg(LogClass.FFmpeg, "No suitable hardware configuration found");
+                    return false;
+                }
+
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Allocating codec context...");
+                _context = FFmpegApi.avcodec_alloc_context3(_codec);
+                if (_context == null)
+                {
+                    Logger.Error?.PrintMsg(LogClass.FFmpeg, "Failed to allocate codec context");
+                    return false;
+                }
+
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Allocated codec context: 0x{(ulong)_context:X}");
+
+                // 4. 设置解码器参数
+                _context->ThreadCount = 1; // 单线程解码，硬件解码通常不需要多线程
+                _context->ThreadType = 0;
+                _context->Flags |= 0x0001; // CODEC_FLAG_LOW_DELAY
+                _context->Flags2 |= 0x00000100; // AV_CODEC_FLAG2_FAST
+
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, 
+                    $"Set decoder params: ThreadCount={_context->ThreadCount}, Flags={_context->Flags}, Flags2={_context->Flags2}");
+
+                // 5. 初始化硬件解码器 - 参考hw_decode.c中的hw_decoder_init
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Initializing hardware decoder...");
+                if (InitHardwareDecoder(hwDeviceType) < 0)
+                {
+                    Logger.Error?.PrintMsg(LogClass.FFmpeg, "Failed to initialize hardware decoder");
+                    return false;
+                }
+
+                // 6. 打开编解码器
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Opening codec...");
+                int openResult = FFmpegApi.avcodec_open2(_context, _codec, null);
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, $"avcodec_open2 result: {openResult}");
+                
+                if (openResult < 0)
+                {
+                    byte* errorBuffer = stackalloc byte[256];
+                    if (FFmpegApi.av_strerror(openResult, errorBuffer, 256) == 0)
+                    {
+                        string errorMsg = Marshal.PtrToStringUTF8((IntPtr)errorBuffer) ?? "Unknown error";
+                        Logger.Error?.PrintMsg(LogClass.FFmpeg, 
+                            $"Failed to open hardware codec: {errorMsg} (code: {openResult})");
+                    }
+                    return false;
+                }
+
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, 
+                    $"Hardware codec opened successfully. Pixel format: {_context->PixFmt}, " +
+                    $"Hardware pixel format: {_hwPixelFormat}, " +
+                    $"HwDeviceCtx: 0x{(ulong)_context->HwDeviceCtx:X}");
+
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Allocating packet...");
+                _packet = FFmpegApi.av_packet_alloc();
+                if (_packet == null)
+                {
+                    Logger.Error?.PrintMsg(LogClass.FFmpeg, "Failed to allocate packet");
+                    return false;
+                }
+
+                // 分配硬件帧和软件帧 - 参考hw_decode.c中的decode_write
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Allocating hardware and software frames...");
+                _hwFrame = FFmpegApi.av_frame_alloc();
+                _swFrame = FFmpegApi.av_frame_alloc();
+                
+                if (_hwFrame == null || _swFrame == null)
+                {
+                    Logger.Error?.PrintMsg(LogClass.FFmpeg, "Failed to allocate frames");
+                    return false;
+                }
+                
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, 
+                    $"Allocated hardware frame: 0x{(ulong)_hwFrame:X}, software frame: 0x{(ulong)_swFrame:X}");
+
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, "Hardware decoder initialized successfully");
+                return true;
             }
-
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, 
-                $"Codec opened successfully. Pixel format: {_context->PixFmt}, " +
-                $"Hardware pixel format: {_hwPixelFormat}, " +
-                $"HwDeviceCtx: 0x{(ulong)_context->HwDeviceCtx:X}");
-
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, "Allocating packet...");
-            _packet = FFmpegApi.av_packet_alloc();
-            if (_packet == null)
+            catch (Exception ex)
             {
-                Logger.Error?.PrintMsg(LogClass.FFmpeg, "Failed to allocate packet");
-                return;
+                Logger.Error?.PrintMsg(LogClass.FFmpeg, 
+                    $"Exception initializing hardware decoder: {ex.Message}\n{ex.StackTrace}");
+                return false;
             }
-
-            // 分配硬件帧和软件帧 - 参考hw_decode.c中的decode_write
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, "Allocating hardware and software frames...");
-            _hwFrame = FFmpegApi.av_frame_alloc();
-            _swFrame = FFmpegApi.av_frame_alloc();
-            
-            if (_hwFrame == null || _swFrame == null)
-            {
-                Logger.Error?.PrintMsg(LogClass.FFmpeg, "Failed to allocate frames");
-                return;
-            }
-            
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Allocated hardware frame: 0x{(ulong)_hwFrame:X}, software frame: 0x{(ulong)_swFrame:X}");
-
-            Logger.Info?.PrintMsg(LogClass.FFmpeg, "FFmpegContext created successfully");
         }
 
         private FFmpegApi.AVHWDeviceType FindMediaCodecDeviceType()
@@ -142,7 +165,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             while ((type = FFmpegApi.av_hwdevice_iterate_types(prev)) != FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_NONE)
             {
                 string typeName = FFmpegApi.av_hwdevice_get_type_name(type) ?? "";
-                Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Found hardware device type: {typeName}");
+                Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Found hardware device type: {typeName}");
                 
                 if (type == FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_MEDIACODEC)
                 {
@@ -164,12 +187,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 IntPtr hwConfigPtr = FFmpegApi.avcodec_get_hw_config(_codec, i);
                 if (hwConfigPtr == IntPtr.Zero)
                 {
-                    Logger.Info?.PrintMsg(LogClass.FFmpeg, $"No more hardware configs at index {i}");
+                    Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"No more hardware configs at index {i}");
                     break;
                 }
                 
                 var hwConfig = (AVCodecHWConfig*)hwConfigPtr;
-                Logger.Info?.PrintMsg(LogClass.FFmpeg, 
+                Logger.Debug?.PrintMsg(LogClass.FFmpeg, 
                     $"Hardware config[{i}]: PixFmt={hwConfig->PixFmt}, " +
                     $"Methods={hwConfig->Methods}, DeviceType={hwConfig->DeviceType}");
                 
@@ -302,6 +325,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 Logger.Debug?.PrintMsg(LogClass.FFmpeg, 
                     $"DecodeFrame called. Bitstream size: {bitstream.Length}");
                 
+                if (_context == null || _packet == null)
+                {
+                    Logger.Error?.PrintMsg(LogClass.FFmpeg, "Decoder not initialized");
+                    return -1;
+                }
+                
                 if (_hwFrame == null || _swFrame == null)
                 {
                     Logger.Error?.PrintMsg(LogClass.FFmpeg, "Frames not allocated");
@@ -320,22 +349,13 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                         // 设置数据包
                         _packet->Data = ptr;
                         _packet->Size = bitstream.Length;
-                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, 
-                            $"Decoding packet with size: {bitstream.Length}");
                         
-                        // 发送数据包 - 参考hw_decode.c
+                        // 发送数据包
                         int sendResult = FFmpegApi.avcodec_send_packet(_context, _packet);
-                        Logger.Info?.PrintMsg(LogClass.FFmpeg, $"avcodec_send_packet result: {sendResult}");
+                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"avcodec_send_packet result: {sendResult}");
                         
                         if (sendResult < 0 && sendResult != FFmpegApi.AVERROR.EAGAIN)
                         {
-                            byte* errorBuffer = stackalloc byte[256];
-                            if (FFmpegApi.av_strerror(sendResult, errorBuffer, 256) == 0)
-                            {
-                                string errorMsg = Marshal.PtrToStringUTF8((IntPtr)errorBuffer) ?? "Unknown error";
-                                Logger.Error?.PrintMsg(LogClass.FFmpeg, 
-                                    $"avcodec_send_packet failed: {errorMsg} (code: {sendResult})");
-                            }
                             return sendResult;
                         }
                         
@@ -344,48 +364,26 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                         _packet->Size = 0;
                         FFmpegApi.av_packet_unref(_packet);
                         
-                        // 接收帧 - 参考hw_decode.c
+                        // 接收帧
                         int receiveResult = FFmpegApi.avcodec_receive_frame(_context, _hwFrame);
-                        Logger.Info?.PrintMsg(LogClass.FFmpeg, $"avcodec_receive_frame result: {receiveResult}");
+                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"avcodec_receive_frame result: {receiveResult}");
                         
                         if (receiveResult < 0)
                         {
                             if (receiveResult == FFmpegApi.AVERROR.EAGAIN)
-                            {
-                                Logger.Debug?.PrintMsg(LogClass.FFmpeg, "No frame available yet (EAGAIN)");
                                 return -1;
-                            }
                             else if (receiveResult == FFmpegApi.AVERROR.EOF)
-                            {
-                                Logger.Debug?.PrintMsg(LogClass.FFmpeg, "End of stream (EOF)");
                                 return 0;
-                            }
                             else
-                            {
-                                byte* errorBuffer = stackalloc byte[256];
-                                if (FFmpegApi.av_strerror(receiveResult, errorBuffer, 256) == 0)
-                                {
-                                    string errorMsg = Marshal.PtrToStringUTF8((IntPtr)errorBuffer) ?? "Unknown error";
-                                    Logger.Error?.PrintMsg(LogClass.FFmpeg, 
-                                        $"avcodec_receive_frame failed: {errorMsg} (code: {receiveResult})");
-                                }
                                 return receiveResult;
-                            }
                         }
                         
-                        // 解码成功，检查帧格式
-                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, 
-                            $"Decode successful. Frame: Width={_hwFrame->Width}, " +
-                            $"Height={_hwFrame->Height}, Format={_hwFrame->Format}");
-                        
-                        // 参考hw_decode.c中的硬件帧转换逻辑
+                        // 检查帧格式
                         AVFrame* tmpFrame;
                         
                         if (_hwFrame->Format == (int)_hwPixelFormat)
                         {
-                            // 这是硬件格式的帧，需要传输到系统内存
-                            Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Frame is in hardware format, transferring to system memory");
-                            
+                            // 硬件帧，需要传输到系统内存
                             int transferResult = FFmpegApi.av_hwframe_transfer_data(_swFrame, _hwFrame, 0);
                             if (transferResult < 0)
                             {
@@ -399,20 +397,15 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                         else
                         {
                             // 帧已经在系统内存中
-                            Logger.Debug?.PrintMsg(LogClass.FFmpeg, "Frame is already in system memory");
                             tmpFrame = _hwFrame;
                         }
                         
-                        // 使用Surface的TransferFromHardwareFrame方法处理帧转换
+                        // 使用Surface处理帧转换
                         if (!output.TransferFromHardwareFrame(tmpFrame))
                         {
                             Logger.Error?.PrintMsg(LogClass.FFmpeg, "Failed to transfer frame to output surface");
                             return -1;
                         }
-                        
-                        Logger.Debug?.PrintMsg(LogClass.FFmpeg, 
-                            $"Frame copied to output. Width={output.Frame->Width}, " +
-                            $"Height={output.Frame->Height}, Format={output.Frame->Format}");
                         
                         return 0;
                     }
