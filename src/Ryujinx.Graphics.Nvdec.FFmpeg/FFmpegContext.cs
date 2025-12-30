@@ -180,12 +180,19 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     // 清理硬件设备上下文
                     if (_hwDeviceCtx != IntPtr.Zero)
                     {
-                        FFmpegApi.av_buffer_unref(&_hwDeviceCtx);
+                        fixed (IntPtr* hwDeviceCtxPtr = &_hwDeviceCtx)
+                        {
+                            FFmpegApi.av_buffer_unref(hwDeviceCtxPtr);
+                        }
                         _hwDeviceCtx = IntPtr.Zero;
                     }
                     
                     // 重新分配编解码器上下文
-                    FFmpegApi.avcodec_free_context(&_context);
+                    fixed (AVCodecContext** contextPtr = &_context)
+                    {
+                        FFmpegApi.avcodec_free_context(contextPtr);
+                    }
+                    
                     _codec = FFmpegApi.avcodec_find_decoder(codecId);
                     _context = FFmpegApi.avcodec_alloc_context3(_codec);
                     
@@ -258,12 +265,17 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     "Initializing hardware device context for MediaCodec");
                 
                 // 创建硬件设备上下文 - 参考hw_decode.c中的av_hwdevice_ctx_create调用
-                int result = FFmpegApi.av_hwdevice_ctx_create(
-                    &_hwDeviceCtx, 
-                    _hwDeviceType, 
-                    null, 
-                    null, 
-                    0);
+                // 使用fixed语句来获取变量的地址
+                int result;
+                fixed (IntPtr* hwDeviceCtxPtr = &_hwDeviceCtx)
+                {
+                    result = FFmpegApi.av_hwdevice_ctx_create(
+                        hwDeviceCtxPtr, 
+                        _hwDeviceType, 
+                        null, 
+                        null, 
+                        0);
+                }
                 
                 Logger.Info?.PrintMsg(LogClass.FFmpeg, 
                     $"av_hwdevice_ctx_create result: {result}, deviceCtx: 0x{(ulong)_hwDeviceCtx:X}");
@@ -656,19 +668,29 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
             if (_hwDeviceCtx != IntPtr.Zero)
             {
-                FFmpegApi.av_buffer_unref(&_hwDeviceCtx);
+                fixed (IntPtr* hwDeviceCtxPtr = &_hwDeviceCtx)
+                {
+                    FFmpegApi.av_buffer_unref(hwDeviceCtxPtr);
+                }
                 _hwDeviceCtx = IntPtr.Zero;
             }
 
             if (_packet != null)
             {
-                FFmpegApi.av_packet_free(&_packet);
+                fixed (AVPacket** packetPtr = &_packet)
+                {
+                    FFmpegApi.av_packet_free(packetPtr);
+                }
             }
 
             if (_context != null)
             {
                 FFmpegApi.avcodec_close(_context);
-                FFmpegApi.avcodec_free_context(&_context);
+                
+                fixed (AVCodecContext** contextPtr = &_context)
+                {
+                    FFmpegApi.avcodec_free_context(contextPtr);
+                }
             }
             
             Logger.Info?.PrintMsg(LogClass.FFmpeg, "FFmpegContext disposed");
