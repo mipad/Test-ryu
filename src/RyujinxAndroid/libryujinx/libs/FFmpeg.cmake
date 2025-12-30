@@ -115,9 +115,6 @@ set(FFMPEG_CONFIGURE_COMMAND
     --enable-decoder=hevc_vulkan
     --enable-decoder=vp9_vulkan
     --enable-decoder=av1_vulkan
-    # 启用线程安全的帧级多线程
-    --enable-frame-threading
-    --enable-thread-safe-bitstream-reader
     --enable-demuxer=*
     --enable-muxer=*
     --enable-parser=*
