@@ -247,5 +247,13 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
 
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial int av_hwframe_ctx_init(AVBufferRef* buffer_ref);
+
+        // 添加这些函数声明到 FFmpegApi 类中
+
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial AVHWDeviceType av_hwdevice_find_type_by_name([MarshalAs(UnmanagedType.LPUTF8Str)] string name);
+
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial int av_hwframe_transfer_get_formats(AVBufferRef* hwframe_ctx, int type, void** formats, int flags);
     }
 }
