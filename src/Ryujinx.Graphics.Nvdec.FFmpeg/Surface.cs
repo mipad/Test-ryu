@@ -97,8 +97,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                             
                             for (int j = 0; j < height; j++)
                             {
-                                byte* src = inputFrame->Data[i] + j * inputFrame->LineSize[i];
-                                byte* dst = Frame->Data[i] + j * Frame->LineSize[i];
+                                // 修复指针转换错误：将 nint 显式转换为 byte*
+                                byte* src = (byte*)inputFrame->Data[i] + j * inputFrame->LineSize[i];
+                                byte* dst = (byte*)Frame->Data[i] + j * Frame->LineSize[i];
                                 Unsafe.CopyBlock(dst, src, (uint)linesize);
                             }
                         }
