@@ -651,13 +651,14 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
     if (_hwFrameCtx != null)
     {
-        // 将 AVBufferRef* 转换为 IntPtr，然后获取其地址
-        IntPtr hwFrameCtxPtr = (IntPtr)_hwFrameCtx;
-        fixed (IntPtr* ppRef = &hwFrameCtxPtr)
+        // 正确释放硬件帧上下文
+        fixed (AVBufferRef** ppHwFrameCtx = &_hwFrameCtx)
         {
+            // 将 AVBufferRef** 转换为 IntPtr* 类型
+            IntPtr* ppRef = (IntPtr*)ppHwFrameCtx;
             FFmpegApi.av_buffer_unref(ppRef);
         }
-        _hwFrameCtx = null;
+        // av_buffer_unref 会将指针置零，所以这里不需要再设置为 null
     }
 
     if (_hwDeviceCtx != IntPtr.Zero)
