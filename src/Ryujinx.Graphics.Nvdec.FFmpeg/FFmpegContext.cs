@@ -651,9 +651,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
     if (_hwFrameCtx != null)
     {
-        // 修复：创建局部指针变量并取其地址
-        AVBufferRef* hwFrameCtxLocal = _hwFrameCtx;
-        FFmpegApi.av_buffer_unref(&hwFrameCtxLocal);
+        // 将 AVBufferRef* 转换为 IntPtr，然后获取其地址
+        IntPtr hwFrameCtxPtr = (IntPtr)_hwFrameCtx;
+        fixed (IntPtr* ppRef = &hwFrameCtxPtr)
+        {
+            FFmpegApi.av_buffer_unref(ppRef);
+        }
         _hwFrameCtx = null;
     }
 
