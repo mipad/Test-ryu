@@ -6,8 +6,6 @@ set(PROJECT_ENV "ANDROID_NDK_ROOT=${CMAKE_ANDROID_NDK}")
 set(ANDROID_TOOLCHAIN_ROOT ${CMAKE_ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64)
 set(ANDROID_SYSROOT ${ANDROID_TOOLCHAIN_ROOT}/sysroot)
 set(ANDROID_PLATFORM aarch64-linux-android)
-
-# 提高 Android API 级别到 30（Android 11），获得更好的硬件支持
 set(ANDROID_API_LEVEL 30)
 
 if (CMAKE_HOST_WIN32)
@@ -37,7 +35,7 @@ else ()
     list(APPEND PROJECT_ENV "PATH=${ANDROID_TOOLCHAIN_ROOT}/bin:$ENV{PATH}")
 endif ()
 
-# 设置 FFmpeg 配置选项 - 针对 Ryujinx 模拟器优化，启用完整硬件解码
+# 优化后的 FFmpeg 配置 - 仅 H.264、VP8、VP9，专注软解优化
 set(FFMPEG_CONFIGURE_COMMAND
     <SOURCE_DIR>/configure
     --prefix=${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-install
@@ -50,33 +48,35 @@ set(FFMPEG_CONFIGURE_COMMAND
     --strip=${ANDROID_TOOLCHAIN_ROOT}/bin/llvm-strip
     --enable-cross-compile
     --sysroot=${ANDROID_SYSROOT}
+    
+    # 优化编译选项
     --extra-cflags=-O3
     --extra-cflags=-fPIC
-    --extra-cflags=-march=armv8.2-a+fp16+dotprod
+    --extra-cflags=-march=armv8.2-a+fp16+dotprod+crypto
     --extra-cflags=-mtune=cortex-a78
     --extra-cflags=-DANDROID
     --extra-cflags=-D__ANDROID_API__=${ANDROID_API_LEVEL}
     --extra-cflags=-I${ANDROID_SYSROOT}/usr/include
     --extra-cflags=-I${ANDROID_SYSROOT}/usr/include/android
-    --extra-cflags=-I${ANDROID_SYSROOT}/usr/include/media
-    --extra-cflags=-I${ANDROID_SYSROOT}/usr/include/hardware
-    --extra-cflags=-I${CMAKE_ANDROID_NDK}/sources/android/cpufeatures
-    --extra-cflags=-I${ANDROID_SYSROOT}/usr/include/vulkan
+    
+    # 链接器优化
     --extra-ldflags=-Wl,--hash-style=both
     --extra-ldexeflags=-pie
-    --extra-ldflags=-landroid
-    --extra-ldflags=-llog
-    --extra-ldflags=-lmediandk
-    --extra-ldflags=-lvulkan
+    
+    # 启用多线程优化
+    --enable-pthreads
+    --enable-thumb
+    
+    # 运行时 CPU 特性检测
     --enable-runtime-cpudetect
+    
+    # 库配置
     --disable-static
     --enable-shared
     --disable-programs
     --disable-doc
-    --disable-htmlpages
-    --disable-manpages
-    --disable-podpages
-    --disable-txtpages
+    
+    # 启用必要的模块
     --enable-avfilter
     --enable-avcodec
     --enable-avformat
@@ -86,44 +86,62 @@ set(FFMPEG_CONFIGURE_COMMAND
     --enable-network
     --enable-protocols
     --enable-filters
+    
+    # 汇编优化
     --enable-asm
     --enable-neon
     --enable-inline-asm
-    --enable-jni
-    --enable-mediacodec
+    
+    # 仅启用需要的解码器
     --enable-decoder=h264
-    --enable-decoder=h264_mediacodec
-    --enable-decoder=hevc
-    --enable-decoder=hevc_mediacodec
     --enable-decoder=vp8
-    --enable-decoder=vp8_mediacodec
     --enable-decoder=vp9
-    --enable-decoder=vp9_mediacodec
-    --enable-decoder=av1
-    --enable-decoder=av1_mediacodec
+    
+    # 启用 H.264、VP8、VP9 多线程软解优化
+    --enable-decoder=h264_mmal
+    --enable-decoder=h264_v4l2m2m
+    --enable-decoder=vp8_v4l2m2m
+    --enable-decoder=vp9_v4l2m2m
+    
+    # 启用线程安全的帧级多线程
+    --enable-frame-threading
+    --enable-thread-safe-bitstream-reader
+    
+    # 启用硬件加速（可选，作为软解后备）
     --enable-hwaccels
     --enable-hwaccel=h264_mediacodec
     --enable-hwaccel=vp8_mediacodec
     --enable-hwaccel=vp9_mediacodec
-    --enable-hwaccel=hevc_mediacodec
-    --enable-hwaccel=av1_mediacodec
-    --enable-vulkan
-    --enable-decoder=h264_vulkan
-    --enable-decoder=hevc_vulkan
-    --enable-decoder=vp9_vulkan
-    --enable-decoder=av1_vulkan
-    --enable-demuxer=*
-    --enable-muxer=*
-    --enable-parser=*
-    --enable-bsf=*
+    
+    # 仅启用必要的 demuxer、muxer、parser
+    --enable-demuxer=matroska,mp4,avi,flv,mov
+    --enable-muxer=mp4,matroska
+    --enable-parser=h264,vp8,vp9
+    
+    # 启用比特流过滤器
+    --enable-bsf=h264_mp4toannexb
+    
+    # 启用 zlib（部分格式需要）
     --enable-zlib
-    --disable-bzlib
-    --disable-lzma
-    --disable-small
+    
+    # 优化选项
     --enable-optimizations
     --disable-debug
     --disable-stripping
-    --pkg-config=pkg-config
+    
+    # 禁用不必要的特性
+    --disable-bzlib
+    --disable-lzma
+    --disable-small
+    --disable-htmlpages
+    --disable-manpages
+    --disable-podpages
+    --disable-txtpages
+    --disable-indevs
+    --disable-outdevs
+    --disable-ffplay
+    --disable-ffprobe
+    --disable-ffmpeg
 )
 
 # 添加配置验证步骤
