@@ -77,9 +77,17 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
             });
         }
 
+        // 编解码器标志常量
+        internal const int AV_CODEC_FLAG_LOW_DELAY = 0x00000010;
+        internal const int AV_CODEC_FLAG_HWACCEL = 0x00001000;
+        internal const int AV_CODEC_FLAG2_FAST = 0x00000001;
+        
+        // 错误识别标志
+        internal const int AV_EF_EXPLODE = 0x0001;
+
         public unsafe delegate void av_log_set_callback_callback(void* a0, AVLog level, [MarshalAs(UnmanagedType.LPUTF8Str)] string a2, byte* a3);
         
-        // 硬件设备类型枚举 - 在 FFmpegApi 类内部
+        // 硬件设备类型枚举
         internal enum AVHWDeviceType
         {
             AV_HWDEVICE_TYPE_NONE,
@@ -97,7 +105,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
             AV_HWDEVICE_TYPE_D3D12VA,
         }
         
-        // 像素格式枚举 - 在 FFmpegApi 类内部
+        // 像素格式枚举
         internal enum AVPixelFormat
         {
             AV_PIX_FMT_NONE = -1,
@@ -182,6 +190,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         [LibraryImport(AvCodecLibraryName)]
         internal static unsafe partial int avcodec_version();
         
+        // 新增：刷新编解码器缓冲区的函数
+        [DllImport(AvCodecLibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static unsafe extern int avcodec_flush_buffers(AVCodecContext* avctx);
+        
         // 硬件设备相关函数声明
         [DllImport(AvUtilLibraryName, CallingConvention = CallingConvention.Cdecl)]
         internal static unsafe extern AVBufferRef* av_hwdevice_ctx_alloc(AVHWDeviceType type);
@@ -218,7 +230,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         [LibraryImport(AvCodecLibraryName)]
         internal static unsafe partial int avcodec_receive_frame(AVCodecContext* avctx, AVFrame* frame);
         
-        // AVDictionary 相关函数 - 注意参数类型
+        // AVDictionary 相关函数
         [DllImport(AvUtilLibraryName, CallingConvention = CallingConvention.Cdecl)]
         internal static unsafe extern int av_dict_set(AVDictionary** pm, [MarshalAs(UnmanagedType.LPUTF8Str)] string key, 
             [MarshalAs(UnmanagedType.LPUTF8Str)] string value, int flags);
