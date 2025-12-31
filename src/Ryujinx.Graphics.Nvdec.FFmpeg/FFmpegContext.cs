@@ -13,22 +13,20 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         
         private readonly AVCodec_decode _decodeFrame;
         private static readonly FFmpegApi.av_log_set_callback_callback _logFunc;
-        private readonly AVCodec* _codec;
-        private readonly AVPacket* _packet;
-        private readonly AVCodecContext* _context;
         
-        // 硬件设备上下文
+        private AVCodec* _codec;
+        private AVPacket* _packet;
+        private AVCodecContext* _context;
+        
         private AVBufferRef* _hw_device_ctx = null;
         private bool _useHardwareAcceleration = false;
         
-        // 日志开关
         private static readonly bool EnableDebugLogs = true;
 
         public FFmpegContext(AVCodecID codecId)
         {
             LogInfo($"Initializing FFmpegContext for codec: {codecId}");
             
-            // 第一步：尝试使用硬件解码器
             if (InitializeHardwareDecoder(codecId))
             {
                 _useHardwareAcceleration = true;
@@ -40,7 +38,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 InitializeSoftwareDecoder(codecId);
             }
             
-            // 初始化数据包
             _packet = FFmpegApi.av_packet_alloc();
             if (_packet == null)
             {
@@ -48,7 +45,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 throw new OutOfMemoryException("Failed to allocate AVPacket");
             }
             
-            // 设置解码函数指针
             SetupDecodeFunction();
             
             LogInfo($"FFmpegContext initialized successfully: HardwareAcceleration={_useHardwareAcceleration}");
@@ -60,7 +56,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             {
                 LogInfo("Attempting to initialize hardware decoder");
                 
-                // 1. 首先查找硬件解码器
                 string hardwareDecoderName = GetHardwareDecoderName(codecId);
                 if (hardwareDecoderName == null)
                 {
@@ -70,7 +65,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 
                 LogInfo($"Looking for hardware decoder: {hardwareDecoderName}");
                 
-                // 查找硬件解码器
                 AVCodec* hwCodec = FFmpegApi.avcodec_find_decoder_by_name(hardwareDecoderName);
                 if (hwCodec == null)
                 {
@@ -78,16 +72,15 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     return false;
                 }
                 
-                LogInfo($"Found hardware decoder: {Marshal.PtrToStringAnsi((IntPtr)hwCodec->name)}");
+                string codecName = Marshal.PtrToStringAnsi((IntPtr)hwCodec->Name) ?? "Unknown";
+                LogInfo($"Found hardware decoder: {codecName}");
                 
-                // 2. 创建硬件设备上下文
                 if (!CreateHardwareDeviceContext())
                 {
                     LogInfo("Failed to create hardware device context");
                     return false;
                 }
                 
-                // 3. 分配编解码器上下文
                 _context = FFmpegApi.avcodec_alloc_context3(hwCodec);
                 if (_context == null)
                 {
@@ -95,18 +88,15 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     return false;
                 }
                 
-                // 4. 设置硬件设备上下文到编解码器
-                _context->hw_device_ctx = FFmpegApi.av_buffer_ref(_hw_device_ctx);
-                if (_context->hw_device_ctx == null)
+                _context->HwDeviceCtx = FFmpegApi.av_buffer_ref(_hw_device_ctx);
+                if (_context->HwDeviceCtx == null)
                 {
                     LogError("Failed to set hardware device context");
                     return false;
                 }
                 
-                // 5. 设置像素格式为硬件格式
-                _context->pix_fmt = (int)FFmpegApi.AVPixelFormat.AV_PIX_FMT_MEDIACODEC;
+                _context->PixFmt = (int)FFmpegApi.AVPixelFormat.AV_PIX_FMT_MEDIACODEC;
                 
-                // 6. 打开编解码器
                 int openResult = FFmpegApi.avcodec_open2(_context, hwCodec, null);
                 if (openResult < 0)
                 {
@@ -130,23 +120,19 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             {
                 LogInfo("Creating MediaCodec hardware device context");
                 
-                // 创建AVDictionary来传递选项
                 AVDictionary* opts = null;
                 
-                // 设置create_window选项（如果需要创建表面）
                 int result = FFmpegApi.av_dict_set(&opts, "create_window", "1", 0);
                 if (result < 0)
                 {
                     LogError("Failed to set dictionary option");
                 }
                 
-                // 创建硬件设备上下文
                 AVBufferRef* device_ref = null;
                 result = FFmpegApi.av_hwdevice_ctx_create(&device_ref, 
                     FFmpegApi.AVHWDeviceType.AV_HWDEVICE_TYPE_MEDIACODEC,
                     null, opts, 0);
                 
-                // 释放字典
                 if (opts != null)
                 {
                     FFmpegApi.av_dict_free(&opts);
@@ -160,7 +146,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 
                 _hw_device_ctx = device_ref;
                 
-                // 初始化硬件设备上下文
                 result = FFmpegApi.av_hwdevice_ctx_init(_hw_device_ctx);
                 if (result < 0)
                 {
@@ -190,7 +175,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     throw new InvalidOperationException($"Codec {codecId} not found");
                 }
                 
-                LogInfo($"Found software decoder: {Marshal.PtrToStringAnsi((IntPtr)_codec->name)}");
+                string codecName = Marshal.PtrToStringAnsi((IntPtr)_codec->Name) ?? "Unknown";
+                LogInfo($"Found software decoder: {codecName}");
                 
                 _context = FFmpegApi.avcodec_alloc_context3(_codec);
                 if (_context == null)
@@ -198,8 +184,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     throw new OutOfMemoryException("Failed to allocate codec context");
                 }
                 
-                // 设置软件解码器的像素格式
-                _context->pix_fmt = (int)FFmpegApi.AVPixelFormat.AV_PIX_FMT_YUV420P;
+                _context->PixFmt = (int)FFmpegApi.AVPixelFormat.AV_PIX_FMT_YUV420P;
                 
                 int openResult = FFmpegApi.avcodec_open2(_context, _codec, null);
                 if (openResult < 0)
@@ -218,7 +203,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
         private string GetHardwareDecoderName(AVCodecID codecId)
         {
-            // 根据编解码器ID返回对应的MediaCodec解码器名称
             switch (codecId)
             {
                 case AVCodecID.AV_CODEC_ID_H264:
@@ -249,7 +233,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
                 LogInfo($"FFmpeg version: {avCodecMajorVersion}.{avCodecMinorVersion}");
 
-                // 根据FFmpeg版本选择正确的解码函数指针
                 if (avCodecMajorVersion > 59 || (avCodecMajorVersion == 59 && avCodecMinorVersion > 24))
                 {
                     _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodec<AVCodec>*)_codec)->CodecCallback);
@@ -279,7 +262,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             {
                 _logFunc = Log;
                 
-                // 设置日志级别和回调
                 FFmpegApi.av_log_set_level(AVLog.MaxOffset);
                 FFmpegApi.av_log_set_callback(_logFunc);
                 
@@ -340,10 +322,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
             try
             {
-                // 清空输出帧
                 FFmpegApi.av_frame_unref(output.Frame);
                 
-                // 准备数据包
                 fixed (byte* ptr = bitstream)
                 {
                     _packet->Data = ptr;
@@ -352,21 +332,17 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     
                     LogDebug($"Sending packet: size={bitstream.Length}");
                     
-                    // 使用解码函数
                     result = _decodeFrame(_context, output.Frame, &gotFrame, _packet);
                 }
                 
-                // 处理延迟帧
                 if (gotFrame == 0 && result >= 0)
                 {
                     LogDebug("No frame received, trying to flush delayed frames");
                     
-                    // 发送空包以获取延迟帧
                     _packet->Data = null;
                     _packet->Size = 0;
                     result = _decodeFrame(_context, output.Frame, &gotFrame, _packet);
                     
-                    // 重置B帧标志
                     if (_context->HasBFrames != 0)
                     {
                         _context->HasBFrames = 0;
@@ -382,7 +358,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     return -1;
                 }
                 
-                // 检查解码结果
                 if (result < 0)
                 {
                     LogError($"Decode error: {GetErrorDescription(result)}");
@@ -392,11 +367,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 
                 LogDebug($"Frame decoded successfully: format={output.Frame->Format}, width={output.Frame->Width}, height={output.Frame->Height}");
                 
-                // 如果是硬件解码，可能需要特殊处理
                 if (_useHardwareAcceleration && output.Frame->Format == (int)FFmpegApi.AVPixelFormat.AV_PIX_FMT_MEDIACODEC)
                 {
                     LogDebug("Hardware frame detected, will need to transfer to software frame");
-                    // Surface类会处理硬件帧传输
                 }
                 
                 return 0;
@@ -414,7 +387,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             
             try
             {
-                // 释放数据包
                 if (_packet != null)
                 {
                     fixed (AVPacket** ppPacket = &_packet)
@@ -423,7 +395,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     }
                 }
                 
-                // 释放硬件设备上下文
                 if (_hw_device_ctx != null)
                 {
                     fixed (AVBufferRef** ppBuffer = &_hw_device_ctx)
@@ -432,12 +403,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     }
                 }
                 
-                // 关闭编解码器
                 if (_context != null)
                 {
                     FFmpegApi.avcodec_close(_context);
                     
-                    // 释放编解码器上下文
                     fixed (AVCodecContext** ppContext = &_context)
                     {
                         FFmpegApi.avcodec_free_context(ppContext);
@@ -500,7 +469,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             }
         }
 
-        // 检查硬件解码器是否可用
         public static bool IsHardwareDecoderAvailable(AVCodecID codecId)
         {
             try
@@ -536,11 +504,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             }
         }
 
-        // 获取当前使用的解码器类型
         public string GetDecoderType()
         {
             return _useHardwareAcceleration ? "Hardware" : "Software";
         }
     }
 }
-
