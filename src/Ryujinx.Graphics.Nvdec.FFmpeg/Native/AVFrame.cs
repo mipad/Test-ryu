@@ -3,7 +3,7 @@ using System;
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
 {
-    struct AVFrame
+    unsafe struct AVFrame
     {
 #pragma warning disable CS0649 // Field is never assigned to
         public Array8<IntPtr> Data;
