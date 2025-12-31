@@ -79,7 +79,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
 
         public unsafe delegate void av_log_set_callback_callback(void* a0, AVLog level, [MarshalAs(UnmanagedType.LPUTF8Str)] string a2, byte* a3);
         
-        // 将枚举放回 FFmpegApi 类内部，并标记为 internal
+        // 硬件设备类型枚举 - 在 FFmpegApi 类内部
         internal enum AVHWDeviceType
         {
             AV_HWDEVICE_TYPE_NONE,
@@ -97,7 +97,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
             AV_HWDEVICE_TYPE_D3D12VA,
         }
         
-        // AVPixelFormat 枚举在 FFmpegApi 类内部
+        // 像素格式枚举 - 在 FFmpegApi 类内部
         internal enum AVPixelFormat
         {
             AV_PIX_FMT_NONE = -1,
@@ -182,7 +182,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         [LibraryImport(AvCodecLibraryName)]
         internal static unsafe partial int avcodec_version();
         
-        // 硬件设备相关函数声明 - 使用 DllImport
+        // 硬件设备相关函数声明
         [DllImport(AvUtilLibraryName, CallingConvention = CallingConvention.Cdecl)]
         internal static unsafe extern AVBufferRef* av_hwdevice_ctx_alloc(AVHWDeviceType type);
         
@@ -218,13 +218,13 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         [LibraryImport(AvCodecLibraryName)]
         internal static unsafe partial int avcodec_receive_frame(AVCodecContext* avctx, AVFrame* frame);
         
-        // AVDictionary 相关函数
+        // AVDictionary 相关函数 - 注意参数类型
         [DllImport(AvUtilLibraryName, CallingConvention = CallingConvention.Cdecl)]
-        internal static unsafe extern int av_dict_set(void** pm, [MarshalAs(UnmanagedType.LPUTF8Str)] string key, 
+        internal static unsafe extern int av_dict_set(AVDictionary** pm, [MarshalAs(UnmanagedType.LPUTF8Str)] string key, 
             [MarshalAs(UnmanagedType.LPUTF8Str)] string value, int flags);
         
         [DllImport(AvUtilLibraryName, CallingConvention = CallingConvention.Cdecl)]
-        internal static unsafe extern void av_dict_free(void** m);
+        internal static unsafe extern void av_dict_free(AVDictionary** m);
         
         // 硬件帧上下文函数
         [DllImport(AvUtilLibraryName, CallingConvention = CallingConvention.Cdecl)]
