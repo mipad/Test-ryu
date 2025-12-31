@@ -18,7 +18,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         
         // 参考hw_decode.c中的全局变量
         private static FFmpegApi.AVPixelFormat _hwPixelFormat = FFmpegApi.AVPixelFormat.AV_PIX_FMT_NONE;
-
+        private object _decodeLock = new object();
+        
+        // 硬件解码器名称常量
+        private const string H264MediaCodecDecoder = "h264_mediacodec";
+        private const string VP8MediaCodecDecoder = "vp8_mediacodec";
+        
         public FFmpegContext(AVCodecID codecId)
         {
             Logger.Info?.PrintMsg(LogClass.FFmpeg, $"FFmpegContext constructor called for codec: {codecId}");
