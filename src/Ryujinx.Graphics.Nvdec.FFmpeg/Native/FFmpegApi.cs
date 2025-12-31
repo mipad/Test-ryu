@@ -180,33 +180,36 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         [LibraryImport(AvCodecLibraryName)]
         internal static unsafe partial int avcodec_version();
         
-        [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial AVBufferRef* av_hwdevice_ctx_alloc(AVHWDeviceType type);
+        // 修正：使用正确的返回类型和参数
+        [DllImport(AvUtilLibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static unsafe extern AVBufferRef* av_hwdevice_ctx_alloc(AVHWDeviceType type);
         
-        [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial int av_hwdevice_ctx_create(AVBufferRef** device_ctx, AVHWDeviceType type, [MarshalAs(UnmanagedType.LPUTF8Str)] string device, AVDictionary* opts, int flags);
+        // 修正第235行：修正函数声明，使用正确的参数类型
+        [DllImport(AvUtilLibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static unsafe extern int av_hwdevice_ctx_create(AVBufferRef** device_ctx, AVHWDeviceType type, 
+            [MarshalAs(UnmanagedType.LPUTF8Str)] string device, void* opts, int flags);
         
-        [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial int av_hwdevice_ctx_init(AVBufferRef* device_ref);
+        [DllImport(AvUtilLibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static unsafe extern int av_hwdevice_ctx_init(AVBufferRef* device_ref);
         
-        [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial void av_buffer_unref(AVBufferRef** buf);
+        [DllImport(AvUtilLibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static unsafe extern void av_buffer_unref(AVBufferRef** buf);
         
-        [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial AVBufferRef* av_buffer_ref(AVBufferRef* buf);
+        [DllImport(AvUtilLibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static unsafe extern AVBufferRef* av_buffer_ref(AVBufferRef* buf);
         
-        [LibraryImport(AvCodecLibraryName)]
-        internal static unsafe partial AVCodecHWConfig* avcodec_get_hw_config(AVCodec* codec, int index);
+        [DllImport(AvCodecLibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static unsafe extern AVCodecHWConfig* avcodec_get_hw_config(AVCodec* codec, int index);
         
-        [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial int av_hwframe_transfer_data(AVFrame* dst, AVFrame* src, int flags);
+        [DllImport(AvUtilLibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static unsafe extern int av_hwframe_transfer_data(AVFrame* dst, AVFrame* src, int flags);
         
-        [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial AVHWDeviceType av_hwdevice_iterate_types(AVHWDeviceType prev);
+        [DllImport(AvUtilLibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static unsafe extern AVHWDeviceType av_hwdevice_iterate_types(AVHWDeviceType prev);
         
-        [LibraryImport(AvUtilLibraryName)]
+        [DllImport(AvUtilLibraryName, CallingConvention = CallingConvention.Cdecl)]
         [return: MarshalAs(UnmanagedType.LPUTF8Str)]
-        internal static unsafe partial string av_hwdevice_get_type_name(AVHWDeviceType type);
+        internal static unsafe extern string av_hwdevice_get_type_name(AVHWDeviceType type);
         
         [LibraryImport(AvCodecLibraryName)]
         internal static unsafe partial int avcodec_send_packet(AVCodecContext* avctx, AVPacket* avpkt);
@@ -214,58 +217,64 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         [LibraryImport(AvCodecLibraryName)]
         internal static unsafe partial int avcodec_receive_frame(AVCodecContext* avctx, AVFrame* frame);
         
-        [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial int av_opt_set(void* obj, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, [MarshalAs(UnmanagedType.LPUTF8Str)] string val, int search_flags);
+        // AVDictionary 相关函数 - 使用 DllImport 替代 LibraryImport
+        [DllImport(AvUtilLibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static unsafe extern int av_dict_set(void** pm, [MarshalAs(UnmanagedType.LPUTF8Str)] string key, 
+            [MarshalAs(UnmanagedType.LPUTF8Str)] string value, int flags);
         
-        [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial int av_opt_set_int(void* obj, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, long val, int search_flags);
-        
-        // AVDictionary 相关函数
-        [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial int av_dict_set(AVDictionary** pm, [MarshalAs(UnmanagedType.LPUTF8Str)] string key, [MarshalAs(UnmanagedType.LPUTF8Str)] string value, int flags);
-        
-        [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial void av_dict_free(AVDictionary** m);
+        [DllImport(AvUtilLibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static unsafe extern void av_dict_free(void** m);
         
         // 硬件帧上下文函数
-        [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial AVBufferRef* av_hwframe_ctx_alloc(AVBufferRef* device_ref);
+        [DllImport(AvUtilLibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static unsafe extern AVBufferRef* av_hwframe_ctx_alloc(AVBufferRef* device_ref);
         
-        [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial int av_hwframe_ctx_init(AVBufferRef* ref);
+        [DllImport(AvUtilLibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static unsafe extern int av_hwframe_ctx_init(AVBufferRef* buffer_ref);
         
-        [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial int av_hwframe_get_buffer(AVBufferRef* hwframe_ctx, AVFrame* frame, int flags);
+        [DllImport(AvUtilLibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static unsafe extern int av_hwframe_get_buffer(AVBufferRef* hwframe_ctx, AVFrame* frame, int flags);
         
         // 获取错误信息
-        [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial int av_strerror(int errnum, byte* errbuf, int errbuf_size);
+        [DllImport(AvUtilLibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static unsafe extern int av_strerror(int errnum, byte* errbuf, int errbuf_size);
         
         // 获取支持的像素格式
-        [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial int av_hwframe_transfer_get_formats(AVBufferRef* hwframe_ctx, int dir, AVPixelFormat** formats, int flags);
+        [DllImport(AvUtilLibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static unsafe extern int av_hwframe_transfer_get_formats(AVBufferRef* hwframe_ctx, int dir, 
+            AVPixelFormat** formats, int flags);
         
         // 像素格式相关
-        [LibraryImport(AvUtilLibraryName)]
+        [DllImport(AvUtilLibraryName, CallingConvention = CallingConvention.Cdecl)]
         [return: MarshalAs(UnmanagedType.LPUTF8Str)]
-        internal static unsafe partial string av_get_pix_fmt_name(AVPixelFormat pix_fmt);
+        internal static unsafe extern string av_get_pix_fmt_name(AVPixelFormat pix_fmt);
         
         // MediaCodec 特定函数
-        [LibraryImport(AvCodecLibraryName)]
-        internal static unsafe partial AVMediaCodecContext* av_mediacodec_alloc_context();
+        [DllImport(AvCodecLibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static unsafe extern AVMediaCodecContext* av_mediacodec_alloc_context();
         
-        [LibraryImport(AvCodecLibraryName)]
-        internal static unsafe partial int av_mediacodec_default_init(AVCodecContext* avctx, AVMediaCodecContext* ctx, IntPtr surface);
+        [DllImport(AvCodecLibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static unsafe extern int av_mediacodec_default_init(AVCodecContext* avctx, 
+            AVMediaCodecContext* ctx, IntPtr surface);
         
-        [LibraryImport(AvCodecLibraryName)]
-        internal static unsafe partial void av_mediacodec_default_free(AVCodecContext* avctx);
+        [DllImport(AvCodecLibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static unsafe extern void av_mediacodec_default_free(AVCodecContext* avctx);
         
         // 枚举硬件配置
         internal const int AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX = 0x0001;
         
         // 查找硬件设备类型
-        [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial AVHWDeviceType av_hwdevice_find_type_by_name([MarshalAs(UnmanagedType.LPUTF8Str)] string name);
+        [DllImport(AvUtilLibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static unsafe extern AVHWDeviceType av_hwdevice_find_type_by_name([MarshalAs(UnmanagedType.LPUTF8Str)] string name);
+        
+        // 添加缺少的 av_opt_set 函数声明
+        [DllImport(AvUtilLibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static unsafe extern int av_opt_set(void* obj, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, 
+            [MarshalAs(UnmanagedType.LPUTF8Str)] string val, int search_flags);
+        
+        [DllImport(AvUtilLibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static unsafe extern int av_opt_set_int(void* obj, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, 
+            long val, int search_flags);
     }
     
     // 硬件配置结构体
@@ -277,4 +286,3 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         public AVHWDeviceType device_type;
     }
 }
-
