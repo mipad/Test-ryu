@@ -27,6 +27,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         public int UvHeight => (Height + 1) >> 1;
         public int UvStride => Frame->LineSize[1];
 
+        // 修改这里：使用 FFmpegApi.AVPixelFormat
         public FFmpegApi.AVPixelFormat PixelFormat => (FFmpegApi.AVPixelFormat)Frame->Format;
 
         // 记录日志
@@ -45,7 +46,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             
             SwFrame = null;
             
-            // 初始化为YUV420P格式
+            // 初始化为YUV420P格式 - 使用 FFmpegApi.AVPixelFormat
             Frame->Format = (int)FFmpegApi.AVPixelFormat.AV_PIX_FMT_YUV420P;
             Frame->Width = width;
             Frame->Height = height;
@@ -257,4 +258,3 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         }
     }
 }
-
