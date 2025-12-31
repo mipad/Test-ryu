@@ -23,6 +23,23 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         
         private static readonly bool EnableDebugLogs = true;
 
+        static FFmpegContext()
+        {
+            try
+            {
+                _logFunc = Log;
+                
+                FFmpegApi.av_log_set_level(AVLog.MaxOffset);
+                FFmpegApi.av_log_set_callback(_logFunc);
+                
+                LogInfoStatic("FFmpeg logging initialized");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to initialize FFmpeg logging: {ex.Message}");
+            }
+        }
+
         public FFmpegContext(AVCodecID codecId)
         {
             LogInfo($"Initializing FFmpegContext for codec: {codecId}");
@@ -45,7 +62,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 throw new OutOfMemoryException("Failed to allocate AVPacket");
             }
             
-            SetupDecodeFunction();
+            _decodeFrame = SetupDecodeFunction();
             
             LogInfo($"FFmpegContext initialized successfully: HardwareAcceleration={_useHardwareAcceleration}");
         }
@@ -214,7 +231,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             }
         }
 
-        private void SetupDecodeFunction()
+        private AVCodec_decode SetupDecodeFunction()
         {
             try
             {
@@ -226,41 +243,27 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
 
                 if (avCodecMajorVersion > 59 || (avCodecMajorVersion == 59 && avCodecMinorVersion > 24))
                 {
-                    _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodec<AVCodec>*)_codec)->CodecCallback);
+                    var decodeFunc = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodec<AVCodec>*)_codec)->CodecCallback);
                     LogInfo("Using FFCodec API (libavcodec >= 59.25)");
+                    return decodeFunc;
                 }
                 else if (avCodecMajorVersion == 59)
                 {
-                    _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec501>*)_codec)->Decode);
+                    var decodeFunc = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec501>*)_codec)->Decode);
                     LogInfo("Using FFCodecLegacy API (libavcodec 59.x)");
+                    return decodeFunc;
                 }
                 else
                 {
-                    _decodeFrame = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec>*)_codec)->Decode);
+                    var decodeFunc = Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(((FFCodecLegacy<AVCodec>*)_codec)->Decode);
                     LogInfo("Using FFCodecLegacy API (libavcodec <= 58.x)");
+                    return decodeFunc;
                 }
             }
             catch (Exception ex)
             {
                 LogError($"Exception in SetupDecodeFunction: {ex.Message}");
                 throw;
-            }
-        }
-
-        static FFmpegContext()
-        {
-            try
-            {
-                _logFunc = Log;
-                
-                FFmpegApi.av_log_set_level(AVLog.MaxOffset);
-                FFmpegApi.av_log_set_callback(_logFunc);
-                
-                LogInfoStatic("FFmpeg logging initialized");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Failed to initialize FFmpeg logging: {ex.Message}");
             }
         }
 
