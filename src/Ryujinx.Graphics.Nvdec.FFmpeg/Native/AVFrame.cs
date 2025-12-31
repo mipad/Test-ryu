@@ -30,6 +30,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         public long ReorderedOpaque;
         public int SampleRate;
         public ulong ChannelLayout;
+        
+        // 添加缺失的字段
+        public Array8<IntPtr> buf;  // AVBufferRef* buf[8];
+        public IntPtr hw_frames_ctx; // AVBufferRef* hw_frames_ctx;
 #pragma warning restore CS0649
 
         // NOTE: There is more after, but the layout kind of changed a bit and we don't need more than this. This is safe as we only manipulate this behind a reference.
