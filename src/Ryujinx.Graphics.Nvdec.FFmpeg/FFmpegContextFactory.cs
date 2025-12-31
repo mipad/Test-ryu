@@ -1,5 +1,6 @@
 // Ryujinx.Graphics.Nvdec.FFmpeg/FFmpegContextFactory.cs
 using System;
+using Ryujinx.Graphics.Nvdec.FFmpeg.Native;
 using System.Collections.Concurrent;
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg
