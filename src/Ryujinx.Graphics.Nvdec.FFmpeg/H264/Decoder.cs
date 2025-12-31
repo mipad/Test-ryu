@@ -7,17 +7,16 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
 {
     public sealed class Decoder : IH264Decoder
     {
-        // 我们专注于硬件解码，所以这里返回true
         public bool IsHardwareAccelerated => true;
 
         private const int WorkBufferSize = 0x200;
+
         private readonly byte[] _workBuffer = new byte[WorkBufferSize];
-        private FFmpegContext _context;
+
+        private FFmpegContext _context = new(AVCodecID.AV_CODEC_ID_H264);
+
         private int _oldOutputWidth;
         private int _oldOutputHeight;
-        
-        // 硬件解码器名称常量
-        private const string H264MediaCodecDecoder = "h264_mediacodec";
 
         public ISurface CreateSurface(int width, int height)
         {
@@ -28,44 +27,26 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
         {
             Surface outSurf = (Surface)output;
 
-            try
+            if (outSurf.RequestedWidth != _oldOutputWidth ||
+                outSurf.RequestedHeight != _oldOutputHeight)
             {
-                // 如果分辨率变化或者上下文未初始化，重新创建解码器上下文
-                if (_context == null || 
-                    outSurf.RequestedWidth != _oldOutputWidth ||
-                    outSurf.RequestedHeight != _oldOutputHeight)
-                {
-                    Logger.Info?.PrintMsg(LogClass.FFmpeg, 
-                        $"{( _context == null ? "Creating" : "Recreating")} hardware decoder context. " +
-                        $"Resolution: {outSurf.RequestedWidth}x{outSurf.RequestedHeight}");
-                    
-                    _context?.Dispose();
-                    
-                    // 明确使用h264_mediacodec硬件解码器
-                    _context = new FFmpegContext(H264MediaCodecDecoder);
+                Logger.Info?.PrintMsg(LogClass.FFmpeg, $"Resolution changed from {_oldOutputWidth}x{_oldOutputHeight} to {outSurf.RequestedWidth}x{outSurf.RequestedHeight}. Recreating FFmpegContext.");
+                _context.Dispose();
+                _context = new FFmpegContext(AVCodecID.AV_CODEC_ID_H264);
 
-                    _oldOutputWidth = outSurf.RequestedWidth;
-                    _oldOutputHeight = outSurf.RequestedHeight;
-                }
+                _oldOutputWidth = outSurf.RequestedWidth;
+                _oldOutputHeight = outSurf.RequestedHeight;
+            }
 
-                Span<byte> bs = Prepend(bitstream, SpsAndPpsReconstruction.Reconstruct(ref pictureInfo, _workBuffer));
-                
-                Logger.Debug?.PrintMsg(LogClass.FFmpeg, 
-                    $"Starting hardware decode. Bitstream size: {bs.Length}, " +
-                    $"Output surface: {outSurf.RequestedWidth}x{outSurf.RequestedHeight}");
-                
-                int result = _context.DecodeFrame(outSurf, bs);
-                
-                Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Hardware decode result: {result}");
-                
-                return result == 0;
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.PrintMsg(LogClass.FFmpeg, 
-                    $"Hardware decode failed: {ex.Message}\n{ex.StackTrace}");
-                return false;
-            }
+            Span<byte> bs = Prepend(bitstream, SpsAndPpsReconstruction.Reconstruct(ref pictureInfo, _workBuffer));
+            
+            Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Starting decode. Bitstream size: {bs.Length}, Output surface: {outSurf.RequestedWidth}x{outSurf.RequestedHeight}");
+            
+            int result = _context.DecodeFrame(outSurf, bs);
+            
+            Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Decode result: {result}");
+            
+            return result == 0;
         }
 
         private static byte[] Prepend(ReadOnlySpan<byte> data, ReadOnlySpan<byte> prep)
@@ -78,6 +59,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
             return output;
         }
 
-        public void Dispose() => _context?.Dispose();
+        public void Dispose() => _context.Dispose();
     }
 }
+
