@@ -209,15 +209,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     return "h264_mediacodec";
                 case AVCodecID.AV_CODEC_ID_VP8:
                     return "vp8_mediacodec";
-                case AVCodecID.AV_CODEC_ID_VP9:
-                    return "vp9_mediacodec";
-                case AVCodecID.AV_CODEC_ID_HEVC:
-                case AVCodecID.AV_CODEC_ID_H265:
-                    return "hevc_mediacodec";
-                case AVCodecID.AV_CODEC_ID_MPEG4:
-                    return "mpeg4_mediacodec";
-                case AVCodecID.AV_CODEC_ID_MPEG2VIDEO:
-                    return "mpeg2_mediacodec";
                 default:
                     return null;
             }
