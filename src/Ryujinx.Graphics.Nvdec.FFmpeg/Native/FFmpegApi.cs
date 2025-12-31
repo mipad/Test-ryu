@@ -181,22 +181,22 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         internal static unsafe partial int avcodec_version();
         
         [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial IntPtr av_hwdevice_ctx_alloc(AVHWDeviceType type);
+        internal static unsafe partial AVBufferRef* av_hwdevice_ctx_alloc(AVHWDeviceType type);
         
         [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial int av_hwdevice_ctx_create(IntPtr* device_ctx, AVHWDeviceType type, [MarshalAs(UnmanagedType.LPUTF8Str)] string device, void* opts, int flags);
+        internal static unsafe partial int av_hwdevice_ctx_create(AVBufferRef** device_ctx, AVHWDeviceType type, [MarshalAs(UnmanagedType.LPUTF8Str)] string device, AVDictionary* opts, int flags);
         
         [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial int av_hwdevice_ctx_init(IntPtr ctx_ref);
+        internal static unsafe partial int av_hwdevice_ctx_init(AVBufferRef* device_ref);
         
         [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial void av_buffer_unref(IntPtr* buffer_ref);
+        internal static unsafe partial void av_buffer_unref(AVBufferRef** buf);
         
         [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial IntPtr av_buffer_ref(IntPtr buffer_ref);
+        internal static unsafe partial AVBufferRef* av_buffer_ref(AVBufferRef* buf);
         
         [LibraryImport(AvCodecLibraryName)]
-        internal static unsafe partial IntPtr avcodec_get_hw_config(AVCodec* codec, int index);
+        internal static unsafe partial AVCodecHWConfig* avcodec_get_hw_config(AVCodec* codec, int index);
         
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial int av_hwframe_transfer_data(AVFrame* dst, AVFrame* src, int flags);
@@ -217,43 +217,64 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial int av_opt_set(void* obj, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, [MarshalAs(UnmanagedType.LPUTF8Str)] string val, int search_flags);
         
-        internal const int AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX = 0x0001;
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial int av_opt_set_int(void* obj, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, long val, int search_flags);
         
-        // 添加用于设置硬件设备上下文的函数
+        // AVDictionary 相关函数
         [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial int av_opt_set_bin(void* obj, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, byte* val, int size, int search_flags);
+        internal static unsafe partial int av_dict_set(AVDictionary** pm, [MarshalAs(UnmanagedType.LPUTF8Str)] string key, [MarshalAs(UnmanagedType.LPUTF8Str)] string value, int flags);
         
-        // 添加用于获取/设置帧格式的函数
         [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial int av_get_pix_fmt([MarshalAs(UnmanagedType.LPUTF8Str)] string name);
-
-        // 在 FFmpegApi.cs 中添加以下函数声明
+        internal static unsafe partial void av_dict_free(AVDictionary** m);
+        
+        // 硬件帧上下文函数
         [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial int av_strerror(int errnum, byte* errbuf, int errbuf_size);
-
-        // MediaCodec相关函数
-        [LibraryImport(AvCodecLibraryName)]
-        internal static unsafe partial AVMediaCodecContext* av_mediacodec_alloc_context();
- 
-        [LibraryImport(AvCodecLibraryName, EntryPoint = "av_mediacodec_default_init")]
-        internal static unsafe partial int av_mediacodec_default_init(AVCodecContext* avctx, AVMediaCodecContext* ctx, IntPtr surface);
-
-        [LibraryImport(AvCodecLibraryName)]
-        internal static unsafe partial void av_mediacodec_default_free(AVCodecContext* avctx);
-
-        // 添加获取和设置硬件帧上下文的函数
+        internal static unsafe partial AVBufferRef* av_hwframe_ctx_alloc(AVBufferRef* device_ref);
+        
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial int av_hwframe_ctx_init(AVBufferRef* ref);
+        
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial int av_hwframe_get_buffer(AVBufferRef* hwframe_ctx, AVFrame* frame, int flags);
-
+        
+        // 获取错误信息
         [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial int av_hwframe_ctx_init(AVBufferRef* buffer_ref);
-
-        // 添加这些函数声明到 FFmpegApi 类中
-
+        internal static unsafe partial int av_strerror(int errnum, byte* errbuf, int errbuf_size);
+        
+        // 获取支持的像素格式
+        [LibraryImport(AvUtilLibraryName)]
+        internal static unsafe partial int av_hwframe_transfer_get_formats(AVBufferRef* hwframe_ctx, int dir, AVPixelFormat** formats, int flags);
+        
+        // 像素格式相关
+        [LibraryImport(AvUtilLibraryName)]
+        [return: MarshalAs(UnmanagedType.LPUTF8Str)]
+        internal static unsafe partial string av_get_pix_fmt_name(AVPixelFormat pix_fmt);
+        
+        // MediaCodec 特定函数
+        [LibraryImport(AvCodecLibraryName)]
+        internal static unsafe partial AVMediaCodecContext* av_mediacodec_alloc_context();
+        
+        [LibraryImport(AvCodecLibraryName)]
+        internal static unsafe partial int av_mediacodec_default_init(AVCodecContext* avctx, AVMediaCodecContext* ctx, IntPtr surface);
+        
+        [LibraryImport(AvCodecLibraryName)]
+        internal static unsafe partial void av_mediacodec_default_free(AVCodecContext* avctx);
+        
+        // 枚举硬件配置
+        internal const int AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX = 0x0001;
+        
+        // 查找硬件设备类型
         [LibraryImport(AvUtilLibraryName)]
         internal static unsafe partial AVHWDeviceType av_hwdevice_find_type_by_name([MarshalAs(UnmanagedType.LPUTF8Str)] string name);
-
-        [LibraryImport(AvUtilLibraryName)]
-        internal static unsafe partial int av_hwframe_transfer_get_formats(AVBufferRef* hwframe_ctx, int type, void** formats, int flags);
+    }
+    
+    // 硬件配置结构体
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct AVCodecHWConfig
+    {
+        public int pix_fmt;
+        public int methods;
+        public AVHWDeviceType device_type;
     }
 }
+
