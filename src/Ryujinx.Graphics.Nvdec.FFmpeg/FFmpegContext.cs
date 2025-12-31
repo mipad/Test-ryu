@@ -625,19 +625,17 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             {
                 if (_packet != null)
                 {
-                    fixed (AVPacket** ppPacket = &_packet)
-                    {
-                        FFmpegApi.av_packet_free(ppPacket);
-                    }
+                    // 修复：创建临时变量并传递其地址
+                    AVPacket* tempPacket = _packet;
+                    FFmpegApi.av_packet_free(&tempPacket);
                     _packet = null;
                 }
                 
                 if (_hw_device_ctx != null)
                 {
-                    fixed (AVBufferRef** ppBuffer = &_hw_device_ctx)
-                    {
-                        FFmpegApi.av_buffer_unref(ppBuffer);
-                    }
+                    // 修复：创建临时变量并传递其地址
+                    AVBufferRef* tempDeviceCtx = _hw_device_ctx;
+                    FFmpegApi.av_buffer_unref(&tempDeviceCtx);
                     _hw_device_ctx = null;
                 }
                 
@@ -645,10 +643,9 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 {
                     FFmpegApi.avcodec_close(_context);
                     
-                    fixed (AVCodecContext** ppContext = &_context)
-                    {
-                        FFmpegApi.avcodec_free_context(ppContext);
-                    }
+                    // 修复：创建临时变量并传递其地址
+                    AVCodecContext* tempContext = _context;
+                    FFmpegApi.avcodec_free_context(&tempContext);
                     _context = null;
                 }
                 
