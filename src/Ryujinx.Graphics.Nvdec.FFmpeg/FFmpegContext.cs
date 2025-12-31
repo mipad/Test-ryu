@@ -37,7 +37,11 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private static readonly Dictionary<AVCodecID, string[]> HardwareDecoderMap = new Dictionary<AVCodecID, string[]>
         {
             { AVCodecID.AV_CODEC_ID_H264, new string[] { "h264_mediacodec", "h264_android_mediacodec", "h264" } },
+            { AVCodecID.AV_CODEC_ID_HEVC, new string[] { "hevc_mediacodec", "hevc_android_mediacodec", "hevc" } },
+            { AVCodecID.AV_CODEC_ID_H265, new string[] { "hevc_mediacodec", "hevc_android_mediacodec", "hevc" } },
             { AVCodecID.AV_CODEC_ID_VP8, new string[] { "vp8_mediacodec", "vp8_android_mediacodec", "vp8" } },
+            { AVCodecID.AV_CODEC_ID_VP9, new string[] { "vp9_mediacodec", "vp9_android_mediacodec", "vp9" } },
+            { AVCodecID.AV_CODEC_ID_AV1, new string[] { "av1_mediacodec", "av1_android_mediacodec", "av1" } },
         };
 
         static FFmpegContext()
@@ -286,10 +290,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             try
             {
                 // 设置解码器参数
-                _context->Flags |= 0x1000; // AV_CODEC_FLAG_HWACCEL
+                _context->Flags |= FFmpegApi.AV_CODEC_FLAG_HWACCEL;
                 
-                // 设置低延迟
-                _context->LowDelay = 1;
+                // 设置低延迟模式
+                _context->Flags |= FFmpegApi.AV_CODEC_FLAG_LOW_DELAY;
                 
                 // 设置线程数
                 _context->ThreadCount = 2;
@@ -298,7 +302,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 _context->HasBFrames = 0;
                 
                 // 设置错误恢复
-                _context->ErrRecognition = 0x0001; // AV_EF_EXPLODE
+                _context->ErrRecognition = FFmpegApi.AV_EF_EXPLODE;
                 
                 LogInfo("Decoder parameters configured");
             }
@@ -532,6 +536,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                         FFmpegApi.av_frame_free(&frame);
                     }
                     
+                    // 使用 avcodec_flush_buffers 刷新缓冲区
                     FFmpegApi.avcodec_flush_buffers(_context);
                     
                     LogInfo("Decoder buffers flushed successfully");
@@ -570,7 +575,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 // 释放 NativeWindow（如果由我们管理）
                 if (_ownsNativeWindow && _nativeWindowPtr != -1)
                 {
-                    AndroidJni.ReleaseNativeWindow(_nativeWindowPtr);
+                    // 这里需要调用适当的函数来释放 NativeWindow
+                    // AndroidJni.ReleaseNativeWindow(_nativeWindowPtr);
                     _nativeWindowPtr = -1;
                 }
                 
