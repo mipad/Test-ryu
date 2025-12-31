@@ -159,7 +159,6 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 {
                     LogError("Failed to set hardware device context");
                     
-                    // 修复：使用临时变量
                     AVCodecContext* tempContext = hwContext;
                     FFmpegApi.avcodec_free_context(&tempContext);
                     return false;
@@ -177,14 +176,20 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 {
                     LogError($"Failed to open hardware codec: {GetErrorDescription(openResult)}");
                     
-                    // 记录硬件解码失败次数
                     _hardwareFailureCount++;
                     
                     // 清理硬件上下文
                     AVCodecContext* tempContext = hwContext;
                     FFmpegApi.avcodec_free_context(&tempContext);
                     
-                    // 如果硬件解码失败次数太多，考虑禁用硬件解码
+                    // 清理硬件设备上下文
+                    if (_hw_device_ctx != null)
+                    {
+                        AVBufferRef* tempDeviceCtx = _hw_device_ctx;
+                        FFmpegApi.av_buffer_unref(&tempDeviceCtx);
+                        _hw_device_ctx = null;
+                    }
+                    
                     if (_hardwareFailureCount > 3)
                     {
                         LogWarning($"Hardware decoder failed {_hardwareFailureCount} times, disabling hardware decoding");
@@ -193,14 +198,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     return false;
                 }
                 
-                // 硬件解码器初始化成功，替换当前的软件解码器
-                
+                // 硬件解码器初始化成功，现在替换当前的软件解码器
                 // 首先清理软件解码器
                 if (_context != null)
                 {
                     FFmpegApi.avcodec_close(_context);
                     
-                    // 修复：使用临时变量
                     AVCodecContext* tempContext = _context;
                     FFmpegApi.avcodec_free_context(&tempContext);
                     _context = null;
@@ -215,7 +218,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 _context = hwContext;
                 _codec = hwCodec;
                 
-                LogInfo($"Hardware decoder opened successfully: {codecName}");
+                // 重新设置解码函数（硬件解码可能需要不同的解码函数）
+                _decodeFrame = SetupDecodeFunction();
+                
+                LogInfo($"Hardware decoder opened successfully");
                 return true;
             }
             catch (Exception ex)
@@ -284,6 +290,10 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     if (result < 0)
                     {
                         LogError($"Second attempt failed: {GetErrorDescription(result)}");
+                        if (device_ref != null)
+                        {
+                            FFmpegApi.av_buffer_unref(&device_ref);
+                        }
                         return false;
                     }
                 }
@@ -413,6 +423,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 int avCodecMinorVersion = (avCodecRawVersion >> 8) & 0xFF;
 
                 LogInfo($"FFmpeg version: {avCodecMajorVersion}.{avCodecMinorVersion}");
+                LogInfo($"Decoder type: {(_useHardwareAcceleration ? "Hardware" : "Software")}");
+                LogInfo($"Decoder name: {Marshal.PtrToStringAnsi((IntPtr)_codec->Name) ?? "Unknown"}");
 
                 // 使用安全的方式获取解码函数指针
                 IntPtr decodeFuncPtr = IntPtr.Zero;
@@ -447,11 +459,12 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 
                 if (decodeFuncPtr == IntPtr.Zero)
                 {
-                    LogError("Failed to get decode function pointer, using fallback");
+                    LogWarning("Failed to get decode function pointer, using fallback");
                     // 使用简单的解码函数作为后备
                     return SimpleDecodeFallback;
                 }
                 
+                LogInfo($"Decode function pointer obtained: 0x{decodeFuncPtr:X}");
                 return Marshal.GetDelegateForFunctionPointer<AVCodec_decode>(decodeFuncPtr);
             }
             catch (Exception ex)
@@ -534,7 +547,8 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     return -1;
                 }
                 
-                if (_packet != null)
+                // 修复这里：将 != 改为 ==
+                if (_packet == null)  // 正确检查包是否为null
                 {
                     LogError("Packet is null");
                     return -1;
@@ -648,7 +662,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 {
                     FFmpegApi.avcodec_close(_context);
                     
-                    // 修复第198行：创建临时变量
+                    // 修复：创建临时变量
                     AVCodecContext* tempContext = _context;
                     FFmpegApi.avcodec_free_context(&tempContext);
                     _context = null;
@@ -790,4 +804,3 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         public bool IsInitialized => _initialized;
     }
 }
-
