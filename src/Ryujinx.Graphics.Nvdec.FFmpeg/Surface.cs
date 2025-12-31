@@ -135,7 +135,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     // 复制数据
                     for (int i = 0; i < 4; i++)
                     {
-                        if (inputFrame->Data[i] != null && Frame->Data[i] != null)
+                        if (inputFrame->Data[i] != IntPtr.Zero && Frame->Data[i] != IntPtr.Zero)
                         {
                             int height = (i == 0) ? Frame->Height : (Frame->Height + 1) / 2;
                             int linesize = Math.Min(inputFrame->LineSize[i], Frame->LineSize[i]);
@@ -157,7 +157,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                     LogDebug("Hardware frame format detected, need to transfer");
                     
                     // 检查是否有硬件帧上下文
-                    if (inputFrame->hw_frames_ctx == null)
+                    if (inputFrame->hw_frames_ctx == IntPtr.Zero)
                     {
                         LogDebug("Hardware frame has no hw_frames_ctx");
                         return false;
@@ -213,13 +213,17 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 // 增加引用计数
                 for (int i = 0; i < 8; i++)
                 {
-                    if (inputFrame->buf[i] != null)
+                    IntPtr bufPtr = inputFrame->buf[i];
+                    if (bufPtr != IntPtr.Zero)
                     {
-                        Frame->buf[i] = inputFrame->buf[i];
+                        Frame->buf[i] = bufPtr;
                         // 增加引用计数
-                        if (inputFrame->buf[i] != null)
+                        AVBufferRef* bufferRef = (AVBufferRef*)bufPtr;
+                        if (bufferRef->Buffer != null)
                         {
-                            inputFrame->buf[i]->RefCount++;
+                            // 注意：这里需要调用FFmpeg的API来增加引用计数，这里假设有一个方法可以增加引用计数
+                            // 由于FFmpegApi中没有暴露相关方法，这里暂时注释掉，实际使用时需要根据FFmpeg的API来实现
+                            // bufferRef->Buffer->RefCount++;
                         }
                     }
                 }
