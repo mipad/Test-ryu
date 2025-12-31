@@ -1,22 +1,14 @@
 using Ryujinx.Graphics.Nvdec.FFmpeg.Native;
 using Ryujinx.Graphics.Video;
 using System;
-using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg.Vp8
 {
     public sealed class Decoder : IDecoder
     {
-        public bool IsHardwareAccelerated => true;
+        public bool IsHardwareAccelerated => false;
 
-        private const int WorkBufferSize = 0x200;
-        private readonly byte[] _workBuffer = new byte[WorkBufferSize];
-        private FFmpegContext _context;
-        private int _oldOutputWidth;
-        private int _oldOutputHeight;
-        
-        // 硬件解码器名称常量
-        private const string VP8MediaCodecDecoder = "vp8_mediacodec";
+        private readonly FFmpegContext _context = new(AVCodecID.AV_CODEC_ID_VP8);
 
         public ISurface CreateSurface(int width, int height)
         {
@@ -27,44 +19,36 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Vp8
         {
             Surface outSurf = (Surface)output;
 
-            try
-            {
-                // 如果分辨率变化或者上下文未初始化，重新创建解码器上下文
-                if (_context == null || 
-                    outSurf.RequestedWidth != _oldOutputWidth ||
-                    outSurf.RequestedHeight != _oldOutputHeight)
-                {
-                    Logger.Info?.PrintMsg(LogClass.FFmpeg, 
-                        $"{( _context == null ? "Creating" : "Recreating")} hardware decoder context. " +
-                        $"Resolution: {outSurf.RequestedWidth}x{outSurf.RequestedHeight}");
-                    
-                    _context?.Dispose();
-                    
-                    // 明确使用vp8_mediacodec硬件解码器
-                    _context = new FFmpegContext(VP8MediaCodecDecoder);
+            int uncompHeaderSize = pictureInfo.KeyFrame ? 10 : 3;
 
-                    _oldOutputWidth = outSurf.RequestedWidth;
-                    _oldOutputHeight = outSurf.RequestedHeight;
-                }
+            byte[] frame = new byte[bitstream.Length + uncompHeaderSize];
 
-                Logger.Debug?.PrintMsg(LogClass.FFmpeg, 
-                    $"Starting hardware decode. Bitstream size: {bitstream.Length}, " +
-                    $"Output surface: {outSurf.RequestedWidth}x{outSurf.RequestedHeight}");
-                
-                int result = _context.DecodeFrame(outSurf, bitstream);
-                
-                Logger.Debug?.PrintMsg(LogClass.FFmpeg, $"Hardware decode result: {result}");
-                
-                return result == 0;
-            }
-            catch (Exception ex)
+            uint firstPartSizeShifted = pictureInfo.FirstPartSize << 5;
+
+            frame[0] = (byte)(pictureInfo.KeyFrame ? 0 : 1);
+            frame[0] |= (byte)((pictureInfo.Version & 7) << 1);
+            frame[0] |= 1 << 4;
+            frame[0] |= (byte)firstPartSizeShifted;
+            frame[1] |= (byte)(firstPartSizeShifted >> 8);
+            frame[2] |= (byte)(firstPartSizeShifted >> 16);
+
+            if (pictureInfo.KeyFrame)
             {
-                Logger.Error?.PrintMsg(LogClass.FFmpeg, 
-                    $"Hardware decode failed: {ex.Message}\n{ex.StackTrace}");
-                return false;
+                frame[3] = 0x9d;
+                frame[4] = 0x01;
+                frame[5] = 0x2a;
+                frame[6] = (byte)pictureInfo.FrameWidth;
+                frame[7] = (byte)((pictureInfo.FrameWidth >> 8) & 0x3F);
+                frame[8] = (byte)pictureInfo.FrameHeight;
+                frame[9] = (byte)((pictureInfo.FrameHeight >> 8) & 0x3F);
             }
+
+            bitstream.CopyTo(new Span<byte>(frame)[uncompHeaderSize..]);
+
+            return _context.DecodeFrame(outSurf, frame) == 0;
         }
 
-        public void Dispose() => _context?.Dispose();
+        public void Dispose() => _context.Dispose();
     }
 }
+
