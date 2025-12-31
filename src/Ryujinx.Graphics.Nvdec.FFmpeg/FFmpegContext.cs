@@ -625,7 +625,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
             {
                 if (_packet != null)
                 {
-                    // 修复：创建临时变量并传递其地址
+                    // 创建临时变量并传递其地址
                     AVPacket* tempPacket = _packet;
                     FFmpegApi.av_packet_free(&tempPacket);
                     _packet = null;
@@ -633,7 +633,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 
                 if (_hw_device_ctx != null)
                 {
-                    // 修复：创建临时变量并传递其地址
+                    // 创建临时变量并传递其地址
                     AVBufferRef* tempDeviceCtx = _hw_device_ctx;
                     FFmpegApi.av_buffer_unref(&tempDeviceCtx);
                     _hw_device_ctx = null;
@@ -643,7 +643,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
                 {
                     FFmpegApi.avcodec_close(_context);
                     
-                    // 修复：创建临时变量并传递其地址
+                    // 修复第198行：创建临时变量并传递其地址
                     AVCodecContext* tempContext = _context;
                     FFmpegApi.avcodec_free_context(&tempContext);
                     _context = null;
