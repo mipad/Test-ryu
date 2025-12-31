@@ -37,11 +37,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg
         private static readonly Dictionary<AVCodecID, string[]> HardwareDecoderMap = new Dictionary<AVCodecID, string[]>
         {
             { AVCodecID.AV_CODEC_ID_H264, new string[] { "h264_mediacodec", "h264_android_mediacodec", "h264" } },
-            { AVCodecID.AV_CODEC_ID_HEVC, new string[] { "hevc_mediacodec", "hevc_android_mediacodec", "hevc" } },
-            { AVCodecID.AV_CODEC_ID_H265, new string[] { "hevc_mediacodec", "hevc_android_mediacodec", "hevc" } },
             { AVCodecID.AV_CODEC_ID_VP8, new string[] { "vp8_mediacodec", "vp8_android_mediacodec", "vp8" } },
-            { AVCodecID.AV_CODEC_ID_VP9, new string[] { "vp9_mediacodec", "vp9_android_mediacodec", "vp9" } },
-            { AVCodecID.AV_CODEC_ID_AV1, new string[] { "av1_mediacodec", "av1_android_mediacodec", "av1" } },
         };
 
         static FFmpegContext()
