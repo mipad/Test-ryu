@@ -4,7 +4,7 @@ using Ryujinx.Graphics.Nvdec.FFmpeg.Native;
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg
 {
-    public class FFmpegContextFactory : IDisposable
+    unsafe class FFmpegContextFactory : IDisposable
     {
         private readonly ConcurrentDictionary<AVCodecID, FFmpegContext> _contexts = new();
         private readonly ConcurrentDictionary<AVCodecID, long> _nativeWindows = new();
