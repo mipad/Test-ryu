@@ -90,8 +90,7 @@ set(FFMPEG_CONFIGURE_COMMAND
     --enable-asm
     --enable-neon
     --enable-inline-asm
-    #--enable-jni
-    --enable-ndk
+    --enable-jni
     --enable-mediacodec
     --enable-decoder=h264
     --enable-decoder=h264_mediacodec
@@ -101,19 +100,14 @@ set(FFMPEG_CONFIGURE_COMMAND
     --enable-decoder=vp8_mediacodec
     --enable-decoder=vp9
     --enable-decoder=vp9_mediacodec
-    --enable-decoder=av1
-    --enable-decoder=av1_mediacodec
     --enable-hwaccels
     --enable-hwaccel=h264_mediacodec
     --enable-hwaccel=vp8_mediacodec
     --enable-hwaccel=vp9_mediacodec
-    --enable-hwaccel=hevc_mediacodec
-    --enable-hwaccel=av1_mediacodec
     --enable-vulkan
     --enable-decoder=h264_vulkan
-    --enable-decoder=hevc_vulkan
+    --enable-decoder=vp8_vulkan
     --enable-decoder=vp9_vulkan
-    --enable-decoder=av1_vulkan
     --enable-demuxer=*
     --enable-muxer=*
     --enable-parser=*
