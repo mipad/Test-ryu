@@ -91,6 +91,7 @@ set(FFMPEG_CONFIGURE_COMMAND
     --enable-neon
     --enable-inline-asm
     --enable-jni
+    --enable-ndk
     --enable-mediacodec
     --enable-decoder=h264
     --enable-decoder=h264_mediacodec
