@@ -94,8 +94,6 @@ set(FFMPEG_CONFIGURE_COMMAND
     --enable-mediacodec
     --enable-decoder=h264
     --enable-decoder=h264_mediacodec
-    --enable-decoder=hevc
-    --enable-decoder=hevc_mediacodec
     --enable-decoder=vp8
     --enable-decoder=vp8_mediacodec
     --enable-decoder=vp9
