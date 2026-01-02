@@ -51,6 +51,19 @@ class ControlEditViews {
                 return
             }
 
+            // 获取所有组合按键
+            val allCombinations = remember {
+                mainViewModel.controller?.getAllCombinations() ?: emptyList()
+            }
+            
+            // 计算组合按键状态
+            val (allCombinationsHidden, setAllCombinationsHidden) = remember(allCombinations) {
+                val hidden = allCombinations.isNotEmpty() && allCombinations.all { combination ->
+                    !(mainViewModel.controller?.isControlEnabled(combination.id) ?: true)
+                }
+                mutableStateOf(hidden)
+            }
+
             // 主调整对话框 - 使用固定dp尺寸
             Dialog(onDismissRequest = onDismiss) {
                 Surface(
@@ -106,7 +119,7 @@ class ControlEditViews {
                                         }
                                     }
                                 ) {
-                                    Text(text = "全部重置")
+                                    Text(text = "全重置")
                                 }
                                 
                                 // 右侧：确定按钮
@@ -128,20 +141,60 @@ class ControlEditViews {
                                 ),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 8.dp)
+                                    .padding(vertical = 4.dp)
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(text = "➕", fontSize = 18.sp, modifier = Modifier.padding(end = 8.dp))
-                                    Text(text = "创建组合按键")
+                                    Text(text = "新建组合键")
+                                }
+                            }
+                            
+                            // 隐藏/显示所有组合按键按钮 - 使用正方形符号
+                            if (allCombinations.isNotEmpty()) {
+                                Button(
+                                    onClick = {
+                                        // 切换所有组合按键的显示状态
+                                        allCombinations.forEach { combination ->
+                                            mainViewModel.controller?.setControlEnabled(combination.id, allCombinationsHidden)
+                                        }
+                                        setAllCombinationsHidden(!allCombinationsHidden)
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (allCombinationsHidden) 
+                                            MaterialTheme.colorScheme.secondaryContainer 
+                                        else 
+                                            MaterialTheme.colorScheme.primaryContainer,
+                                        contentColor = if (allCombinationsHidden) 
+                                            MaterialTheme.colorScheme.onSecondaryContainer 
+                                        else 
+                                            MaterialTheme.colorScheme.onPrimaryContainer
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Text(
+                                            text = if (allCombinationsHidden) "⬜" else "🔳", 
+                                            fontSize = 18.sp, 
+                                            modifier = Modifier.padding(end = 8.dp)
+                                        )
+                                        Text(
+                                            text = if (allCombinationsHidden) "显示所有组合按键" else "隐藏所有组合按键"
+                                        )
+                                    }
                                 }
                             }
 
                             Spacer(modifier = Modifier.height(12.dp))
 
                             Text(
-                                text = "单个按键设置",
+                                text = "单按键设置",
                                 style = MaterialTheme.typography.titleMedium,
                                 modifier = Modifier.padding(vertical = 4.dp)
                             )
@@ -280,7 +333,7 @@ class ControlEditViews {
                                 .weight(1f)
                                 .fillMaxHeight()
                         ) {
-                            // 顶部按钮行 - 重置在左，确定在右
+                            // 顶部按钮行 - 重置或删除在左，确定在右
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -297,7 +350,7 @@ class ControlEditViews {
                                             contentColor = Color.Red
                                         )
                                     ) {
-                                        Text(text = "🗑️ 删除")
+                                        Text(text = "删除")
                                     }
                                 } else {
                                     TextButton(
@@ -490,7 +543,7 @@ class ControlEditViews {
                                 },
                                 enabled = combinationName.value.isNotBlank() && selectedKeys.value.isNotEmpty()
                             ) {
-                                Text(text = "创建")
+                                Text(text = "新建")
                             }
                         }
 
@@ -673,7 +726,7 @@ class ControlEditViews {
 
                         // 底部说明
                         Text(
-                            text = "最多可选择4个按键",
+                            text = "最多可选4个按键",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                             modifier = Modifier
@@ -775,7 +828,7 @@ class ControlEditViews {
                     config.id,
                     config.name,  // 使用自定义名称而不是固定描述
                     "组合按键: ${config.keyCodes.joinToString("+") { getKeyName(it) }}",
-                    "🔣",
+                    "🎮",
                     ControlType.COMBINATION
                 )
             }
@@ -836,3 +889,4 @@ class ControlEditViews {
         }
     }
 }
+
