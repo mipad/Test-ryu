@@ -1636,7 +1636,7 @@ class GameController(var activity: Activity) {
         }
     }
     
-    // 新增方法：更新单个按钮的启用状态
+    // 新增方法：更新单个按钮的启用状态 - 修复位置偏移问题
     private fun updateSingleButtonEnabled(buttonId: Int, enabled: Boolean) {
         val button = virtualButtons[buttonId] ?: return
         
@@ -1651,10 +1651,21 @@ class GameController(var activity: Activity) {
                 buttonLayoutManager?.getAllButtonConfigs()?.find { it.id == buttonId }?.keyCode ?: 0, 
                 controllerId
             )
+        } else {
+            // 关键修复：当重新启用按钮时，延迟刷新位置以避免位置偏移
+            buttonContainer?.post {
+                // 确保在 UI 线程中正确刷新位置
+                refreshControlPositions()
+                
+                // 额外延迟，确保容器尺寸已正确计算
+                buttonContainer?.postDelayed({
+                    refreshControlPositions()
+                }, 50)
+            }
         }
     }
     
-    // 新增方法：更新单个摇杆的启用状态
+    // 新增方法：更新单个摇杆的启用状态 - 修复位置偏移问题
     private fun updateSingleJoystickEnabled(joystickId: Int, enabled: Boolean) {
         val joystick = virtualJoysticks[joystickId] ?: return
         
@@ -1673,10 +1684,21 @@ class GameController(var activity: Activity) {
                     RyujinxNative.jnaInstance.inputSetStickAxis(2, 0f, 0f, controllerId)
                 }
             }
+        } else {
+            // 关键修复：当重新启用摇杆时，延迟刷新位置以避免位置偏移
+            buttonContainer?.post {
+                // 确保在 UI 线程中正确刷新位置
+                refreshControlPositions()
+                
+                // 额外延迟，确保容器尺寸已正确计算
+                buttonContainer?.postDelayed({
+                    refreshControlPositions()
+                }, 50)
+            }
         }
     }
     
-    // 新增方法：更新单个方向键的启用状态
+    // 新增方法：更新单个方向键的启用状态 - 修复位置偏移问题
     private fun updateSingleDpadEnabled(enabled: Boolean) {
         val dpad = dpadView ?: return
         
@@ -1692,10 +1714,21 @@ class GameController(var activity: Activity) {
             RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadDown.ordinal, controllerId)
             RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadLeft.ordinal, controllerId)
             RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadRight.ordinal, controllerId)
+        } else {
+            // 关键修复：当重新启用方向键时，延迟刷新位置以避免位置偏移
+            buttonContainer?.post {
+                // 确保在 UI 线程中正确刷新位置
+                refreshControlPositions()
+                
+                // 额外延迟，确保容器尺寸已正确计算
+                buttonContainer?.postDelayed({
+                    refreshControlPositions()
+                }, 50)
+            }
         }
     }
     
-    // 新增方法：更新单个组合按键的启用状态
+    // 新增方法：更新单个组合按键的启用状态 - 修复位置偏移问题
     private fun updateSingleCombinationEnabled(combinationId: Int, enabled: Boolean) {
         val combination = virtualCombinations[combinationId] ?: return
         
@@ -1709,6 +1742,17 @@ class GameController(var activity: Activity) {
             val config = buttonLayoutManager?.getAllCombinationConfigs()?.find { it.id == combinationId }
             config?.keyCodes?.forEach { keyCode ->
                 RyujinxNative.jnaInstance.inputSetButtonReleased(keyCode, controllerId)
+            }
+        } else {
+            // 关键修复：当重新启用组合按键时，延迟刷新位置以避免位置偏移
+            buttonContainer?.post {
+                // 确保在 UI 线程中正确刷新位置
+                refreshControlPositions()
+                
+                // 额外延迟，确保容器尺寸已正确计算
+                buttonContainer?.postDelayed({
+                    refreshControlPositions()
+                }, 50)
             }
         }
     }
@@ -1886,6 +1930,11 @@ class GameController(var activity: Activity) {
         buttonContainer?.post {
             // 延迟刷新位置，确保容器尺寸已正确计算
             refreshControlPositions()
+            
+            // 额外延迟，确保渲染完成
+            buttonContainer?.postDelayed({
+                refreshControlPositions()
+            }, 100)
         }
         
         return newId
@@ -1908,6 +1957,114 @@ class GameController(var activity: Activity) {
     
     fun getAllCombinations(): List<CombinationConfig> {
         return buttonLayoutManager?.getAllCombinationConfigs() ?: emptyList()
+    }
+    
+    // 新增：显示所有组合按键并修复位置偏移问题
+    fun showAllCombinations() {
+        val manager = buttonLayoutManager ?: return
+        val combinations = manager.getAllCombinationConfigs()
+        
+        combinations.forEach { combination ->
+            if (!isControlEnabled(combination.id)) {
+                setControlEnabled(combination.id, true)
+            }
+        }
+        
+        // 关键修复：延迟刷新位置
+        buttonContainer?.post {
+            // 确保在 UI 线程中正确刷新位置
+            refreshControlPositions()
+            
+            // 额外延迟，确保渲染完成
+            buttonContainer?.postDelayed({
+                refreshControlPositions()
+            }, 100)
+        }
+    }
+    
+    // 新增：隐藏所有组合按键
+    fun hideAllCombinations() {
+        val manager = buttonLayoutManager ?: return
+        val combinations = manager.getAllCombinationConfigs()
+        
+        combinations.forEach { combination ->
+            if (isControlEnabled(combination.id)) {
+                setControlEnabled(combination.id, false)
+            }
+        }
+    }
+    
+    // 新增：显示所有虚拟控件
+    fun showAllControls() {
+        val manager = buttonLayoutManager ?: return
+        
+        // 启用所有按钮
+        manager.getAllButtonConfigs().forEach { config ->
+            if (!isControlEnabled(config.id)) {
+                setControlEnabled(config.id, true)
+            }
+        }
+        
+        // 启用所有摇杆
+        manager.getAllJoystickConfigs().forEach { config ->
+            if (!isControlEnabled(config.id)) {
+                setControlEnabled(config.id, true)
+            }
+        }
+        
+        // 启用方向键
+        if (!isControlEnabled(201)) {
+            setControlEnabled(201, true)
+        }
+        
+        // 启用所有组合按键
+        manager.getAllCombinationConfigs().forEach { config ->
+            if (!isControlEnabled(config.id)) {
+                setControlEnabled(config.id, true)
+            }
+        }
+        
+        // 关键修复：延迟刷新位置
+        buttonContainer?.post {
+            // 确保在 UI 线程中正确刷新位置
+            refreshControlPositions()
+            
+            // 额外延迟，确保渲染完成
+            buttonContainer?.postDelayed({
+                refreshControlPositions()
+            }, 100)
+        }
+    }
+    
+    // 新增：隐藏所有虚拟控件
+    fun hideAllControls() {
+        val manager = buttonLayoutManager ?: return
+        
+        // 禁用所有按钮
+        manager.getAllButtonConfigs().forEach { config ->
+            if (isControlEnabled(config.id)) {
+                setControlEnabled(config.id, false)
+            }
+        }
+        
+        // 禁用所有摇杆
+        manager.getAllJoystickConfigs().forEach { config ->
+            if (isControlEnabled(config.id)) {
+                setControlEnabled(config.id, false)
+            }
+        }
+        
+        // 禁用电方向键
+        if (isControlEnabled(201)) {
+            setControlEnabled(201, false)
+        }
+        
+        // 禁用所有组合按键
+        manager.getAllCombinationConfigs().forEach { config ->
+            if (isControlEnabled(config.id)) {
+                setControlEnabled(config.id, false)
+            }
+        }
     }
     
     // 增强的 refreshControlPositions 方法 - 修复组合按键创建和删除后的位置偏移
@@ -2204,3 +2361,4 @@ class GameController(var activity: Activity) {
             controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
     }
 }
+
