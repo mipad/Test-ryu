@@ -531,15 +531,229 @@
                   Dynamic="Required All" />
             <Type Name="Ryujinx.HLE.HOS.Services.Pcv.Rgltr.IRegulatorManager"
                   Dynamic="Required All" />
-                  <Type Name="Ryujinx.HLE.HOS.Services.IpcService"
+            <Type Name="Ryujinx.HLE.HOS.Services.IpcService"
                   Dynamic="Required All" />
-                  <Type Name="Ryujinx.HLE.HOS.Services.Nv.INvDrvServices"
+            <Type Name="Ryujinx.HLE.HOS.Services.Nv.INvDrvServices"
                   Dynamic="Required All" />
-                  <Type Name="Ryujinx.HLE.HOS.Services.Sm.IUserInterface"
+            <Type Name="Ryujinx.HLE.HOS.Services.Sm.IUserInterface"
                   Dynamic="Required All" />
-                  <Type Name="Ryujinx.HLE.Exceptions.ServiceNotImplementedException"
+            <Type Name="Ryujinx.HLE.Exceptions.ServiceNotImplementedException"
                   Dynamic="Required All" />
+        </Assembly>
+        
+        <!-- ========== 添加缺失的关键程序集 ========== -->
+        
+        <!-- 关键：图形着色器编译相关程序集 -->
+        <Assembly Name="Ryujinx.Graphics.Shader" Dynamic="Required All" Serialize="Required All">
+            <!-- SSA 重命名相关类型 -->
+            <Type Name="Ryujinx.Graphics.Shader.Translation.Ssa" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Shader.Translation.Ssa.RenameState" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Shader.Translation.Ssa.Definition" Dynamic="Required All" Serialize="Required All" />
+            
+            <!-- 着色器翻译器相关类型 -->
+            <Type Name="Ryujinx.Graphics.Shader.Translation.TranslatorContext" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Shader.Translation.Translator" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Shader.Translation.ShaderConfig" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Shader.Translation.ProgramConfig" Dynamic="Required All" Serialize="Required All" />
+            
+            <!-- 基本块和控制流 -->
+            <Type Name="Ryujinx.Graphics.Shader.Translation.BasicBlock" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Shader.Translation.ControlFlowGraph" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Shader.Translation.Dominance" Dynamic="Required All" Serialize="Required All" />
+            
+            <!-- 操作数和操作 -->
+            <Type Name="Ryujinx.Graphics.Shader.Translation.Operand" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Shader.Translation.Operation" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Shader.Translation.Instruction" Dynamic="Required All" Serialize="Required All" />
+            
+            <!-- IR 相关 -->
+            <Type Name="Ryujinx.Graphics.Shader.IntermediateRepresentation" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Shader.Decoders" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Shader.CodeGen" Dynamic="Required All" Serialize="Required All" />
+            
+            <!-- 特定后端 -->
+            <Type Name="Ryujinx.Graphics.Shader.StructuredIr" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Shader.CodeGen.Glsl" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Shader.CodeGen.Spirv" Dynamic="Required All" Serialize="Required All" />
+            
+            <!-- 着色器缓存 -->
+            <Type Name="Ryujinx.Graphics.Shader.Cache" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Shader.ShaderHeader" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Shader.ShaderProgram" Dynamic="Required All" Serialize="Required All" />
+        </Assembly>
+
+        <!-- GPU 图形程序集 -->
+        <Assembly Name="Ryujinx.Graphics.Gpu" Dynamic="Required All" Serialize="Required All">
+            <!-- 着色器缓存相关 -->
+            <Type Name="Ryujinx.Graphics.Gpu.Shader.ShaderCache" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Gpu.Shader.ShaderSpecializationState" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Gpu.Shader.ShaderProgramInfo" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Gpu.Shader.ShaderAddresses" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Gpu.Shader.ShaderStage" Dynamic="Required All" Serialize="Required All" />
+            
+            <!-- 3D 引擎相关 -->
+            <Type Name="Ryujinx.Graphics.Gpu.Engine.Threed.ThreedClass" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Gpu.Engine.Threed.StateUpdater" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Gpu.Engine.Threed.DrawManager" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Gpu.Engine.Threed.ClassState" Dynamic="Required All" Serialize="Required All" />
+            
+            <!-- GPFIFO 相关 -->
+            <Type Name="Ryujinx.Graphics.Gpu.Engine.GPFifo.GPFifoProcessor" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Gpu.Engine.GPFifo.GPFifoDevice" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Gpu.Engine.MME.MacroHLE" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Gpu.Engine.MME.Macro" Dynamic="Required All" Serialize="Required All" />
+            
+            <!-- 状态管理 -->
+            <Type Name="Ryujinx.Graphics.Gpu.State" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Gpu.Image" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Gpu.Memory" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Gpu.Buffer" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Gpu.Resource" Dynamic="Required All" Serialize="Required All" />
+            
+            <!-- 同步和调度 -->
+            <Type Name="Ryujinx.Graphics.Gpu.Synchronization" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Gpu.Engine" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Gpu.Scheduler" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Gpu.Dma" Dynamic="Required All" Serialize="Required All" />
+            
+            <!-- 通道相关 -->
+            <Type Name="Ryujinx.Graphics.Gpu.GpuChannel" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Gpu.GpuChannelPoolState" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="Ryujinx.Graphics.Gpu.GpuChannelGraphicsState" Dynamic="Required All" Serialize="Required All" />
+        </Assembly>
+
+        <!-- ARMeilleure JIT 编译器 -->
+        <Assembly Name="ARMeilleure" Dynamic="Required All" Serialize="Required All">
+            <Type Name="ARMeilleure.CodeGen" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="ARMeilleure.CodeGen.X86" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="ARMeilleure.CodeGen.Arm64" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="ARMeilleure.Translation" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="ARMeilleure.State" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="ARMeilleure.Memory" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="ARMeilleure.IntermediateRepresentation" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="ARMeilleure.Instructions" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="ARMeilleure.Decoders" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="ARMeilleure.Compilation" Dynamic="Required All" Serialize="Required All" />
+        </Assembly>
+
+        <!-- 其他图形后端 -->
+        <Assembly Name="Ryujinx.Graphics.OpenGL" Dynamic="Required All" Serialize="Required All" />
+        <Assembly Name="Ryujinx.Graphics.Vulkan" Dynamic="Required All" Serialize="Required All" />
+        <Assembly Name="Ryujinx.Graphics.Nvdec" Dynamic="Required All" Serialize="Required All" />
+        <Assembly Name="Ryujinx.Graphics.Vic" Dynamic="Required All" Serialize="Required All" />
+        <Assembly Name="Ryujinx.Graphics.Texture" Dynamic="Required All" Serialize="Required All" />
+        <Assembly Name="Ryujinx.Graphics.Host1x" Dynamic="Required All" Serialize="Required All" />
+
+        <!-- 异常处理相关的系统类型 -->
+        <Assembly Name="System.Private.CoreLib" Dynamic="Required All">
+            <Type Name="System.RuntimeExceptionHelpers" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="System.Runtime.ExceptionServices.ExceptionDispatchInfo" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="System.Runtime.CompilerServices.RuntimeHelpers" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="System.Reflection.MethodBase" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="System.Reflection.Assembly" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="System.Type" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="System.Activator" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="System.Exception" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="System.SystemException" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="System.ApplicationException" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="System.InvalidOperationException" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="System.NotImplementedException" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="System.NotSupportedException" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="System.ArgumentNullException" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="System.ArgumentException" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="System.ArgumentOutOfRangeException" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="System.NullReferenceException" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="System.OutOfMemoryException" Dynamic="Required All" Serialize="Required All" />
+            <Type Name="System.StackOverflowException" Dynamic="Required All" Serialize="Required All" />
+        </Assembly>
+
+        <!-- 其他关键程序集 -->
+        <Assembly Name="Ryujinx.Common" Dynamic="Required All" Serialize="Required All" />
+        <Assembly Name="Ryujinx.Core" Dynamic="Required All" Serialize="Required All" />
+        <Assembly Name="Ryujinx.Input" Dynamic="Required All" Serialize="Required All" />
+        <Assembly Name="Ryujinx.UI.Common" Dynamic="Required All" Serialize="Required All" />
+        <Assembly Name="Ryujinx.Memory" Dynamic="Required All" Serialize="Required All" />
+        <Assembly Name="Ryujinx.Cpu" Dynamic="Required All" Serialize="Required All" />
+        <Assembly Name="Ryujinx.Audio" Dynamic="Required All" Serialize="Required All" />
+        
+        <!-- 音频后端 -->
+        <Assembly Name="Ryujinx.Audio.Backends.OpenAL" Dynamic="Required All" Serialize="Required All" />
+        <Assembly Name="Ryujinx.Audio.Backends.SDL2" Dynamic="Required All" Serialize="Required All" />
+        <Assembly Name="Ryujinx.Audio.Backends.Oboe" Dynamic="Required All" Serialize="Required All" />
+        
+        <!-- 关键第三方库 -->
+        <Assembly Name="Rxmxnx.PInvoke.Extensions" Dynamic="Required All" Serialize="Required All" />
+        <Assembly Name="Silk.NET.Vulkan" Dynamic="Required All" Serialize="Required All" />
+        <Assembly Name="Silk.NET.OpenGL" Dynamic="Required All" Serialize="Required All" />
+        <Assembly Name="Silk.NET.SDL" Dynamic="Required All" Serialize="Required All" />
+        
+        <!-- 动态代码生成和序列化支持 -->
+        <Assembly Name="System.Text.Json" Dynamic="Required All">
+            <Type Name="System.Text.Json.JsonSerializer" Dynamic="Required All" />
+            <Type Name="System.Text.Json.JsonSerializerOptions" Dynamic="Required All" />
+            <Type Name="System.Text.Json.Serialization.JsonConverter" Dynamic="Required All" />
+            <Type Name="System.Text.Json.Serialization.JsonConverter`1" Dynamic="Required All" />
+        </Assembly>
+        
+        <Assembly Name="System.Linq.Expressions" Dynamic="Required All">
+            <Type Name="System.Linq.Expressions.Expression" Dynamic="Required All" />
+            <Type Name="System.Linq.Expressions.LambdaExpression" Dynamic="Required All" />
+            <Type Name="System.Linq.Expressions.ParameterExpression" Dynamic="Required All" />
+            <Type Name="System.Linq.Expressions.MethodCallExpression" Dynamic="Required All" />
+            <Type Name="System.Linq.Expressions.MemberExpression" Dynamic="Required All" />
+            <Type Name="System.Linq.Expressions.ConstantExpression" Dynamic="Required All" />
+            <Type Name="System.Linq.Expressions.UnaryExpression" Dynamic="Required All" />
+            <Type Name="System.Linq.Expressions.BinaryExpression" Dynamic="Required All" />
+            <Type Name="System.Linq.Expressions.NewExpression" Dynamic="Required All" />
+            <Type Name="System.Linq.Expressions.NewArrayExpression" Dynamic="Required All" />
+        </Assembly>
+        
+        <!-- 反射支持 -->
+        <Assembly Name="System.Reflection" Dynamic="Required All" />
+        <Assembly Name="System.Reflection.Primitives" Dynamic="Required All" />
+        <Assembly Name="System.Reflection.TypeExtensions" Dynamic="Required All" />
+        <Assembly Name="System.Reflection.Emit" Dynamic="Required All" />
+        <Assembly Name="System.Reflection.Emit.ILGeneration" Dynamic="Required All" />
+        
+        <!-- 线程和并发支持 -->
+        <Assembly Name="System.Threading" Dynamic="Required All">
+            <Type Name="System.Threading.Thread" Dynamic="Required All" />
+            <Type Name="System.Threading.ThreadPool" Dynamic="Required All" />
+            <Type Name="System.Threading.Tasks.Task" Dynamic="Required All" />
+            <Type Name="System.Threading.Tasks.Task`1" Dynamic="Required All" />
+            <Type Name="System.Threading.CancellationToken" Dynamic="Required All" />
+            <Type Name="System.Threading.CancellationTokenSource" Dynamic="Required All" />
+            <Type Name="System.Threading.ManualResetEvent" Dynamic="Required All" />
+            <Type Name="System.Threading.AutoResetEvent" Dynamic="Required All" />
+            <Type Name="System.Threading.Monitor" Dynamic="Required All" />
+            <Type Name="System.Threading.Mutex" Dynamic="Required All" />
+            <Type Name="System.Threading.Semaphore" Dynamic="Required All" />
+        </Assembly>
+        
+        <!-- 集合类型支持 -->
+        <Assembly Name="System.Collections" Dynamic="Required All">
+            <Type Name="System.Collections.Generic.Dictionary`2" Dynamic="Required All" />
+            <Type Name="System.Collections.Generic.List`1" Dynamic="Required All" />
+            <Type Name="System.Collections.Generic.HashSet`1" Dynamic="Required All" />
+            <Type Name="System.Collections.Generic.Queue`1" Dynamic="Required All" />
+            <Type Name="System.Collections.Generic.Stack`1" Dynamic="Required All" />
+            <Type Name="System.Collections.Concurrent.ConcurrentDictionary`2" Dynamic="Required All" />
+            <Type Name="System.Collections.Concurrent.ConcurrentQueue`1" Dynamic="Required All" />
+            <Type Name="System.Collections.Concurrent.ConcurrentStack`1" Dynamic="Required All" />
+        </Assembly>
+        
+        <!-- 文件IO支持 -->
+        <Assembly Name="System.IO" Dynamic="Required All">
+            <Type Name="System.IO.File" Dynamic="Required All" />
+            <Type Name="System.IO.Directory" Dynamic="Required All" />
+            <Type Name="System.IO.Path" Dynamic="Required All" />
+            <Type Name="System.IO.FileStream" Dynamic="Required All" />
+            <Type Name="System.IO.MemoryStream" Dynamic="Required All" />
+            <Type Name="System.IO.Stream" Dynamic="Required All" />
+            <Type Name="System.IO.StreamReader" Dynamic="Required All" />
+            <Type Name="System.IO.StreamWriter" Dynamic="Required All" />
+            <Type Name="System.IO.BinaryReader" Dynamic="Required All" />
+            <Type Name="System.IO.BinaryWriter" Dynamic="Required All" />
         </Assembly>
     </Application>
 </Directives>
-
