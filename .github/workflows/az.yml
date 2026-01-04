@@ -2,9 +2,9 @@ name: Android CI Fixed
 
 on:
   push:
-    branches: [ "net8-9" ]  
+    branches: [ "net9-10" ]  
   pull_request:
-    branches: [ "net8-9" ]
+    branches: [ "net9-10" ]
 
 jobs:
   build:
@@ -27,7 +27,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: net8-9
+        ref: net9-10
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
