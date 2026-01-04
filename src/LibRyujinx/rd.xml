@@ -24,6 +24,8 @@
             <Type Name="Silk.NET.Vulkan.Extensions.KHR.KhrSwapchain"
                   Dynamic="Required All"/>
         </Assembly>
+        <Assembly Name="Ryujinx.Graphics.Shader" Dynamic="Required All"/>
+        </Assembly>
         <Assembly Name="Ryujinx.HLE">
             <Type Name="Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel.NvHostGpuDeviceFile"
                   Dynamic="Required All" />
