@@ -14,6 +14,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private readonly VulkanRenderer _gd;
         private readonly Device _device;
         private readonly PipelineFull _pipeline;
+        private readonly bool _isTbdrPlatform;
 
         public CounterType Type { get; }
         public bool Disposed { get; private set; }
@@ -35,25 +36,30 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
         public int ResetSequence { get; private set; }
 
-        internal CounterQueue(VulkanRenderer gd, Device device, PipelineFull pipeline, CounterType type)
+        internal CounterQueue(VulkanRenderer gd, Device device, PipelineFull pipeline, CounterType type, bool isTbdrPlatform)
         {
             _gd = gd;
             _device = device;
             _pipeline = pipeline;
-
             Type = type;
+            _isTbdrPlatform = isTbdrPlatform;
 
             _queryPool = new Queue<BufferedQuery>(QueryPoolInitialSize);
             for (int i = 0; i < QueryPoolInitialSize; i++)
             {
-                // 修改：传递平台信息给BufferedQuery
-                _queryPool.Enqueue(new BufferedQuery(_gd, _device, _pipeline, type, _gd.IsAmdWindows));
+                // 传递isTbdrPlatform参数给BufferedQuery
+                _queryPool.Enqueue(new BufferedQuery(_gd, _device, _pipeline, type, _gd.IsAmdWindows, _isTbdrPlatform));
             }
 
             _current = new CounterQueueEvent(this, type, 0);
 
             _consumerThread = new Thread(EventConsumer);
             _consumerThread.Start();
+            
+            if (_isTbdrPlatform)
+            {
+                Logger.Debug?.Print(LogClass.Gpu, $"Created counter queue for {type} on TBDR platform");
+            }
         }
 
         public void ResetCounterPool()
@@ -121,7 +127,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     return result;
                 }
 
-                return new BufferedQuery(_gd, _device, _pipeline, Type, _gd.IsAmdWindows);
+                return new BufferedQuery(_gd, _device, _pipeline, Type, _gd.IsAmdWindows, _isTbdrPlatform);
             }
         }
 
