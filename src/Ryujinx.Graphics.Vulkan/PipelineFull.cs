@@ -3,6 +3,7 @@ using Ryujinx.Graphics.Vulkan.Queries;
 using Silk.NET.Vulkan;
 using System;
 using System.Collections.Generic;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Vulkan
 {
