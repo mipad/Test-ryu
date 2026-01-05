@@ -8,7 +8,7 @@ namespace Ryujinx.Graphics.Vulkan
 {
     class PipelineFull : PipelineBase, IPipeline
     {
-        private const ulong MinByteWeightForFlush = 256 * 1024 * 1024; // MiB
+        private const ulong MinByteWeightForFlush = 256 * 1024 * 1024;
 
         private readonly List<(QueryPool, uint, bool)> _activeQueries;
         private CounterQueueEvent _activeConditionalRender;
@@ -16,11 +16,12 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly List<(BufferedQuery, uint)> _pendingQueryCopies;
         private readonly List<BufferHolder> _activeBufferMirrors;
 
-        // 添加：查询批量处理
+        // 批量查询处理
         private readonly Queue<(BufferedQuery, uint)> _queryBatchQueue = new();
-        private int _batchSize = 0;
+        private int _batchQueryCount = 0;
         private readonly bool _isTbdrPlatform;
-        private readonly int _batchThreshold;
+        private readonly int _targetBatchSize;
+        private readonly object _batchLock = new();
 
         private ulong _byteWeight;
 
@@ -38,17 +39,17 @@ namespace Ryujinx.Graphics.Vulkan
             IsMainPipeline = true;
             
             _isTbdrPlatform = gd.IsTBDR;
-            _batchThreshold = _isTbdrPlatform ? 16 : 32;
+            _targetBatchSize = _isTbdrPlatform ? 32 : 64; // TBDR平台使用更小的批次
             
             if (_isTbdrPlatform)
             {
-                Logger.Info?.Print(LogClass.Gpu, "TBDR platform: Enabling query batch processing");
+                Logger.Info?.Print(LogClass.Gpu, "TBDR platform: Using batch query processing");
             }
         }
 
         private void CopyPendingQuery()
         {
-            // 批量复制所有待处理查询
+            // 批量复制所有查询结果
             foreach (var (query, index) in _pendingQueryCopies)
             {
                 query.PoolCopy(Cbs, index);
@@ -219,6 +220,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void FlushCommandsImpl()
         {
+            // 处理所有批次查询
+            ProcessQueryBatch(true);
+            
             AutoFlush.RegisterFlush(DrawCount);
             EndRenderPass();
 
@@ -249,6 +253,12 @@ namespace Ryujinx.Graphics.Vulkan
             foreach ((var queryPool, var index, var isOcclusion) in _activeQueries)
             {
                 bool isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
+                
+                // TBDR平台：总是禁用精确查询
+                if (_isTbdrPlatform && isOcclusion)
+                {
+                    isPrecise = false;
+                }
 
                 Gd.Api.CmdResetQueryPool(CommandBuffer, queryPool, index, 1);
                 Gd.Api.CmdBeginQuery(CommandBuffer, queryPool, index, isPrecise ? QueryControlFlags.PreciseBit : 0);
@@ -280,7 +290,6 @@ namespace Ryujinx.Graphics.Vulkan
 
             bool isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
             
-            // TBDR平台：总是禁用精确查询
             if (_isTbdrPlatform && isOcclusion)
             {
                 isPrecise = false;
@@ -307,46 +316,43 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void CopyQueryResults(BufferedQuery query, uint index)
         {
-            // 关键修改：批量处理查询
-            _queryBatchQueue.Enqueue((query, index));
-            _batchSize++;
-            
-            // TBDR平台：更积极地批量处理
-            if (_isTbdrPlatform)
+            lock (_batchLock)
             {
-                // 达到阈值或需要刷新时处理批次
-                if (_batchSize >= _batchThreshold || AutoFlush.ShouldFlushQuery())
+                _queryBatchQueue.Enqueue((query, index));
+                _batchQueryCount++;
+                
+                // 达到批次大小时处理批次
+                if (_batchQueryCount >= _targetBatchSize)
                 {
-                    ProcessQueryBatch();
-                }
-            }
-            else
-            {
-                if (AutoFlush.RegisterPendingQuery())
-                {
-                    ProcessQueryBatch();
+                    ProcessQueryBatch(false);
                 }
             }
         }
         
-        private void ProcessQueryBatch()
+        private void ProcessQueryBatch(bool forceFlush)
         {
-            if (_batchSize == 0) return;
-            
-            // 将批次中的所有查询添加到待处理列表
-            while (_queryBatchQueue.Count > 0)
+            lock (_batchLock)
             {
-                var (query, index) = _queryBatchQueue.Dequeue();
-                _pendingQueryCopies.Add((query, index));
-            }
-            
-            _batchSize = 0;
-            
-            // 检查是否需要刷新命令缓冲区
-            if (_pendingQueryCopies.Count > 0 && 
-                (_isTbdrPlatform || AutoFlush.RegisterPendingQuery()))
-            {
-                FlushCommandsImpl();
+                if (_batchQueryCount == 0) return;
+                
+                // 将批次中的所有查询添加到待处理列表
+                while (_queryBatchQueue.Count > 0)
+                {
+                    var (query, index) = _queryBatchQueue.Dequeue();
+                    _pendingQueryCopies.Add((query, index));
+                }
+                
+                _batchQueryCount = 0;
+                
+                // 如果强制刷新或需要刷新命令缓冲区
+                if (forceFlush || (_pendingQueryCopies.Count > 0 && AutoFlush.RegisterPendingQuery()))
+                {
+                    if (_isTbdrPlatform)
+                    {
+                        // TBDR平台：记录批次大小
+                        Logger.Debug?.Print(LogClass.Gpu, $"TBDR: Processing batch of {_pendingQueryCopies.Count} queries");
+                    }
+                }
             }
         }
 
@@ -360,19 +366,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         protected override void SignalRenderPassEnd()
         {
-            // 渲染过程结束时处理所有批量查询
-            ProcessQueryBatch();
+            // 渲染过程结束时处理所有批次查询
+            ProcessQueryBatch(true);
             CopyPendingQuery();
-        }
-        
-        // 新增：强制处理批次
-        public void FlushQueryBatch()
-        {
-            ProcessQueryBatch();
-            if (_pendingQueryCopies.Count > 0)
-            {
-                FlushCommandsImpl();
-            }
         }
     }
 }
