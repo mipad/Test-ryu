@@ -46,7 +46,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _queryPool = new Queue<BufferedQuery>(QueryPoolInitialSize);
             for (int i = 0; i < QueryPoolInitialSize; i++)
             {
-                // AMD Polaris GPUs on Windows seem to have issues reporting 64-bit query results.
+                // 修改：创建BufferedQuery时使用IsTBDR判断
                 _queryPool.Enqueue(new BufferedQuery(_gd, _device, _pipeline, type, gd.IsAmdWindows));
             }
 
@@ -63,7 +63,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
         public void ResetFutureCounters(CommandBuffer cmd, int count)
         {
-            // Pre-emptively reset queries to avoid render pass splitting.
             lock (_queryPool)
             {
                 count = Math.Min(count, _queryPool.Count);
@@ -98,11 +97,10 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
                 if (evt == null)
                 {
-                    _queuedEvent.WaitOne(); // No more events to go through, wait for more.
+                    _queuedEvent.WaitOne();
                 }
                 else
                 {
-                    // Spin-wait rather than sleeping if there are any waiters, by passing null instead of the wake signal.
                     evt.TryConsume(ref _accumulatedCounter, true, _waiterCount == 0 ? _wakeSignal : null);
                 }
 
@@ -115,9 +113,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
         internal BufferedQuery GetQueryObject()
         {
-            // Creating/disposing query objects on a context we're sharing with will cause issues.
-            // So instead, make a lot of query objects on the main thread and reuse them.
-
             lock (_lock)
             {
                 if (_queryPool.Count > 0)
@@ -134,7 +129,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         {
             lock (_lock)
             {
-                // The query will be reset when it dequeues.
                 _queryPool.Enqueue(query);
             }
         }
@@ -146,12 +140,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
             lock (_lock)
             {
-                // A query's result only matters if more than one draw was performed during it.
-                // Otherwise, dummy it out and return 0 immediately.
-
                 if (hostReserved)
                 {
-                    // This counter event is guaranteed to be available for host conditional rendering.
                     _current.ReserveForHostAccess();
                 }
 
@@ -184,20 +174,18 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         {
             if (!blocking)
             {
-                // Just wake the consumer thread - it will update the queries.
                 _wakeSignal.Set();
                 return;
             }
 
             lock (_lock)
             {
-                // Tell the queue to process all events.
                 while (_events.Count > 0)
                 {
                     CounterQueueEvent flush = _events.Peek();
                     if (!flush.TryConsume(ref _accumulatedCounter, true))
                     {
-                        return; // If not blocking, then return when we encounter an event that is not ready yet.
+                        return;
                     }
                     _events.Dequeue();
                 }
@@ -206,7 +194,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
         public void FlushTo(CounterQueueEvent evt)
         {
-            // Flush the counter queue on the main thread.
             Interlocked.Increment(ref _waiterCount);
 
             _wakeSignal.Set();
