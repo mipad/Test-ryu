@@ -19,7 +19,16 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private readonly Device _device;
         private readonly PipelineFull _pipeline;
 
-        private QueryPool _queryPool;
+        // 修改：使用查询池而不是单个查询
+        private readonly QueryPool _queryPool;
+        private readonly uint _queryIndex;
+        private readonly bool _isPooled;
+        
+        // 添加：查询池引用计数
+        private static QueryPool _sharedQueryPool;
+        private static uint _nextQueryIndex = 0;
+        private static readonly object _poolLock = new();
+        private const uint PoolSize = 1024; // 查询池大小，类似Skyline
 
         private readonly BufferHolder _buffer;
         private readonly nint _bufferMap;
@@ -30,9 +39,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private readonly long _defaultValue;
         private int? _resetSequence;
 
-        // 优化：减少字段，简化逻辑
+        // 简化：只保留必要的平台检测
         private readonly bool _isTbdrPlatform;
-        private int _consecutiveTimeouts = 0;
 
         public unsafe BufferedQuery(VulkanRenderer gd, Device device, PipelineFull pipeline, CounterType type, bool result32Bit)
         {
@@ -42,13 +50,42 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _type = type;
             _result32Bit = result32Bit;
             
-            // 使用IsTBDR判断
             _isTbdrPlatform = gd.IsTBDR;
+            
+            if (_isTbdrPlatform)
+            {
+                Logger.Debug?.Print(LogClass.Gpu, "Creating buffered query for TBDR platform");
+            }
 
             _isSupported = QueryTypeSupported(gd, type);
 
             if (_isSupported)
             {
+                // 修改：创建或获取共享查询池
+                lock (_poolLock)
+                {
+                    if (_sharedQueryPool.Handle == 0)
+                    {
+                        QueryPoolCreateInfo queryPoolCreateInfo = new()
+                        {
+                            SType = StructureType.QueryPoolCreateInfo,
+                            QueryCount = PoolSize,
+                            QueryType = GetQueryType(type),
+                        };
+                        
+                        gd.Api.CreateQueryPool(device, in queryPoolCreateInfo, null, out _sharedQueryPool).ThrowOnError();
+                        Logger.Info?.Print(LogClass.Gpu, $"Created shared query pool of size {PoolSize} for {type}");
+                    }
+                    
+                    _queryPool = _sharedQueryPool;
+                    _queryIndex = _nextQueryIndex;
+                    _nextQueryIndex = (_nextQueryIndex + 1) % PoolSize;
+                    _isPooled = true;
+                }
+            }
+            else
+            {
+                // 回退：创建单个查询
                 QueryPipelineStatisticFlags flags = type == CounterType.PrimitivesGenerated ?
                     QueryPipelineStatisticFlags.GeometryShaderPrimitivesBit : 0;
 
@@ -61,6 +98,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 };
 
                 gd.Api.CreateQueryPool(device, in queryPoolCreateInfo, null, out _queryPool).ThrowOnError();
+                _queryIndex = 0;
+                _isPooled = false;
             }
 
             BufferHolder buffer = gd.BufferManager.Create(gd, sizeof(long), forConditionalRendering: true);
@@ -110,7 +149,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             {
                 bool needsReset = resetSequence == null || _resetSequence == null || resetSequence.Value != _resetSequence.Value;
                 bool isOcclusion = _type == CounterType.SamplesPassed;
-                _pipeline.BeginQuery(this, _queryPool, needsReset, isOcclusion, isOcclusion && resetSequence != null);
+                _pipeline.BeginQuery(this, _queryPool, _queryIndex, needsReset, isOcclusion, isOcclusion && resetSequence != null);
             }
             _resetSequence = null;
         }
@@ -119,17 +158,16 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         {
             if (_isSupported)
             {
-                _pipeline.EndQuery(_queryPool);
+                _pipeline.EndQuery(_queryPool, _queryIndex);
             }
 
             if (withResult && _isSupported)
             {
                 Marshal.WriteInt64(_bufferMap, _defaultValue);
-                _pipeline.CopyQueryResults(this);
+                _pipeline.CopyQueryResults(this, _queryIndex);
             }
             else
             {
-                // Dummy result, just return 0.
                 Marshal.WriteInt64(_bufferMap, 0);
             }
         }
@@ -143,7 +181,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         public bool TryGetResult(out long result)
         {
             result = Marshal.ReadInt64(_bufferMap);
-
             return result != _defaultValue;
         }
 
@@ -162,67 +199,29 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             {
                 int iterations = 0;
                 
-                // 优化：TBDR平台使用更积极的重试策略，但减少每次等待时间
-                int maxRetries = _isTbdrPlatform ? MaxQueryRetries * 2 : MaxQueryRetries;
-                int baseDelay = _isTbdrPlatform ? 0 : 1; // TBDR平台使用更小的基础延迟
-                
-                while (WaitingForValue(data) && iterations++ < maxRetries)
+                // 简化：使用固定的短延迟轮询
+                while (WaitingForValue(data) && iterations++ < MaxQueryRetries)
                 {
                     data = Marshal.ReadInt64(_bufferMap);
                     if (WaitingForValue(data))
                     {
-                        // 优化：使用指数退避策略，但起始延迟更小
-                        int delay = 0;
-                        if (_isTbdrPlatform)
-                        {
-                            // TBDR平台：使用更激进的轮询，但在后期增加延迟
-                            if (iterations < 100) delay = 0;
-                            else if (iterations < 500) delay = 1;
-                            else delay = 2;
-                        }
-                        else
-                        {
-                            delay = baseDelay;
-                        }
-                        
+                        // TBDR平台：使用更短的延迟
+                        int delay = _isTbdrPlatform ? 0 : 1;
                         if (delay > 0)
                         {
                             wakeSignal.WaitOne(delay);
                         }
                         else
                         {
-                            // 不等待，直接继续轮询
                             Thread.Yield();
                         }
                     }
                 }
 
-                if (iterations >= maxRetries)
+                if (iterations >= MaxQueryRetries)
                 {
-                    _consecutiveTimeouts++;
-                    
-                    if (_isTbdrPlatform)
-                    {
-                        Logger.Error?.Print(LogClass.Gpu, 
-                            $"Error: Query result {_type} timed out on TBDR platform. Attempts: {iterations}");
-                        
-                        // TBDR平台：记录统计信息
-                        if (_consecutiveTimeouts > 5)
-                        {
-                            Logger.Warning?.Print(LogClass.Gpu,
-                                $"High query timeout rate on TBDR platform: {_consecutiveTimeouts} consecutive timeouts");
-                        }
-                    }
-                    else
-                    {
-                        Logger.Error?.Print(LogClass.Gpu, 
-                            $"Error: Query result {_type} timed out. Took more than {maxRetries} tries.");
-                    }
-                }
-                else if (_consecutiveTimeouts > 0)
-                {
-                    // 成功时重置超时计数
-                    _consecutiveTimeouts = 0;
+                    Logger.Error?.Print(LogClass.Gpu, 
+                        $"Error: Query result {_type} timed out. Attempts: {iterations}");
                 }
             }
 
@@ -231,15 +230,14 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
         public void PoolReset(CommandBuffer cmd, int resetSequence)
         {
-            if (_isSupported)
+            if (_isSupported && !_isPooled)
             {
                 _api.CmdResetQueryPool(cmd, _queryPool, 0, 1);
             }
-
             _resetSequence = resetSequence;
         }
 
-        public void PoolCopy(CommandBufferScoped cbs)
+        public void PoolCopy(CommandBufferScoped cbs, uint queryIndex)
         {
             Buffer buffer = _buffer.GetBuffer(cbs.CommandBuffer, true).Get(cbs, 0, sizeof(long), true).Value;
 
@@ -253,7 +251,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _api.CmdCopyQueryPoolResults(
                 cbs.CommandBuffer,
                 _queryPool,
-                0,
+                queryIndex,
                 1,
                 buffer,
                 0,
@@ -264,11 +262,10 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         public unsafe void Dispose()
         {
             _buffer.Dispose();
-            if (_isSupported)
+            if (_isSupported && !_isPooled)
             {
                 _api.DestroyQueryPool(_device, _queryPool, null);
             }
-            _queryPool = default;
         }
     }
 }
