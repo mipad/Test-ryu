@@ -46,8 +46,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _queryPool = new Queue<BufferedQuery>(QueryPoolInitialSize);
             for (int i = 0; i < QueryPoolInitialSize; i++)
             {
-                // 修改：创建BufferedQuery时使用IsTBDR判断
-                _queryPool.Enqueue(new BufferedQuery(_gd, _device, _pipeline, type, gd.IsAmdWindows));
+                // 修改：传递平台信息给BufferedQuery
+                _queryPool.Enqueue(new BufferedQuery(_gd, _device, _pipeline, type, _gd.IsAmdWindows));
             }
 
             _current = new CounterQueueEvent(this, type, 0);
