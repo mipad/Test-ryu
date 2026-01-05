@@ -94,7 +94,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
                 OnResult?.Invoke(this, result);
 
-                Dispose(); // Return the our resources to the pool.
+                Dispose();
 
                 return true;
             }
@@ -107,7 +107,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 return;
             }
 
-            // Tell the queue to process all events up to this one.
             _queue.FlushTo(this);
         }
 
