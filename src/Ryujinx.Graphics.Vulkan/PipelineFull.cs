@@ -9,12 +9,26 @@ namespace Ryujinx.Graphics.Vulkan
     class PipelineFull : PipelineBase, IPipeline
     {
         private const ulong MinByteWeightForFlush = 256 * 1024 * 1024; // MiB
+        
+        // TBDR架构优化参数
+        private const int TbdrQueryBatchSize = 16;
+        private const int TbdrQueryFlushThreshold = 24;
+        private const int TbdrQueryDelayMs = 2;
 
         private readonly List<(QueryPool, bool)> _activeQueries;
         private CounterQueueEvent _activeConditionalRender;
 
         private readonly List<BufferedQuery> _pendingQueryCopies;
         private readonly List<BufferHolder> _activeBufferMirrors;
+
+        // TBDR架构优化字段
+        private readonly List<BufferedQuery> _deferredQueries = new();
+        private int _deferredQueryCount = 0;
+        private readonly bool _isTbdrPlatform;
+        private DateTime _lastFlushTime = DateTime.UtcNow;
+        private int _consecutiveTimeouts = 0;
+        private int _adaptiveDelayMs = 1;
+        private int _queryFlushCounter = 0;
 
         private ulong _byteWeight;
 
@@ -30,10 +44,23 @@ namespace Ryujinx.Graphics.Vulkan
             CommandBuffer = (Cbs = gd.CommandBufferPool.Rent()).CommandBuffer;
 
             IsMainPipeline = true;
+            
+            // 使用IsTBDR判断是否为移动平台
+            _isTbdrPlatform = gd.IsTBDR;
+            
+            if (_isTbdrPlatform)
+            {
+                Logger.Info?.Print(LogClass.Gpu, "Running on TBDR architecture (ARM Mali/Qualcomm), enabling mobile optimizations");
+            }
         }
 
         private void CopyPendingQuery()
         {
+            if (_isTbdrPlatform && _pendingQueryCopies.Count > 8)
+            {
+                System.Threading.Thread.Sleep(_adaptiveDelayMs);
+            }
+            
             foreach (var query in _pendingQueryCopies)
             {
                 query.PoolCopy(Cbs);
@@ -51,9 +78,6 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (componentMask != 0xf || Gd.IsQualcommProprietary)
             {
-                // We can't use CmdClearAttachments if not writing all components,
-                // because on Vulkan, the pipeline state does not affect clears.
-                // On proprietary Adreno drivers, CmdClearAttachments appears to execute out of order, so it's better to not use it at all.
                 var dstTexture = FramebufferParams.GetColorView(index);
                 if (dstTexture == null)
                 {
@@ -66,7 +90,6 @@ namespace Ryujinx.Graphics.Vulkan
                 clearColor[2] = color.Blue;
                 clearColor[3] = color.Alpha;
 
-                // TODO: Clear only the specified layer.
                 Gd.HelperShader.Clear(
                     Gd,
                     dstTexture,
@@ -92,16 +115,12 @@ namespace Ryujinx.Graphics.Vulkan
 
             if ((stencilMask != 0 && stencilMask != 0xff) || Gd.IsQualcommProprietary)
             {
-                // We can't use CmdClearAttachments if not clearing all (mask is all ones, 0xFF) or none (mask is 0) of the stencil bits,
-                // because on Vulkan, the pipeline state does not affect clears.
-                // On proprietary Adreno drivers, CmdClearAttachments appears to execute out of order, so it's better to not use it at all.
                 var dstTexture = FramebufferParams.GetDepthStencilView();
                 if (dstTexture == null)
                 {
                     return;
                 }
 
-                // TODO: Clear only the specified layer.
                 Gd.HelperShader.Clear(
                     Gd,
                     dstTexture,
@@ -124,11 +143,6 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (Gd.Capabilities.SupportsConditionalRendering)
             {
-                // Gd.ConditionalRenderingApi.CmdEndConditionalRendering(CommandBuffer);
-            }
-            else
-            {
-                // throw new NotSupportedException();
             }
 
             _activeConditionalRender?.ReleaseHostAccess();
@@ -137,37 +151,17 @@ namespace Ryujinx.Graphics.Vulkan
 
         public bool TryHostConditionalRendering(ICounterEvent value, ulong compare, bool isEqual)
         {
-            // Compare an event and a constant value.
             if (value is CounterQueueEvent evt)
             {
-                // Easy host conditional rendering when the check matches what GL can do:
-                //  - Event is of type samples passed.
-                //  - Result is not a combination of multiple queries.
-                //  - Comparing against 0.
-                //  - Event has not already been flushed.
-
                 if (compare == 0 && evt.Type == CounterType.SamplesPassed && evt.ClearCounter)
                 {
                     if (!value.ReserveForHostAccess())
                     {
-                        // If the event has been flushed, then just use the values on the CPU.
-                        // The query object may already be repurposed for another draw (eg. begin + end).
                         return false;
                     }
 
                     if (Gd.Capabilities.SupportsConditionalRendering)
                     {
-                        // var buffer = evt.GetBuffer().Get(Cbs, 0, sizeof(long)).Value;
-                        // var flags = isEqual ? ConditionalRenderingFlagsEXT.InvertedBitExt : 0;
-
-                        // var conditionalRenderingBeginInfo = new ConditionalRenderingBeginInfoEXT
-                        // {
-                        //     SType = StructureType.ConditionalRenderingBeginInfoExt,
-                        //     Buffer = buffer,
-                        //     Flags = flags,
-                        // };
-
-                        // Gd.ConditionalRenderingApi.CmdBeginConditionalRendering(CommandBuffer, conditionalRenderingBeginInfo);
                     }
 
                     _activeConditionalRender = evt;
@@ -175,15 +169,13 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
 
-            // The GPU will flush the queries to CPU and evaluate the condition there instead.
-
-            FlushPendingQuery(); // The thread will be stalled manually flushing the counter, so flush commands now.
+            FlushPendingQuery();
             return false;
         }
 
         public bool TryHostConditionalRendering(ICounterEvent value, ICounterEvent compare, bool isEqual)
         {
-            FlushPendingQuery(); // The thread will be stalled manually flushing the counter, so flush commands now.
+            FlushPendingQuery();
             return false;
         }
 
@@ -213,10 +205,6 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (usedByCurrentCb)
             {
-                // Since we can only free memory after the command buffer that uses a given resource was executed,
-                // keeping the command buffer might cause a high amount of memory to be in use.
-                // To prevent that, we force submit command buffers if the memory usage by resources
-                // in use by the current command buffer is above a given limit, and those resources were disposed.
                 _byteWeight += byteWeight;
 
                 if (_byteWeight >= MinByteWeightForFlush)
@@ -243,6 +231,17 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void FlushCommandsImpl()
         {
+            if (_isTbdrPlatform && _pendingQueryCopies.Count > 0)
+            {
+                System.Threading.Thread.Sleep(_adaptiveDelayMs);
+                
+                _queryFlushCounter++;
+                if (_queryFlushCounter % 4 == 0 && _adaptiveDelayMs > 1)
+                {
+                    System.Threading.Thread.Sleep(_adaptiveDelayMs * 2);
+                }
+            }
+            
             AutoFlush.RegisterFlush(DrawCount);
             EndRenderPass();
 
@@ -263,7 +262,6 @@ namespace Ryujinx.Graphics.Vulkan
             CommandBuffer = (Cbs = Gd.CommandBufferPool.ReturnAndRent(Cbs)).CommandBuffer;
             Gd.RegisterFlush();
 
-            // Restore per-command buffer state.
             foreach (BufferHolder buffer in _activeBufferMirrors)
             {
                 buffer.ClearMirrors();
@@ -282,6 +280,8 @@ namespace Ryujinx.Graphics.Vulkan
             Gd.ResetCounterPool();
 
             Restore();
+            
+            _queryFlushCounter = 0;
         }
 
         public void RegisterActiveMirror(BufferHolder buffer)
@@ -299,13 +299,18 @@ namespace Ryujinx.Graphics.Vulkan
 
                 if (fromSamplePool)
                 {
-                    // Try reset some additional queries in advance.
-
                     Gd.ResetFutureCounters(CommandBuffer, AutoFlush.GetRemainingQueries());
                 }
             }
 
             bool isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
+            
+            if (_isTbdrPlatform && isPrecise)
+            {
+                isPrecise = false;
+                Logger.Debug?.Print(LogClass.Gpu, "TBDR platform: Disabling precise occlusion query for performance");
+            }
+            
             Gd.Api.CmdBeginQuery(CommandBuffer, pool, 0, isPrecise ? QueryControlFlags.PreciseBit : 0);
 
             _activeQueries.Add((pool, isOcclusion));
@@ -327,11 +332,81 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void CopyQueryResults(BufferedQuery query)
         {
-            _pendingQueryCopies.Add(query);
-
-            if (AutoFlush.RegisterPendingQuery())
+            if (_isTbdrPlatform)
             {
-                FlushCommandsImpl();
+                _deferredQueries.Add(query);
+                _deferredQueryCount++;
+                
+                if (_consecutiveTimeouts > 3)
+                {
+                    _adaptiveDelayMs = Math.Min(_adaptiveDelayMs * 2, 20);
+                    _consecutiveTimeouts = 0;
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        $"TBDR platform: Increasing adaptive delay to {_adaptiveDelayMs}ms due to timeouts");
+                }
+                
+                bool shouldFlush = false;
+                
+                if (_deferredQueryCount >= TbdrQueryBatchSize)
+                {
+                    shouldFlush = true;
+                }
+                else
+                {
+                    var now = DateTime.UtcNow;
+                    if ((now - _lastFlushTime).TotalMilliseconds > 33)
+                    {
+                        shouldFlush = true;
+                    }
+                }
+                
+                if (shouldFlush)
+                {
+                    foreach (var deferredQuery in _deferredQueries)
+                    {
+                        _pendingQueryCopies.Add(deferredQuery);
+                    }
+                    _deferredQueries.Clear();
+                    _deferredQueryCount = 0;
+                    
+                    System.Threading.Thread.Sleep(TbdrQueryDelayMs);
+                    
+                    if (_pendingQueryCopies.Count >= TbdrQueryFlushThreshold || 
+                        AutoFlush.RegisterPendingQuery())
+                    {
+                        _lastFlushTime = DateTime.UtcNow;
+                        FlushCommandsImpl();
+                    }
+                }
+                else
+                {
+                    return;
+                }
+            }
+            else
+            {
+                _pendingQueryCopies.Add(query);
+
+                if (AutoFlush.RegisterPendingQuery())
+                {
+                    FlushCommandsImpl();
+                }
+            }
+        }
+        
+        public void NotifyQueryTimeout()
+        {
+            if (_isTbdrPlatform)
+            {
+                _consecutiveTimeouts++;
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"TBDR platform query timeout #{_consecutiveTimeouts}, adaptive delay: {_adaptiveDelayMs}ms");
+                
+                if (_consecutiveTimeouts > 10)
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        "High query timeout rate on TBDR platform. Consider reducing graphical settings.");
+                }
             }
         }
 
@@ -345,7 +420,44 @@ namespace Ryujinx.Graphics.Vulkan
 
         protected override void SignalRenderPassEnd()
         {
+            if (_isTbdrPlatform && _deferredQueryCount > 0)
+            {
+                foreach (var deferredQuery in _deferredQueries)
+                {
+                    _pendingQueryCopies.Add(deferredQuery);
+                }
+                _deferredQueries.Clear();
+                _deferredQueryCount = 0;
+                
+                if (_pendingQueryCopies.Count > 0)
+                {
+                    System.Threading.Thread.Sleep(1);
+                }
+            }
+            
             CopyPendingQuery();
         }
+        
+        public void FlushDeferredQueries()
+        {
+            if (_isTbdrPlatform && _deferredQueryCount > 0)
+            {
+                Logger.Debug?.Print(LogClass.Gpu, $"Flushing {_deferredQueryCount} deferred queries on TBDR platform");
+                
+                foreach (var deferredQuery in _deferredQueries)
+                {
+                    _pendingQueryCopies.Add(deferredQuery);
+                }
+                _deferredQueries.Clear();
+                _deferredQueryCount = 0;
+                
+                if (_pendingQueryCopies.Count > 0)
+                {
+                    FlushCommandsImpl();
+                }
+            }
+        }
+        
+        public bool IsTbdrPlatform => _isTbdrPlatform;
     }
 }
