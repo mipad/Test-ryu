@@ -8,10 +8,12 @@ namespace Ryujinx.Graphics.Vulkan.Queries
     {
         private readonly CounterQueue[] _counterQueues;
         private readonly PipelineFull _pipeline;
+        private readonly bool _isTbdrPlatform;
 
         public Counters(VulkanRenderer gd, Device device, PipelineFull pipeline)
         {
             _pipeline = pipeline;
+            _isTbdrPlatform = gd.IsTBDR;
 
             int count = Enum.GetNames(typeof(CounterType)).Length;
 
@@ -20,7 +22,12 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             for (int index = 0; index < _counterQueues.Length; index++)
             {
                 CounterType type = (CounterType)index;
-                _counterQueues[index] = new CounterQueue(gd, device, pipeline, type);
+                _counterQueues[index] = new CounterQueue(gd, device, pipeline, type, _isTbdrPlatform);
+            }
+            
+            if (_isTbdrPlatform)
+            {
+                Logger.Info?.Print(LogClass.Gpu, $"Initialized {count} counter queues for TBDR platform");
             }
         }
 
