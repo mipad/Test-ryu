@@ -30,6 +30,11 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private readonly long _defaultValue;
         private int? _resetSequence;
 
+        // 新增：TBDR平台标志和自适应延迟
+        private readonly bool _isTbdrPlatform;
+        private int _adaptiveDelayMs = 1;
+        private int _consecutiveTimeouts = 0;
+
         public unsafe BufferedQuery(VulkanRenderer gd, Device device, PipelineFull pipeline, CounterType type, bool result32Bit)
         {
             _api = gd.Api;
@@ -37,6 +42,9 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _pipeline = pipeline;
             _type = type;
             _result32Bit = result32Bit;
+            
+            // 使用IsTBDR判断是否为移动平台
+            _isTbdrPlatform = gd.IsTBDR;
 
             _isSupported = QueryTypeSupported(gd, type);
 
@@ -62,6 +70,13 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _defaultValue = result32Bit ? DefaultValueInt : DefaultValue;
             Marshal.WriteInt64(_bufferMap, _defaultValue);
             _buffer = buffer;
+            
+            // TBDR平台：调整默认延迟
+            if (_isTbdrPlatform)
+            {
+                _adaptiveDelayMs = 2;
+                Logger.Debug?.Print(LogClass.Gpu, "TBDR platform detected, enabling query optimizations");
+            }
         }
 
         private static bool QueryTypeSupported(VulkanRenderer gd, CounterType type)
@@ -154,18 +169,67 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             else
             {
                 int iterations = 0;
-                while (WaitingForValue(data) && iterations++ < MaxQueryRetries)
+                int maxRetries = _isTbdrPlatform ? MaxQueryRetries * 3 / 2 : MaxQueryRetries;
+                int delayMs = _adaptiveDelayMs;
+                
+                while (WaitingForValue(data) && iterations++ < maxRetries)
                 {
                     data = Marshal.ReadInt64(_bufferMap);
                     if (WaitingForValue(data))
                     {
-                        wakeSignal.WaitOne(1);
+                        // TBDR平台：动态调整延迟策略
+                        if (_isTbdrPlatform)
+                        {
+                            // 渐进式延迟增加
+                            if (iterations < 500) delayMs = 1;
+                            else if (iterations < 1500) delayMs = 2;
+                            else if (iterations < 3000) delayMs = 4;
+                            else if (iterations < 6000) delayMs = 8;
+                            else delayMs = 16;
+                            
+                            // 每500次迭代增加一点额外延迟
+                            if (iterations % 500 == 0 && delayMs < 10)
+                            {
+                                delayMs++;
+                            }
+                        }
+                        
+                        wakeSignal.WaitOne(delayMs);
                     }
                 }
 
-                if (iterations >= MaxQueryRetries)
+                if (iterations >= maxRetries)
                 {
-                    Logger.Error?.Print(LogClass.Gpu, $"Error: Query result {_type} timed out. Took more than {MaxQueryRetries} tries.");
+                    if (_isTbdrPlatform)
+                    {
+                        _consecutiveTimeouts++;
+                        // 连续超时增加延迟，但有一个上限
+                        if (_consecutiveTimeouts > 2)
+                        {
+                            _adaptiveDelayMs = Math.Min(_adaptiveDelayMs * 2, 32);
+                            _consecutiveTimeouts = 0;
+                        }
+                        
+                        Logger.Error?.Print(LogClass.Gpu, 
+                            $"Error: Query result {_type} timed out on TBDR platform after {maxRetries} tries. Adaptive delay: {_adaptiveDelayMs}ms");
+                        
+                        // 通知PipelineFull有超时发生
+                        (_pipeline as PipelineFull)?.NotifyQueryTimeout();
+                    }
+                    else
+                    {
+                        Logger.Error?.Print(LogClass.Gpu, 
+                            $"Error: Query result {_type} timed out. Took more than {maxRetries} tries.");
+                    }
+                }
+                else
+                {
+                    // 成功时逐渐降低延迟
+                    if (_isTbdrPlatform && _adaptiveDelayMs > 1 && iterations < 500)
+                    {
+                        _adaptiveDelayMs = Math.Max(1, _adaptiveDelayMs / 2);
+                        _consecutiveTimeouts = 0;
+                    }
                 }
             }
 
