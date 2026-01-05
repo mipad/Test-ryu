@@ -2,7 +2,6 @@ using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Vulkan.Queries;
 using Silk.NET.Vulkan;
 using System;
-using Ryujinx.Common.Logging;
 using System.Collections.Generic;
 
 namespace Ryujinx.Graphics.Vulkan
@@ -10,11 +9,6 @@ namespace Ryujinx.Graphics.Vulkan
     class PipelineFull : PipelineBase, IPipeline
     {
         private const ulong MinByteWeightForFlush = 256 * 1024 * 1024; // MiB
-        
-        // TBDR架构优化参数
-        private const int TbdrQueryBatchSize = 16;
-        private const int TbdrQueryFlushThreshold = 24;
-        private const int TbdrQueryDelayMs = 2;
 
         private readonly List<(QueryPool, bool)> _activeQueries;
         private CounterQueueEvent _activeConditionalRender;
@@ -22,14 +16,9 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly List<BufferedQuery> _pendingQueryCopies;
         private readonly List<BufferHolder> _activeBufferMirrors;
 
-        // TBDR架构优化字段
-        private readonly List<BufferedQuery> _deferredQueries = new();
-        private int _deferredQueryCount = 0;
+        // 简化：只保留必要的优化字段
         private readonly bool _isTbdrPlatform;
-        private DateTime _lastFlushTime = DateTime.UtcNow;
-        private int _consecutiveTimeouts = 0;
-        private int _adaptiveDelayMs = 1;
-        private int _queryFlushCounter = 0;
+        private int _consecutiveQueryCount = 0;
 
         private ulong _byteWeight;
 
@@ -46,22 +35,18 @@ namespace Ryujinx.Graphics.Vulkan
 
             IsMainPipeline = true;
             
-            // 使用IsTBDR判断是否为移动平台
+            // 使用IsTBDR判断
             _isTbdrPlatform = gd.IsTBDR;
             
             if (_isTbdrPlatform)
             {
-                Logger.Info?.Print(LogClass.Gpu, "Running on TBDR architecture (ARM Mali/Qualcomm), enabling mobile optimizations");
+                Logger.Info?.Print(LogClass.Gpu, "TBDR architecture detected, enabling aggressive query optimizations");
             }
         }
 
         private void CopyPendingQuery()
         {
-            if (_isTbdrPlatform && _pendingQueryCopies.Count > 8)
-            {
-                System.Threading.Thread.Sleep(_adaptiveDelayMs);
-            }
-            
+            // 优化：TBDR平台减少延迟，使用更激进的复制策略
             foreach (var query in _pendingQueryCopies)
             {
                 query.PoolCopy(Cbs);
@@ -232,17 +217,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void FlushCommandsImpl()
         {
-            if (_isTbdrPlatform && _pendingQueryCopies.Count > 0)
-            {
-                System.Threading.Thread.Sleep(_adaptiveDelayMs);
-                
-                _queryFlushCounter++;
-                if (_queryFlushCounter % 4 == 0 && _adaptiveDelayMs > 1)
-                {
-                    System.Threading.Thread.Sleep(_adaptiveDelayMs * 2);
-                }
-            }
-            
             AutoFlush.RegisterFlush(DrawCount);
             EndRenderPass();
 
@@ -282,7 +256,8 @@ namespace Ryujinx.Graphics.Vulkan
 
             Restore();
             
-            _queryFlushCounter = 0;
+            // 重置查询计数
+            _consecutiveQueryCount = 0;
         }
 
         public void RegisterActiveMirror(BufferHolder buffer)
@@ -306,10 +281,10 @@ namespace Ryujinx.Graphics.Vulkan
 
             bool isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
             
-            if (_isTbdrPlatform && isPrecise)
+            // TBDR平台：总是禁用精确查询以提升性能
+            if (_isTbdrPlatform && isOcclusion)
             {
                 isPrecise = false;
-                Logger.Debug?.Print(LogClass.Gpu, "TBDR platform: Disabling precise occlusion query for performance");
             }
             
             Gd.Api.CmdBeginQuery(CommandBuffer, pool, 0, isPrecise ? QueryControlFlags.PreciseBit : 0);
@@ -333,81 +308,33 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void CopyQueryResults(BufferedQuery query)
         {
+            // 关键优化：简化查询处理逻辑
+            _pendingQueryCopies.Add(query);
+            _consecutiveQueryCount++;
+
+            // TBDR平台优化：更频繁地刷新查询，但避免过度刷新
+            bool shouldFlush = false;
+            
             if (_isTbdrPlatform)
             {
-                _deferredQueries.Add(query);
-                _deferredQueryCount++;
-                
-                if (_consecutiveTimeouts > 3)
-                {
-                    _adaptiveDelayMs = Math.Min(_adaptiveDelayMs * 2, 20);
-                    _consecutiveTimeouts = 0;
-                    Logger.Warning?.Print(LogClass.Gpu, 
-                        $"TBDR platform: Increasing adaptive delay to {_adaptiveDelayMs}ms due to timeouts");
-                }
-                
-                bool shouldFlush = false;
-                
-                if (_deferredQueryCount >= TbdrQueryBatchSize)
+                // TBDR平台：每8个查询或每帧刷新一次
+                if (_consecutiveQueryCount >= 8 || AutoFlush.ShouldFlushQuery())
                 {
                     shouldFlush = true;
-                }
-                else
-                {
-                    var now = DateTime.UtcNow;
-                    if ((now - _lastFlushTime).TotalMilliseconds > 33)
-                    {
-                        shouldFlush = true;
-                    }
-                }
-                
-                if (shouldFlush)
-                {
-                    foreach (var deferredQuery in _deferredQueries)
-                    {
-                        _pendingQueryCopies.Add(deferredQuery);
-                    }
-                    _deferredQueries.Clear();
-                    _deferredQueryCount = 0;
-                    
-                    System.Threading.Thread.Sleep(TbdrQueryDelayMs);
-                    
-                    if (_pendingQueryCopies.Count >= TbdrQueryFlushThreshold || 
-                        AutoFlush.RegisterPendingQuery())
-                    {
-                        _lastFlushTime = DateTime.UtcNow;
-                        FlushCommandsImpl();
-                    }
-                }
-                else
-                {
-                    return;
                 }
             }
             else
             {
-                _pendingQueryCopies.Add(query);
-
+                // 桌面平台：使用原有逻辑
                 if (AutoFlush.RegisterPendingQuery())
                 {
-                    FlushCommandsImpl();
+                    shouldFlush = true;
                 }
             }
-        }
-        
-        public void NotifyQueryTimeout()
-        {
-            if (_isTbdrPlatform)
+            
+            if (shouldFlush)
             {
-                _consecutiveTimeouts++;
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"TBDR platform query timeout #{_consecutiveTimeouts}, adaptive delay: {_adaptiveDelayMs}ms");
-                
-                if (_consecutiveTimeouts > 10)
-                {
-                    Logger.Warning?.Print(LogClass.Gpu, 
-                        "High query timeout rate on TBDR platform. Consider reducing graphical settings.");
-                }
+                FlushCommandsImpl();
             }
         }
 
@@ -421,44 +348,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         protected override void SignalRenderPassEnd()
         {
-            if (_isTbdrPlatform && _deferredQueryCount > 0)
-            {
-                foreach (var deferredQuery in _deferredQueries)
-                {
-                    _pendingQueryCopies.Add(deferredQuery);
-                }
-                _deferredQueries.Clear();
-                _deferredQueryCount = 0;
-                
-                if (_pendingQueryCopies.Count > 0)
-                {
-                    System.Threading.Thread.Sleep(1);
-                }
-            }
-            
+            // 优化：RenderPass结束时总是复制查询结果
             CopyPendingQuery();
         }
-        
-        public void FlushDeferredQueries()
-        {
-            if (_isTbdrPlatform && _deferredQueryCount > 0)
-            {
-                Logger.Debug?.Print(LogClass.Gpu, $"Flushing {_deferredQueryCount} deferred queries on TBDR platform");
-                
-                foreach (var deferredQuery in _deferredQueries)
-                {
-                    _pendingQueryCopies.Add(deferredQuery);
-                }
-                _deferredQueries.Clear();
-                _deferredQueryCount = 0;
-                
-                if (_pendingQueryCopies.Count > 0)
-                {
-                    FlushCommandsImpl();
-                }
-            }
-        }
-        
-        public bool IsTbdrPlatform => _isTbdrPlatform;
     }
 }
