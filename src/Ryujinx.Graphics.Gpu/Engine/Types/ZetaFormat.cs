@@ -32,7 +32,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Types
                 ZetaFormat.Zf32      => new FormatInfo(Format.D32Float,       1, 1, 4, 1),
                 ZetaFormat.Z16       => new FormatInfo(Format.D16Unorm,       1, 1, 2, 1),
                 ZetaFormat.Z24S8     => new FormatInfo(Format.D24UnormS8Uint, 1, 1, 4, 2),
-                ZetaFormat.X8Z24     => new FormatInfo(Format.X8UintD24Unorm, 1, 1, 4, 1),
+                ZetaFormat.X8Z24     => new FormatInfo(Format.D24UnormX8Uint, 1, 1, 4, 1), // 修复：使用新的D24UnormX8Uint格式
                 ZetaFormat.S8Z24     => new FormatInfo(Format.S8UintD24Unorm, 1, 1, 4, 2),
                 ZetaFormat.S8Uint    => new FormatInfo(Format.S8Uint,         1, 1, 1, 1),
                 ZetaFormat.Zf32X24S8 => new FormatInfo(Format.D32FloatS8Uint, 1, 1, 8, 2),
