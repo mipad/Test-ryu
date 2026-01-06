@@ -150,6 +150,7 @@ namespace Ryujinx.Graphics.GAL
         B10G10R10A2Unorm,
         X8UintD24Unorm,
         A8B8G8R8Uint,
+        D24UnormX8Uint, // 新增格式，用于与Skyline兼容
     }
 
     public static class FormatExtensions
@@ -273,6 +274,7 @@ namespace Ryujinx.Graphics.GAL
                     return 2;
                 case Format.S8UintD24Unorm:
                 case Format.X8UintD24Unorm:
+                case Format.D24UnormX8Uint: // 新增格式大小
                 case Format.D32Float:
                 case Format.D24UnormS8Uint:
                     return 4;
@@ -354,6 +356,7 @@ namespace Ryujinx.Graphics.GAL
                 case Format.D24UnormS8Uint:
                 case Format.S8UintD24Unorm:
                 case Format.X8UintD24Unorm:
+                case Format.D24UnormX8Uint: // 新增格式
                 case Format.D32Float:
                 case Format.D32FloatS8Uint:
                     return true;
@@ -639,6 +642,7 @@ namespace Ryujinx.Graphics.GAL
                 case Format.D24UnormS8Uint:
                 case Format.S8UintD24Unorm:
                 case Format.X8UintD24Unorm:
+                case Format.D24UnormX8Uint: // 新增格式
                 case Format.D32Float:
                 case Format.D32FloatS8Uint:
                 case Format.S8Uint:
@@ -747,4 +751,3 @@ namespace Ryujinx.Graphics.GAL
         }
     }
 }
-
