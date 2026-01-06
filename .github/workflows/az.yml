@@ -2,9 +2,9 @@ name: Android CI Fixed
 
 on: 
   push:
-    branches: [ "查询" ]  
+    branches: [ "绿块" ]  
   pull_request:
-    branches: [ "查询" ]
+    branches: [ "绿块" ]
 
 jobs:
   build:
@@ -27,7 +27,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: 查询
+        ref: 绿块
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
