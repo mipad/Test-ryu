@@ -68,6 +68,7 @@ namespace Ryujinx.Graphics.Vulkan
             Add(Format.D16Unorm,            VkFormat.D16Unorm);
             Add(Format.S8UintD24Unorm,      VkFormat.D24UnormS8Uint);
             Add(Format.X8UintD24Unorm,      VkFormat.X8D24UnormPack32);
+            Add(Format.D24UnormX8Uint,      VkFormat.X8D24UnormPack32); // 新增格式映射，使用相同的Vulkan格式
             Add(Format.D32Float,            VkFormat.D32Sfloat);
             Add(Format.D24UnormS8Uint,      VkFormat.D24UnormS8Uint);
             Add(Format.D32FloatS8Uint,      VkFormat.D32SfloatS8Uint);
