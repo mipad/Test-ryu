@@ -33,6 +33,11 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private readonly long _defaultValue;
         private int? _resetSequence;
 
+        // 错误恢复机制添加的字段
+        private bool _isFaulty;
+        private int _faultCount;
+        private readonly object _syncLock = new();
+
         // 添加查询池管理
         private static readonly ConcurrentDictionary<CounterType, QueryPoolManager> _queryPoolManagers = new();
         private readonly bool _isTbdrPlatform;
@@ -53,6 +58,10 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _type = type;
             _result32Bit = result32Bit;
             _isTbdrPlatform = isTbdrPlatform;
+
+            // 初始化错误恢复字段
+            _isFaulty = false;
+            _faultCount = 0;
 
             _isSupported = QueryTypeSupported(gd, type);
 
@@ -161,6 +170,17 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         {
             if (_isSupported)
             {
+                // 添加故障检查 - 如果查询已标记为永久故障，则跳过
+                lock (_syncLock)
+                {
+                    if (_isFaulty && _faultCount >= 3)
+                    {
+                        Logger.Warning?.Print(LogClass.Gpu, 
+                            $"Skipping permanently faulty query {_type}, fault count: {_faultCount}");
+                        return; // 跳过这个查询而不是崩溃
+                    }
+                }
+
                 bool needsReset = resetSequence == null || _resetSequence == null || resetSequence.Value != _resetSequence.Value;
                 bool isOcclusion = _type == CounterType.SamplesPassed;
                 _pipeline.BeginQuery(this, _queryPool, _queryIndex, needsReset, isOcclusion, isOcclusion && resetSequence != null);
@@ -236,6 +256,16 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     Logger.Error?.Print(LogClass.Gpu, 
                         $"Error: Query result {_type} timed out. Attempts: {iterations}");
                     
+                    // 标记查询为故障
+                    lock (_syncLock)
+                    {
+                        _isFaulty = true;
+                        _faultCount++;
+                        
+                        Logger.Warning?.Print(LogClass.Gpu, 
+                            $"Query {_type} marked as faulty. Fault count: {_faultCount}, Pooled: {_isPooledQuery}, Index: {_queryIndex}");
+                    }
+                    
                     // 强制返回默认值，避免阻塞
                     return 0;
                 }
@@ -273,6 +303,72 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 0,
                 (ulong)(_result32Bit ? sizeof(int) : sizeof(long)),
                 flags);
+        }
+
+        // 错误恢复机制：尝试恢复故障查询
+        private bool TryRecover()
+        {
+            lock (_syncLock)
+            {
+                if (_isFaulty && _faultCount < 3)
+                {
+                    Logger.Info?.Print(LogClass.Gpu, 
+                        $"Attempting to recover query {_type}, fault count: {_faultCount}");
+                    
+                    // 重置缓冲区为默认值
+                    Marshal.WriteInt64(_bufferMap, _defaultValue);
+                    
+                    // 清除故障标记
+                    _isFaulty = false;
+                    
+                    Logger.Info?.Print(LogClass.Gpu, 
+                        $"Query {_type} recovered successfully");
+                    
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // 公开的恢复方法，供外部调用
+        public bool Recover()
+        {
+            return TryRecover();
+        }
+
+        // 查询状态检查
+        public bool IsFaulty
+        {
+            get 
+            {
+                lock (_syncLock)
+                {
+                    return _isFaulty;
+                }
+            }
+        }
+
+        public int FaultCount
+        {
+            get 
+            {
+                lock (_syncLock)
+                {
+                    return _faultCount;
+                }
+            }
+        }
+
+        // 重置故障计数（谨慎使用）
+        public void ResetFaultState()
+        {
+            lock (_syncLock)
+            {
+                _isFaulty = false;
+                _faultCount = 0;
+                Logger.Info?.Print(LogClass.Gpu, 
+                    $"Query {_type} fault state reset");
+            }
         }
 
         public unsafe void Dispose()
