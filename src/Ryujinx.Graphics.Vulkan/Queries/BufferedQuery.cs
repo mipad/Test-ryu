@@ -11,7 +11,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 {
     class BufferedQuery : IDisposable
     {
-        private const int MaxQueryRetries = 10000; // 增加重试次数
+        private const int MaxQueryRetries = 10000;
         private const long DefaultValue = unchecked((long)0xFFFFFFFEFFFFFFFE);
         private const long DefaultValueInt = 0xFFFFFFFE;
         private const ulong HighMask = 0xFFFFFFFF00000000;
@@ -33,11 +33,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private readonly long _defaultValue;
         private int? _resetSequence;
 
-        // 错误恢复机制添加的字段
-        private bool _isFaulty;
-        private int _faultCount;
-        private readonly object _syncLock = new();
-
         // 添加查询池管理
         private static readonly ConcurrentDictionary<CounterType, QueryPoolManager> _queryPoolManagers = new();
         private readonly bool _isTbdrPlatform;
@@ -58,10 +53,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _type = type;
             _result32Bit = result32Bit;
             _isTbdrPlatform = isTbdrPlatform;
-
-            // 初始化错误恢复字段
-            _isFaulty = false;
-            _faultCount = 0;
 
             _isSupported = QueryTypeSupported(gd, type);
 
@@ -170,17 +161,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         {
             if (_isSupported)
             {
-                // 添加故障检查 - 如果查询已标记为永久故障，则跳过
-                lock (_syncLock)
-                {
-                    if (_isFaulty && _faultCount >= 3)
-                    {
-                        Logger.Warning?.Print(LogClass.Gpu, 
-                            $"Skipping permanently faulty query {_type}, fault count: {_faultCount}");
-                        return; // 跳过这个查询而不是崩溃
-                    }
-                }
-
                 bool needsReset = resetSequence == null || _resetSequence == null || resetSequence.Value != _resetSequence.Value;
                 bool isOcclusion = _type == CounterType.SamplesPassed;
                 _pipeline.BeginQuery(this, _queryPool, _queryIndex, needsReset, isOcclusion, isOcclusion && resetSequence != null);
@@ -214,18 +194,28 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
         public bool TryGetResult(out long result)
         {
+            // 添加内存屏障确保CPU缓存一致性
+            Thread.MemoryBarrier();
             result = Marshal.ReadInt64(_bufferMap);
+            Thread.MemoryBarrier();
             return result != _defaultValue;
         }
 
         public long AwaitResult(AutoResetEvent wakeSignal = null)
         {
             long data = _defaultValue;
-
+            
+            // 确保初始读取是新鲜的
+            Thread.MemoryBarrier();
+            data = Marshal.ReadInt64(_bufferMap);
+            
             if (wakeSignal == null)
             {
+                // 快速路径：如果还在等待，再试一次
                 if (WaitingForValue(data))
                 {
+                    Thread.SpinWait(4); // 轻微的自旋等待（4次）
+                    Thread.MemoryBarrier();
                     data = Marshal.ReadInt64(_bufferMap);
                 }
             }
@@ -233,22 +223,41 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             {
                 int iterations = 0;
                 
-                // TBDR平台优化：更积极的轮询策略
+                // 三阶段重试策略
                 while (WaitingForValue(data) && iterations++ < MaxQueryRetries)
                 {
-                    data = Marshal.ReadInt64(_bufferMap);
-                    if (WaitingForValue(data))
+                    // 阶段1：积极轮询（前100次）
+                    if (iterations < 100)
                     {
-                        // TBDR平台：前1000次迭代不等待，之后使用短延迟
-                        if (_isTbdrPlatform && iterations < 1000)
+                        Thread.Yield();
+                        Thread.SpinWait(4);
+                    }
+                    // 阶段2：中等等待（100-500次）
+                    else if (iterations < 500)
+                    {
+                        wakeSignal.WaitOne(0); // 只是检查信号，不等待
+                        Thread.SpinWait(8);
+                    }
+                    // 阶段3：较长时间等待（500次后）
+                    else
+                    {
+                        // 每隔10次才等待1ms
+                        if (iterations % 10 == 0)
                         {
-                            Thread.Yield();
+                            wakeSignal.WaitOne(1);
                         }
                         else
                         {
-                            wakeSignal.WaitOne(_isTbdrPlatform ? 0 : 1);
+                            Thread.Yield();
                         }
                     }
+                    
+                    Thread.MemoryBarrier();
+                    data = Marshal.ReadInt64(_bufferMap);
+                    
+                    // 每50次检查一次是否应该提前退出
+                    if (iterations % 50 == 0 && ShouldExitEarly(iterations))
+                        break;
                 }
 
                 if (iterations >= MaxQueryRetries)
@@ -256,22 +265,19 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     Logger.Error?.Print(LogClass.Gpu, 
                         $"Error: Query result {_type} timed out. Attempts: {iterations}");
                     
-                    // 标记查询为故障
-                    lock (_syncLock)
-                    {
-                        _isFaulty = true;
-                        _faultCount++;
-                        
-                        Logger.Warning?.Print(LogClass.Gpu, 
-                            $"Query {_type} marked as faulty. Fault count: {_faultCount}, Pooled: {_isPooledQuery}, Index: {_queryIndex}");
-                    }
-                    
                     // 强制返回默认值，避免阻塞
                     return 0;
                 }
             }
-
+            
+            Thread.MemoryBarrier();
             return data;
+        }
+        
+        private bool ShouldExitEarly(int iterations)
+        {
+            // 对于SamplesPassed查询类型，如果已经重试很多次，提前退出
+            return _type == CounterType.SamplesPassed && iterations > 1000;
         }
 
         public void PoolReset(CommandBuffer cmd, int resetSequence)
@@ -303,72 +309,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 0,
                 (ulong)(_result32Bit ? sizeof(int) : sizeof(long)),
                 flags);
-        }
-
-        // 错误恢复机制：尝试恢复故障查询
-        private bool TryRecover()
-        {
-            lock (_syncLock)
-            {
-                if (_isFaulty && _faultCount < 3)
-                {
-                    Logger.Info?.Print(LogClass.Gpu, 
-                        $"Attempting to recover query {_type}, fault count: {_faultCount}");
-                    
-                    // 重置缓冲区为默认值
-                    Marshal.WriteInt64(_bufferMap, _defaultValue);
-                    
-                    // 清除故障标记
-                    _isFaulty = false;
-                    
-                    Logger.Info?.Print(LogClass.Gpu, 
-                        $"Query {_type} recovered successfully");
-                    
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        // 公开的恢复方法，供外部调用
-        public bool Recover()
-        {
-            return TryRecover();
-        }
-
-        // 查询状态检查
-        public bool IsFaulty
-        {
-            get 
-            {
-                lock (_syncLock)
-                {
-                    return _isFaulty;
-                }
-            }
-        }
-
-        public int FaultCount
-        {
-            get 
-            {
-                lock (_syncLock)
-                {
-                    return _faultCount;
-                }
-            }
-        }
-
-        // 重置故障计数（谨慎使用）
-        public void ResetFaultState()
-        {
-            lock (_syncLock)
-            {
-                _isFaulty = false;
-                _faultCount = 0;
-                Logger.Info?.Print(LogClass.Gpu, 
-                    $"Query {_type} fault state reset");
-            }
         }
 
         public unsafe void Dispose()
