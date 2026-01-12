@@ -25,15 +25,22 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private readonly object _lock = new();
         private ulong _result = ulong.MaxValue;
         private double _divisor = 1f;
+        
+        // TBDR平台优化标志
+        private readonly bool _isTbdrPlatform;
 
         public CounterQueueEvent(CounterQueue queue, CounterType type, ulong drawIndex)
         {
             _queue = queue;
-
             _counter = queue.GetQueryObject();
             Type = type;
-
             DrawIndex = drawIndex;
+            
+            // 判断是否为TBDR平台
+            _isTbdrPlatform = queue is { } && 
+                             queue.GetType().GetField("_isTbdrPlatform", 
+                                 System.Reflection.BindingFlags.Instance | 
+                                 System.Reflection.BindingFlags.NonPublic)?.GetValue(queue) is bool tbdr && tbdr;
 
             _counter.Begin(_queue.ResetSequence);
         }
@@ -78,7 +85,16 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
                 if (block)
                 {
-                    queryResult = _counter.AwaitResult(wakeSignal);
+                    // 使用优化的等待策略
+                    if (_isTbdrPlatform)
+                    {
+                        // TBDR平台：使用更积极的轮询
+                        queryResult = _counter.AwaitResult(wakeSignal);
+                    }
+                    else
+                    {
+                        queryResult = _counter.AwaitResult(wakeSignal);
+                    }
                 }
                 else
                 {

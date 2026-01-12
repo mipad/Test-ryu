@@ -28,7 +28,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             
             if (_isTbdrPlatform)
             {
-                Logger.Info?.Print(LogClass.Gpu, $"Initialized {count} counter queues for TBDR platform");
+                Logger.Info?.Print(LogClass.Gpu, 
+                    $"Initialized {count} counter queues for TBDR platform with batch processing");
             }
         }
 
@@ -36,44 +37,70 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         {
             foreach (var queue in _counterQueues)
             {
-                queue.ResetCounterPool();
+                if (queue != null)
+                {
+                    queue.ResetCounterPool();
+                }
             }
         }
 
         public void ResetFutureCounters(CommandBuffer cmd, int count)
         {
-            _counterQueues[(int)CounterType.SamplesPassed].ResetFutureCounters(cmd, count);
+            var occlusionQueue = _counterQueues[(int)CounterType.SamplesPassed];
+            if (occlusionQueue != null)
+            {
+                occlusionQueue.ResetFutureCounters(cmd, count);
+            }
         }
 
         public CounterQueueEvent QueueReport(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved)
         {
-            return _counterQueues[(int)type].QueueReport(resultHandler, divisor, _pipeline.DrawCount, hostReserved);
+            var queue = _counterQueues[(int)type];
+            if (queue != null)
+            {
+                return queue.QueueReport(resultHandler, divisor, _pipeline.DrawCount, hostReserved);
+            }
+            return null;
         }
 
         public void QueueReset(CounterType type)
         {
-            _counterQueues[(int)type].QueueReset(_pipeline.DrawCount);
+            var queue = _counterQueues[(int)type];
+            if (queue != null)
+            {
+                queue.QueueReset(_pipeline.DrawCount);
+            }
         }
 
         public void Update()
         {
             foreach (var queue in _counterQueues)
             {
-                queue.Flush(false);
+                if (queue != null)
+                {
+                    queue.Flush(false);
+                }
             }
         }
 
         public void Flush(CounterType type)
         {
-            _counterQueues[(int)type].Flush(true);
+            var queue = _counterQueues[(int)type];
+            if (queue != null)
+            {
+                queue.Flush(true);
+            }
         }
 
         public void Dispose()
         {
             foreach (var queue in _counterQueues)
             {
-                queue.Dispose();
+                queue?.Dispose();
             }
+            
+            // 清理批量管理器
+            BufferedQuery.CleanupBatchManagers();
         }
     }
 }

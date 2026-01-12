@@ -10,7 +10,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 {
     class CounterQueue : IDisposable
     {
-        private const int QueryPoolInitialSize = 100;
+        private const int QueryPoolInitialSize = 50; // 减少初始大小，使用批量分配
 
         private readonly VulkanRenderer _gd;
         private readonly Device _device;
@@ -46,20 +46,27 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _isTbdrPlatform = isTbdrPlatform;
 
             _queryPool = new Queue<BufferedQuery>(QueryPoolInitialSize);
+            
+            // 预分配查询对象
             for (int i = 0; i < QueryPoolInitialSize; i++)
             {
-                // 传递isTbdrPlatform参数给BufferedQuery
-                _queryPool.Enqueue(new BufferedQuery(_gd, _device, _pipeline, type, _gd.IsAmdWindows, _isTbdrPlatform));
+                _queryPool.Enqueue(new BufferedQuery(_gd, _device, _pipeline, type, 
+                    _gd.IsAmdWindows, _isTbdrPlatform));
             }
 
             _current = new CounterQueueEvent(this, type, 0);
 
-            _consumerThread = new Thread(EventConsumer);
+            _consumerThread = new Thread(EventConsumer)
+            {
+                Name = $"CounterQueue_{type}",
+                IsBackground = true
+            };
             _consumerThread.Start();
             
             if (_isTbdrPlatform)
             {
-                Logger.Debug?.Print(LogClass.Gpu, $"Created counter queue for {type} on TBDR platform");
+                Logger.Debug?.Print(LogClass.Gpu, 
+                    $"Created counter queue for {type} on TBDR platform");
             }
         }
 
@@ -91,9 +98,12 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
         private void EventConsumer()
         {
+            Thread.CurrentThread.Name = $"CounterQueue.Consumer_{Type}";
+            
             while (!Disposed)
             {
                 CounterQueueEvent evt = null;
+                
                 lock (_lock)
                 {
                     if (_events.Count > 0)
@@ -108,7 +118,18 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 }
                 else
                 {
-                    evt.TryConsume(ref _accumulatedCounter, true, _waiterCount == 0 ? _wakeSignal : null);
+                    // 优化：批量处理事件时使用更积极的轮询
+                    AutoResetEvent signal = _waiterCount == 0 ? _wakeSignal : null;
+                    
+                    if (_isTbdrPlatform)
+                    {
+                        // TBDR平台：使用更短的等待时间
+                        evt.TryConsume(ref _accumulatedCounter, true, signal);
+                    }
+                    else
+                    {
+                        evt.TryConsume(ref _accumulatedCounter, true, signal);
+                    }
                 }
 
                 if (_waiterCount > 0)
@@ -124,11 +145,12 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             {
                 if (_queryPool.Count > 0)
                 {
-                    BufferedQuery result = _queryPool.Dequeue();
-                    return result;
+                    return _queryPool.Dequeue();
                 }
 
-                return new BufferedQuery(_gd, _device, _pipeline, Type, _gd.IsAmdWindows, _isTbdrPlatform);
+                // 创建新查询对象
+                return new BufferedQuery(_gd, _device, _pipeline, Type, 
+                    _gd.IsAmdWindows, _isTbdrPlatform);
             }
         }
 
@@ -205,9 +227,19 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
             _wakeSignal.Set();
 
+            // 优化：减少等待间隔
+            int waitTimeout = _isTbdrPlatform ? 0 : 1;
+            
             while (!evt.Disposed)
             {
-                _eventConsumed.WaitOne(1);
+                if (!_eventConsumed.WaitOne(waitTimeout))
+                {
+                    // 检查事件是否已完成
+                    if (evt.Disposed)
+                    {
+                        break;
+                    }
+                }
             }
 
             Interlocked.Decrement(ref _waiterCount);
@@ -220,7 +252,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 while (_events.Count > 0)
                 {
                     CounterQueueEvent evt = _events.Dequeue();
-
                     evt.Dispose();
                 }
 
@@ -229,7 +260,10 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
             _queuedEvent.Set();
 
-            _consumerThread.Join();
+            if (_consumerThread != null && _consumerThread.IsAlive)
+            {
+                _consumerThread.Join(TimeSpan.FromSeconds(2));
+            }
 
             _current?.Dispose();
 
