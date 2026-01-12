@@ -2,6 +2,7 @@ using Ryujinx.Graphics.GAL;
 using Silk.NET.Vulkan;
 using System;
 using Ryujinx.Common.Logging;
+using System.Collections.Generic;
 
 namespace Ryujinx.Graphics.Vulkan.Queries
 {
@@ -28,8 +29,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             
             if (_isTbdrPlatform)
             {
-                Logger.Info?.Print(LogClass.Gpu, 
-                    $"Initialized {count} counter queues for TBDR platform with batch processing");
+                Logger.Info?.Print(LogClass.Gpu, $"Initialized {count} counter queues for TBDR platform");
             }
         }
 
@@ -37,70 +37,73 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         {
             foreach (var queue in _counterQueues)
             {
-                if (queue != null)
-                {
-                    queue.ResetCounterPool();
-                }
+                queue.ResetCounterPool();
             }
         }
 
         public void ResetFutureCounters(CommandBuffer cmd, int count)
         {
-            var occlusionQueue = _counterQueues[(int)CounterType.SamplesPassed];
-            if (occlusionQueue != null)
-            {
-                occlusionQueue.ResetFutureCounters(cmd, count);
-            }
+            _counterQueues[(int)CounterType.SamplesPassed].ResetFutureCounters(cmd, count);
         }
 
         public CounterQueueEvent QueueReport(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved)
         {
-            var queue = _counterQueues[(int)type];
-            if (queue != null)
-            {
-                return queue.QueueReport(resultHandler, divisor, _pipeline.DrawCount, hostReserved);
-            }
-            return null;
+            return _counterQueues[(int)type].QueueReport(resultHandler, divisor, _pipeline.DrawCount, hostReserved);
         }
 
         public void QueueReset(CounterType type)
         {
-            var queue = _counterQueues[(int)type];
-            if (queue != null)
-            {
-                queue.QueueReset(_pipeline.DrawCount);
-            }
+            _counterQueues[(int)type].QueueReset(_pipeline.DrawCount);
         }
 
         public void Update()
         {
             foreach (var queue in _counterQueues)
             {
-                if (queue != null)
-                {
-                    queue.Flush(false);
-                }
+                queue.Flush(false);
             }
         }
 
         public void Flush(CounterType type)
         {
-            var queue = _counterQueues[(int)type];
-            if (queue != null)
+            _counterQueues[(int)type].Flush(true);
+        }
+        
+        // 收集所有批量查询
+        public List<QueryBatch> CollectAllBatchQueries()
+        {
+            var allBatches = new List<QueryBatch>();
+            
+            foreach (var queue in _counterQueues)
             {
-                queue.Flush(true);
+                var batches = queue.CollectBatchQueries();
+                allBatches.AddRange(batches);
             }
+            
+            if (_isTbdrPlatform && allBatches.Count > 0)
+            {
+                int totalQueries = 0;
+                foreach (var batch in allBatches)
+                {
+                    totalQueries += (int)batch.Count;
+                }
+                
+                Logger.Debug?.Print(LogClass.Gpu, 
+                    $"TBDR: Collected {allBatches.Count} batches, {totalQueries} total queries");
+            }
+            
+            return allBatches;
         }
 
         public void Dispose()
         {
             foreach (var queue in _counterQueues)
             {
-                queue?.Dispose();
+                queue.Dispose();
             }
             
-            // 清理批量管理器
-            BufferedQuery.CleanupBatchManagers();
+            // 清理批量缓冲区
+            BatchQueryManager.DisposeAll();
         }
     }
 }

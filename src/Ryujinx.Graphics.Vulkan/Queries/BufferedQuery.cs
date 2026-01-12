@@ -3,426 +3,80 @@ using Ryujinx.Graphics.GAL;
 using Silk.NET.Vulkan;
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Buffer = Silk.NET.Vulkan.Buffer;
 
 namespace Ryujinx.Graphics.Vulkan.Queries
 {
-    /// <summary>
-    /// 优化的批量查询管理器
-    /// </summary>
-    class BufferedQueryBatchManager
+    // 查询批次结构体 - 用于批量处理
+    public struct QueryBatch
     {
-        private readonly Vk _api;
-        private readonly Device _device;
-        private readonly bool _isTbdrPlatform;
+        public QueryPool QueryPool;
+        public uint StartIndex;
+        public uint Count;
+        public Buffer ResultBuffer;
+        public ulong ResultOffset;
+        public bool Is64Bit;
         
-        private readonly ConcurrentDictionary<CounterType, QueryPoolGroup> _queryPools;
-        private readonly ConcurrentBag<QueryResultBuffer> _resultBuffers;
-        
-        private const uint BatchBufferSize = 256 * 1024; // 256KB缓冲区
-        private const uint MaxQueriesPerCopy = 64; // 每次复制最大查询数
-        
-        public BufferedQueryBatchManager(VulkanRenderer gd, Device device, bool isTbdrPlatform)
+        public QueryBatch(QueryPool pool, uint start, uint count, Buffer buffer, ulong offset, bool is64Bit)
         {
-            _api = gd.Api;
-            _device = device;
-            _isTbdrPlatform = isTbdrPlatform;
-            
-            _queryPools = new ConcurrentDictionary<CounterType, QueryPoolGroup>();
-            _resultBuffers = new ConcurrentBag<QueryResultBuffer>();
-            
-            // 预分配一些结果缓冲区
-            for (int i = 0; i < 4; i++)
-            {
-                _resultBuffers.Add(new QueryResultBuffer(gd, device, BatchBufferSize));
-            }
-            
-            Logger.Info?.Print(LogClass.Gpu, $"Query batch manager initialized for TBDR: {isTbdrPlatform}");
-        }
-        
-        public QueryAllocation AllocateQuery(CounterType type, VulkanRenderer gd, Device device)
-        {
-            var group = _queryPools.GetOrAdd(type, _ => new QueryPoolGroup(gd, device, type, _isTbdrPlatform));
-            return group.Allocate();
-        }
-        
-        public QueryResultBuffer RentResultBuffer()
-        {
-            if (_resultBuffers.TryTake(out var buffer))
-            {
-                return buffer;
-            }
-            
-            return null;
-        }
-        
-        public void ReturnResultBuffer(QueryResultBuffer buffer)
-        {
-            if (buffer != null)
-            {
-                _resultBuffers.Add(buffer);
-            }
-        }
-        
-        public unsafe void CopyBatchResults(
-            CommandBuffer cmd,
-            List<QueryCopyOperation> operations)
-        {
-            if (operations.Count == 0) return;
-            
-            // 按查询池和结果缓冲区分组
-            var groups = operations
-                .GroupBy(op => new { op.QueryPool, op.ResultBuffer, op.Is64Bit })
-                .ToList();
-            
-            foreach (var group in groups)
-            {
-                var operationsInGroup = group.ToList();
-                var queryPool = group.Key.QueryPool;
-                var resultBuffer = group.Key.ResultBuffer;
-                var is64Bit = group.Key.Is64Bit;
-                
-                // 处理分组内的操作，合并连续查询
-                var ranges = MergeContinuousQueries(operationsInGroup);
-                
-                foreach (var range in ranges)
-                {
-                    uint copyCount = range.QueryCount;
-                    if (copyCount == 0) continue;
-                    
-                    QueryResultFlags flags = QueryResultFlags.ResultWaitBit;
-                    if (is64Bit)
-                    {
-                        flags |= QueryResultFlags.Result64Bit;
-                    }
-                    
-                    // 批量复制查询结果
-                    _api.CmdCopyQueryPoolResults(
-                        cmd,
-                        queryPool,
-                        range.FirstIndex,
-                        copyCount,
-                        resultBuffer.Buffer,
-                        resultBuffer.Offset + range.ResultOffset,
-                        (ulong)(is64Bit ? sizeof(long) : sizeof(int)) * copyCount,
-                        flags);
-                    
-                    if (_isTbdrPlatform)
-                    {
-                        // TBDR平台：添加内存屏障确保结果可用
-                        MemoryBarrier memoryBarrier = new()
-                        {
-                            SType = StructureType.MemoryBarrier,
-                            SrcAccessMask = AccessFlags.TransferWriteBit,
-                            DstAccessMask = AccessFlags.HostReadBit,
-                        };
-                        
-                        _api.CmdPipelineBarrier(
-                            cmd,
-                            PipelineStageFlags.TransferBit,
-                            PipelineStageFlags.HostBit,
-                            0,
-                            1,
-                            &memoryBarrier,
-                            0,
-                            null,
-                            0,
-                            null);
-                    }
-                }
-            }
-        }
-        
-        private List<QueryCopyRange> MergeContinuousQueries(List<QueryCopyOperation> operations)
-        {
-            if (operations.Count == 0) return new List<QueryCopyRange>();
-            
-            // 按查询索引排序
-            var sortedOps = operations.OrderBy(op => op.QueryIndex).ToList();
-            var ranges = new List<QueryCopyRange>();
-            
-            QueryCopyRange currentRange = null;
-            uint expectedIndex = 0;
-            
-            foreach (var op in sortedOps)
-            {
-                if (currentRange == null)
-                {
-                    // 开始新范围
-                    currentRange = new QueryCopyRange
-                    {
-                        FirstIndex = op.QueryIndex,
-                        ResultOffset = op.ResultOffset,
-                        QueryCount = 1
-                    };
-                    expectedIndex = op.QueryIndex + 1;
-                }
-                else if (op.QueryIndex == expectedIndex && 
-                        op.ResultOffset == currentRange.ResultOffset + 
-                        (currentRange.QueryCount * (op.Is64Bit ? sizeof(long) : sizeof(int))))
-                {
-                    // 连续查询，扩展当前范围
-                    currentRange.QueryCount++;
-                    expectedIndex++;
-                }
-                else
-                {
-                    // 不连续，保存当前范围并开始新范围
-                    ranges.Add(currentRange);
-                    currentRange = new QueryCopyRange
-                    {
-                        FirstIndex = op.QueryIndex,
-                        ResultOffset = op.ResultOffset,
-                        QueryCount = 1
-                    };
-                    expectedIndex = op.QueryIndex + 1;
-                }
-            }
-            
-            if (currentRange != null)
-            {
-                ranges.Add(currentRange);
-            }
-            
-            return ranges;
-        }
-        
-        public void Dispose()
-        {
-            foreach (var kvp in _queryPools)
-            {
-                kvp.Value.Dispose();
-            }
-            
-            foreach (var buffer in _resultBuffers)
-            {
-                buffer.Dispose();
-            }
-            
-            _queryPools.Clear();
-            _resultBuffers.Clear();
-        }
-        
-        private class QueryCopyRange
-        {
-            public uint FirstIndex;
-            public ulong ResultOffset;
-            public uint QueryCount;
+            QueryPool = pool;
+            StartIndex = start;
+            Count = count;
+            ResultBuffer = buffer;
+            ResultOffset = offset;
+            Is64Bit = is64Bit;
         }
     }
     
-    /// <summary>
-    /// 查询池组，管理同一类型的多个查询池
-    /// </summary>
-    class QueryPoolGroup : IDisposable
+    // 批量查询结果缓冲区
+    class BatchResultBuffer : IDisposable
     {
-        private const uint PoolSize = 2048; // 更大的查询池
-        private const uint MaxPools = 8; // 最多8个池
-        
         private readonly Vk _api;
         private readonly Device _device;
-        private readonly CounterType _type;
-        private readonly bool _isTbdrPlatform;
-        
-        private readonly List<QueryPool> _pools;
-        private readonly uint[] _nextIndices;
-        private readonly int[] _refCounts;
-        private int _activePoolIndex;
-        
-        public QueryPoolGroup(VulkanRenderer gd, Device device, CounterType type, bool isTbdrPlatform)
-        {
-            _api = gd.Api;
-            _device = device;
-            _type = type;
-            _isTbdrPlatform = isTbdrPlatform;
-            
-            _pools = new List<QueryPool>();
-            _nextIndices = new uint[MaxPools];
-            _refCounts = new int[MaxPools];
-            
-            // 预分配第一个查询池
-            AllocateNewPool();
-            
-            Logger.Debug?.Print(LogClass.Gpu, $"Created query pool group for {type}, TBDR: {isTbdrPlatform}");
-        }
-        
-        private unsafe void AllocateNewPool()
-        {
-            if (_pools.Count >= MaxPools)
-            {
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Maximum query pools reached for {_type}. Recycling pool 0.");
-                
-                // 回收第一个池
-                var oldPool = _pools[0];
-                _api.DestroyQueryPool(_device, oldPool, null);
-                _pools.RemoveAt(0);
-                
-                // 调整数组
-                for (int i = 0; i < _pools.Count; i++)
-                {
-                    _nextIndices[i] = _nextIndices[i + 1];
-                    _refCounts[i] = _refCounts[i + 1];
-                }
-            }
-            
-            QueryPipelineStatisticFlags flags = _type == CounterType.PrimitivesGenerated ?
-                QueryPipelineStatisticFlags.GeometryShaderPrimitivesBit : 0;
-            
-            QueryPoolCreateInfo queryPoolCreateInfo = new()
-            {
-                SType = StructureType.QueryPoolCreateInfo,
-                QueryCount = PoolSize,
-                QueryType = GetQueryType(_type),
-                PipelineStatistics = flags,
-            };
-            
-            QueryPool pool = default;
-            _api.CreateQueryPool(_device, in queryPoolCreateInfo, null, out pool).ThrowOnError();
-            
-            _pools.Add(pool);
-            _nextIndices[_pools.Count - 1] = 0;
-            _refCounts[_pools.Count - 1] = 0;
-            
-            if (_isTbdrPlatform)
-            {
-                Logger.Info?.Print(LogClass.Gpu, 
-                    $"Allocated new query pool for {_type}, size: {PoolSize}");
-            }
-        }
-        
-        public QueryAllocation Allocate()
-        {
-            lock (_pools)
-            {
-                // 查找有可用空间的池
-                for (int i = 0; i < _pools.Count; i++)
-                {
-                    int poolIndex = (_activePoolIndex + i) % _pools.Count;
-                    
-                    if (_nextIndices[poolIndex] < PoolSize)
-                    {
-                        uint queryIndex = _nextIndices[poolIndex]++;
-                        _refCounts[poolIndex]++;
-                        _activePoolIndex = poolIndex;
-                        
-                        return new QueryAllocation
-                        {
-                            QueryPool = _pools[poolIndex],
-                            QueryIndex = queryIndex,
-                            IsPooled = true
-                        };
-                    }
-                }
-                
-                // 所有池都满了，分配新池
-                AllocateNewPool();
-                _activePoolIndex = _pools.Count - 1;
-                uint newIndex = _nextIndices[_activePoolIndex]++;
-                _refCounts[_activePoolIndex] = 1;
-                
-                return new QueryAllocation
-                {
-                    QueryPool = _pools[_activePoolIndex],
-                    QueryIndex = newIndex,
-                    IsPooled = true
-                };
-            }
-        }
-        
-        public void Release(uint queryIndex, QueryPool pool)
-        {
-            lock (_pools)
-            {
-                int poolIndex = _pools.IndexOf(pool);
-                if (poolIndex >= 0)
-                {
-                    _refCounts[poolIndex]--;
-                    
-                    // 如果引用计数为0且不是当前活跃池，可以回收
-                    if (_refCounts[poolIndex] == 0 && poolIndex != _activePoolIndex)
-                    {
-                        // 重置这个池的索引，以便重用
-                        _nextIndices[poolIndex] = 0;
-                    }
-                }
-            }
-        }
-        
-        private static QueryType GetQueryType(CounterType type)
-        {
-            return type switch
-            {
-                CounterType.SamplesPassed => QueryType.Occlusion,
-                CounterType.PrimitivesGenerated => QueryType.PipelineStatistics,
-                CounterType.TransformFeedbackPrimitivesWritten => QueryType.TransformFeedbackStreamExt,
-                _ => QueryType.Occlusion,
-            };
-        }
-        
-        public unsafe void Dispose()
-        {
-            lock (_pools)
-            {
-                foreach (var pool in _pools)
-                {
-                    _api.DestroyQueryPool(_device, pool, null);
-                }
-                _pools.Clear();
-            }
-        }
-    }
-    
-    /// <summary>
-    /// 查询结果缓冲区
-    /// </summary>
-    class QueryResultBuffer : IDisposable
-    {
         private readonly BufferHolder _buffer;
-        private readonly nint _mappedMemory;
-        private readonly uint _size;
-        private uint _nextOffset;
-        private readonly object _lock = new object();
+        private readonly nint _mappedPtr;
+        private readonly int _elementSize;
+        private readonly int _capacity;
+        private int _usedCount;
         
-        public Buffer Buffer => _buffer.GetBuffer().GetUnsafe().Value;
-        public ulong Offset => 0;
-        
-        public QueryResultBuffer(VulkanRenderer gd, Device device, uint size)
+        public BatchResultBuffer(VulkanRenderer gd, Device device, int elementSize, int capacity)
         {
-            _size = size;
-            _buffer = gd.BufferManager.Create(gd, (int)size, forConditionalRendering: true);
-            _mappedMemory = _buffer.Map(0, (int)size);
-            _nextOffset = 0;
+            _api = gd.Api;
+            _device = device;
+            _elementSize = elementSize;
+            _capacity = capacity;
+            
+            _buffer = gd.BufferManager.Create(gd, elementSize * capacity);
+            _mappedPtr = _buffer.Map(0, elementSize * capacity);
+            _usedCount = 0;
         }
         
-        public bool TryAllocate(uint requiredSize, out ulong offset, out nint mappedPtr)
+        public bool TryAllocate(int count, out ulong offset, out nint mappedPtr)
         {
-            lock (_lock)
+            if (_usedCount + count > _capacity)
             {
-                if (_nextOffset + requiredSize <= _size)
-                {
-                    offset = _nextOffset;
-                    mappedPtr = _mappedMemory + (int)offset;
-                    _nextOffset += requiredSize;
-                    return true;
-                }
+                offset = 0;
+                mappedPtr = nint.Zero;
+                return false;
             }
             
-            offset = 0;
-            mappedPtr = nint.Zero;
-            return false;
+            offset = (ulong)(_usedCount * _elementSize);
+            mappedPtr = _mappedPtr + (_usedCount * _elementSize);
+            _usedCount += count;
+            
+            return true;
         }
         
         public void Reset()
         {
-            lock (_lock)
-            {
-                _nextOffset = 0;
-            }
+            _usedCount = 0;
+        }
+        
+        public Buffer GetBuffer()
+        {
+            return _buffer.GetBuffer().GetValue();
         }
         
         public void Dispose()
@@ -431,35 +85,71 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         }
     }
     
-    /// <summary>
-    /// 查询分配信息
-    /// </summary>
-    struct QueryAllocation
+    // 批量查询管理器
+    static class BatchQueryManager
     {
-        public QueryPool QueryPool;
-        public uint QueryIndex;
-        public bool IsPooled;
+        private static readonly ConcurrentDictionary<CounterType, BatchResultBuffer> _resultBuffers64 = new();
+        private static readonly ConcurrentDictionary<CounterType, BatchResultBuffer> _resultBuffers32 = new();
+        private static readonly object _lock = new();
+        
+        public static bool TryGetResultBuffer(CounterType type, bool is64Bit, out BatchResultBuffer buffer)
+        {
+            var dict = is64Bit ? _resultBuffers64 : _resultBuffers32;
+            
+            if (!dict.TryGetValue(type, out buffer))
+            {
+                lock (_lock)
+                {
+                    if (!dict.TryGetValue(type, out buffer))
+                    {
+                        // 延迟创建，需要VulkanRenderer实例
+                        return false;
+                    }
+                }
+            }
+            
+            return true;
+        }
+        
+        public static void CreateResultBuffer(VulkanRenderer gd, Device device, CounterType type, bool is64Bit, int capacity)
+        {
+            var dict = is64Bit ? _resultBuffers64 : _resultBuffers32;
+            int elementSize = is64Bit ? sizeof(long) : sizeof(int);
+            
+            lock (_lock)
+            {
+                if (!dict.ContainsKey(type))
+                {
+                    var buffer = new BatchResultBuffer(gd, device, elementSize, capacity);
+                    dict[type] = buffer;
+                    
+                    if (gd.IsTBDR)
+                    {
+                        Logger.Debug?.Print(LogClass.Gpu, 
+                            $"Created batch result buffer for {type} ({(is64Bit ? "64-bit" : "32-bit")}), capacity: {capacity}");
+                    }
+                }
+            }
+        }
+        
+        public static void DisposeAll()
+        {
+            lock (_lock)
+            {
+                foreach (var buffer in _resultBuffers64.Values)
+                    buffer.Dispose();
+                foreach (var buffer in _resultBuffers32.Values)
+                    buffer.Dispose();
+                
+                _resultBuffers64.Clear();
+                _resultBuffers32.Clear();
+            }
+        }
     }
-    
-    /// <summary>
-    /// 查询复制操作
-    /// </summary>
-    struct QueryCopyOperation
-    {
-        public QueryPool QueryPool;
-        public uint QueryIndex;
-        public Buffer ResultBuffer;
-        public ulong ResultOffset;
-        public bool Is64Bit;
-    }
-    
-    /// <summary>
-    /// 优化的批量查询类
-    /// </summary>
+
     class BufferedQuery : IDisposable
     {
-        private const int MaxQueryRetries = 5000; // 减少重试次数，依赖更积极的轮询
-        private const int SpinWaitIterations = 100; // 自旋等待迭代次数
+        private const int MaxQueryRetries = 10000;
         private const long DefaultValue = unchecked((long)0xFFFFFFFEFFFFFFFE);
         private const long DefaultValueInt = 0xFFFFFFFE;
         private const ulong HighMask = 0xFFFFFFFF00000000;
@@ -467,36 +157,38 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private readonly Vk _api;
         private readonly Device _device;
         private readonly PipelineFull _pipeline;
-        
-        private readonly QueryPool _queryPool;
+
+        private QueryPool _queryPool;
         private readonly uint _queryIndex;
-        private readonly bool _isPooled;
-        
+        private readonly bool _isPooledQuery;
+
+        private readonly BufferHolder _buffer;
+        private readonly nint _bufferMap;
         private readonly CounterType _type;
         private readonly bool _result32Bit;
         private readonly bool _isSupported;
-        private readonly bool _isTbdrPlatform;
-        
+
         private readonly long _defaultValue;
         private int? _resetSequence;
+
+        // 添加查询池管理
+        private static readonly ConcurrentDictionary<CounterType, QueryPoolManager> _queryPoolManagers = new();
+        private readonly bool _isTbdrPlatform;
         
-        // 批量处理支持
-        private QueryResultBuffer _resultBuffer;
-        private ulong _resultOffset;
-        private nint _resultMappedPtr;
-        private readonly bool _useBatchProcessing;
-        
-        // 静态批量管理器
-        private static ConcurrentDictionary<(VulkanRenderer, Device), BufferedQueryBatchManager> _batchManagers = 
-            new ConcurrentDictionary<(VulkanRenderer, Device), BufferedQueryBatchManager>();
-        
-        public BufferedQuery(
-            VulkanRenderer gd,
-            Device device,
-            PipelineFull pipeline,
-            CounterType type,
-            bool result32Bit,
-            bool isTbdrPlatform)
+        // 批量查询支持
+        private BatchResultBuffer _batchBuffer;
+        private ulong _batchBufferOffset;
+        private bool _usingBatchBuffer;
+
+        private class QueryPoolManager
+        {
+            public QueryPool QueryPool { get; set; }
+            public uint NextIndex { get; set; }
+            public int ReferenceCount { get; set; }
+            public const uint PoolSize = 1024;
+        }
+
+        public unsafe BufferedQuery(VulkanRenderer gd, Device device, PipelineFull pipeline, CounterType type, bool result32Bit, bool isTbdrPlatform)
         {
             _api = gd.Api;
             _device = device;
@@ -505,52 +197,57 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _result32Bit = result32Bit;
             _isTbdrPlatform = isTbdrPlatform;
             
+            // 初始化批量结果缓冲区
+            if (isTbdrPlatform)
+            {
+                BatchQueryManager.CreateResultBuffer(gd, device, type, !result32Bit, 1024);
+            }
+
             _isSupported = QueryTypeSupported(gd, type);
-            
-            // 获取或创建批量管理器
-            var batchManager = _batchManagers.GetOrAdd(
-                (gd, device),
-                key => new BufferedQueryBatchManager(key.Item1, key.Item2, isTbdrPlatform));
-            
+
             if (_isSupported)
             {
-                // 从批量管理器分配查询
-                var allocation = batchManager.AllocateQuery(type, gd, device);
-                _queryPool = allocation.QueryPool;
-                _queryIndex = allocation.QueryIndex;
-                _isPooled = allocation.IsPooled;
-                
-                // 尝试获取结果缓冲区
-                _useBatchProcessing = true;
-                _resultBuffer = batchManager.RentResultBuffer();
-                
-                if (_resultBuffer != null && 
-                    _resultBuffer.TryAllocate((uint)(_result32Bit ? sizeof(int) : sizeof(long)), 
-                                             out _resultOffset, out _resultMappedPtr))
+                // 使用查询池管理器
+                var manager = _queryPoolManagers.GetOrAdd(type, _ =>
                 {
-                    // 初始化结果为默认值
-                    if (_result32Bit)
+                    QueryPipelineStatisticFlags flags = type == CounterType.PrimitivesGenerated ?
+                        QueryPipelineStatisticFlags.GeometryShaderPrimitivesBit : 0;
+
+                    QueryPoolCreateInfo queryPoolCreateInfo = new()
                     {
-                        Marshal.WriteInt32(_resultMappedPtr, (int)DefaultValueInt);
-                    }
-                    else
+                        SType = StructureType.QueryPoolCreateInfo,
+                        QueryCount = QueryPoolManager.PoolSize,
+                        QueryType = GetQueryType(type),
+                        PipelineStatistics = flags,
+                    };
+
+                    QueryPool pool = default;
+                    gd.Api.CreateQueryPool(device, in queryPoolCreateInfo, null, out pool).ThrowOnError();
+                    
+                    return new QueryPoolManager
                     {
-                        Marshal.WriteInt64(_resultMappedPtr, DefaultValue);
-                    }
-                }
-                else
+                        QueryPool = pool,
+                        NextIndex = 0,
+                        ReferenceCount = 0
+                    };
+                });
+
+                lock (manager)
                 {
-                    // 回退到单独缓冲区
-                    _useBatchProcessing = false;
-                    CreateFallbackBuffer(gd);
+                    manager.ReferenceCount++;
+                    _queryPool = manager.QueryPool;
+                    _queryIndex = manager.NextIndex;
+                    manager.NextIndex = (manager.NextIndex + 1) % QueryPoolManager.PoolSize;
+                    _isPooledQuery = true;
+                    
+                    if (_isTbdrPlatform && manager.ReferenceCount == 1)
+                    {
+                        Logger.Info?.Print(LogClass.Gpu, $"Created query pool for {type} on TBDR platform, size: {QueryPoolManager.PoolSize}");
+                    }
                 }
             }
             else
             {
-                // 不支持批量处理
-                _useBatchProcessing = false;
-                CreateFallbackBuffer(gd);
-                
                 // 回退：创建单个查询
                 QueryPipelineStatisticFlags flags = type == CounterType.PrimitivesGenerated ?
                     QueryPipelineStatisticFlags.GeometryShaderPrimitivesBit : 0;
@@ -565,32 +262,18 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
                 gd.Api.CreateQueryPool(device, in queryPoolCreateInfo, null, out _queryPool).ThrowOnError();
                 _queryIndex = 0;
-                _isPooled = false;
+                _isPooledQuery = false;
             }
-            
-            _defaultValue = result32Bit ? DefaultValueInt : DefaultValue;
-            
-            if (_isTbdrPlatform && _useBatchProcessing)
-            {
-                Logger.Debug?.Print(LogClass.Gpu, 
-                    $"Using batch processing for {type} query on TBDR platform");
-            }
-        }
-        
-        private void CreateFallbackBuffer(VulkanRenderer gd)
-        {
+
             BufferHolder buffer = gd.BufferManager.Create(gd, sizeof(long), forConditionalRendering: true);
-            _resultMappedPtr = buffer.Map(0, sizeof(long));
-            _defaultValue = _result32Bit ? DefaultValueInt : DefaultValue;
-            Marshal.WriteInt64(_resultMappedPtr, _defaultValue);
-            
-            // 存储缓冲区引用
-            _resultBuffer = new QueryResultBuffer(gd, _device, (uint)sizeof(long))
-            {
-                // 这里简化处理，实际应该使用BufferHolder包装
-            };
+
+            _bufferMap = buffer.Map(0, sizeof(long));
+            _defaultValue = result32Bit ? DefaultValueInt : DefaultValue;
+            Marshal.WriteInt64(_bufferMap, _defaultValue);
+            _buffer = buffer;
+            _usingBatchBuffer = false;
         }
-        
+
         private static bool QueryTypeSupported(VulkanRenderer gd, CounterType type)
         {
             return type switch
@@ -601,7 +284,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 _ => false,
             };
         }
-        
+
         private static QueryType GetQueryType(CounterType type)
         {
             return type switch
@@ -612,198 +295,244 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 _ => QueryType.Occlusion,
             };
         }
-        
+
         public Auto<DisposableBuffer> GetBuffer()
         {
-            // 对于批量处理，返回完整的缓冲区
-            if (_useBatchProcessing && _resultBuffer != null)
-            {
-                return new Auto<DisposableBuffer>(new DisposableBuffer(_api, _device, _resultBuffer.Buffer, false));
-            }
-            
-            // 回退到原始实现
-            return null; // 注意：这里可能需要调整
+            return _buffer.GetBuffer();
         }
         
+        public QueryPool GetQueryPool() => _queryPool;
+        public uint GetQueryIndex() => _queryIndex;
+        public bool Is64Bit() => !_result32Bit;
+        public CounterType GetCounterType() => _type;
+
         public void Reset()
         {
             End(false);
             Begin(null);
         }
-        
+
         public void Begin(int? resetSequence)
         {
             if (_isSupported)
             {
-                bool needsReset = resetSequence == null || _resetSequence == null || 
-                                 resetSequence.Value != _resetSequence.Value;
+                bool needsReset = resetSequence == null || _resetSequence == null || resetSequence.Value != _resetSequence.Value;
                 bool isOcclusion = _type == CounterType.SamplesPassed;
-                
-                _pipeline.BeginQuery(this, _queryPool, _queryIndex, needsReset, isOcclusion, 
-                                   isOcclusion && resetSequence != null);
+                _pipeline.BeginQuery(this, _queryPool, _queryIndex, needsReset, isOcclusion, isOcclusion && resetSequence != null);
             }
             _resetSequence = null;
         }
-        
+
         public void End(bool withResult)
         {
             if (_isSupported)
             {
                 _pipeline.EndQuery(_queryPool, _queryIndex);
             }
-            
+
             if (withResult && _isSupported)
             {
-                // 将结果写入缓冲区
-                if (_result32Bit)
-                {
-                    Marshal.WriteInt32(_resultMappedPtr, (int)_defaultValue);
-                }
-                else
-                {
-                    Marshal.WriteInt64(_resultMappedPtr, _defaultValue);
-                }
-                
+                Marshal.WriteInt64(_bufferMap, _defaultValue);
                 _pipeline.CopyQueryResults(this, _queryIndex);
             }
-            else if (!_useBatchProcessing)
+            else
             {
-                // 仅对非批量处理写入0
-                Marshal.WriteInt64(_resultMappedPtr, 0);
+                Marshal.WriteInt64(_bufferMap, 0);
             }
         }
-        
+
         private bool WaitingForValue(long data)
         {
             return data == _defaultValue ||
                 (!_result32Bit && ((ulong)data & HighMask) == ((ulong)_defaultValue & HighMask));
         }
-        
+
         public bool TryGetResult(out long result)
         {
-            result = _result32Bit ? 
-                Marshal.ReadInt32(_resultMappedPtr) : 
-                Marshal.ReadInt64(_resultMappedPtr);
-            
+            result = Marshal.ReadInt64(_bufferMap);
             return result != _defaultValue;
         }
-        
+
         public long AwaitResult(AutoResetEvent wakeSignal = null)
         {
             long data = _defaultValue;
-            
+
             if (wakeSignal == null)
             {
-                // 无信号：直接读取
-                data = _result32Bit ? 
-                    Marshal.ReadInt32(_resultMappedPtr) : 
-                    Marshal.ReadInt64(_resultMappedPtr);
+                if (WaitingForValue(data))
+                {
+                    data = Marshal.ReadInt64(_bufferMap);
+                }
             }
             else
             {
                 int iterations = 0;
                 int spinCount = 0;
                 
-                // 优化的轮询策略
+                // TBDR平台优化：更积极的轮询策略
                 while (WaitingForValue(data) && iterations++ < MaxQueryRetries)
                 {
-                    data = _result32Bit ? 
-                        Marshal.ReadInt32(_resultMappedPtr) : 
-                        Marshal.ReadInt64(_resultMappedPtr);
-                    
+                    data = Marshal.ReadInt64(_bufferMap);
                     if (WaitingForValue(data))
                     {
                         if (_isTbdrPlatform)
                         {
-                            // TBDR平台：使用自旋等待和短间隔混合策略
-                            if (spinCount++ < SpinWaitIterations)
+                            // TBDR平台：使用SpinWait减少上下文切换
+                            if (spinCount < 50)
                             {
-                                Thread.SpinWait(50); // 短自旋等待
+                                Thread.SpinWait(100);
+                                spinCount++;
+                            }
+                            else if (spinCount < 100)
+                            {
+                                Thread.Sleep(0);
+                                spinCount++;
                             }
                             else
                             {
-                                // 使用非常短的等待时间
-                                wakeSignal.WaitOne(0, false);
-                                spinCount = 0;
+                                wakeSignal.WaitOne(0);
                             }
                         }
                         else
                         {
-                            // 非TBDR平台：使用标准等待
                             wakeSignal.WaitOne(1);
                         }
                     }
                 }
-                
+
                 if (iterations >= MaxQueryRetries)
                 {
-                    Logger.Warning?.Print(LogClass.Gpu, 
-                        $"Query result {_type} timed out. Attempts: {iterations}");
+                    Logger.Error?.Print(LogClass.Gpu, 
+                        $"Error: Query result {_type} timed out. Attempts: {iterations}");
                     
-                    // 返回安全值
+                    // 强制返回默认值，避免阻塞
                     return 0;
                 }
             }
-            
+
             return data;
         }
         
+        // 用于批量处理的方法
+        public bool TryAllocateBatchSlot(out ulong offset, out nint mappedPtr)
+        {
+            if (_isTbdrPlatform && BatchQueryManager.TryGetResultBuffer(_type, !_result32Bit, out _batchBuffer))
+            {
+                if (_batchBuffer.TryAllocate(1, out offset, out mappedPtr))
+                {
+                    _batchBufferOffset = offset;
+                    _usingBatchBuffer = true;
+                    return true;
+                }
+            }
+            
+            offset = 0;
+            mappedPtr = nint.Zero;
+            _usingBatchBuffer = false;
+            return false;
+        }
+        
+        public QueryBatch GetBatchInfo()
+        {
+            if (_usingBatchBuffer && _batchBuffer != null)
+            {
+                return new QueryBatch(
+                    _queryPool,
+                    _queryIndex,
+                    1,
+                    _batchBuffer.GetBuffer(),
+                    _batchBufferOffset,
+                    !_result32Bit);
+            }
+            
+            return default;
+        }
+        
+        public void CopyFromBatchResult()
+        {
+            if (_usingBatchBuffer && _batchBuffer != null)
+            {
+                // 从批量缓冲区复制结果到本地缓冲区
+                nint srcPtr = _batchBufferOffset == 0 ? _batchBufferOffset : _batchBufferOffset;
+                long result = _result32Bit ? 
+                    Marshal.ReadInt32((nint)srcPtr) : 
+                    Marshal.ReadInt64((nint)srcPtr);
+                Marshal.WriteInt64(_bufferMap, result);
+                _usingBatchBuffer = false;
+            }
+        }
+
         public void PoolReset(CommandBuffer cmd, int resetSequence)
         {
-            if (_isSupported && !_isPooled)
+            if (_isSupported && !_isPooledQuery)
             {
                 _api.CmdResetQueryPool(cmd, _queryPool, 0, 1);
             }
             _resetSequence = resetSequence;
         }
-        
+
         public void PoolCopy(CommandBufferScoped cbs, uint queryIndex)
         {
-            // 这个方法现在被批量复制替代
-            // 保持兼容性，但实际不执行操作
-        }
-        
-        // 批量复制支持方法
-        public QueryCopyOperation GetCopyOperation()
-        {
-            return new QueryCopyOperation
+            Buffer buffer = _buffer.GetBuffer(cbs.CommandBuffer, true).Get(cbs, 0, sizeof(long), true).Value;
+
+            QueryResultFlags flags = QueryResultFlags.ResultWaitBit;
+
+            if (!_result32Bit)
             {
-                QueryPool = _queryPool,
-                QueryIndex = _queryIndex,
-                ResultBuffer = _resultBuffer?.Buffer ?? default,
-                ResultOffset = _resultOffset,
-                Is64Bit = !_result32Bit
-            };
+                flags |= QueryResultFlags.Result64Bit;
+            }
+
+            _api.CmdCopyQueryPoolResults(
+                cbs.CommandBuffer,
+                _queryPool,
+                queryIndex,
+                1,
+                buffer,
+                0,
+                (ulong)(_result32Bit ? sizeof(int) : sizeof(long)),
+                flags);
         }
         
+        // 批量复制方法
+        public static void CopyBatch(CommandBufferScoped cbs, QueryBatch batch)
+        {
+            QueryResultFlags flags = QueryResultFlags.ResultWaitBit;
+            if (batch.Is64Bit)
+            {
+                flags |= QueryResultFlags.Result64Bit;
+            }
+
+            batch.QueryPool.Api.CmdCopyQueryPoolResults(
+                cbs.CommandBuffer,
+                batch.QueryPool,
+                batch.StartIndex,
+                batch.Count,
+                batch.ResultBuffer,
+                batch.ResultOffset,
+                (ulong)(batch.Is64Bit ? sizeof(long) : sizeof(int)) * batch.Count,
+                flags);
+        }
+
         public unsafe void Dispose()
         {
-            // 释放批量缓冲区
-            if (_useBatchProcessing && _resultBuffer != null)
-            {
-                // 返回缓冲区到管理器
-                if (_batchManagers.TryGetValue((_pipeline.Gd, _device), out var manager))
-                {
-                    manager.ReturnResultBuffer(_resultBuffer);
-                }
-                _resultBuffer = null;
-            }
+            _buffer.Dispose();
             
-            // 释放查询资源
-            if (_isSupported && !_isPooled)
+            if (_isSupported && _isPooledQuery && _queryPoolManagers.TryGetValue(_type, out var manager))
+            {
+                lock (manager)
+                {
+                    manager.ReferenceCount--;
+                    if (manager.ReferenceCount == 0)
+                    {
+                        _api.DestroyQueryPool(_device, manager.QueryPool, null);
+                        _queryPoolManagers.TryRemove(_type, out _);
+                    }
+                }
+            }
+            else if (_isSupported && !_isPooledQuery)
             {
                 _api.DestroyQueryPool(_device, _queryPool, null);
             }
-        }
-        
-        // 静态清理方法
-        public static void CleanupBatchManagers()
-        {
-            foreach (var manager in _batchManagers.Values)
-            {
-                manager.Dispose();
-            }
-            _batchManagers.Clear();
         }
     }
 }
