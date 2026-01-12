@@ -109,32 +109,19 @@ namespace Ryujinx.Graphics.Vulkan
             _batchQueriesToMarkReady.Clear();
         }
         
-        private unsafe void CreateFenceForBatchCompletion()
+        private void CreateFenceForBatchCompletion()
         {
-            FenceCreateInfo fenceCreateInfo = new()
-            {
-                SType = StructureType.FenceCreateInfo,
-                Flags = FenceCreateFlags.None
-            };
-            
-            Gd.Api.CreateFence(Gd.Device, &fenceCreateInfo, null, out var fence).ThrowOnError();
-            
-            lock (_fenceLock)
-            {
-                _pendingFences.Add(fence);
-            }
-            
             // 提交命令缓冲区
-            Gd.CommandBufferPool.Submit(Cbs);
+            Gd.CommandBufferPool.Return(Cbs);
             
-            // 等待栅栏（异步）
-            Gd.Api.WaitForFences(Gd.Device, 1, &fence, true, ulong.MaxValue);
-            Gd.Api.DestroyFence(Gd.Device, fence, null);
+            // 获取该命令缓冲区的栅栏
+            var fenceHolder = Gd.CommandBufferPool.GetFence(Cbs.CommandBufferIndex);
             
-            lock (_fenceLock)
-            {
-                _pendingFences.Remove(fence);
-            }
+            // 等待栅栏（同步等待）
+            fenceHolder.Wait();
+            
+            // 获取新的命令缓冲区继续工作
+            Cbs = Gd.CommandBufferPool.ReturnAndRent(Cbs);
             
             // 通知所有查询结果可用
             NotifyBatchResultsReady();
