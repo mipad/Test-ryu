@@ -27,10 +27,6 @@ namespace Ryujinx.Graphics.Vulkan
         // 批量结果缓冲区管理
         private readonly Dictionary<CounterType, List<QueryBatch>> _pendingBatchCopies = new();
         private readonly Dictionary<CounterType, List<BufferedQuery>> _batchQueriesToMarkReady = new();
-        
-        // 栅栏管理
-        private readonly List<Fence> _pendingFences = new();
-        private readonly object _fenceLock = new();
 
         private ulong _byteWeight;
 
@@ -52,7 +48,7 @@ namespace Ryujinx.Graphics.Vulkan
             
             if (_isTbdrPlatform)
             {
-                Logger.Info?.Print(LogClass.Gpu, "TBDR platform: Using optimized batch query processing with fence synchronization");
+                Logger.Info?.Print(LogClass.Gpu, "TBDR platform: Using optimized batch query processing");
             }
         }
 
@@ -68,7 +64,7 @@ namespace Ryujinx.Graphics.Vulkan
         }
         
         // 新的批量复制方法
-        private unsafe void CopyPendingBatchQueries()
+        private void CopyPendingBatchQueries()
         {
             // 处理所有待处理的批量查询
             foreach (var batches in _pendingBatchCopies.Values)
@@ -77,7 +73,7 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     if (batch.Count > 0 && batch.QueryPool.Handle != 0)
                     {
-                        BufferedQuery.CopyBatch(Gd.Api, Gd.Device, Cbs, batch);
+                        BufferedQuery.CopyBatch(Gd.Api, Cbs, batch);
                         
                         if (_isTbdrPlatform)
                         {
@@ -99,79 +95,8 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
             
-            // 创建栅栏以确保复制操作完成
-            if (Gd.Capabilities.SupportsTimelineSemaphores && _pendingBatchCopies.Count > 0)
-            {
-                CreateFenceForBatchCompletion();
-            }
-            
             _pendingBatchCopies.Clear();
             _batchQueriesToMarkReady.Clear();
-        }
-        
-        private void CreateFenceForBatchCompletion()
-        {
-            // 保存当前的命令缓冲区索引
-            int cbIndex = Cbs.CommandBufferIndex;
-            
-            // 提交命令缓冲区
-            Gd.CommandBufferPool.Return(Cbs);
-            
-            // 获取该命令缓冲区的栅栏
-            var fenceHolder = Gd.CommandBufferPool.GetFence(cbIndex);
-            
-            // 等待栅栏（同步等待）
-            fenceHolder.Wait();
-            
-            // 获取新的命令缓冲区继续工作
-            Cbs = Gd.CommandBufferPool.Rent();
-            CommandBuffer = Cbs.CommandBuffer;
-            
-            // 通知所有查询结果可用
-            NotifyBatchResultsReady();
-        }
-        
-        private void NotifyBatchResultsReady()
-        {
-            // 遍历所有计数器队列，通知结果就绪
-            // 这里需要从批量缓冲区复制结果到各个查询
-            var counters = Gd.GetCounters();
-            if (counters != null)
-            {
-                // 在实际实现中，这里需要遍历所有使用了批量缓冲区的查询
-                // 并调用 TryCopyFromBatchResult 来复制结果
-            }
-        }
-        
-        // 检查所有待处理栅栏
-        private unsafe void CheckPendingFences()
-        {
-            lock (_fenceLock)
-            {
-                if (_pendingFences.Count == 0)
-                    return;
-                    
-                List<Fence> completedFences = new();
-                foreach (var fence in _pendingFences)
-                {
-                    var result = Gd.Api.GetFenceStatus(Gd.Device, fence);
-                    if (result == Result.Success)
-                    {
-                        completedFences.Add(fence);
-                    }
-                }
-                
-                foreach (var fence in completedFences)
-                {
-                    Gd.Api.DestroyFence(Gd.Device, fence, null);
-                    _pendingFences.Remove(fence);
-                }
-                
-                if (completedFences.Count > 0)
-                {
-                    NotifyBatchResultsReady();
-                }
-            }
         }
 
         public void ClearRenderTargetColor(int index, int layer, int layerCount, uint componentMask, ColorF color)
@@ -313,7 +238,7 @@ namespace Ryujinx.Graphics.Vulkan
                 _byteWeight += byteWeight;
 
                 if (_byteWeight >= MinByteWeightForFlush)
-                {
+            {
                     FlushCommandsImpl();
                 }
             }
@@ -336,11 +261,24 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void FlushCommandsImpl()
         {
-            // 检查待处理栅栏
-            CheckPendingFences();
-            
             // 处理所有批次查询
-            ProcessQueryBatch(true);
+            try
+            {
+                ProcessQueryBatch(true);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Error processing query batches: {ex.Message}");
+                // 清理状态，继续执行
+                lock (_batchLock)
+                {
+                    _pendingBatchCopies.Clear();
+                    _batchQueriesToMarkReady.Clear();
+                    _pendingQueryCopies.Clear();
+                    _batchQueryCount = 0;
+                }
+            }
             
             AutoFlush.RegisterFlush(DrawCount);
             EndRenderPass();
@@ -359,11 +297,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             Gd.Barriers.Flush(Cbs, false, null, null);
-            
-            // 使用 ReturnAndRent 来提交并获取新的命令缓冲区
-            Cbs = Gd.CommandBufferPool.ReturnAndRent(Cbs);
-            CommandBuffer = Cbs.CommandBuffer;
-            
+            CommandBuffer = (Cbs = Gd.CommandBufferPool.ReturnAndRent(Cbs)).CommandBuffer;
             Gd.RegisterFlush();
 
             foreach (BufferHolder buffer in _activeBufferMirrors)
@@ -511,10 +445,18 @@ namespace Ryujinx.Graphics.Vulkan
                             Logger.Debug?.Print(LogClass.Gpu, 
                                 $"TBDR: Processing {batchCount} batches, {queryCount} queries");
                         }
+                        
+                        // 确保命令缓冲区提交
+                        EndRenderPass();
+                        
+                        // 执行批量复制
+                        CopyPendingBatchQueries();
+                        
+                        // 确保命令缓冲区刷新
+                        Gd.Barriers.Flush(Cbs, false, null, null);
                     }
                     
-                    // 执行复制
-                    CopyPendingBatchQueries();
+                    // 处理单个查询
                     CopyPendingQuery();
                 }
                 
