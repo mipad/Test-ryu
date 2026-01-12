@@ -40,6 +40,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private readonly int _elementSize;
         private readonly int _capacity;
         private int _usedCount;
+        private readonly object _lock = new();
         
         public BatchResultBuffer(VulkanRenderer gd, Device device, int elementSize, int capacity)
         {
@@ -55,28 +56,39 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         
         public bool TryAllocate(int count, out ulong offset, out nint mappedPtr)
         {
-            if (_usedCount + count > _capacity)
+            lock (_lock)
             {
-                offset = 0;
-                mappedPtr = nint.Zero;
-                return false;
+                if (_usedCount + count > _capacity)
+                {
+                    offset = 0;
+                    mappedPtr = nint.Zero;
+                    return false;
+                }
+                
+                offset = (ulong)(_usedCount * _elementSize);
+                mappedPtr = _mappedPtr + (_usedCount * _elementSize);
+                _usedCount += count;
+                
+                return true;
             }
-            
-            offset = (ulong)(_usedCount * _elementSize);
-            mappedPtr = _mappedPtr + (_usedCount * _elementSize);
-            _usedCount += count;
-            
-            return true;
         }
         
         public void Reset()
         {
-            _usedCount = 0;
+            lock (_lock)
+            {
+                _usedCount = 0;
+            }
         }
         
         public Buffer GetBuffer()
         {
             return _buffer.GetBuffer().GetUnsafe().Value;
+        }
+        
+        public nint GetMappedPtr()
+        {
+            return _mappedPtr;
         }
         
         public void Dispose()
@@ -179,6 +191,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private BatchResultBuffer _batchBuffer;
         private ulong _batchBufferOffset;
         private bool _usingBatchBuffer;
+        private bool _batchResultReady;
 
         private class QueryPoolManager
         {
@@ -272,6 +285,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             Marshal.WriteInt64(_bufferMap, _defaultValue);
             _buffer = buffer;
             _usingBatchBuffer = false;
+            _batchResultReady = false;
         }
 
         private static bool QueryTypeSupported(VulkanRenderer gd, CounterType type)
@@ -422,6 +436,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 {
                     _batchBufferOffset = offset;
                     _usingBatchBuffer = true;
+                    _batchResultReady = false;
                     return true;
                 }
             }
@@ -429,6 +444,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             offset = 0;
             mappedPtr = nint.Zero;
             _usingBatchBuffer = false;
+            _batchResultReady = false;
             return false;
         }
         
@@ -448,18 +464,44 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             return default;
         }
         
-        public void CopyFromBatchResult()
+        public bool TryCopyFromBatchResult()
         {
-            if (_usingBatchBuffer && _batchBuffer != null)
+            if (_usingBatchBuffer && _batchBuffer != null && _batchResultReady)
             {
-                // 从批量缓冲区复制结果到本地缓冲区
-                nint srcPtr = (nint)_batchBufferOffset;
-                long result = _result32Bit ? 
-                    Marshal.ReadInt32(srcPtr) : 
-                    Marshal.ReadInt64(srcPtr);
-                Marshal.WriteInt64(_bufferMap, result);
-                _usingBatchBuffer = false;
+                try
+                {
+                    // 从批量缓冲区复制结果到本地缓冲区
+                    nint srcPtr = _batchBuffer.GetMappedPtr() + (int)_batchBufferOffset;
+                    
+                    long result;
+                    if (_result32Bit)
+                    {
+                        result = Marshal.ReadInt32(srcPtr);
+                    }
+                    else
+                    {
+                        result = Marshal.ReadInt64(srcPtr);
+                    }
+                    
+                    Marshal.WriteInt64(_bufferMap, result);
+                    _usingBatchBuffer = false;
+                    _batchResultReady = false;
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error?.Print(LogClass.Gpu, 
+                        $"Error copying batch result for {_type}: {ex.Message}");
+                    return false;
+                }
             }
+            
+            return false;
+        }
+        
+        public void MarkBatchResultReady()
+        {
+            _batchResultReady = true;
         }
 
         public void PoolReset(CommandBuffer cmd, int resetSequence)

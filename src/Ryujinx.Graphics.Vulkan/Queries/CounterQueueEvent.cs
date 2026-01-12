@@ -79,9 +79,23 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 if (block)
                 {
                     queryResult = _counter.AwaitResult(wakeSignal);
+                    
+                    // 如果等待超时，尝试从批量缓冲区复制结果
+                    if (queryResult == 0)
+                    {
+                        _counter.TryCopyFromBatchResult();
+                        if (_counter.TryGetResult(out queryResult))
+                        {
+                            Logger.Debug?.Print(LogClass.Gpu, 
+                                $"Query {Type} recovered from batch buffer after timeout");
+                        }
+                    }
                 }
                 else
                 {
+                    // 先尝试从批量缓冲区获取结果
+                    _counter.TryCopyFromBatchResult();
+                    
                     if (!_counter.TryGetResult(out queryResult))
                     {
                         return false;
@@ -152,7 +166,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private void DisposeInternal()
         {
             // 在释放查询对象之前，确保从批量缓冲区复制了结果
-            _counter.CopyFromBatchResult();
+            _counter.TryCopyFromBatchResult();
             _queue.ReturnQueryObject(_counter);
         }
 
