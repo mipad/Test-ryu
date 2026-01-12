@@ -1,3 +1,4 @@
+// CounterQueueEvent.cs 修复版本
 using Ryujinx.Graphics.GAL;
 using System;
 using System.Threading;
@@ -82,9 +83,9 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     queryResult = _counter.AwaitResult(wakeSignal);
                     
                     // 检查是否为超时返回的特殊值
-                    if (queryResult == -1 || queryResult == _counter.Is64Bit() ? unchecked((long)0xFFFFFFFEFFFFFFFE) : 0xFFFFFFFE)
+                    if (queryResult == -1)
                     {
-                        // 这些是超时或错误值，尝试从批量缓冲区获取
+                        // -1 是超时或错误值，尝试从批量缓冲区获取
                         if (_counter.TryCopyFromBatchResult())
                         {
                             if (_counter.TryGetResult(out queryResult))
