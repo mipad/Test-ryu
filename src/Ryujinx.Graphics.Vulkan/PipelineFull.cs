@@ -480,24 +480,29 @@ namespace Ryujinx.Graphics.Vulkan
                         EndRenderPass();
                         unsafe
                         {
-                            Gd.Api.CmdEnd(Cbs.CommandBuffer);
+                            // 修正：使用正确的API
+                            Gd.Api.EndCommandBuffer(Cbs.CommandBuffer);
                             
+                            // 创建临时变量以获取指针
+                            CommandBuffer commandBuffer = Cbs.CommandBuffer;
                             var submitInfo = new SubmitInfo
                             {
                                 SType = StructureType.SubmitInfo,
                                 CommandBufferCount = 1,
-                                PCommandBuffers = &Cbs.CommandBuffer
+                                PCommandBuffers = &commandBuffer
                             };
                             
                             Gd.Api.QueueSubmit(Gd.Queue, 1, &submitInfo, default);
                             Gd.Api.QueueWaitIdle(Gd.Queue);
                             
-                            Gd.Api.CmdBegin(Cbs.CommandBuffer, 
-                                new CommandBufferBeginInfo 
-                                { 
-                                    SType = StructureType.CommandBufferBeginInfo,
-                                    Flags = CommandBufferUsageFlags.OneTimeSubmitBit
-                                });
+                            // 修正：使用正确的API
+                            var beginInfo = new CommandBufferBeginInfo
+                            {
+                                SType = StructureType.CommandBufferBeginInfo,
+                                Flags = CommandBufferUsageFlags.OneTimeSubmitBit
+                            };
+                            
+                            Gd.Api.BeginCommandBuffer(commandBuffer, beginInfo);
                             
                             Logger.Debug?.Print(LogClass.Gpu, "TBDR: Flushed and waited for query batch completion");
                         }
