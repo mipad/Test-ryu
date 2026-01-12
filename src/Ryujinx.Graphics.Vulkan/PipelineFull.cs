@@ -72,7 +72,7 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     if (batch.Count > 0 && batch.QueryPool.Handle != 0)
                     {
-                        BufferedQuery.CopyBatch(Cbs, batch);
+                        BufferedQuery.CopyBatch(Gd.Api, Cbs, batch);
                         
                         if (_isTbdrPlatform)
                         {
