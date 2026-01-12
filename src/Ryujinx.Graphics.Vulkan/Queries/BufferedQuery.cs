@@ -344,7 +344,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private bool WaitingForValue(long data)
         {
             return data == _defaultValue ||
-                (!_result32Bit && ((ulong)data & HighMask) == ((ulong)_defaultValue & HighMask)));
+                (!_result32Bit && ((ulong)data & HighMask) == ((ulong)_defaultValue & HighMask));
         }
 
         public bool TryGetResult(out long result)
