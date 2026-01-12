@@ -111,17 +111,21 @@ namespace Ryujinx.Graphics.Vulkan
         
         private void CreateFenceForBatchCompletion()
         {
+            // 保存当前的命令缓冲区索引
+            int cbIndex = Cbs.CommandBufferIndex;
+            
             // 提交命令缓冲区
             Gd.CommandBufferPool.Return(Cbs);
             
             // 获取该命令缓冲区的栅栏
-            var fenceHolder = Gd.CommandBufferPool.GetFence(Cbs.CommandBufferIndex);
+            var fenceHolder = Gd.CommandBufferPool.GetFence(cbIndex);
             
             // 等待栅栏（同步等待）
             fenceHolder.Wait();
             
             // 获取新的命令缓冲区继续工作
-            Cbs = Gd.CommandBufferPool.ReturnAndRent(Cbs);
+            Cbs = Gd.CommandBufferPool.Rent();
+            CommandBuffer = Cbs.CommandBuffer;
             
             // 通知所有查询结果可用
             NotifyBatchResultsReady();
@@ -130,11 +134,12 @@ namespace Ryujinx.Graphics.Vulkan
         private void NotifyBatchResultsReady()
         {
             // 遍历所有计数器队列，通知结果就绪
+            // 这里需要从批量缓冲区复制结果到各个查询
             var counters = Gd.GetCounters();
             if (counters != null)
             {
-                // 这里需要实现通知机制
-                // 由于查询结果已经复制完成，我们可以通知等待的消费者
+                // 在实际实现中，这里需要遍历所有使用了批量缓冲区的查询
+                // 并调用 TryCopyFromBatchResult 来复制结果
             }
         }
         
@@ -354,7 +359,11 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             Gd.Barriers.Flush(Cbs, false, null, null);
-            CommandBuffer = (Cbs = Gd.CommandBufferPool.ReturnAndRent(Cbs)).CommandBuffer;
+            
+            // 使用 ReturnAndRent 来提交并获取新的命令缓冲区
+            Cbs = Gd.CommandBufferPool.ReturnAndRent(Cbs);
+            CommandBuffer = Cbs.CommandBuffer;
+            
             Gd.RegisterFlush();
 
             foreach (BufferHolder buffer in _activeBufferMirrors)
