@@ -18,6 +18,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         public Buffer ResultBuffer;
         public ulong ResultOffset;
         public bool Is64Bit;
+        public Fence CompletionFence;
         
         public QueryBatch(QueryPool pool, uint start, uint count, Buffer buffer, ulong offset, bool is64Bit)
         {
@@ -27,6 +28,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             ResultBuffer = buffer;
             ResultOffset = offset;
             Is64Bit = is64Bit;
+            CompletionFence = default;
         }
     }
     
@@ -161,7 +163,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
     class BufferedQuery : IDisposable
     {
-        private const int MaxQueryRetries = 10000;
+        private const int MaxQueryRetries = 500; // 减少重试次数
         private const long DefaultValue = unchecked((long)0xFFFFFFFEFFFFFFFE);
         private const long DefaultValueInt = 0xFFFFFFFE;
         private const ulong HighMask = 0xFFFFFFFF00000000;
@@ -192,6 +194,11 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private ulong _batchBufferOffset;
         private bool _usingBatchBuffer;
         private bool _batchResultReady;
+        
+        // 使用事件通知机制
+        private readonly AutoResetEvent _resultReadyEvent;
+        private volatile bool _resultAvailable;
+        private bool _hasPendingResult;
 
         private class QueryPoolManager
         {
@@ -209,6 +216,10 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _type = type;
             _result32Bit = result32Bit;
             _isTbdrPlatform = isTbdrPlatform;
+            
+            _resultReadyEvent = new AutoResetEvent(false);
+            _resultAvailable = false;
+            _hasPendingResult = false;
             
             // 初始化批量结果缓冲区
             if (isTbdrPlatform)
@@ -335,6 +346,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 _pipeline.BeginQuery(this, _queryPool, _queryIndex, needsReset, isOcclusion, isOcclusion && resetSequence != null);
             }
             _resetSequence = null;
+            _resultAvailable = false;
+            _hasPendingResult = false;
         }
 
         public void End(bool withResult)
@@ -348,6 +361,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             {
                 Marshal.WriteInt64(_bufferMap, _defaultValue);
                 _pipeline.CopyQueryResults(this, _queryIndex);
+                _hasPendingResult = true;
             }
             else
             {
@@ -364,64 +378,93 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         public bool TryGetResult(out long result)
         {
             result = Marshal.ReadInt64(_bufferMap);
-            return result != _defaultValue;
+            return !WaitingForValue(result);
+        }
+        
+        public void SignalResultReady()
+        {
+            _resultAvailable = true;
+            _resultReadyEvent.Set();
         }
 
         public long AwaitResult(AutoResetEvent wakeSignal = null)
         {
-            long data = _defaultValue;
-
-            if (wakeSignal == null)
+            // 首先检查结果是否已经可用
+            long data = Marshal.ReadInt64(_bufferMap);
+            
+            if (!WaitingForValue(data))
             {
-                if (WaitingForValue(data))
+                return data;
+            }
+            
+            // 如果有等待信号，使用更高效的等待策略
+            if (wakeSignal != null)
+            {
+                int iterations = 0;
+                
+                while (WaitingForValue(data) && iterations++ < MaxQueryRetries)
                 {
+                    // 如果是TBDR平台，使用更短的等待时间
+                    if (_isTbdrPlatform)
+                    {
+                        if (iterations < 100)
+                        {
+                            Thread.SpinWait(50);
+                        }
+                        else if (iterations < 200)
+                        {
+                            Thread.Sleep(0);
+                        }
+                        else
+                        {
+                            // 强制检查结果是否就绪
+                            if (_resultAvailable)
+                            {
+                                data = Marshal.ReadInt64(_bufferMap);
+                                break;
+                            }
+                            
+                            // 等待事件通知，但设置超时避免永久阻塞
+                            if (wakeSignal.WaitOne(1))
+                            {
+                                data = Marshal.ReadInt64(_bufferMap);
+                                break;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        wakeSignal.WaitOne(1);
+                    }
+                    
                     data = Marshal.ReadInt64(_bufferMap);
+                }
+                
+                if (iterations >= MaxQueryRetries)
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        $"Query result {_type} timed out after {MaxQueryRetries} attempts");
+                    
+                    // 强制刷新命令缓冲区并再次尝试
+                    _pipeline.FlushCommandsImpl();
+                    
+                    // 给GPU一点时间完成
+                    Thread.Sleep(1);
+                    
+                    data = Marshal.ReadInt64(_bufferMap);
+                    
+                    if (WaitingForValue(data))
+                    {
+                        Logger.Error?.Print(LogClass.Gpu, 
+                            $"Query result {_type} still not available after flush");
+                        return 0;
+                    }
                 }
             }
             else
             {
-                int iterations = 0;
-                int spinCount = 0;
-                
-                // TBDR平台优化：更积极的轮询策略
-                while (WaitingForValue(data) && iterations++ < MaxQueryRetries)
-                {
-                    data = Marshal.ReadInt64(_bufferMap);
-                    if (WaitingForValue(data))
-                    {
-                        if (_isTbdrPlatform)
-                        {
-                            // TBDR平台：使用SpinWait减少上下文切换
-                            if (spinCount < 50)
-                            {
-                                Thread.SpinWait(100);
-                                spinCount++;
-                            }
-                            else if (spinCount < 100)
-                            {
-                                Thread.Sleep(0);
-                                spinCount++;
-                            }
-                            else
-                            {
-                                wakeSignal.WaitOne(0);
-                            }
-                        }
-                        else
-                        {
-                            wakeSignal.WaitOne(1);
-                        }
-                    }
-                }
-
-                if (iterations >= MaxQueryRetries)
-                {
-                    Logger.Error?.Print(LogClass.Gpu, 
-                        $"Error: Query result {_type} timed out. Attempts: {iterations}");
-                    
-                    // 强制返回默认值，避免阻塞
-                    return 0;
-                }
+                // 没有等待信号，只检查一次
+                data = Marshal.ReadInt64(_bufferMap);
             }
 
             return data;
@@ -484,6 +527,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     }
                     
                     Marshal.WriteInt64(_bufferMap, result);
+                    SignalResultReady();
                     _usingBatchBuffer = false;
                     _batchResultReady = false;
                     return true;
@@ -502,6 +546,12 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         public void MarkBatchResultReady()
         {
             _batchResultReady = true;
+            // 不需要立即复制，由消费者在需要时复制
+        }
+        
+        public void NotifyResultAvailable()
+        {
+            SignalResultReady();
         }
 
         public void PoolReset(CommandBuffer cmd, int resetSequence)
@@ -533,10 +583,13 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 0,
                 (ulong)(_result32Bit ? sizeof(int) : sizeof(long)),
                 flags);
+            
+            // 单个查询复制完成后立即标记结果就绪
+            SignalResultReady();
         }
         
         // 批量复制方法
-        public static void CopyBatch(Vk api, CommandBufferScoped cbs, QueryBatch batch)
+        public static unsafe void CopyBatch(Vk api, Device device, CommandBufferScoped cbs, QueryBatch batch)
         {
             QueryResultFlags flags = QueryResultFlags.ResultWaitBit;
             if (batch.Is64Bit)
@@ -553,11 +606,15 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 batch.ResultOffset,
                 (ulong)(batch.Is64Bit ? sizeof(long) : sizeof(int)) * batch.Count,
                 flags);
+            
+            // 如果需要，可以为整个批次创建栅栏
+            // 但为了简单起见，我们依赖命令缓冲区的完成
         }
 
         public unsafe void Dispose()
         {
             _buffer.Dispose();
+            _resultReadyEvent.Dispose();
             
             if (_isSupported && _isPooledQuery && _queryPoolManagers.TryGetValue(_type, out var manager))
             {
