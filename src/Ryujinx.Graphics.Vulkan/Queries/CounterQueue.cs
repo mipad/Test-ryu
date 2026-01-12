@@ -40,10 +40,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         // 批量查询支持
         private readonly List<BufferedQuery> _activeBatchQueries = new();
         private readonly object _batchLock = new();
-        
-        // 完成回调列表
-        private readonly List<Action> _completionCallbacks = new();
-        private readonly object _callbackLock = new();
 
         internal CounterQueue(VulkanRenderer gd, Device device, PipelineFull pipeline, CounterType type, bool isTbdrPlatform)
         {
@@ -121,41 +117,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 if (_waiterCount > 0)
                 {
                     _eventConsumed.Set();
-                }
-            }
-        }
-        
-        // 添加完成回调
-        public void AddCompletionCallback(Action callback)
-        {
-            lock (_callbackLock)
-            {
-                _completionCallbacks.Add(callback);
-            }
-        }
-        
-        // 执行所有完成回调
-        private void ExecuteCompletionCallbacks()
-        {
-            List<Action> callbacks;
-            lock (_callbackLock)
-            {
-                if (_completionCallbacks.Count == 0)
-                    return;
-                    
-                callbacks = new List<Action>(_completionCallbacks);
-                _completionCallbacks.Clear();
-            }
-            
-            foreach (var callback in callbacks)
-            {
-                try
-                {
-                    callback();
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error?.Print(LogClass.Gpu, $"Error in completion callback: {ex.Message}");
                 }
             }
         }
@@ -308,7 +269,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             if (!blocking)
             {
                 _wakeSignal.Set();
-                ExecuteCompletionCallbacks();
                 return;
             }
 
@@ -323,8 +283,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     }
                     _events.Dequeue();
                 }
-                
-                ExecuteCompletionCallbacks();
             }
         }
 
@@ -340,7 +298,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             }
 
             Interlocked.Decrement(ref _waiterCount);
-            ExecuteCompletionCallbacks();
         }
 
         public void Dispose()
@@ -375,11 +332,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _queuedEvent.Dispose();
             _wakeSignal.Dispose();
             _eventConsumed.Dispose();
-            
-            lock (_callbackLock)
-            {
-                _completionCallbacks.Clear();
-            }
         }
     }
 }

@@ -81,20 +81,35 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 {
                     queryResult = _counter.AwaitResult(wakeSignal);
                     
-                    // 如果等待超时，尝试从批量缓冲区复制结果
-                    if (queryResult == 0)
+                    // 检查是否为超时返回的特殊值
+                    if (queryResult == -1 || queryResult == _counter.Is64Bit() ? unchecked((long)0xFFFFFFFEFFFFFFFE) : 0xFFFFFFFE)
                     {
-                        _counter.TryCopyFromBatchResult();
-                        if (_counter.TryGetResult(out queryResult))
+                        // 这些是超时或错误值，尝试从批量缓冲区获取
+                        if (_counter.TryCopyFromBatchResult())
                         {
-                            Logger.Debug?.Print(LogClass.Gpu, 
-                                $"Query {Type} recovered from batch buffer after timeout");
+                            if (_counter.TryGetResult(out queryResult))
+                            {
+                                Logger.Debug?.Print(LogClass.Gpu, 
+                                    $"Query {Type} recovered from batch buffer after timeout");
+                            }
+                            else
+                            {
+                                // 如果获取不到，返回false让调用者知道结果不可用
+                                Logger.Warning?.Print(LogClass.Gpu, 
+                                    $"Query {Type} timed out with no recoverable result");
+                                return false;
+                            }
+                        }
+                        else
+                        {
+                            // 如果无法从批量缓冲区恢复，返回false
+                            return false;
                         }
                     }
                 }
                 else
                 {
-                    // 先尝试从批量缓冲区获取结果
+                    // 非阻塞：先尝试从批量缓冲区获取
                     _counter.TryCopyFromBatchResult();
                     
                     if (!_counter.TryGetResult(out queryResult))
