@@ -76,7 +76,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         
         public Buffer GetBuffer()
         {
-            return _buffer.GetBuffer().GetValue();
+            return _buffer.GetBuffer().GetUnsafe().Value;
         }
         
         public void Dispose()
@@ -344,7 +344,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private bool WaitingForValue(long data)
         {
             return data == _defaultValue ||
-                (!_result32Bit && ((ulong)data & HighMask) == ((ulong)_defaultValue & HighMask));
+                (!_result32Bit && ((ulong)data & HighMask) == ((ulong)_defaultValue & HighMask)));
         }
 
         public bool TryGetResult(out long result)
@@ -453,10 +453,10 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             if (_usingBatchBuffer && _batchBuffer != null)
             {
                 // 从批量缓冲区复制结果到本地缓冲区
-                nint srcPtr = _batchBufferOffset == 0 ? _batchBufferOffset : _batchBufferOffset;
+                nint srcPtr = (nint)_batchBufferOffset;
                 long result = _result32Bit ? 
-                    Marshal.ReadInt32((nint)srcPtr) : 
-                    Marshal.ReadInt64((nint)srcPtr);
+                    Marshal.ReadInt32(srcPtr) : 
+                    Marshal.ReadInt64(srcPtr);
                 Marshal.WriteInt64(_bufferMap, result);
                 _usingBatchBuffer = false;
             }
@@ -494,7 +494,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         }
         
         // 批量复制方法
-        public static void CopyBatch(CommandBufferScoped cbs, QueryBatch batch)
+        public static void CopyBatch(Vk api, CommandBufferScoped cbs, QueryBatch batch)
         {
             QueryResultFlags flags = QueryResultFlags.ResultWaitBit;
             if (batch.Is64Bit)
@@ -502,7 +502,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 flags |= QueryResultFlags.Result64Bit;
             }
 
-            batch.QueryPool.Api.CmdCopyQueryPoolResults(
+            api.CmdCopyQueryPoolResults(
                 cbs.CommandBuffer,
                 batch.QueryPool,
                 batch.StartIndex,
