@@ -827,7 +827,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         {
             if (info.Width == 0 || info.Height == 0 || info.Depth == 0)
             {
-                
                 throw new ArgumentException("Invalid texture dimensions");
             }
             return new TextureStorage(this, _device, info);
@@ -1130,7 +1129,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             Logger.Notice.Print(LogClass.Gpu, $"{GpuVendor} {GpuRenderer} ({GpuVersion})");
             Logger.Notice.Print(LogClass.Gpu, $"GPU Memory: {GetTotalGPUMemory() / (1024 * 1024)} MiB");
             
-            // 打印新支持的功能
             if (SupportsTimelineSemaphores)
                 Logger.Notice.Print(LogClass.Gpu, "Supports: Timeline Semaphores");
             if (SupportsSynchronization2)
@@ -1141,6 +1139,12 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 Logger.Notice.Print(LogClass.Gpu, "Supports: Multiview");
             if (SupportsASTCDecodeMode)
                 Logger.Notice.Print(LogClass.Gpu, "Supports: ASTC Decode Mode");
+            
+            if (IsTBDR)
+            {
+                Logger.Notice.Print(LogClass.Gpu, "Platform: TBDR (Tile-Based Deferred Rendering)");
+                Logger.Notice.Print(LogClass.Gpu, "Query Optimization: Batch processing enabled");
+            }
         }
 
         public void Initialize(GraphicsDebugLevel logLevel)
@@ -1169,6 +1173,12 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         public void PreFrame()
         {
             SyncManager.Cleanup();
+            
+            // TBDR平台：预优化批量查询
+            if (IsTBDR && _pipeline != null)
+            {
+                _pipeline.OptimizeBatchQueries();
+            }
         }
 
         public ICounterEvent ReportCounter(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved)
@@ -1199,6 +1209,12 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         public void ResetFutureCounters(CommandBuffer cmd, int count)
         {
             _counters?.ResetFutureCounters(cmd, count);
+        }
+        
+        // 暴露Counters接口给PipelineFull
+        internal Counters GetCounters()
+        {
+            return _counters;
         }
 
         public void BackgroundContextAction(Action action, bool alwaysBackground = false)
@@ -1278,7 +1294,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 }
                 catch (Exception ex)
                 {
-                    
                     return false;
                 }
             }
@@ -1288,7 +1303,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         {
             if (SurfaceLock == null)
             {
-                
                 return;
             }
 
@@ -1302,12 +1316,10 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                     {
                         SurfaceApi.DestroySurface(_instance.Instance, _surface, null);
                         _surface = new SurfaceKHR(0);
-                        
                     }
                 }
                 catch (Exception ex)
                 {
-                    
                 }
 
                 ( _window as Window )?.OnSurfaceLost();
@@ -1318,12 +1330,10 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         {
             if (!_initialized || SurfaceLock == null)
             {
-                
                 return;
             }
 
             PresentAllowed = enabled;
-            
 
             if (!enabled)
             {
@@ -1340,12 +1350,10 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         {
             if (!_initialized || SurfaceLock == null)
             {
-                
                 return;
             }
 
             PresentAllowed = allowed;
-            
 
             if (allowed)
             {
@@ -1357,7 +1365,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 }
                 catch (Exception ex)
                 {
-                    
                 }
             }
             else
@@ -1412,9 +1419,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         // 针对Mali GPU的特殊处理
         internal bool ShouldUseSoftwareASTCDecode()
         {
-            // 检测到Mali GPU且ASTC解码模式可能有问题时，使用软件解码
             return IsMaliGPU && !SupportsASTCDecodeMode;
         }
     }
 }
-
