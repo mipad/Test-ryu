@@ -26,6 +26,7 @@ namespace Ryujinx.Graphics.Vulkan
         
         // 批量结果缓冲区管理
         private readonly Dictionary<CounterType, List<QueryBatch>> _pendingBatchCopies = new();
+        private readonly Dictionary<CounterType, List<BufferedQuery>> _batchQueriesToMarkReady = new();
 
         private ulong _byteWeight;
 
@@ -85,7 +86,17 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
             
+            // 标记相关的查询结果为准备就绪
+            foreach (var queries in _batchQueriesToMarkReady.Values)
+            {
+                foreach (var query in queries)
+                {
+                    query.MarkBatchResultReady();
+                }
+            }
+            
             _pendingBatchCopies.Clear();
+            _batchQueriesToMarkReady.Clear();
         }
 
         public void ClearRenderTargetColor(int index, int layer, int layerCount, uint componentMask, ColorF color)
@@ -357,9 +368,11 @@ namespace Ryujinx.Graphics.Vulkan
                         if (!_pendingBatchCopies.ContainsKey(counterType))
                         {
                             _pendingBatchCopies[counterType] = new List<QueryBatch>();
+                            _batchQueriesToMarkReady[counterType] = new List<BufferedQuery>();
                         }
                         
                         _pendingBatchCopies[counterType].Add(batch);
+                        _batchQueriesToMarkReady[counterType].Add(query);
                         _batchQueryCount++;
                         
                         // 达到批次大小时处理
@@ -461,12 +474,14 @@ namespace Ryujinx.Graphics.Vulkan
                 lock (_batchLock)
                 {
                     _pendingBatchCopies.Clear();
+                    _batchQueriesToMarkReady.Clear();
                     foreach (var batch in optimizedBatches)
                     {
                         var counterType = GetCounterTypeFromPool(batch.QueryPool);
                         if (!_pendingBatchCopies.ContainsKey(counterType))
                         {
                             _pendingBatchCopies[counterType] = new List<QueryBatch>();
+                            _batchQueriesToMarkReady[counterType] = new List<BufferedQuery>();
                         }
                         _pendingBatchCopies[counterType].Add(batch);
                     }
