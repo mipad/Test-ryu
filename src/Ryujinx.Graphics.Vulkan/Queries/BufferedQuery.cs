@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Buffer = Silk.NET.Vulkan.Buffer;
+using System.Diagnostics;
 
 namespace Ryujinx.Graphics.Vulkan.Queries
 {
@@ -161,7 +162,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
     class BufferedQuery : IDisposable
     {
-        private const int MaxQueryRetries = 10000;
+        private const int MaxInitialRetries = 5000; // 初始快速重试次数
+        private const int MaxBackoffRetries = 10;   // 退避重试次数
         private const long DefaultValue = unchecked((long)0xFFFFFFFEFFFFFFFE);
         private const long DefaultValueInt = 0xFFFFFFFE;
         private const ulong HighMask = 0xFFFFFFFF00000000;
@@ -192,6 +194,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private ulong _batchBufferOffset;
         private bool _usingBatchBuffer;
         private bool _batchResultReady;
+        private long _batchResultValue;
 
         private class QueryPoolManager
         {
@@ -213,7 +216,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             // 初始化批量结果缓冲区
             if (isTbdrPlatform)
             {
-                BatchQueryManager.CreateResultBuffer(gd, device, type, !result32Bit, 1024);
+                BatchQueryManager.CreateResultBuffer(gd, device, type, !result32Bit, 2048);
             }
 
             _isSupported = QueryTypeSupported(gd, type);
@@ -286,6 +289,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _buffer = buffer;
             _usingBatchBuffer = false;
             _batchResultReady = false;
+            _batchResultValue = 0;
         }
 
         private static bool QueryTypeSupported(VulkanRenderer gd, CounterType type)
@@ -364,106 +368,179 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         public bool TryGetResult(out long result)
         {
             result = Marshal.ReadInt64(_bufferMap);
+            
+            // 如果本地缓冲区没有结果，检查批量缓冲区
+            if (result == _defaultValue && _batchResultReady)
+            {
+                result = _batchResultValue;
+                return true;
+            }
+            
             return result != _defaultValue;
         }
 
         public long AwaitResult(AutoResetEvent wakeSignal = null)
         {
-            long data = _defaultValue;
-
-            if (wakeSignal == null)
+            long data = Marshal.ReadInt64(_bufferMap);
+            
+            // 如果已经有结果，直接返回
+            if (!WaitingForValue(data))
             {
-                // 非阻塞模式：先尝试从批量缓冲区获取
-                if (_usingBatchBuffer && _batchBuffer != null)
+                return data;
+            }
+            
+            // 检查批量缓冲区是否有结果
+            if (_batchResultReady)
+            {
+                return _batchResultValue;
+            }
+
+            // TBDR平台：首先尝试从批量缓冲区获取
+            if (_isTbdrPlatform)
+            {
+                TryCopyFromBatchResult();
+                data = Marshal.ReadInt64(_bufferMap);
+                if (!WaitingForValue(data))
                 {
-                    if (TryCopyFromBatchResult())
+                    return data;
+                }
+            }
+
+            int iterations = 0;
+            int spinCount = 0;
+            Stopwatch stopwatch = null;
+            bool initialPhaseCompleted = false;
+            
+            while (WaitingForValue(data))
+            {
+                // 第一阶段：快速重试（最多5000次）
+                if (!initialPhaseCompleted)
+                {
+                    // 定期检查批量缓冲区
+                    if (iterations % 100 == 0 && _isTbdrPlatform)
                     {
+                        TryCopyFromBatchResult();
                         data = Marshal.ReadInt64(_bufferMap);
                         if (!WaitingForValue(data))
                         {
                             return data;
                         }
                     }
-                }
-                
-                if (WaitingForValue(data))
-                {
-                    data = Marshal.ReadInt64(_bufferMap);
-                }
-            }
-            else
-            {
-                int iterations = 0;
-                int spinCount = 0;
-                
-                // TBDR平台优化：更积极的轮询策略
-                while (WaitingForValue(data) && iterations++ < MaxQueryRetries)
-                {
-                    // 每次迭代都检查批量缓冲区
-                    if (_usingBatchBuffer && _batchBuffer != null && iterations % 100 == 0)
-                    {
-                        if (TryCopyFromBatchResult())
-                        {
-                            data = Marshal.ReadInt64(_bufferMap);
-                            if (!WaitingForValue(data))
-                            {
-                                return data;
-                            }
-                        }
-                    }
                     
-                    data = Marshal.ReadInt64(_bufferMap);
-                    if (WaitingForValue(data))
+                    // 等待策略
+                    if (_isTbdrPlatform)
                     {
-                        if (_isTbdrPlatform)
+                        if (spinCount < 100)
                         {
-                            // TBDR平台：使用SpinWait减少上下文切换
-                            if (spinCount < 50)
-                            {
-                                Thread.SpinWait(100);
-                                spinCount++;
-                            }
-                            else if (spinCount < 100)
-                            {
-                                Thread.Sleep(0);
-                                spinCount++;
-                            }
-                            else
-                            {
-                                wakeSignal.WaitOne(0);
-                            }
+                            Thread.SpinWait(50);
+                            spinCount++;
+                        }
+                        else if (spinCount < 200)
+                        {
+                            Thread.Sleep(0);
+                            spinCount++;
                         }
                         else
                         {
-                            wakeSignal.WaitOne(1);
+                            if (wakeSignal != null)
+                            {
+                                wakeSignal.WaitOne(1);
+                            }
+                            else
+                            {
+                                Thread.Sleep(1);
+                            }
                         }
                     }
-                }
-
-                if (iterations >= MaxQueryRetries)
-                {
-                    Logger.Error?.Print(LogClass.Gpu, 
-                        $"Error: Query result {_type} timed out. Attempts: {iterations}");
-                    
-                    // 超时后最后尝试从批量缓冲区获取
-                    if (_usingBatchBuffer && _batchBuffer != null)
+                    else
                     {
-                        if (TryCopyFromBatchResult())
+                        if (wakeSignal != null)
                         {
+                            wakeSignal.WaitOne(1);
+                        }
+                        else
+                        {
+                            Thread.Sleep(1);
+                        }
+                    }
+                    
+                    iterations++;
+                    data = Marshal.ReadInt64(_bufferMap);
+                    
+                    // 检查是否完成第一阶段
+                    if (iterations >= MaxInitialRetries)
+                    {
+                        initialPhaseCompleted = true;
+                        stopwatch = Stopwatch.StartNew();
+                        
+                        // 第一阶段未获取到结果，记录警告
+                        Logger.Warning?.Print(LogClass.Gpu, 
+                            $"Query {_type} still waiting after {MaxInitialRetries} fast retries, entering backoff phase");
+                    }
+                }
+                else
+                {
+                    // 第二阶段：退避重试
+                    if (stopwatch.ElapsedMilliseconds > 1000) // 总共等待超过1秒
+                    {
+                        Logger.Error?.Print(LogClass.Gpu, 
+                            $"Query {_type} timed out after 1 second total wait. Returning default value (0).");
+                        
+                        // 最后一次尝试从批量缓冲区获取
+                        if (_isTbdrPlatform)
+                        {
+                            TryCopyFromBatchResult();
                             data = Marshal.ReadInt64(_bufferMap);
                             if (!WaitingForValue(data))
                             {
-                                Logger.Info?.Print(LogClass.Gpu, 
-                                    $"Query {_type} recovered from batch buffer after timeout");
+                                return data;
+                            }
+                        }
+                        
+                        // 记录严重错误
+                        Logger.Error?.Print(LogClass.Gpu, 
+                            $"CRITICAL: Query {_type} failed completely. This may indicate a driver or hardware issue.");
+                        
+                        // 返回0以避免阻塞
+                        return 0;
+                    }
+                    
+                    // 每隔500ms尝试一次
+                    if (stopwatch.ElapsedMilliseconds % 500 < 10) // 每500ms检查一次
+                    {
+                        // 尝试从批量缓冲区获取
+                        if (_isTbdrPlatform)
+                        {
+                            TryCopyFromBatchResult();
+                            data = Marshal.ReadInt64(_bufferMap);
+                            if (!WaitingForValue(data))
+                            {
+                                Logger.Warning?.Print(LogClass.Gpu, 
+                                    $"Query {_type} recovered after {stopwatch.ElapsedMilliseconds}ms backoff wait");
                                 return data;
                             }
                         }
                     }
                     
-                    // 如果还是获取不到，返回一个安全的值而不是0
-                    // 0可能是有效值，所以返回默认值或一个特殊值
-                    return _defaultValue == DefaultValueInt ? -1 : _defaultValue;
+                    // 退避等待：每次等待时间逐渐增加
+                    int backoffDelay = Math.Min(100, 10 + (int)(stopwatch.ElapsedMilliseconds / 100));
+                    
+                    if (wakeSignal != null)
+                    {
+                        wakeSignal.WaitOne(backoffDelay);
+                    }
+                    else
+                    {
+                        Thread.Sleep(backoffDelay);
+                    }
+                    
+                    data = Marshal.ReadInt64(_bufferMap);
                 }
+            }
+
+            if (stopwatch != null && stopwatch.IsRunning)
+            {
+                stopwatch.Stop();
             }
 
             return data;
@@ -479,6 +556,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     _batchBufferOffset = offset;
                     _usingBatchBuffer = true;
                     _batchResultReady = false;
+                    _batchResultValue = 0;
                     return true;
                 }
             }
@@ -512,7 +590,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             {
                 try
                 {
-                    // 从批量缓冲区复制结果到本地缓冲区
+                    // 从批量缓冲区读取结果
                     nint srcPtr = _batchBuffer.GetMappedPtr() + (int)_batchBufferOffset;
                     
                     long result;
@@ -525,16 +603,57 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                         result = Marshal.ReadInt64(srcPtr);
                     }
                     
+                    // 更新本地缓冲区和缓存值
                     Marshal.WriteInt64(_bufferMap, result);
-                    _usingBatchBuffer = false;
-                    _batchResultReady = false;
+                    _batchResultValue = result;
+                    
+                    // 记录日志
+                    Logger.Debug?.Print(LogClass.Gpu, 
+                        $"Copied batch result for {_type}: {result}");
+                        
                     return true;
                 }
                 catch (Exception ex)
                 {
-                    Logger.Error?.Print(LogClass.Gpu, 
+                    Logger.Warning?.Print(LogClass.Gpu, 
                         $"Error copying batch result for {_type}: {ex.Message}");
                     return false;
+                }
+            }
+            else if (_usingBatchBuffer && _batchBuffer != null)
+            {
+                // 尝试直接读取批量缓冲区（可能已经写入但未标记为就绪）
+                try
+                {
+                    nint srcPtr = _batchBuffer.GetMappedPtr() + (int)_batchBufferOffset;
+                    
+                    long result;
+                    if (_result32Bit)
+                    {
+                        result = Marshal.ReadInt32(srcPtr);
+                    }
+                    else
+                    {
+                        result = Marshal.ReadInt64(srcPtr);
+                    }
+                    
+                    // 检查是否是默认值
+                    if (result != _defaultValue && result != 0)
+                    {
+                        Marshal.WriteInt64(_bufferMap, result);
+                        _batchResultValue = result;
+                        _batchResultReady = true;
+                        
+                        Logger.Debug?.Print(LogClass.Gpu, 
+                            $"Recovered batch result for {_type}: {result}");
+                            
+                        return true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        $"Error reading batch result for {_type}: {ex.Message}");
                 }
             }
             
@@ -544,27 +663,9 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         public void MarkBatchResultReady()
         {
             _batchResultReady = true;
-        }
-        
-        public bool IsBatchResultReady()
-        {
-            if (!_usingBatchBuffer || _batchBuffer == null)
-                return false;
             
-            // 检查批量缓冲区中的值是否为默认值
-            nint srcPtr = _batchBuffer.GetMappedPtr() + (int)_batchBufferOffset;
-            
-            long result;
-            if (_result32Bit)
-            {
-                result = Marshal.ReadInt32(srcPtr);
-            }
-            else
-            {
-                result = Marshal.ReadInt64(srcPtr);
-            }
-            
-            return !WaitingForValue(result);
+            // 立即尝试复制结果
+            TryCopyFromBatchResult();
         }
 
         public void PoolReset(CommandBuffer cmd, int resetSequence)

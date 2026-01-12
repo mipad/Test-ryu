@@ -35,6 +35,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
         public void ResetCounterPool()
         {
+            Logger.Debug?.Print(LogClass.Gpu, "Resetting all counter pools");
+            
             foreach (var queue in _counterQueues)
             {
                 queue.ResetCounterPool();
@@ -43,21 +45,33 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
         public void ResetFutureCounters(CommandBuffer cmd, int count)
         {
+            Logger.Debug?.Print(LogClass.Gpu, 
+                $"Resetting {count} future samples passed counters");
+            
             _counterQueues[(int)CounterType.SamplesPassed].ResetFutureCounters(cmd, count);
         }
 
         public CounterQueueEvent QueueReport(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved)
         {
+            Logger.Debug?.Print(LogClass.Gpu, 
+                $"Queueing report for {type}, divisor: {divisor}, hostReserved: {hostReserved}");
+            
             return _counterQueues[(int)type].QueueReport(resultHandler, divisor, _pipeline.DrawCount, hostReserved);
         }
 
         public void QueueReset(CounterType type)
         {
+            Logger.Debug?.Print(LogClass.Gpu, 
+                $"Queueing reset for {type}");
+            
             _counterQueues[(int)type].QueueReset(_pipeline.DrawCount);
         }
 
         public void Update()
         {
+            Logger.Debug?.Print(LogClass.Gpu, 
+                "Updating all counters");
+            
             foreach (var queue in _counterQueues)
             {
                 queue.Flush(false);
@@ -66,6 +80,9 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
         public void Flush(CounterType type)
         {
+            Logger.Debug?.Print(LogClass.Gpu, 
+                $"Flushing counter queue for {type}");
+            
             _counterQueues[(int)type].Flush(true);
         }
         
@@ -97,6 +114,9 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
         public void Dispose()
         {
+            Logger.Debug?.Print(LogClass.Gpu, 
+                "Disposing counters");
+            
             foreach (var queue in _counterQueues)
             {
                 queue.Dispose();
@@ -104,6 +124,9 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             
             // 清理批量缓冲区
             BatchQueryManager.DisposeAll();
+            
+            Logger.Debug?.Print(LogClass.Gpu, 
+                "Counters disposed");
         }
     }
 }

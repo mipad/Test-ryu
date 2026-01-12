@@ -1,4 +1,3 @@
-// CounterQueueEvent.cs 修复版本
 using Ryujinx.Graphics.GAL;
 using System;
 using System.Threading;
@@ -27,6 +26,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private readonly object _lock = new();
         private ulong _result = ulong.MaxValue;
         private double _divisor = 1f;
+        private bool _resultConsumed = false;
 
         public CounterQueueEvent(CounterQueue queue, CounterType type, ulong drawIndex)
         {
@@ -66,7 +66,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         {
             lock (_lock)
             {
-                if (Disposed)
+                if (Disposed || _resultConsumed)
                 {
                     return true;
                 }
@@ -76,64 +76,63 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     result = 0;
                 }
 
-                long queryResult;
+                long queryResult = 0;
+                bool gotResult = false;
 
                 if (block)
                 {
+                    // 阻塞等待结果
                     queryResult = _counter.AwaitResult(wakeSignal);
+                    gotResult = true;
                     
-                    // 检查是否为超时返回的特殊值
-                    if (queryResult == -1)
-                    {
-                        // -1 是超时或错误值，尝试从批量缓冲区获取
-                        if (_counter.TryCopyFromBatchResult())
-                        {
-                            if (_counter.TryGetResult(out queryResult))
-                            {
-                                Logger.Debug?.Print(LogClass.Gpu, 
-                                    $"Query {Type} recovered from batch buffer after timeout");
-                            }
-                            else
-                            {
-                                // 如果获取不到，返回false让调用者知道结果不可用
-                                Logger.Warning?.Print(LogClass.Gpu, 
-                                    $"Query {Type} timed out with no recoverable result");
-                                return false;
-                            }
-                        }
-                        else
-                        {
-                            // 如果无法从批量缓冲区恢复，返回false
-                            return false;
-                        }
-                    }
+                    // 记录查询结果
+                    Logger.Debug?.Print(LogClass.Gpu, 
+                        $"Query {Type} consumed with result: {queryResult}");
                 }
                 else
                 {
-                    // 非阻塞：先尝试从批量缓冲区获取
-                    _counter.TryCopyFromBatchResult();
-                    
-                    if (!_counter.TryGetResult(out queryResult))
+                    // 非阻塞：立即尝试获取结果
+                    if (_counter.TryGetResult(out queryResult))
                     {
-                        return false;
+                        gotResult = true;
+                    }
+                    else
+                    {
+                        // TBDR平台：尝试从批量缓冲区恢复
+                        if (_queue.Gd.IsTBDR)
+                        {
+                            _counter.TryCopyFromBatchResult();
+                            if (_counter.TryGetResult(out queryResult))
+                            {
+                                gotResult = true;
+                                Logger.Debug?.Print(LogClass.Gpu, 
+                                    $"Query {Type} recovered from batch buffer (non-blocking)");
+                            }
+                        }
                     }
                 }
 
-                result += _divisor == 1 ? (ulong)queryResult : (ulong)Math.Ceiling(queryResult / _divisor);
+                if (gotResult)
+                {
+                    result += _divisor == 1 ? (ulong)queryResult : (ulong)Math.Ceiling(queryResult / _divisor);
+                    _result = result;
+                    _resultConsumed = true;
 
-                _result = result;
+                    OnResult?.Invoke(this, result);
+                    
+                    // 减少引用计数但不立即释放
+                    DecrementRefCount();
 
-                OnResult?.Invoke(this, result);
+                    return true;
+                }
 
-                Dispose();
-
-                return true;
+                return false;
             }
         }
 
         public void Flush()
         {
-            if (Disposed)
+            if (Disposed || _resultConsumed)
             {
                 return;
             }
@@ -194,9 +193,28 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
         public void Dispose()
         {
-            Disposed = true;
+            lock (_lock)
+            {
+                if (Disposed) return;
+                
+                Disposed = true;
 
-            DecrementRefCount();
+                // 确保结果被消费
+                if (!_resultConsumed)
+                {
+                    ulong dummy = 0;
+                    bool consumed = TryConsume(ref dummy, false);
+                    
+                    if (!consumed)
+                    {
+                        // 如果无法消费结果，记录警告
+                        Logger.Warning?.Print(LogClass.Gpu, 
+                            $"Query {Type} disposed without consuming result. DrawIndex: {DrawIndex}");
+                    }
+                }
+
+                DecrementRefCount();
+            }
         }
     }
 }
