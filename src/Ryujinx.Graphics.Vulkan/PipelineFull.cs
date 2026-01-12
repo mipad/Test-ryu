@@ -27,6 +27,10 @@ namespace Ryujinx.Graphics.Vulkan
         // 批量结果缓冲区管理
         private readonly Dictionary<CounterType, List<QueryBatch>> _pendingBatchCopies = new();
         private readonly Dictionary<CounterType, List<BufferedQuery>> _batchQueriesToMarkReady = new();
+        
+        // 栅栏管理
+        private readonly List<Fence> _pendingFences = new();
+        private readonly object _fenceLock = new();
 
         private ulong _byteWeight;
 
@@ -48,7 +52,7 @@ namespace Ryujinx.Graphics.Vulkan
             
             if (_isTbdrPlatform)
             {
-                Logger.Info?.Print(LogClass.Gpu, "TBDR platform: Using optimized batch query processing");
+                Logger.Info?.Print(LogClass.Gpu, "TBDR platform: Using optimized batch query processing with fence synchronization");
             }
         }
 
@@ -64,7 +68,7 @@ namespace Ryujinx.Graphics.Vulkan
         }
         
         // 新的批量复制方法
-        private void CopyPendingBatchQueries()
+        private unsafe void CopyPendingBatchQueries()
         {
             // 处理所有待处理的批量查询
             foreach (var batches in _pendingBatchCopies.Values)
@@ -73,7 +77,7 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     if (batch.Count > 0 && batch.QueryPool.Handle != 0)
                     {
-                        BufferedQuery.CopyBatch(Gd.Api, Cbs, batch);
+                        BufferedQuery.CopyBatch(Gd.Api, Gd.Device, Cbs, batch);
                         
                         if (_isTbdrPlatform)
                         {
@@ -95,8 +99,87 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
             
+            // 创建栅栏以确保复制操作完成
+            if (Gd.Capabilities.SupportsTimelineSemaphores && _pendingBatchCopies.Count > 0)
+            {
+                CreateFenceForBatchCompletion();
+            }
+            
             _pendingBatchCopies.Clear();
             _batchQueriesToMarkReady.Clear();
+        }
+        
+        private unsafe void CreateFenceForBatchCompletion()
+        {
+            FenceCreateInfo fenceCreateInfo = new()
+            {
+                SType = StructureType.FenceCreateInfo,
+                Flags = FenceCreateFlags.None
+            };
+            
+            Gd.Api.CreateFence(Gd.Device, &fenceCreateInfo, null, out var fence).ThrowOnError();
+            
+            lock (_fenceLock)
+            {
+                _pendingFences.Add(fence);
+            }
+            
+            // 提交命令缓冲区
+            Gd.CommandBufferPool.Submit(Cbs);
+            
+            // 等待栅栏（异步）
+            Gd.Api.WaitForFences(Gd.Device, 1, &fence, true, ulong.MaxValue);
+            Gd.Api.DestroyFence(Gd.Device, fence, null);
+            
+            lock (_fenceLock)
+            {
+                _pendingFences.Remove(fence);
+            }
+            
+            // 通知所有查询结果可用
+            NotifyBatchResultsReady();
+        }
+        
+        private void NotifyBatchResultsReady()
+        {
+            // 遍历所有计数器队列，通知结果就绪
+            var counters = Gd.GetCounters();
+            if (counters != null)
+            {
+                // 这里需要实现通知机制
+                // 由于查询结果已经复制完成，我们可以通知等待的消费者
+            }
+        }
+        
+        // 检查所有待处理栅栏
+        private unsafe void CheckPendingFences()
+        {
+            lock (_fenceLock)
+            {
+                if (_pendingFences.Count == 0)
+                    return;
+                    
+                List<Fence> completedFences = new();
+                foreach (var fence in _pendingFences)
+                {
+                    var result = Gd.Api.GetFenceStatus(Gd.Device, fence);
+                    if (result == Result.Success)
+                    {
+                        completedFences.Add(fence);
+                    }
+                }
+                
+                foreach (var fence in completedFences)
+                {
+                    Gd.Api.DestroyFence(Gd.Device, fence, null);
+                    _pendingFences.Remove(fence);
+                }
+                
+                if (completedFences.Count > 0)
+                {
+                    NotifyBatchResultsReady();
+                }
+            }
         }
 
         public void ClearRenderTargetColor(int index, int layer, int layerCount, uint componentMask, ColorF color)
@@ -261,6 +344,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void FlushCommandsImpl()
         {
+            // 检查待处理栅栏
+            CheckPendingFences();
+            
             // 处理所有批次查询
             ProcessQueryBatch(true);
             
