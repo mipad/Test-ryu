@@ -17,14 +17,12 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly List<(BufferedQuery, uint)> _pendingQueryCopies;
         private readonly List<BufferHolder> _activeBufferMirrors;
 
-        // 批量查询处理
         private readonly Queue<QueryBatch> _queryBatchQueue = new();
         private int _batchQueryCount = 0;
         private readonly bool _isTbdrPlatform;
         private readonly int _targetBatchSize;
         private readonly object _batchLock = new();
         
-        // 批量结果缓冲区管理
         private readonly Dictionary<CounterType, List<QueryBatch>> _pendingBatchCopies = new();
         private readonly Dictionary<CounterType, List<BufferedQuery>> _batchQueriesToMarkReady = new();
 
@@ -54,12 +52,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         private void CopyPendingQuery()
         {
-            // 批量复制所有查询结果
             if (_pendingQueryCopies.Count > 0)
             {
-                Logger.Debug?.Print(LogClass.Gpu, 
-                    $"Copying {_pendingQueryCopies.Count} pending queries");
-                
                 foreach (var (query, index) in _pendingQueryCopies)
                 {
                     query.PoolCopy(Cbs, index);
@@ -67,57 +61,17 @@ namespace Ryujinx.Graphics.Vulkan
 
                 _pendingQueryCopies.Clear();
                 
-                // 在复制后插入内存屏障以确保结果可见
                 if (_isTbdrPlatform)
                 {
-                    unsafe 
-                    {
-                        MemoryBarrier memoryBarrier = new()
-                        {
-                            SType = StructureType.MemoryBarrier,
-                            SrcAccessMask = AccessFlags.TransferWriteBit,
-                            DstAccessMask = AccessFlags.HostReadBit
-                        };
-                        
-                        Gd.Api.CmdPipelineBarrier(
-                            Cbs.CommandBuffer,
-                            PipelineStageFlags.TransferBit,
-                            PipelineStageFlags.HostBit,
-                            0,
-                            1,
-                            &memoryBarrier,
-                            0,
-                            null,
-                            0,
-                            null);
-                    }
-                    
-                    Logger.Debug?.Print(LogClass.Gpu, "Inserted memory barrier after query copy");
+                    Gd.Barriers.Flush(Cbs, false, null, null);
                 }
             }
         }
         
-        // 新的批量复制方法
         private void CopyPendingBatchQueries()
         {
-            // 处理所有待处理的批量查询
             if (_pendingBatchCopies.Count > 0)
             {
-                int totalBatchCount = 0;
-                int totalQueryCount = 0;
-                
-                foreach (var batches in _pendingBatchCopies.Values)
-                {
-                    totalBatchCount += batches.Count;
-                    foreach (var batch in batches)
-                    {
-                        totalQueryCount += (int)batch.Count;
-                    }
-                }
-                
-                Logger.Debug?.Print(LogClass.Gpu, 
-                    $"Copying {totalBatchCount} batches with {totalQueryCount} total queries");
-                
                 foreach (var batches in _pendingBatchCopies.Values)
                 {
                     foreach (var batch in batches)
@@ -137,24 +91,17 @@ namespace Ryujinx.Graphics.Vulkan
                     }
                 }
                 
-                // 标记相关的查询结果为准备就绪
-                int markedCount = 0;
                 foreach (var queries in _batchQueriesToMarkReady.Values)
                 {
-                    markedCount += queries.Count;
                     foreach (var query in queries)
                     {
                         query.MarkBatchResultReady();
                     }
                 }
                 
-                Logger.Debug?.Print(LogClass.Gpu, 
-                    $"Marked {markedCount} queries as batch ready");
-                
-                // 在批量复制后插入内存屏障以确保结果可见
                 if (_isTbdrPlatform)
                 {
-                    unsafe 
+                    unsafe
                     {
                         MemoryBarrier memoryBarrier = new()
                         {
@@ -175,8 +122,6 @@ namespace Ryujinx.Graphics.Vulkan
                             0,
                             null);
                     }
-                    
-                    Logger.Debug?.Print(LogClass.Gpu, "Inserted memory barrier after batch query copy");
                 }
                 
                 _pendingBatchCopies.Clear();
@@ -346,24 +291,14 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void FlushCommandsImpl()
         {
-            Logger.Debug?.Print(LogClass.Gpu, "Flushing commands");
-            
-            // 处理所有批次查询
             ProcessQueryBatch(true);
             
             AutoFlush.RegisterFlush(DrawCount);
             EndRenderPass();
 
-            // 结束所有活动的查询
-            if (_activeQueries.Count > 0)
+            foreach ((var queryPool, var index, _) in _activeQueries)
             {
-                Logger.Debug?.Print(LogClass.Gpu, 
-                    $"Ending {_activeQueries.Count} active queries");
-                
-                foreach ((var queryPool, var index, _) in _activeQueries)
-                {
-                    Gd.Api.CmdEndQuery(CommandBuffer, queryPool, index);
-                }
+                Gd.Api.CmdEndQuery(CommandBuffer, queryPool, index);
             }
 
             _byteWeight = 0;
@@ -385,31 +320,22 @@ namespace Ryujinx.Graphics.Vulkan
 
             _activeBufferMirrors.Clear();
 
-            // 重新开始所有活动的查询
-            if (_activeQueries.Count > 0)
+            foreach ((var queryPool, var index, var isOcclusion) in _activeQueries)
             {
-                Logger.Debug?.Print(LogClass.Gpu, 
-                    $"Restarting {_activeQueries.Count} active queries");
+                bool isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
                 
-                foreach ((var queryPool, var index, var isOcclusion) in _activeQueries)
+                if (_isTbdrPlatform && isOcclusion)
                 {
-                    bool isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
-                    
-                    if (_isTbdrPlatform && isOcclusion)
-                    {
-                        isPrecise = false;
-                    }
-
-                    Gd.Api.CmdResetQueryPool(CommandBuffer, queryPool, index, 1);
-                    Gd.Api.CmdBeginQuery(CommandBuffer, queryPool, index, isPrecise ? QueryControlFlags.PreciseBit : 0);
+                    isPrecise = false;
                 }
+
+                Gd.Api.CmdResetQueryPool(CommandBuffer, queryPool, index, 1);
+                Gd.Api.CmdBeginQuery(CommandBuffer, queryPool, index, isPrecise ? QueryControlFlags.PreciseBit : 0);
             }
 
             Gd.ResetCounterPool();
 
             Restore();
-            
-            Logger.Debug?.Print(LogClass.Gpu, "Command flush completed");
         }
 
         public void RegisterActiveMirror(BufferHolder buffer)
@@ -461,7 +387,6 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (_isTbdrPlatform && query.GetBatchInfo().QueryPool.Handle != 0)
             {
-                // 使用批量处理
                 var batch = query.GetBatchInfo();
                 if (batch.QueryPool.Handle != 0 && batch.Count > 0)
                 {
@@ -474,7 +399,6 @@ namespace Ryujinx.Graphics.Vulkan
                             _batchQueriesToMarkReady[counterType] = new List<BufferedQuery>();
                         }
                         
-                        // 检查是否已存在相同的批次
                         bool exists = false;
                         foreach (var existing in _pendingBatchCopies[counterType])
                         {
@@ -494,11 +418,6 @@ namespace Ryujinx.Graphics.Vulkan
                             _batchQueriesToMarkReady[counterType].Add(query);
                             _batchQueryCount++;
                             
-                            Logger.Debug?.Print(LogClass.Gpu, 
-                                $"Added query to batch: type={counterType}, pool={batch.QueryPool.Handle:X}, " +
-                                $"index={batch.StartIndex}, batchCount={_batchQueryCount}");
-                            
-                            // 达到批次大小时处理
                             if (_batchQueryCount >= _targetBatchSize)
                             {
                                 ProcessQueryBatch(false);
@@ -509,14 +428,10 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
             
-            // 回退到单个查询处理
             lock (_batchLock)
             {
                 _pendingQueryCopies.Add((query, index));
                 _batchQueryCount++;
-                
-                Logger.Debug?.Print(LogClass.Gpu, 
-                    $"Added single query copy: index={index}, batchCount={_batchQueryCount}");
                 
                 if (_batchQueryCount >= _targetBatchSize)
                 {
@@ -537,13 +452,6 @@ namespace Ryujinx.Graphics.Vulkan
                 
                 if (shouldFlush)
                 {
-                    Logger.Debug?.Print(LogClass.Gpu, 
-                        $"Processing query batch: forceFlush={forceFlush}, " +
-                        $"batchCopies={_pendingBatchCopies.Count}, " +
-                        $"singleCopies={_pendingQueryCopies.Count}, " +
-                        $"totalQueries={_batchQueryCount}");
-                    
-                    // 先处理批量查询
                     if (_pendingBatchCopies.Count > 0)
                     {
                         if (_isTbdrPlatform)
@@ -564,18 +472,35 @@ namespace Ryujinx.Graphics.Vulkan
                         }
                     }
                     
-                    // 执行复制
                     CopyPendingBatchQueries();
                     CopyPendingQuery();
                     
-                    // 对于TBDR平台，我们可能需要更积极的同步
-                    if (_isTbdrPlatform && (_pendingBatchCopies.Count > 0 || _pendingQueryCopies.Count > 0))
+                    if (_isTbdrPlatform)
                     {
-                        // 结束当前命令缓冲区以确保复制操作提交
                         EndRenderPass();
-                        
-                        Logger.Debug?.Print(LogClass.Gpu, 
-                            "TBDR: Flushing command buffer for query completion guarantee");
+                        unsafe
+                        {
+                            Gd.Api.CmdEnd(Cbs.CommandBuffer);
+                            
+                            var submitInfo = new SubmitInfo
+                            {
+                                SType = StructureType.SubmitInfo,
+                                CommandBufferCount = 1,
+                                PCommandBuffers = &Cbs.CommandBuffer
+                            };
+                            
+                            Gd.Api.QueueSubmit(Gd.Queue, 1, &submitInfo, default);
+                            Gd.Api.QueueWaitIdle(Gd.Queue);
+                            
+                            Gd.Api.CmdBegin(Cbs.CommandBuffer, 
+                                new CommandBufferBeginInfo 
+                                { 
+                                    SType = StructureType.CommandBufferBeginInfo,
+                                    Flags = CommandBufferUsageFlags.OneTimeSubmitBit
+                                });
+                            
+                            Logger.Debug?.Print(LogClass.Gpu, "TBDR: Flushed and waited for query batch completion");
+                        }
                     }
                 }
                 
@@ -593,13 +518,11 @@ namespace Ryujinx.Graphics.Vulkan
 
         protected override void SignalRenderPassEnd()
         {
-            // 渲染过程结束时处理所有批次查询
             ProcessQueryBatch(true);
             CopyPendingBatchQueries();
             CopyPendingQuery();
         }
         
-        // 收集所有批量查询进行优化处理
         public void OptimizeBatchQueries()
         {
             if (!_isTbdrPlatform) return;
@@ -611,7 +534,6 @@ namespace Ryujinx.Graphics.Vulkan
             
             if (allBatches.Count > 0)
             {
-                // 重新组织批次以减少状态切换
                 var optimizedBatches = OptimizeBatchGroups(allBatches);
                 
                 lock (_batchLock)
@@ -639,7 +561,6 @@ namespace Ryujinx.Graphics.Vulkan
         {
             var optimized = new List<QueryBatch>();
             
-            // 按查询池和结果缓冲区排序
             batches.Sort((a, b) => 
             {
                 int poolCompare = a.QueryPool.Handle.CompareTo(b.QueryPool.Handle);
@@ -653,7 +574,6 @@ namespace Ryujinx.Graphics.Vulkan
                 var current = batches[i];
                 int j = i + 1;
                 
-                // 尝试合并连续的批次
                 while (j < batches.Count && 
                        batches[j].QueryPool.Handle == current.QueryPool.Handle &&
                        batches[j].ResultBuffer.Handle == current.ResultBuffer.Handle &&
@@ -681,20 +601,6 @@ namespace Ryujinx.Graphics.Vulkan
         
         private CounterType GetCounterTypeFromPool(QueryPool pool)
         {
-            // 简化实现，实际需要更精确的映射
-            // 这里我们假设可以通过查询池的管理器来获取类型
-            foreach (var kvp in _pendingBatchCopies)
-            {
-                foreach (var batch in kvp.Value)
-                {
-                    if (batch.QueryPool.Handle == pool.Handle)
-                    {
-                        return kvp.Key;
-                    }
-                }
-            }
-            
-            // 默认返回SamplesPassed
             return CounterType.SamplesPassed;
         }
     }
