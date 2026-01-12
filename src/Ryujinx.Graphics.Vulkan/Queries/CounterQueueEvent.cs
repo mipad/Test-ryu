@@ -21,7 +21,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private readonly BufferedQuery _counter;
 
         private bool _hostAccessReserved;
-        private int _refCount = 1; // Starts with a reference from the counter queue.
+        private int _refCount = 1;
 
         private readonly object _lock = new();
         private ulong _result = ulong.MaxValue;
@@ -81,24 +81,23 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
                 if (block)
                 {
-                    // 阻塞等待结果
                     queryResult = _counter.AwaitResult(wakeSignal);
                     gotResult = true;
                     
-                    // 记录查询结果
-                    Logger.Debug?.Print(LogClass.Gpu, 
-                        $"Query {Type} consumed with result: {queryResult}");
+                    if (queryResult == 0 && _queue.Gd.IsTBDR)
+                    {
+                        Logger.Debug?.Print(LogClass.Gpu, 
+                            $"Query {Type} returned 0 (may be timeout or actual result)");
+                    }
                 }
                 else
                 {
-                    // 非阻塞：立即尝试获取结果
                     if (_counter.TryGetResult(out queryResult))
                     {
                         gotResult = true;
                     }
                     else
                     {
-                        // TBDR平台：尝试从批量缓冲区恢复
                         if (_queue.Gd.IsTBDR)
                         {
                             _counter.TryCopyFromBatchResult();
@@ -120,7 +119,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
                     OnResult?.Invoke(this, result);
                     
-                    // 减少引用计数但不立即释放
                     DecrementRefCount();
 
                     return true;
@@ -181,7 +179,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
         private void DisposeInternal()
         {
-            // 在释放查询对象之前，确保从批量缓冲区复制了结果
             _counter.TryCopyFromBatchResult();
             _queue.ReturnQueryObject(_counter);
         }
@@ -199,18 +196,10 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 
                 Disposed = true;
 
-                // 确保结果被消费
                 if (!_resultConsumed)
                 {
                     ulong dummy = 0;
-                    bool consumed = TryConsume(ref dummy, false);
-                    
-                    if (!consumed)
-                    {
-                        // 如果无法消费结果，记录警告
-                        Logger.Warning?.Print(LogClass.Gpu, 
-                            $"Query {Type} disposed without consuming result. DrawIndex: {DrawIndex}");
-                    }
+                    TryConsume(ref dummy, false);
                 }
 
                 DecrementRefCount();

@@ -6,7 +6,6 @@ using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Buffer = Silk.NET.Vulkan.Buffer;
-using System.Diagnostics;
 
 namespace Ryujinx.Graphics.Vulkan.Queries
 {
@@ -162,8 +161,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
     class BufferedQuery : IDisposable
     {
-        private const int MaxInitialRetries = 5000; // 初始快速重试次数
-        private const int MaxBackoffRetries = 10;   // 退避重试次数
+        private const int MaxQueryRetries = 5000;
+        private const int MaxSpinCount = 100;
         private const long DefaultValue = unchecked((long)0xFFFFFFFEFFFFFFFE);
         private const long DefaultValueInt = 0xFFFFFFFE;
         private const ulong HighMask = 0xFFFFFFFF00000000;
@@ -369,7 +368,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         {
             result = Marshal.ReadInt64(_bufferMap);
             
-            // 如果本地缓冲区没有结果，检查批量缓冲区
             if (result == _defaultValue && _batchResultReady)
             {
                 result = _batchResultValue;
@@ -383,19 +381,16 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         {
             long data = Marshal.ReadInt64(_bufferMap);
             
-            // 如果已经有结果，直接返回
             if (!WaitingForValue(data))
             {
                 return data;
             }
             
-            // 检查批量缓冲区是否有结果
             if (_batchResultReady)
             {
                 return _batchResultValue;
             }
 
-            // TBDR平台：首先尝试从批量缓冲区获取
             if (_isTbdrPlatform)
             {
                 TryCopyFromBatchResult();
@@ -408,49 +403,30 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
             int iterations = 0;
             int spinCount = 0;
-            Stopwatch stopwatch = null;
-            bool initialPhaseCompleted = false;
             
-            while (WaitingForValue(data))
+            while (WaitingForValue(data) && iterations++ < MaxQueryRetries)
             {
-                // 第一阶段：快速重试（最多5000次）
-                if (!initialPhaseCompleted)
+                if (iterations % 100 == 0 && _isTbdrPlatform)
                 {
-                    // 定期检查批量缓冲区
-                    if (iterations % 100 == 0 && _isTbdrPlatform)
+                    TryCopyFromBatchResult();
+                    data = Marshal.ReadInt64(_bufferMap);
+                    if (!WaitingForValue(data))
                     {
-                        TryCopyFromBatchResult();
-                        data = Marshal.ReadInt64(_bufferMap);
-                        if (!WaitingForValue(data))
-                        {
-                            return data;
-                        }
+                        return data;
                     }
-                    
-                    // 等待策略
-                    if (_isTbdrPlatform)
+                }
+                
+                if (_isTbdrPlatform)
+                {
+                    if (spinCount < MaxSpinCount)
                     {
-                        if (spinCount < 100)
-                        {
-                            Thread.SpinWait(50);
-                            spinCount++;
-                        }
-                        else if (spinCount < 200)
-                        {
-                            Thread.Sleep(0);
-                            spinCount++;
-                        }
-                        else
-                        {
-                            if (wakeSignal != null)
-                            {
-                                wakeSignal.WaitOne(1);
-                            }
-                            else
-                            {
-                                Thread.Sleep(1);
-                            }
-                        }
+                        Thread.SpinWait(50);
+                        spinCount++;
+                    }
+                    else if (spinCount < MaxSpinCount * 2)
+                    {
+                        Thread.Sleep(0);
+                        spinCount++;
                     }
                     else
                     {
@@ -463,90 +439,43 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                             Thread.Sleep(1);
                         }
                     }
-                    
-                    iterations++;
-                    data = Marshal.ReadInt64(_bufferMap);
-                    
-                    // 检查是否完成第一阶段
-                    if (iterations >= MaxInitialRetries)
-                    {
-                        initialPhaseCompleted = true;
-                        stopwatch = Stopwatch.StartNew();
-                        
-                        // 第一阶段未获取到结果，记录警告
-                        Logger.Warning?.Print(LogClass.Gpu, 
-                            $"Query {_type} still waiting after {MaxInitialRetries} fast retries, entering backoff phase");
-                    }
                 }
                 else
                 {
-                    // 第二阶段：退避重试
-                    if (stopwatch.ElapsedMilliseconds > 1000) // 总共等待超过1秒
-                    {
-                        Logger.Error?.Print(LogClass.Gpu, 
-                            $"Query {_type} timed out after 1 second total wait. Returning default value (0).");
-                        
-                        // 最后一次尝试从批量缓冲区获取
-                        if (_isTbdrPlatform)
-                        {
-                            TryCopyFromBatchResult();
-                            data = Marshal.ReadInt64(_bufferMap);
-                            if (!WaitingForValue(data))
-                            {
-                                return data;
-                            }
-                        }
-                        
-                        // 记录严重错误
-                        Logger.Error?.Print(LogClass.Gpu, 
-                            $"CRITICAL: Query {_type} failed completely. This may indicate a driver or hardware issue.");
-                        
-                        // 返回0以避免阻塞
-                        return 0;
-                    }
-                    
-                    // 每隔500ms尝试一次
-                    if (stopwatch.ElapsedMilliseconds % 500 < 10) // 每500ms检查一次
-                    {
-                        // 尝试从批量缓冲区获取
-                        if (_isTbdrPlatform)
-                        {
-                            TryCopyFromBatchResult();
-                            data = Marshal.ReadInt64(_bufferMap);
-                            if (!WaitingForValue(data))
-                            {
-                                Logger.Warning?.Print(LogClass.Gpu, 
-                                    $"Query {_type} recovered after {stopwatch.ElapsedMilliseconds}ms backoff wait");
-                                return data;
-                            }
-                        }
-                    }
-                    
-                    // 退避等待：每次等待时间逐渐增加
-                    int backoffDelay = Math.Min(100, 10 + (int)(stopwatch.ElapsedMilliseconds / 100));
-                    
                     if (wakeSignal != null)
                     {
-                        wakeSignal.WaitOne(backoffDelay);
+                        wakeSignal.WaitOne(1);
                     }
                     else
                     {
-                        Thread.Sleep(backoffDelay);
+                        Thread.Sleep(1);
                     }
-                    
-                    data = Marshal.ReadInt64(_bufferMap);
                 }
+                
+                data = Marshal.ReadInt64(_bufferMap);
             }
 
-            if (stopwatch != null && stopwatch.IsRunning)
+            if (iterations >= MaxQueryRetries)
             {
-                stopwatch.Stop();
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Query result {_type} timed out after {MaxQueryRetries} attempts. Returning default value.");
+                
+                if (_isTbdrPlatform)
+                {
+                    TryCopyFromBatchResult();
+                    data = Marshal.ReadInt64(_bufferMap);
+                    if (!WaitingForValue(data))
+                    {
+                        return data;
+                    }
+                }
+                
+                return 0;
             }
 
             return data;
         }
         
-        // 用于批量处理的方法
         public bool TryAllocateBatchSlot(out ulong offset, out nint mappedPtr)
         {
             if (_isTbdrPlatform && BatchQueryManager.TryGetResultBuffer(_type, !_result32Bit, out _batchBuffer))
@@ -590,7 +519,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             {
                 try
                 {
-                    // 从批量缓冲区读取结果
                     nint srcPtr = _batchBuffer.GetMappedPtr() + (int)_batchBufferOffset;
                     
                     long result;
@@ -603,11 +531,9 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                         result = Marshal.ReadInt64(srcPtr);
                     }
                     
-                    // 更新本地缓冲区和缓存值
                     Marshal.WriteInt64(_bufferMap, result);
                     _batchResultValue = result;
                     
-                    // 记录日志
                     Logger.Debug?.Print(LogClass.Gpu, 
                         $"Copied batch result for {_type}: {result}");
                         
@@ -622,7 +548,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             }
             else if (_usingBatchBuffer && _batchBuffer != null)
             {
-                // 尝试直接读取批量缓冲区（可能已经写入但未标记为就绪）
                 try
                 {
                     nint srcPtr = _batchBuffer.GetMappedPtr() + (int)_batchBufferOffset;
@@ -637,7 +562,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                         result = Marshal.ReadInt64(srcPtr);
                     }
                     
-                    // 检查是否是默认值
                     if (result != _defaultValue && result != 0)
                     {
                         Marshal.WriteInt64(_bufferMap, result);
@@ -664,7 +588,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         {
             _batchResultReady = true;
             
-            // 立即尝试复制结果
             TryCopyFromBatchResult();
         }
 
@@ -699,7 +622,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 flags);
         }
         
-        // 批量复制方法
         public static void CopyBatch(Vk api, CommandBufferScoped cbs, QueryBatch batch)
         {
             QueryResultFlags flags = QueryResultFlags.ResultWaitBit;

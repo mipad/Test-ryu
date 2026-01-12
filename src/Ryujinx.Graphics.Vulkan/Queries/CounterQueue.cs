@@ -37,12 +37,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
         public int ResetSequence { get; private set; }
         
-        // 批量查询支持
         private readonly List<BufferedQuery> _activeBatchQueries = new();
         private readonly object _batchLock = new();
-        
-        // 添加对VulkanRenderer的引用
-        internal VulkanRenderer Gd => _gd;
 
         internal CounterQueue(VulkanRenderer gd, Device device, PipelineFull pipeline, CounterType type, bool isTbdrPlatform)
         {
@@ -61,7 +57,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _current = new CounterQueueEvent(this, type, 0);
 
             _consumerThread = new Thread(EventConsumer);
-            _consumerThread.Name = $"Vulkan.CounterQueue.{type}";
             _consumerThread.Start();
             
             if (_isTbdrPlatform)
@@ -73,7 +68,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         public void ResetCounterPool()
         {
             ResetSequence++;
-            Logger.Debug?.Print(LogClass.Gpu, $"Reset counter pool for {Type}, sequence: {ResetSequence}");
         }
 
         public void ResetFutureCounters(CommandBuffer cmd, int count)
@@ -84,9 +78,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
                 if (count > 0)
                 {
-                    Logger.Debug?.Print(LogClass.Gpu, 
-                        $"Resetting {count} future counters for {Type}");
-                    
                     foreach (BufferedQuery query in _queryPool)
                     {
                         query.PoolReset(cmd, ResetSequence);
@@ -102,8 +93,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
         private void EventConsumer()
         {
-            Thread.CurrentThread.IsBackground = true;
-            
             while (!Disposed)
             {
                 CounterQueueEvent evt = null;
@@ -121,9 +110,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 }
                 else
                 {
-                    Logger.Debug?.Print(LogClass.Gpu, 
-                        $"Processing event for {Type}, remaining events: {_events.Count}");
-                    
                     evt.TryConsume(ref _accumulatedCounter, true, _waiterCount == 0 ? _wakeSignal : null);
                 }
 
@@ -142,7 +128,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 {
                     BufferedQuery result = _queryPool.Dequeue();
                     
-                    // 如果是TBDR平台，尝试分配批量缓冲区槽位
                     if (_isTbdrPlatform)
                     {
                         result.TryAllocateBatchSlot(out _, out _);
@@ -152,9 +137,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     {
                         _activeBatchQueries.Add(result);
                     }
-                    
-                    Logger.Debug?.Print(LogClass.Gpu, 
-                        $"Allocated query object for {Type}, pool remaining: {_queryPool.Count}");
                     
                     return result;
                 }
@@ -171,9 +153,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     _activeBatchQueries.Add(newQuery);
                 }
                 
-                Logger.Debug?.Print(LogClass.Gpu, 
-                    $"Created new query object for {Type} (pool exhausted)");
-                
                 return newQuery;
             }
         }
@@ -188,20 +167,15 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 }
                 
                 _queryPool.Enqueue(query);
-                
-                Logger.Debug?.Print(LogClass.Gpu, 
-                    $"Returned query object for {Type}, pool size: {_queryPool.Count}");
             }
         }
         
-        // 获取批量查询信息
         internal List<QueryBatch> CollectBatchQueries()
         {
             var batches = new List<QueryBatch>();
             
             lock (_batchLock)
             {
-                // 按查询池和结果缓冲区分组
                 var groups = _activeBatchQueries
                     .Where(q => q.GetBatchInfo().QueryPool.Handle != 0)
                     .GroupBy(q => (q.GetQueryPool().Handle, q.GetBatchInfo().ResultBuffer.Handle, q.Is64Bit()))
@@ -211,7 +185,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 {
                     var queries = group.OrderBy(q => q.GetQueryIndex()).ToList();
                     
-                    // 将连续索引的查询分组
                     int start = 0;
                     while (start < queries.Count)
                     {
@@ -272,9 +245,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             }
 
             _queuedEvent.Set();
-            
-            Logger.Debug?.Print(LogClass.Gpu, 
-                $"Queued report for {Type}, draws: {draws}, events in queue: {_events.Count}");
 
             return result;
         }
@@ -287,9 +257,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             {
                 _current.Clear(draws != 0);
             }
-            
-            Logger.Debug?.Print(LogClass.Gpu, 
-                $"Queued reset for {Type}, draws: {draws}");
         }
 
         public void Flush(bool blocking)
@@ -297,23 +264,16 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             if (!blocking)
             {
                 _wakeSignal.Set();
-                Logger.Debug?.Print(LogClass.Gpu, 
-                    $"Non-blocking flush for {Type}");
                 return;
             }
 
             lock (_lock)
             {
-                Logger.Debug?.Print(LogClass.Gpu, 
-                    $"Blocking flush for {Type}, events in queue: {_events.Count}");
-                
                 while (_events.Count > 0)
                 {
                     CounterQueueEvent flush = _events.Peek();
                     if (!flush.TryConsume(ref _accumulatedCounter, true))
                     {
-                        Logger.Debug?.Print(LogClass.Gpu, 
-                            $"Failed to consume event for {Type}, waiting...");
                         return;
                     }
                     _events.Dequeue();
@@ -324,9 +284,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         public void FlushTo(CounterQueueEvent evt)
         {
             Interlocked.Increment(ref _waiterCount);
-            
-            Logger.Debug?.Print(LogClass.Gpu, 
-                $"Flushing to specific event for {Type}, waiters: {_waiterCount}");
 
             _wakeSignal.Set();
 
@@ -336,18 +293,12 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             }
 
             Interlocked.Decrement(ref _waiterCount);
-            
-            Logger.Debug?.Print(LogClass.Gpu, 
-                $"Finished flushing to event for {Type}, waiters: {_waiterCount}");
         }
 
         public void Dispose()
         {
             lock (_lock)
             {
-                Logger.Debug?.Print(LogClass.Gpu, 
-                    $"Disposing counter queue for {Type}, events remaining: {_events.Count}");
-                
                 while (_events.Count > 0)
                 {
                     CounterQueueEvent evt = _events.Dequeue();
@@ -359,16 +310,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
             _queuedEvent.Set();
 
-            if (_consumerThread.IsAlive)
-            {
-                _consumerThread.Join(TimeSpan.FromSeconds(2));
-                
-                if (_consumerThread.IsAlive)
-                {
-                    Logger.Warning?.Print(LogClass.Gpu, 
-                        $"Counter queue thread for {Type} did not exit cleanly");
-                }
-            }
+            _consumerThread.Join();
 
             _current?.Dispose();
 
@@ -385,9 +327,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _queuedEvent.Dispose();
             _wakeSignal.Dispose();
             _eventConsumed.Dispose();
-            
-            Logger.Debug?.Print(LogClass.Gpu, 
-                $"Counter queue for {Type} disposed");
         }
+        
+        public VulkanRenderer Gd => _gd;
     }
 }
