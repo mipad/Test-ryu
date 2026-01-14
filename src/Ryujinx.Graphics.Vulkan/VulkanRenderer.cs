@@ -682,10 +682,10 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 return;
             }
 
-            var semaphoreTypeCreateInfo = new SemaphoreTypeCreateInfoKHR
+            var semaphoreTypeCreateInfo = new SemaphoreTypeCreateInfo
             {
                 SType = StructureType.SemaphoreTypeCreateInfo,
-                SemaphoreType = SemaphoreTypeKHR.Timeline,
+                SemaphoreType = (SemaphoreType)SemaphoreTypeKHR.Timeline,
                 InitialValue = 0
             };
 
@@ -1467,7 +1467,8 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             }
             
             ulong currentValue;
-            TimelineSemaphoreApi.GetSemaphoreCounterValue(_device, TimelineSemaphore, &currentValue);
+            var timelineSemaphore = TimelineSemaphore;
+            TimelineSemaphoreApi.GetSemaphoreCounterValue(_device, timelineSemaphore, &currentValue);
             return currentValue;
         }
         

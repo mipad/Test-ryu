@@ -413,7 +413,7 @@ namespace Ryujinx.Graphics.Vulkan
                 _api.EndCommandBuffer(commandBuffer).ThrowOnError();
 
                 // 准备时间线信号量提交信息
-                TimelineSemaphoreSubmitInfoKHR timelineInfo = default;
+                TimelineSemaphoreSubmitInfo timelineInfo = default;
                 ulong* pSignalSemaphoreValues = null;
                 ulong* pWaitSemaphoreValues = null;
                 
@@ -463,20 +463,25 @@ namespace Ryujinx.Graphics.Vulkan
                     }
 
                     // 分配内存
-                    pSignalSemaphoreValues = stackalloc ulong[allSignalSemaphores.Count];
-                    pWaitSemaphoreValues = stackalloc ulong[allWaitSemaphores.Count];
-                    
-                    for (int i = 0; i < allSignalValues.Count; i++)
+                    if (allSignalSemaphores.Count > 0)
                     {
-                        pSignalSemaphoreValues[i] = allSignalValues[i];
+                        pSignalSemaphoreValues = stackalloc ulong[allSignalSemaphores.Count];
+                        for (int i = 0; i < allSignalValues.Count; i++)
+                        {
+                            pSignalSemaphoreValues[i] = allSignalValues[i];
+                        }
                     }
                     
-                    for (int i = 0; i < allWaitValues.Count; i++)
+                    if (allWaitSemaphores.Count > 0)
                     {
-                        pWaitSemaphoreValues[i] = allWaitValues[i];
+                        pWaitSemaphoreValues = stackalloc ulong[allWaitSemaphores.Count];
+                        for (int i = 0; i < allWaitValues.Count; i++)
+                        {
+                            pWaitSemaphoreValues[i] = allWaitValues[i];
+                        }
                     }
 
-                    timelineInfo = new TimelineSemaphoreSubmitInfoKHR
+                    timelineInfo = new TimelineSemaphoreSubmitInfo
                     {
                         SType = StructureType.TimelineSemaphoreSubmitInfo,
                         WaitSemaphoreValueCount = (uint)allWaitSemaphores.Count,

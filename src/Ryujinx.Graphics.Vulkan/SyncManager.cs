@@ -186,12 +186,15 @@ namespace Ryujinx.Graphics.Vulkan
                         // 等待时间线信号量达到特定值
                         unsafe
                         {
-                            var waitInfo = new SemaphoreWaitInfoKHR
+                            var timelineSemaphore = _gd.TimelineSemaphore;
+                            var waitValue = result.TimelineValue;
+                            
+                            var waitInfo = new SemaphoreWaitInfo
                             {
                                 SType = StructureType.SemaphoreWaitInfo,
                                 SemaphoreCount = 1,
-                                PSemaphores = &_gd.TimelineSemaphore,
-                                PValues = &result.TimelineValue
+                                PSemaphores = &timelineSemaphore,
+                                PValues = &waitValue
                             };
 
                             var resultCode = _gd.TimelineSemaphoreApi.WaitSemaphores(
