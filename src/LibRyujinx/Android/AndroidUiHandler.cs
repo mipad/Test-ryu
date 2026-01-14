@@ -23,9 +23,12 @@ namespace LibRyujinx.Android
 
         public IHostUITheme HostUITheme => throw new NotImplementedException();
 
+        // 修复：实现CreateDynamicTextInputHandler方法
         public IDynamicTextInputHandler CreateDynamicTextInputHandler()
         {
-            throw new NotImplementedException();
+            Logger.Info?.Print(LogClass.Application, 
+                "AndroidUIHandler: Creating dynamic text input handler");
+            return new AndroidDynamicTextInputHandler(this);
         }
 
         public bool DisplayErrorAppletDialog(string title, string message, string[] buttonsText)
@@ -109,6 +112,52 @@ namespace LibRyujinx.Android
         public void Dispose()
         {
             _isDisposed = true;
+        }
+
+        // 内部类：Android动态文本输入处理器
+        private class AndroidDynamicTextInputHandler : IDynamicTextInputHandler
+        {
+            private readonly AndroidUIHandler _parent;
+            private bool _isDisposed;
+            
+            public event DynamicTextChangedHandler TextChangedEvent;
+            public event KeyPressedHandler KeyPressedEvent;
+            public event KeyReleasedHandler KeyReleasedEvent;
+            
+            public bool TextProcessingEnabled { get; set; } = false;
+            
+            public AndroidDynamicTextInputHandler(AndroidUIHandler parent)
+            {
+                _parent = parent;
+                Logger.Info?.Print(LogClass.Application, 
+                    "AndroidDynamicTextInputHandler created (minimal implementation)");
+            }
+            
+            public void SetText(string text, int cursorBegin)
+            {
+                Logger.Debug?.Print(LogClass.Application, 
+                    $"AndroidDynamicTextInputHandler.SetText called: '{text}' at position {cursorBegin}");
+                SetText(text, cursorBegin, cursorBegin);
+            }
+            
+            public void SetText(string text, int cursorBegin, int cursorEnd)
+            {
+                Logger.Debug?.Print(LogClass.Application, 
+                    $"AndroidDynamicTextInputHandler.SetText called: '{text}' at range {cursorBegin}-{cursorEnd}");
+                
+                // 这里可以添加实际处理逻辑，如果需要的话
+                // 目前只是记录日志，防止崩溃
+            }
+            
+            public void Dispose()
+            {
+                if (!_isDisposed)
+                {
+                    _isDisposed = true;
+                    Logger.Info?.Print(LogClass.Application, 
+                        "AndroidDynamicTextInputHandler disposed");
+                }
+            }
         }
     }
 }
