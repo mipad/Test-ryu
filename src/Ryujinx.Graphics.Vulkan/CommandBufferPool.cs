@@ -465,8 +465,9 @@ namespace Ryujinx.Graphics.Vulkan
                     // 分配内存
                     if (allSignalSemaphores.Count > 0)
                     {
-                        // 修复：添加显式类型转换
-                        pSignalSemaphoreValues = (ulong*)stackalloc ulong[allSignalSemaphores.Count];
+                        // 修复：stackalloc返回的就是指针类型，不需要转换
+                        ulong* signalValues = stackalloc ulong[allSignalSemaphores.Count];
+                        pSignalSemaphoreValues = signalValues;
                         for (int i = 0; i < allSignalValues.Count; i++)
                         {
                             pSignalSemaphoreValues[i] = allSignalValues[i];
@@ -475,8 +476,9 @@ namespace Ryujinx.Graphics.Vulkan
                     
                     if (allWaitSemaphores.Count > 0)
                     {
-                        // 修复：添加显式类型转换
-                        pWaitSemaphoreValues = (ulong*)stackalloc ulong[allWaitSemaphores.Count];
+                        // 修复：stackalloc返回的就是指针类型，不需要转换
+                        ulong* waitValues = stackalloc ulong[allWaitSemaphores.Count];
+                        pWaitSemaphoreValues = waitValues;
                         for (int i = 0; i < allWaitValues.Count; i++)
                         {
                             pWaitSemaphoreValues[i] = allWaitValues[i];

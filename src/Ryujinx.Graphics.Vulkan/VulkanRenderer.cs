@@ -695,7 +695,10 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 PNext = &semaphoreTypeCreateInfo
             };
 
-            Api.CreateSemaphore(_device, semaphoreCreateInfo, null, out TimelineSemaphore).ThrowOnError();
+            // 修复：使用局部变量作为out参数
+            Semaphore semaphore;
+            Api.CreateSemaphore(_device, semaphoreCreateInfo, null, out semaphore).ThrowOnError();
+            TimelineSemaphore = semaphore;
         }
 
         private uint FindComputeQueueFamily()
