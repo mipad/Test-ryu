@@ -149,6 +149,7 @@ namespace Ryujinx.Graphics.Vulkan
                 IsMoltenVk = true;
             }
 
+            // 修正：使用正确的日志API
             Logger.Info?.Print(LogClass.Gpu, "VulkanRenderer constructor called");
         }
 
@@ -206,6 +207,7 @@ namespace Ryujinx.Graphics.Vulkan
                 TimelineSemaphoreApi = timelineSemaphoreApi;
                 SupportsTimelineSemaphores = true;
                 
+                // 修正：使用Notice级别的日志
                 Logger.Notice?.Print(LogClass.Gpu, "Vulkan timeline semaphores supported and enabled.");
                 
                 // 创建时间线信号量
@@ -794,8 +796,9 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 $"Surface created. Handle: 0x{_surface.Handle:X}");
 
             _physicalDevice = VulkanInitialization.FindSuitablePhysicalDevice(Api, _instance, _surface, _preferredGpuId);
+            // 修正：访问 PhysicalDeviceProperties 属性
             Logger.Info?.Print(LogClass.Gpu, 
-                $"Selected physical device: {_physicalDevice.Properties.DeviceName}");
+                $"Selected physical device: {_physicalDevice.PhysicalDeviceProperties.DeviceName}");
 
             var queueFamilyIndex = VulkanInitialization.FindSuitableQueueFamily(Api, _physicalDevice, _surface, out uint maxQueueCount);
             Logger.Debug?.Print(LogClass.Gpu, 
@@ -1166,7 +1169,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             }
             catch (Exception ex)
             {
-                Logger.Error?.PrintMsg(LogClass.Gpu, $"Error querying Vulkan devices: {ex.Message}");
+                Logger.Error?.Print(LogClass.Gpu, $"Error querying Vulkan devices: {ex.Message}");
                 return Array.Empty<DeviceInfo>();
             }
         }
@@ -1225,53 +1228,54 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
 
         private void PrintGpuInformation()
         {
-            Logger.Notice.Print(LogClass.Gpu, $"{GpuVendor} {GpuRenderer} ({GpuVersion})");
-            Logger.Notice.Print(LogClass.Gpu, $"GPU Memory: {GetTotalGPUMemory() / (1024 * 1024)} MiB");
+            // 修正：移除错误的日志调用
+            Logger.Notice?.Print(LogClass.Gpu, $"{GpuVendor} {GpuRenderer} ({GpuVersion})");
+            Logger.Notice?.Print(LogClass.Gpu, $"GPU Memory: {GetTotalGPUMemory() / (1024 * 1024)} MiB");
             
             // 时间线信号量信息
             if (SupportsTimelineSemaphores)
             {
-                Logger.Notice.Print(LogClass.Gpu, "✓ Timeline Semaphores: SUPPORTED");
+                Logger.Notice?.Print(LogClass.Gpu, "✓ Timeline Semaphores: SUPPORTED");
                 if (TimelineSemaphore.Handle != 0)
                 {
-                    Logger.Info.Print(LogClass.Gpu, $"  - Timeline semaphore handle: 0x{TimelineSemaphore.Handle:X}");
-                    Logger.Info.Print(LogClass.Gpu, $"  - Initial value: 0");
+                    Logger.Info?.Print(LogClass.Gpu, $"  - Timeline semaphore handle: 0x{TimelineSemaphore.Handle:X}");
+                    Logger.Info?.Print(LogClass.Gpu, $"  - Initial value: 0");
                 }
             }
             else
             {
-                Logger.Notice.Print(LogClass.Gpu, "✗ Timeline Semaphores: NOT SUPPORTED (using fallback fences)");
+                Logger.Notice?.Print(LogClass.Gpu, "✗ Timeline Semaphores: NOT SUPPORTED (using fallback fences)");
             }
             
             // 其他扩展信息
             if (SupportsSynchronization2)
-                Logger.Info.Print(LogClass.Gpu, "✓ Synchronization2: SUPPORTED");
+                Logger.Info?.Print(LogClass.Gpu, "✓ Synchronization2: SUPPORTED");
             if (SupportsDynamicRendering)
-                Logger.Info.Print(LogClass.Gpu, "✓ Dynamic Rendering: SUPPORTED");
+                Logger.Info?.Print(LogClass.Gpu, "✓ Dynamic Rendering: SUPPORTED");
             if (SupportsMultiview)
-                Logger.Info.Print(LogClass.Gpu, "✓ Multiview: SUPPORTED");
+                Logger.Info?.Print(LogClass.Gpu, "✓ Multiview: SUPPORTED");
             if (SupportsASTCDecodeMode)
-                Logger.Info.Print(LogClass.Gpu, "✓ ASTC Decode Mode: SUPPORTED");
+                Logger.Info?.Print(LogClass.Gpu, "✓ ASTC Decode Mode: SUPPORTED");
             
             if (IsTBDR)
             {
-                Logger.Notice.Print(LogClass.Gpu, "Platform: TBDR (Tile-Based Deferred Rendering)");
-                Logger.Notice.Print(LogClass.Gpu, "Query Optimization: Batch processing enabled");
+                Logger.Notice?.Print(LogClass.Gpu, "Platform: TBDR (Tile-Based Deferred Rendering)");
+                Logger.Notice?.Print(LogClass.Gpu, "Query Optimization: Batch processing enabled");
             }
             
             // 硬件信息汇总
-            Logger.Info.Print(LogClass.Gpu, $"Hardware capabilities:");
-            Logger.Info.Print(LogClass.Gpu, $"  - Max push descriptors: {Capabilities.MaxPushDescriptors}");
-            Logger.Info.Print(LogClass.Gpu, $"  - Supports timeline semaphores: {Capabilities.SupportsTimelineSemaphores}");
-            Logger.Info.Print(LogClass.Gpu, $"  - Supports synchronization2: {Capabilities.SupportsSynchronization2}");
-            Logger.Info.Print(LogClass.Gpu, $"  - Supports dynamic rendering: {Capabilities.SupportsDynamicRendering}");
-            Logger.Info.Print(LogClass.Gpu, $"  - Supports ASTC decode mode: {Capabilities.SupportsASTCDecodeMode}");
+            Logger.Info?.Print(LogClass.Gpu, $"Hardware capabilities:");
+            Logger.Info?.Print(LogClass.Gpu, $"  - Max push descriptors: {Capabilities.MaxPushDescriptors}");
+            Logger.Info?.Print(LogClass.Gpu, $"  - Supports timeline semaphores: {Capabilities.SupportsTimelineSemaphores}");
+            Logger.Info?.Print(LogClass.Gpu, $"  - Supports synchronization2: {Capabilities.SupportsSynchronization2}");
+            Logger.Info?.Print(LogClass.Gpu, $"  - Supports dynamic rendering: {Capabilities.SupportsDynamicRendering}");
+            Logger.Info?.Print(LogClass.Gpu, $"  - Supports ASTC decode mode: {Capabilities.SupportsASTCDecodeMode}");
             
             // Mali GPU特殊信息
             if (IsMaliGPU)
             {
-                Logger.Info.Print(LogClass.Gpu, "GPU Type: Mali (ARM)");
-                Logger.Info.Print(LogClass.Gpu, $"  - Software ASTC decode: {ShouldUseSoftwareASTCDecode()}");
+                Logger.Info?.Print(LogClass.Gpu, "GPU Type: Mali (ARM)");
+                Logger.Info?.Print(LogClass.Gpu, $"  - Software ASTC decode: {ShouldUseSoftwareASTCDecode()}");
             }
         }
 
