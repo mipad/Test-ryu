@@ -100,6 +100,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Device Device => _device;
         
+        // 时间线信号量
+        internal Semaphore TimelineSemaphore { get; private set; }
+        
         private readonly Func<Instance, Vk, SurfaceKHR> _getSurface;
         private readonly Func<string[]> _getRequiredExtensions;
         private readonly string _preferredGpuId;
@@ -195,6 +198,9 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 TimelineSemaphoreApi = timelineSemaphoreApi;
                 SupportsTimelineSemaphores = true;
+                
+                // 创建时间线信号量
+                CreateTimelineSemaphore();
             }
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrSynchronization2 synchronization2Api))
@@ -650,7 +656,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtExternalMemoryHost hostMemoryApi);
             HostMemoryAllocator = new HostMemoryAllocator(MemoryAllocator, Api, hostMemoryApi, _device);
 
-            CommandBufferPool = new CommandBufferPool(Api, _device, Queue, QueueLock, queueFamilyIndex, IsQualcommProprietary);
+            CommandBufferPool = new CommandBufferPool(Api, _device, Queue, QueueLock, queueFamilyIndex, IsQualcommProprietary, SupportsTimelineSemaphores, this);
 
             PipelineLayoutCache = new PipelineLayoutCache();
 
@@ -667,6 +673,29 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             Barriers = new BarrierBatch(this);
 
             _counters = new Counters(this, _device, _pipeline);
+        }
+
+        private unsafe void CreateTimelineSemaphore()
+        {
+            if (!SupportsTimelineSemaphores || TimelineSemaphore.Handle != 0)
+            {
+                return;
+            }
+
+            var semaphoreTypeCreateInfo = new SemaphoreTypeCreateInfoKHR
+            {
+                SType = StructureType.SemaphoreTypeCreateInfo,
+                SemaphoreType = SemaphoreTypeKHR.Timeline,
+                InitialValue = 0
+            };
+
+            var semaphoreCreateInfo = new SemaphoreCreateInfo
+            {
+                SType = StructureType.SemaphoreCreateInfo,
+                PNext = &semaphoreTypeCreateInfo
+            };
+
+            Api.CreateSemaphore(_device, semaphoreCreateInfo, null, out TimelineSemaphore).ThrowOnError();
         }
 
         private uint FindComputeQueueFamily()
@@ -1397,6 +1426,13 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             foreach (var texture in Textures) texture.Release();
             foreach (var sampler in Samplers) sampler.Dispose();
 
+            // 销毁时间线信号量
+            if (TimelineSemaphore.Handle != 0)
+            {
+                Api.DestroySemaphore(_device, TimelineSemaphore, null);
+                TimelineSemaphore = default;
+            }
+
             if (_surface.Handle != 0)
             {
                 SurfaceApi.DestroySurface(_instance.Instance, _surface, null);
@@ -1420,6 +1456,41 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         internal bool ShouldUseSoftwareASTCDecode()
         {
             return IsMaliGPU && !SupportsASTCDecodeMode;
+        }
+        
+        // 获取时间线信号量的当前值
+        internal unsafe ulong GetTimelineSemaphoreValue()
+        {
+            if (!SupportsTimelineSemaphores || TimelineSemaphore.Handle == 0)
+            {
+                return 0;
+            }
+            
+            ulong currentValue;
+            TimelineSemaphoreApi.GetSemaphoreCounterValue(_device, TimelineSemaphore, &currentValue);
+            return currentValue;
+        }
+        
+        // 提交时间线信号量值
+        internal void SignalTimelineSemaphore(ulong value)
+        {
+            if (!SupportsTimelineSemaphores || TimelineSemaphore.Handle == 0)
+            {
+                return;
+            }
+            
+            CommandBufferPool?.AddTimelineSignal(TimelineSemaphore, value);
+        }
+        
+        // 添加等待时间线信号量值
+        internal void AddWaitTimelineSemaphore(ulong value)
+        {
+            if (!SupportsTimelineSemaphores || TimelineSemaphore.Handle == 0)
+            {
+                return;
+            }
+            
+            CommandBufferPool?.AddWaitTimelineSemaphore(TimelineSemaphore, value);
         }
     }
 }

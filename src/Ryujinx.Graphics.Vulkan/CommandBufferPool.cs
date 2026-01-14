@@ -21,6 +21,8 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly bool _concurrentFenceWaitUnsupported;
         private readonly CommandPool _pool;
         private readonly Thread _owner;
+        private readonly bool _supportsTimelineSemaphores;
+        private readonly VulkanRenderer _renderer;
 
         public bool OwnedByCurrentThread => _owner == Thread.CurrentThread;
 
@@ -34,6 +36,8 @@ namespace Ryujinx.Graphics.Vulkan
 
             public List<IAuto> Dependants;
             public List<MultiFenceHolder> Waitables;
+            public List<TimelineSignal> TimelineSignals;
+            public List<TimelineWait> TimelineWaits;
 
             public void Initialize(Vk api, Device device, CommandPool pool)
             {
@@ -49,7 +53,22 @@ namespace Ryujinx.Graphics.Vulkan
 
                 Dependants = new List<IAuto>();
                 Waitables = new List<MultiFenceHolder>();
+                TimelineSignals = new List<TimelineSignal>();
+                TimelineWaits = new List<TimelineWait>();
             }
+        }
+
+        private struct TimelineSignal
+        {
+            public Semaphore Semaphore;
+            public ulong Value;
+        }
+
+        private struct TimelineWait
+        {
+            public Semaphore Semaphore;
+            public ulong Value;
+            public PipelineStageFlags Stage;
         }
 
         private readonly ReservedCommandBuffer[] _commandBuffers;
@@ -67,12 +86,28 @@ namespace Ryujinx.Graphics.Vulkan
             uint queueFamilyIndex,
             bool concurrentFenceWaitUnsupported,
             bool isLight = false)
+            : this(api, device, queue, queueLock, queueFamilyIndex, concurrentFenceWaitUnsupported, false, null, isLight)
+        {
+        }
+
+        public unsafe CommandBufferPool(
+            Vk api,
+            Device device,
+            Queue queue,
+            object queueLock,
+            uint queueFamilyIndex,
+            bool concurrentFenceWaitUnsupported,
+            bool supportsTimelineSemaphores,
+            VulkanRenderer renderer,
+            bool isLight = false)
         {
             _api = api;
             _device = device;
             _queue = queue;
             _queueLock = queueLock;
             _concurrentFenceWaitUnsupported = concurrentFenceWaitUnsupported;
+            _supportsTimelineSemaphores = supportsTimelineSemaphores;
+            _renderer = renderer;
             _owner = Thread.CurrentThread;
 
             CommandPoolCreateInfo commandPoolCreateInfo = new()
@@ -146,6 +181,90 @@ namespace Ryujinx.Graphics.Vulkan
             if (waitable.AddFence(cbIndex, entry.Fence))
             {
                 entry.Waitables.Add(waitable);
+            }
+        }
+
+        public void AddTimelineSignal(Semaphore semaphore, ulong value)
+        {
+            if (!_supportsTimelineSemaphores || semaphore.Handle == 0)
+            {
+                return;
+            }
+
+            lock (_commandBuffers)
+            {
+                for (int i = 0; i < _totalCommandBuffers; i++)
+                {
+                    ref ReservedCommandBuffer entry = ref _commandBuffers[i];
+
+                    if (entry.InConsumption)
+                    {
+                        entry.TimelineSignals.Add(new TimelineSignal { Semaphore = semaphore, Value = value });
+                    }
+                }
+            }
+        }
+
+        public void AddInUseTimelineSignal(Semaphore semaphore, ulong value)
+        {
+            if (!_supportsTimelineSemaphores || semaphore.Handle == 0)
+            {
+                return;
+            }
+
+            lock (_commandBuffers)
+            {
+                for (int i = 0; i < _totalCommandBuffers; i++)
+                {
+                    ref ReservedCommandBuffer entry = ref _commandBuffers[i];
+
+                    if (entry.InUse)
+                    {
+                        entry.TimelineSignals.Add(new TimelineSignal { Semaphore = semaphore, Value = value });
+                    }
+                }
+            }
+        }
+
+        public void AddWaitTimelineSemaphore(Semaphore semaphore, ulong value, PipelineStageFlags stage = PipelineStageFlags.AllCommandsBit)
+        {
+            if (!_supportsTimelineSemaphores || semaphore.Handle == 0)
+            {
+                return;
+            }
+
+            lock (_commandBuffers)
+            {
+                for (int i = 0; i < _totalCommandBuffers; i++)
+                {
+                    ref ReservedCommandBuffer entry = ref _commandBuffers[i];
+
+                    if (entry.InConsumption)
+                    {
+                        entry.TimelineWaits.Add(new TimelineWait { Semaphore = semaphore, Value = value, Stage = stage });
+                    }
+                }
+            }
+        }
+
+        public void AddInUseWaitTimelineSemaphore(Semaphore semaphore, ulong value, PipelineStageFlags stage = PipelineStageFlags.AllCommandsBit)
+        {
+            if (!_supportsTimelineSemaphores || semaphore.Handle == 0)
+            {
+                return;
+            }
+
+            lock (_commandBuffers)
+            {
+                for (int i = 0; i < _totalCommandBuffers; i++)
+                {
+                    ref ReservedCommandBuffer entry = ref _commandBuffers[i];
+
+                    if (entry.InUse)
+                    {
+                        entry.TimelineWaits.Add(new TimelineWait { Semaphore = semaphore, Value = value, Stage = stage });
+                    }
+                }
             }
         }
 
@@ -293,25 +412,126 @@ namespace Ryujinx.Graphics.Vulkan
 
                 _api.EndCommandBuffer(commandBuffer).ThrowOnError();
 
-                fixed (Semaphore* pWaitSemaphores = waitSemaphores, pSignalSemaphores = signalSemaphores)
+                // 准备时间线信号量提交信息
+                TimelineSemaphoreSubmitInfoKHR timelineInfo = default;
+                ulong* pSignalSemaphoreValues = null;
+                ulong* pWaitSemaphoreValues = null;
+                
+                if (_supportsTimelineSemaphores && (entry.TimelineSignals.Count > 0 || entry.TimelineWaits.Count > 0))
                 {
-                    fixed (PipelineStageFlags* pWaitDstStageMask = waitDstStageMask)
+                    // 收集所有时间线信号量
+                    var allSignalSemaphores = new List<Semaphore>();
+                    var allSignalValues = new List<ulong>();
+                    var allWaitSemaphores = new List<Semaphore>();
+                    var allWaitValues = new List<ulong>();
+                    var allWaitStages = new List<PipelineStageFlags>();
+
+                    // 添加额外传入的信号量
+                    if (!signalSemaphores.IsEmpty)
+                    {
+                        foreach (var semaphore in signalSemaphores)
+                        {
+                            allSignalSemaphores.Add(semaphore);
+                            allSignalValues.Add(0); // 二进制信号量值为0
+                        }
+                    }
+
+                    // 添加时间线信号
+                    foreach (var timelineSignal in entry.TimelineSignals)
+                    {
+                        allSignalSemaphores.Add(timelineSignal.Semaphore);
+                        allSignalValues.Add(timelineSignal.Value);
+                    }
+
+                    // 添加额外传入的等待信号量
+                    if (!waitSemaphores.IsEmpty)
+                    {
+                        for (int i = 0; i < waitSemaphores.Length; i++)
+                        {
+                            allWaitSemaphores.Add(waitSemaphores[i]);
+                            allWaitValues.Add(0); // 二进制信号量值为0
+                            allWaitStages.Add(waitDstStageMask.IsEmpty ? PipelineStageFlags.AllCommandsBit : waitDstStageMask[i]);
+                        }
+                    }
+
+                    // 添加时间线等待
+                    foreach (var timelineWait in entry.TimelineWaits)
+                    {
+                        allWaitSemaphores.Add(timelineWait.Semaphore);
+                        allWaitValues.Add(timelineWait.Value);
+                        allWaitStages.Add(timelineWait.Stage);
+                    }
+
+                    // 分配内存
+                    pSignalSemaphoreValues = stackalloc ulong[allSignalSemaphores.Count];
+                    pWaitSemaphoreValues = stackalloc ulong[allWaitSemaphores.Count];
+                    
+                    for (int i = 0; i < allSignalValues.Count; i++)
+                    {
+                        pSignalSemaphoreValues[i] = allSignalValues[i];
+                    }
+                    
+                    for (int i = 0; i < allWaitValues.Count; i++)
+                    {
+                        pWaitSemaphoreValues[i] = allWaitValues[i];
+                    }
+
+                    timelineInfo = new TimelineSemaphoreSubmitInfoKHR
+                    {
+                        SType = StructureType.TimelineSemaphoreSubmitInfo,
+                        WaitSemaphoreValueCount = (uint)allWaitSemaphores.Count,
+                        PWaitSemaphoreValues = pWaitSemaphoreValues,
+                        SignalSemaphoreValueCount = (uint)allSignalSemaphores.Count,
+                        PSignalSemaphoreValues = pSignalSemaphoreValues,
+                    };
+
+                    // 提交
+                    fixed (Semaphore* pWaitSemaphores = allWaitSemaphores.Count > 0 ? allWaitSemaphores.ToArray() : null)
+                    fixed (Semaphore* pSignalSemaphores = allSignalSemaphores.Count > 0 ? allSignalSemaphores.ToArray() : null)
+                    fixed (PipelineStageFlags* pWaitDstStageMask = allWaitStages.Count > 0 ? allWaitStages.ToArray() : null)
                     {
                         SubmitInfo sInfo = new()
                         {
                             SType = StructureType.SubmitInfo,
-                            WaitSemaphoreCount = !waitSemaphores.IsEmpty ? (uint)waitSemaphores.Length : 0,
+                            PNext = &timelineInfo,
+                            WaitSemaphoreCount = (uint)allWaitSemaphores.Count,
                             PWaitSemaphores = pWaitSemaphores,
                             PWaitDstStageMask = pWaitDstStageMask,
                             CommandBufferCount = 1,
                             PCommandBuffers = &commandBuffer,
-                            SignalSemaphoreCount = !signalSemaphores.IsEmpty ? (uint)signalSemaphores.Length : 0,
+                            SignalSemaphoreCount = (uint)allSignalSemaphores.Count,
                             PSignalSemaphores = pSignalSemaphores,
                         };
 
                         lock (_queueLock)
                         {
                             _api.QueueSubmit(_queue, 1, in sInfo, entry.Fence.GetUnsafe()).ThrowOnError();
+                        }
+                    }
+                }
+                else
+                {
+                    // 传统提交方式
+                    fixed (Semaphore* pWaitSemaphores = waitSemaphores, pSignalSemaphores = signalSemaphores)
+                    {
+                        fixed (PipelineStageFlags* pWaitDstStageMask = waitDstStageMask)
+                        {
+                            SubmitInfo sInfo = new()
+                            {
+                                SType = StructureType.SubmitInfo,
+                                WaitSemaphoreCount = !waitSemaphores.IsEmpty ? (uint)waitSemaphores.Length : 0,
+                                PWaitSemaphores = pWaitSemaphores,
+                                PWaitDstStageMask = pWaitDstStageMask,
+                                CommandBufferCount = 1,
+                                PCommandBuffers = &commandBuffer,
+                                SignalSemaphoreCount = !signalSemaphores.IsEmpty ? (uint)signalSemaphores.Length : 0,
+                                PSignalSemaphores = pSignalSemaphores,
+                            };
+
+                            lock (_queueLock)
+                            {
+                                _api.QueueSubmit(_queue, 1, in sInfo, entry.Fence.GetUnsafe()).ThrowOnError();
+                            }
                         }
                     }
                 }
@@ -345,6 +565,8 @@ namespace Ryujinx.Graphics.Vulkan
 
             entry.Dependants.Clear();
             entry.Waitables.Clear();
+            entry.TimelineSignals.Clear();
+            entry.TimelineWaits.Clear();
             entry.Fence?.Dispose();
 
             if (refreshFence)
