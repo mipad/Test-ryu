@@ -1,56 +1,187 @@
-name: Android CI 
+name: Android CI Fixed
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main" ]  
   pull_request:
     branches: [ "main" ]
-  workflow_dispatch:
-    inputs:
-      should_release:
-        description: 'Create GitHub Release'
-        type: boolean
-        default: false
-      upload_artifact:
-        description: 'Upload APK as artifact'
-        type: boolean
-        default: true
-        
+
 jobs:
   build:
-    runs-on: macOS-latest
-    permissions:
-      contents: read
-      actions: write
-      packages: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    
+    env:
+      JAVA_OPTS: "-Xmx6g -XX:MaxMetaspaceSize=4g"
+      GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4"
+      PROJECT_DIR: src/RyujinxAndroid
+      ANDROID_NDK_VERSION: "29.0.14206865"
+      DOTNET_VERSION: "10.0.100"
+      ANDROID_API_LEVEL: "36"
+      GRADLE_VERSION: "9.2.0"
+      ANDROID_BUILD_TOOLS: "36.0.0"
+
     steps:
-    - name: Enable Long Paths
-      run: |
-      
-       
+    # ========== 1. 代码检出 ==========
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
         ref: main
         path: Test-ryu
-        
+
+    # ========== 2. 环境配置 ==========
     - name: Setup Java
       uses: actions/setup-java@v4
       with:
         distribution: temurin
-        java-version: 17
-        
-         
-    - name: Build Android
+        java-version: 21
+        architecture: x64
+
+    - name: Setup Android SDK/NDK
+      uses: android-actions/setup-android@v3
+      with:
+        ndk-version: ${{ env.ANDROID_NDK_VERSION }}
+        cmake-version: 3.22.1
+
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    # ========== 3. 缓存优化 ==========
+    - name: Cache Gradle dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
+
+    # ========== 4. 权限和Gradle设置 ==========
+    - name: Set execution permissions
+      working-directory: ${{ github.workspace }}/Test-ryu
       run: |
-        cd ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid
-        chmod +x ./gradlew
-        ./gradlew "assembleRelease"
-        
-    - name: Upload APK
+        find . -name "gradlew" -exec chmod +x {} \;
+        find . -name "*.sh" -exec chmod +x {} \;
+        find . -name "*.bat" -exec chmod +x {} \; 2>/dev/null || true
+
+    - name: Setup Gradle Wrapper
+      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
+      run: |
+        if [ ! -f "gradlew" ]; then
+          echo "Initializing Gradle Wrapper"
+          gradle wrapper --gradle-version=${{ env.GRADLE_VERSION }}
+        else
+          echo "Gradle Wrapper already exists"
+        fi
+
+    # ========== 5. 验证环境 ==========
+    - name: Verify .NET SDK Installation
+      run: |
+        dotnet --list-sdks
+        echo "检查是否安装 .NET ${{ env.DOTNET_VERSION }}"
+
+    - name: Install Android SDK Components
+      run: |
+        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install \
+          "build-tools;${{ env.ANDROID_BUILD_TOOLS }}" \
+          "platforms;android-${{ env.ANDROID_API_LEVEL }}" \
+          "cmake;3.22.1" \
+          "ndk;${{ env.ANDROID_NDK_VERSION }}"
+
+    - name: Configure Environment Paths
+      shell: bash
+      run: |
+        # 显式定义 ANDROID_NDK_HOME，避免路径拼接错误
+        ANDROID_NDK_HOME="/usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}"
+        LLVM_PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
+        LIB_DIR="$LLVM_PATH/sysroot/usr/lib/aarch64-linux-android/${{ env.ANDROID_API_LEVEL }}"
+
+        echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
+        echo "LLVM_PATH=$LLVM_PATH" >> $GITHUB_ENV
+        echo "LIB_DIR=$LIB_DIR" >> $GITHUB_ENV
+        echo "$LLVM_PATH/bin" >> $GITHUB_PATH
+
+    - name: Install Ninja Build
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ninja-build
+        ninja --version
+
+    - name: Validate Build Environment
+      run: |
+        echo "=== 环境验证 ==="
+        echo "Java version:"
+        java -version
+        echo "Gradle version:"
+        ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/gradlew --version
+        echo "Android SDK路径:"
+        echo $ANDROID_HOME
+        echo "NDK路径:"
+        echo $ANDROID_NDK_HOME
+        echo "LLVM路径:"
+        echo $LLVM_PATH
+        echo "=== 环境验证完成 ==="
+
+    # ========== 6. 主构建流程 ==========
+    - name: Build APK
+      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
+      env:
+        OPENSSL_ROOT_DIR: /opt/openssl-x64
+      run: |
+        # 调试输出：关键环境变量
+        echo "LLVM_PATH: $LLVM_PATH"
+        echo "OPENSSL_ROOT_DIR: $OPENSSL_ROOT_DIR"
+        echo "ANDROID_NDK_HOME: $ANDROID_NDK_HOME"
+
+        # 执行构建
+        ./gradlew clean assembleRelease \
+          -DllvmToolchainPath=$LLVM_PATH \
+          -Dopenssl.root=$OPENSSL_ROOT_DIR \
+          -Pandroid.overridePathCheck=true \
+          --no-daemon \
+          --stacktrace \
+          --info
+
+    # ========== 7. 构建产物检查 ==========
+    - name: Find Native Libraries (.so)
+      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
+      run: |
+        echo "========== 开始搜索 .so 文件 =========="
+        find app/build -name "*.so" -print
+        echo "========== 搜索完成 =========="
+
+    - name: List APK Files
+      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
+      run: |
+        echo "========== APK 文件列表 =========="
+        find app/build/outputs/apk -name "*.apk" -print
+        echo "========== 列表完成 =========="
+
+    # ========== 8. 产物处理 ==========
+    - name: Upload Native Libraries
       uses: actions/upload-artifact@v4
       with:
-          name: ryujinx-main-${{ github.run_number }}
-          path: Test-ryu/src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
-          retention-days: 7 
+        name: native-libs
+        path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/**/*.so
+        retention-days: 7
+
+    - name: Upload APK Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: android-arm64-release
+        path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
+        retention-days: 7
+
+    - name: Upload Build Reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: build-reports
+        path: |
+          ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/reports/
+          ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/build/reports/
+        retention-days: 3
