@@ -1065,11 +1065,13 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 maximumGpuMemory: GetTotalGPUMemory());
         }
 
-        private ulong GetTotalGPUMemory()
+        private unsafe ulong GetTotalGPUMemory()
         {
             ulong totalMemory = 0;
 
-            Api.GetPhysicalDeviceMemoryProperties(_physicalDevice.PhysicalDevice, out PhysicalDeviceMemoryProperties memoryProperties);
+            // 修复：使用局部变量而不是属性作为out参数
+            var physicalDevice = _physicalDevice.PhysicalDevice;
+            Api.GetPhysicalDeviceMemoryProperties(physicalDevice, out PhysicalDeviceMemoryProperties memoryProperties);
 
             for (int i = 0; i < memoryProperties.MemoryHeapCount; i++)
             {
