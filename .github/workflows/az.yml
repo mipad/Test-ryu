@@ -2,9 +2,9 @@ name: Android CI Fixed
 
 on: 
   push:
-    branches: [ "批量复制" ]  
+    branches: [ "批量复制1" ]  
   pull_request:
-    branches: [ "批量复制" ]
+    branches: [ "批量复制1" ]
 
 jobs:
   build:
@@ -27,7 +27,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: 批量复制
+        ref: 批量复制1
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
