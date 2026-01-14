@@ -148,6 +148,8 @@ namespace Ryujinx.Graphics.Vulkan
                 MVKInitialization.Initialize();
                 IsMoltenVk = true;
             }
+
+            Logger.Info?.Print(LogClass.Gpu, "VulkanRenderer constructor called");
         }
 
         // 内部 ASTC 解码模式结构体定义
@@ -170,6 +172,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         private unsafe void LoadFeatures(uint maxQueueCount, uint queueFamilyIndex)
         {
+            Logger.Debug?.Print(LogClass.Gpu, "Loading Vulkan device features");
+
             FormatCapabilities = new FormatCapabilities(Api, _physicalDevice.PhysicalDevice);
 
             uint computeFamilyIndex = FindComputeQueueFamily();
@@ -187,11 +191,14 @@ namespace Ryujinx.Graphics.Vulkan
                     computeFamilyIndex,
                     IsQualcommProprietary,
                     false);
+                
+                Logger.Info?.Print(LogClass.Gpu, $"Created separate compute command pool (family index: {computeFamilyIndex})");
             }
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtConditionalRendering conditionalRenderingApi))
             {
                 ConditionalRenderingApi = conditionalRenderingApi;
+                Logger.Debug?.Print(LogClass.Gpu, "Conditional rendering extension loaded");
             }
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrTimelineSemaphore timelineSemaphoreApi))
@@ -199,55 +206,73 @@ namespace Ryujinx.Graphics.Vulkan
                 TimelineSemaphoreApi = timelineSemaphoreApi;
                 SupportsTimelineSemaphores = true;
                 
+                Logger.Notice?.Print(LogClass.Gpu, "Vulkan timeline semaphores supported and enabled.");
+                
                 // 创建时间线信号量
                 CreateTimelineSemaphore();
+            }
+            else
+            {
+                Logger.Notice?.Print(LogClass.Gpu, "Vulkan timeline semaphores NOT supported. Using fallback fence mechanism.");
             }
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrSynchronization2 synchronization2Api))
             {
                 Synchronization2Api = synchronization2Api;
                 SupportsSynchronization2 = true;
+                Logger.Debug?.Print(LogClass.Gpu, "Synchronization2 extension loaded");
             }
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrDynamicRendering dynamicRenderingApi))
             {
                 DynamicRenderingApi = dynamicRenderingApi;
                 SupportsDynamicRendering = true;
+                Logger.Debug?.Print(LogClass.Gpu, "Dynamic rendering extension loaded");
             }
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtExtendedDynamicState extendedDynamicStateApi))
             {
                 ExtendedDynamicStateApi = extendedDynamicStateApi;
+                Logger.Debug?.Print(LogClass.Gpu, "Extended dynamic state extension loaded");
             }
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtExtendedDynamicState2 extendedDynamicState2Api))
             {
                 ExtendedDynamicState2Api = extendedDynamicState2Api;
                 SupportsExtendedDynamicState2 = true;
+                Logger.Debug?.Print(LogClass.Gpu, "Extended dynamic state2 extension loaded");
             }
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrPushDescriptor pushDescriptorApi))
             {
                 PushDescriptorApi = pushDescriptorApi;
+                Logger.Debug?.Print(LogClass.Gpu, "Push descriptor extension loaded");
             }
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtTransformFeedback transformFeedbackApi))
             {
                 TransformFeedbackApi = transformFeedbackApi;
+                Logger.Debug?.Print(LogClass.Gpu, "Transform feedback extension loaded");
             }
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrDrawIndirectCount drawIndirectCountApi))
             {
                 DrawIndirectCountApi = drawIndirectCountApi;
+                Logger.Debug?.Print(LogClass.Gpu, "Draw indirect count extension loaded");
             }
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtAttachmentFeedbackLoopDynamicState dynamicFeedbackLoopApi))
             {
                 DynamicFeedbackLoopApi = dynamicFeedbackLoopApi;
+                Logger.Debug?.Print(LogClass.Gpu, "Attachment feedback loop dynamic state extension loaded");
             }
 
             // 检测 ASTC 解码模式扩展支持
             SupportsASTCDecodeMode = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_astc_decode_mode");
+            if (SupportsASTCDecodeMode)
+            {
+                Logger.Debug?.Print(LogClass.Gpu, "ASTC decode mode extension supported");
+            }
 
             SupportsFragmentDensityMap = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map");
             SupportsFragmentDensityMap2 = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map2");
@@ -258,6 +283,7 @@ namespace Ryujinx.Graphics.Vulkan
                 Api.GetDeviceQueue(_device, queueFamilyIndex, 1, out var backgroundQueue);
                 BackgroundQueue = backgroundQueue;
                 BackgroundQueueLock = new object();
+                Logger.Debug?.Print(LogClass.Gpu, "Background queue available");
             }
 
             PhysicalDeviceProperties2 properties2 = new()
@@ -657,6 +683,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             HostMemoryAllocator = new HostMemoryAllocator(MemoryAllocator, Api, hostMemoryApi, _device);
 
             CommandBufferPool = new CommandBufferPool(Api, _device, Queue, QueueLock, queueFamilyIndex, IsQualcommProprietary, SupportsTimelineSemaphores, this);
+            Logger.Info?.Print(LogClass.Gpu, "CommandBufferPool created");
 
             PipelineLayoutCache = new PipelineLayoutCache();
 
@@ -673,12 +700,16 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             Barriers = new BarrierBatch(this);
 
             _counters = new Counters(this, _device, _pipeline);
+            
+            Logger.Info?.Print(LogClass.Gpu, "VulkanRenderer features loaded successfully");
         }
 
         private unsafe void CreateTimelineSemaphore()
         {
             if (!SupportsTimelineSemaphores || TimelineSemaphore.Handle != 0)
             {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Cannot create timeline semaphore. Supported: {SupportsTimelineSemaphores}, Handle: 0x{TimelineSemaphore.Handle:X}");
                 return;
             }
 
@@ -697,8 +728,20 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
 
             // 修复：使用局部变量作为out参数
             Semaphore semaphore;
-            Api.CreateSemaphore(_device, semaphoreCreateInfo, null, out semaphore).ThrowOnError();
-            TimelineSemaphore = semaphore;
+            var result = Api.CreateSemaphore(_device, semaphoreCreateInfo, null, out semaphore);
+            
+            if (result == Result.Success)
+            {
+                TimelineSemaphore = semaphore;
+                Logger.Info?.Print(LogClass.Gpu, 
+                    $"Timeline semaphore created successfully. Handle: 0x{TimelineSemaphore.Handle:X}, Initial value: 0");
+            }
+            else
+            {
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Failed to create timeline semaphore: {result}");
+                SupportsTimelineSemaphores = false;
+            }
         }
 
         private uint FindComputeQueueFamily()
@@ -721,34 +764,50 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                     if (property.QueueFlags.HasFlag(QueueFlags.ComputeBit) &&
                         !property.QueueFlags.HasFlag(QueueFlags.GraphicsBit))
                     {
+                        Logger.Debug?.Print(LogClass.Gpu, 
+                            $"Found dedicated compute queue family at index {i}");
                         return i;
                     }
                 }
             }
 
+            Logger.Debug?.Print(LogClass.Gpu, 
+                "No dedicated compute queue family found");
             return uint.MaxValue;
         }
 
         private void SetupContext(GraphicsDebugLevel logLevel)
         {
+            Logger.Info?.Print(LogClass.Gpu, "Setting up Vulkan context");
+            
             _instance = VulkanInitialization.CreateInstance(Api, logLevel, _getRequiredExtensions());
             _debugMessenger = new VulkanDebugMessenger(Api, _instance.Instance, logLevel);
 
             if (Api.TryGetInstanceExtension(_instance.Instance, out KhrSurface surfaceApi))
             {
                 SurfaceApi = surfaceApi;
+                Logger.Debug?.Print(LogClass.Gpu, "Surface extension loaded");
             }
 
             _surface = _getSurface(_instance.Instance, Api);
+            Logger.Debug?.Print(LogClass.Gpu, 
+                $"Surface created. Handle: 0x{_surface.Handle:X}");
+
             _physicalDevice = VulkanInitialization.FindSuitablePhysicalDevice(Api, _instance, _surface, _preferredGpuId);
+            Logger.Info?.Print(LogClass.Gpu, 
+                $"Selected physical device: {_physicalDevice.Properties.DeviceName}");
 
             var queueFamilyIndex = VulkanInitialization.FindSuitableQueueFamily(Api, _physicalDevice, _surface, out uint maxQueueCount);
+            Logger.Debug?.Print(LogClass.Gpu, 
+                $"Selected queue family index: {queueFamilyIndex}, Max queues: {maxQueueCount}");
 
             _device = VulkanInitialization.CreateDevice(Api, _physicalDevice, queueFamilyIndex, maxQueueCount);
+            Logger.Debug?.Print(LogClass.Gpu, "Logical device created");
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrSwapchain swapchainApi))
             {
                 SwapchainApi = swapchainApi;
+                Logger.Debug?.Print(LogClass.Gpu, "Swapchain extension loaded");
             }
 
             Api.GetDeviceQueue(_device, queueFamilyIndex, 0, out var queue);
@@ -762,6 +821,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 Api.GetDeviceQueue(_device, queueFamilyIndex, 1, out var backgroundQueue);
                 BackgroundQueue = backgroundQueue;
                 BackgroundQueueLock = new object();
+                Logger.Debug?.Print(LogClass.Gpu, "Background queue created");
             }
 
             LoadFeatures(maxQueueCount, queueFamilyIndex);
@@ -771,6 +831,8 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             _window = new Window(this, _surface, _physicalDevice.PhysicalDevice, _device);
 
             _initialized = true;
+            
+            Logger.Info?.Print(LogClass.Gpu, "Vulkan context setup completed");
         }
 
         internal int[] GetPushDescriptorReservedBindings(bool isOgl)
@@ -871,6 +933,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
 
         internal void FlushAllCommands()
         {
+            Logger.Debug?.Print(LogClass.Gpu, "Flushing all commands");
             _pipeline?.FlushCommandsImpl();
         }
 
@@ -1085,6 +1148,8 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 }
             }
 
+            Logger.Debug?.Print(LogClass.Gpu, 
+                $"Total GPU memory: {totalMemory / (1024 * 1024)} MiB");
             return totalMemory;
         }
 
@@ -1163,28 +1228,59 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             Logger.Notice.Print(LogClass.Gpu, $"{GpuVendor} {GpuRenderer} ({GpuVersion})");
             Logger.Notice.Print(LogClass.Gpu, $"GPU Memory: {GetTotalGPUMemory() / (1024 * 1024)} MiB");
             
+            // 时间线信号量信息
             if (SupportsTimelineSemaphores)
-                Logger.Notice.Print(LogClass.Gpu, "Supports: Timeline Semaphores");
+            {
+                Logger.Notice.Print(LogClass.Gpu, "✓ Timeline Semaphores: SUPPORTED");
+                if (TimelineSemaphore.Handle != 0)
+                {
+                    Logger.Info.Print(LogClass.Gpu, $"  - Timeline semaphore handle: 0x{TimelineSemaphore.Handle:X}");
+                    Logger.Info.Print(LogClass.Gpu, $"  - Initial value: 0");
+                }
+            }
+            else
+            {
+                Logger.Notice.Print(LogClass.Gpu, "✗ Timeline Semaphores: NOT SUPPORTED (using fallback fences)");
+            }
+            
+            // 其他扩展信息
             if (SupportsSynchronization2)
-                Logger.Notice.Print(LogClass.Gpu, "Supports: Synchronization2");
+                Logger.Info.Print(LogClass.Gpu, "✓ Synchronization2: SUPPORTED");
             if (SupportsDynamicRendering)
-                Logger.Notice.Print(LogClass.Gpu, "Supports: Dynamic Rendering");
+                Logger.Info.Print(LogClass.Gpu, "✓ Dynamic Rendering: SUPPORTED");
             if (SupportsMultiview)
-                Logger.Notice.Print(LogClass.Gpu, "Supports: Multiview");
+                Logger.Info.Print(LogClass.Gpu, "✓ Multiview: SUPPORTED");
             if (SupportsASTCDecodeMode)
-                Logger.Notice.Print(LogClass.Gpu, "Supports: ASTC Decode Mode");
+                Logger.Info.Print(LogClass.Gpu, "✓ ASTC Decode Mode: SUPPORTED");
             
             if (IsTBDR)
             {
                 Logger.Notice.Print(LogClass.Gpu, "Platform: TBDR (Tile-Based Deferred Rendering)");
                 Logger.Notice.Print(LogClass.Gpu, "Query Optimization: Batch processing enabled");
             }
+            
+            // 硬件信息汇总
+            Logger.Info.Print(LogClass.Gpu, $"Hardware capabilities:");
+            Logger.Info.Print(LogClass.Gpu, $"  - Max push descriptors: {Capabilities.MaxPushDescriptors}");
+            Logger.Info.Print(LogClass.Gpu, $"  - Supports timeline semaphores: {Capabilities.SupportsTimelineSemaphores}");
+            Logger.Info.Print(LogClass.Gpu, $"  - Supports synchronization2: {Capabilities.SupportsSynchronization2}");
+            Logger.Info.Print(LogClass.Gpu, $"  - Supports dynamic rendering: {Capabilities.SupportsDynamicRendering}");
+            Logger.Info.Print(LogClass.Gpu, $"  - Supports ASTC decode mode: {Capabilities.SupportsASTCDecodeMode}");
+            
+            // Mali GPU特殊信息
+            if (IsMaliGPU)
+            {
+                Logger.Info.Print(LogClass.Gpu, "GPU Type: Mali (ARM)");
+                Logger.Info.Print(LogClass.Gpu, $"  - Software ASTC decode: {ShouldUseSoftwareASTCDecode()}");
+            }
         }
 
         public void Initialize(GraphicsDebugLevel logLevel)
         {
+            Logger.Info?.Print(LogClass.Gpu, "Initializing VulkanRenderer");
             SetupContext(logLevel);
             PrintGpuInformation();
+            Logger.Info?.Print(LogClass.Gpu, "VulkanRenderer initialization complete");
         }
 
         internal bool NeedsVertexBufferAlignment(int attrScalarAlignment, out int alignment)
@@ -1206,6 +1302,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
 
         public void PreFrame()
         {
+            Logger.Trace?.Print(LogClass.Gpu, "PreFrame called");
             SyncManager.Cleanup();
             
             // TBDR平台：预优化批量查询
@@ -1258,6 +1355,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
 
         public void CreateSync(ulong id, bool strict)
         {
+            Logger.Debug?.Print(LogClass.Gpu, $"CreateSync called: id={id}, strict={strict}");
             SyncManager.Create(id, strict);
         }
 
@@ -1268,17 +1366,21 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
 
         public void WaitSync(ulong id)
         {
+            Logger.Debug?.Print(LogClass.Gpu, $"WaitSync called: id={id}");
             SyncManager.Wait(id);
         }
 
         public ulong GetCurrentSync()
         {
-            return SyncManager.GetCurrent();
+            var result = SyncManager.GetCurrent();
+            Logger.Trace?.Print(LogClass.Gpu, $"GetCurrentSync returned: {result}");
+            return result;
         }
 
         public void SetInterruptAction(Action<Action> interruptAction)
         {
             InterruptAction = interruptAction;
+            Logger.Debug?.Print(LogClass.Gpu, "Interrupt action set");
         }
 
         public void Screenshot()
@@ -1302,6 +1404,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         {
             if (!PresentAllowed || SurfaceLock == null)
             {
+                Logger.Warning?.Print(LogClass.Gpu, "Cannot recreate surface: Present not allowed or SurfaceLock null");
                 return false;
             }
 
@@ -1311,16 +1414,20 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 {
                     if (_surface.Handle != 0)
                     {
+                        Logger.Debug?.Print(LogClass.Gpu, $"Destroying existing surface: 0x{_surface.Handle:X}");
                         SurfaceApi.DestroySurface(_instance.Instance, _surface, null);
                         _surface = new SurfaceKHR(0);
                     }
 
+                    Logger.Debug?.Print(LogClass.Gpu, "Creating new surface");
                     _surface = _getSurface(_instance.Instance, Api);
                     if (_surface.Handle == 0)
                     {
+                        Logger.Error?.Print(LogClass.Gpu, "Failed to create new surface");
                         return false;
                     }
 
+                    Logger.Info?.Print(LogClass.Gpu, $"New surface created: 0x{_surface.Handle:X}");
                     ( _window as Window )?.SetSurface(_surface);
                     ( _window as Window )?.SetSurfaceQueryAllowed(true);
           
@@ -1328,6 +1435,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 }
                 catch (Exception ex)
                 {
+                    Logger.Error?.Print(LogClass.Gpu, $"Error recreating surface: {ex.Message}");
                     return false;
                 }
             }
@@ -1348,12 +1456,14 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
 
                     if (_surface.Handle != 0)
                     {
+                        Logger.Debug?.Print(LogClass.Gpu, $"Releasing surface: 0x{_surface.Handle:X}");
                         SurfaceApi.DestroySurface(_instance.Instance, _surface, null);
                         _surface = new SurfaceKHR(0);
                     }
                 }
                 catch (Exception ex)
                 {
+                    Logger.Error?.Print(LogClass.Gpu, $"Error releasing surface: {ex.Message}");
                 }
 
                 ( _window as Window )?.OnSurfaceLost();
@@ -1367,6 +1477,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 return;
             }
 
+            Logger.Info?.Print(LogClass.Gpu, $"SetPresentEnabled: {enabled}");
             PresentAllowed = enabled;
 
             if (!enabled)
@@ -1387,6 +1498,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 return;
             }
 
+            Logger.Info?.Print(LogClass.Gpu, $"SetPresentAllowed: {allowed}");
             PresentAllowed = allowed;
 
             if (allowed)
@@ -1399,6 +1511,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 }
                 catch (Exception ex)
                 {
+                    Logger.Error?.Print(LogClass.Gpu, $"Error in SetPresentAllowed: {ex.Message}");
                 }
             }
             else
@@ -1413,6 +1526,12 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             {
                 return;
             }
+
+            Logger.Info?.Print(LogClass.Gpu, "Disposing VulkanRenderer");
+
+            // 记录统计信息
+            SyncManager?.LogStats();
+            CommandBufferPool?.LogStats();
 
             CommandBufferPool?.Dispose();
             _computeCommandPool?.Dispose();
@@ -1434,6 +1553,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             // 销毁时间线信号量
             if (TimelineSemaphore.Handle != 0)
             {
+                Logger.Debug?.Print(LogClass.Gpu, $"Destroying timeline semaphore: 0x{TimelineSemaphore.Handle:X}");
                 Api.DestroySemaphore(_device, TimelineSemaphore, null);
                 TimelineSemaphore = default;
             }
@@ -1449,6 +1569,8 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
 
             // Last step destroy the instance
             _instance?.Dispose();
+            
+            Logger.Info?.Print(LogClass.Gpu, "VulkanRenderer disposed");
         }
 
         public bool PrepareHostMapping(nint address, ulong size)
@@ -1460,7 +1582,10 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         // 针对Mali GPU的特殊处理
         internal bool ShouldUseSoftwareASTCDecode()
         {
-            return IsMaliGPU && !SupportsASTCDecodeMode;
+            bool result = IsMaliGPU && !SupportsASTCDecodeMode;
+            Logger.Debug?.Print(LogClass.Gpu, 
+                $"ShouldUseSoftwareASTCDecode: {result} (IsMaliGPU: {IsMaliGPU}, SupportsASTCDecodeMode: {SupportsASTCDecodeMode})");
+            return result;
         }
         
         // 获取时间线信号量的当前值
@@ -1468,13 +1593,33 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         {
             if (!SupportsTimelineSemaphores || TimelineSemaphore.Handle == 0)
             {
+                if (Logger.IsDebugEnabled(LogClass.Gpu))
+                {
+                    Logger.Debug?.Print(LogClass.Gpu, 
+                        $"Timeline semaphore not available. Supports: {SupportsTimelineSemaphores}, Handle: 0x{TimelineSemaphore.Handle:X}");
+                }
                 return 0;
             }
             
             ulong currentValue;
             var timelineSemaphore = TimelineSemaphore;
-            TimelineSemaphoreApi.GetSemaphoreCounterValue(_device, timelineSemaphore, &currentValue);
-            return currentValue;
+            var result = TimelineSemaphoreApi.GetSemaphoreCounterValue(_device, timelineSemaphore, &currentValue);
+            
+            if (result == Result.Success)
+            {
+                if (Logger.IsTraceEnabled(LogClass.Gpu))
+                {
+                    Logger.Trace?.Print(LogClass.Gpu, 
+                        $"Current timeline semaphore value: {currentValue}");
+                }
+                return currentValue;
+            }
+            else
+            {
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Failed to get timeline semaphore value: {result}");
+                return 0;
+            }
         }
         
         // 提交时间线信号量值
@@ -1482,9 +1627,13 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         {
             if (!SupportsTimelineSemaphores || TimelineSemaphore.Handle == 0)
             {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Cannot signal timeline semaphore. Supports: {SupportsTimelineSemaphores}, Handle: 0x{TimelineSemaphore.Handle:X}");
                 return;
             }
             
+            Logger.Debug?.Print(LogClass.Gpu, 
+                $"Signaling timeline semaphore with value: {value}");
             CommandBufferPool?.AddTimelineSignal(TimelineSemaphore, value);
         }
         
@@ -1493,10 +1642,30 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         {
             if (!SupportsTimelineSemaphores || TimelineSemaphore.Handle == 0)
             {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Cannot wait on timeline semaphore. Supports: {SupportsTimelineSemaphores}, Handle: 0x{TimelineSemaphore.Handle:X}");
                 return;
             }
             
+            Logger.Debug?.Print(LogClass.Gpu, 
+                $"Adding wait for timeline semaphore value: {value}");
             CommandBufferPool?.AddWaitTimelineSemaphore(TimelineSemaphore, value);
+        }
+        
+        // 记录时间线信号量统计信息
+        internal void LogTimelineSemaphoreStats()
+        {
+            if (SupportsTimelineSemaphores && TimelineSemaphore.Handle != 0)
+            {
+                ulong currentValue = GetTimelineSemaphoreValue();
+                Logger.Info?.Print(LogClass.Gpu, 
+                    $"Timeline semaphore stats: Current value = {currentValue}, Handle = 0x{TimelineSemaphore.Handle:X}");
+            }
+            else
+            {
+                Logger.Info?.Print(LogClass.Gpu, 
+                    "Timeline semaphore: Not supported or not created");
+            }
         }
     }
 }
