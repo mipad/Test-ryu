@@ -336,14 +336,51 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 if (_batchQueryCount == 0) return;
                 
+                // 对于TBDR平台，更激进的批处理
+                int targetSize = _isTbdrPlatform ? 
+                    (forceFlush ? 1 : 8) : // TBDR: 小批次，及时处理
+                    (forceFlush ? 1 : 32);  // 非TBDR: 更大批次
+                
+                if (!forceFlush && _batchQueryCount < targetSize)
+                {
+                    // 等待更多查询加入批次
+                    return;
+                }
+                
                 // 将批次中的所有查询添加到待处理列表
+                List<(BufferedQuery, uint)> batchQueries = new();
                 while (_queryBatchQueue.Count > 0)
                 {
                     var (query, index) = _queryBatchQueue.Dequeue();
+                    batchQueries.Add((query, index));
                     _pendingQueryCopies.Add((query, index));
                 }
                 
                 _batchQueryCount = 0;
+                
+                // 如果支持时间线信号量，为整个批次分配一个信号量值
+                if (Gd.SupportsTimelineSemaphores && Gd.TimelineSemaphore.Handle != 0 && batchQueries.Count > 0)
+                {
+                    ulong batchTimelineValue = Gd.GetNextTimelineValue();
+                    
+                    // 为批次中的每个查询设置相同的信号量值
+                    foreach (var (query, _) in batchQueries)
+                    {
+                        query.SetBatchTimelineValue(batchTimelineValue);
+                    }
+                    
+                    // 将时间线信号量添加到命令缓冲区
+                    Gd.CommandBufferPool.AddTimelineSignalToBuffer(
+                        Cbs.CommandBufferIndex, 
+                        Gd.TimelineSemaphore, 
+                        batchTimelineValue);
+                    
+                    if (_isTbdrPlatform)
+                    {
+                        Logger.Debug?.Print(LogClass.Gpu, 
+                            $"TBDR: Batch of {batchQueries.Count} queries, timeline={batchTimelineValue}");
+                    }
+                }
                 
                 // 如果强制刷新或需要刷新命令缓冲区
                 if (forceFlush || (_pendingQueryCopies.Count > 0 && AutoFlush.RegisterPendingQuery()))
@@ -351,7 +388,8 @@ namespace Ryujinx.Graphics.Vulkan
                     if (_isTbdrPlatform)
                     {
                         // TBDR平台：记录批次大小
-                        Logger.Debug?.Print(LogClass.Gpu, $"TBDR: Processing batch of {_pendingQueryCopies.Count} queries");
+                        Logger.Debug?.Print(LogClass.Gpu, 
+                            $"TBDR: Processing batch of {_pendingQueryCopies.Count} queries");
                     }
                 }
             }

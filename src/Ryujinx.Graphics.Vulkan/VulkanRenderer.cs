@@ -103,9 +103,9 @@ namespace Ryujinx.Graphics.Vulkan
         // 时间线信号量
         internal Semaphore TimelineSemaphore { get; private set; }
         
-        private readonly Func<Instance, Vk, SurfaceKHR> _getSurface;
-        private readonly Func<string[]> _getRequiredExtensions;
-        private readonly string _preferredGpuId;
+        // 时间线信号量计数器
+        private ulong _timelineValueCounter = 1;
+        private readonly object _timelineLock = new object();
 
         private int[] _pdReservedBindings;
         private readonly static int[] _pdReservedBindingsNvn = { 3, 18, 21, 36, 30 };
@@ -1207,7 +1207,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         public void PreFrame()
         {
             SyncManager.Cleanup();
-        
         }
 
         public ICounterEvent ReportCounter(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved)
@@ -1523,6 +1522,42 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         internal void EndAndSubmitCommandBuffer(CommandBufferScoped cbs, ulong timelineSignalValue)
         {
             EndAndSubmitCommandBuffer(cbs, default, default, default, timelineSignalValue);
+        }
+        
+        // ========== 新增时间线信号量相关方法 ==========
+        
+        // 获取下一个时间线信号量值
+        public ulong GetNextTimelineValue()
+        {
+            lock (_timelineLock)
+            {
+                return _timelineValueCounter++;
+            }
+        }
+        
+        // 等待时间线信号量达到指定值
+        public unsafe bool WaitTimelineSemaphore(ulong value, ulong timeout = ulong.MaxValue)
+        {
+            if (!SupportsTimelineSemaphores || TimelineSemaphore.Handle == 0)
+                return false;
+            
+            var semaphore = TimelineSemaphore;
+            var waitInfo = new SemaphoreWaitInfo
+            {
+                SType = StructureType.SemaphoreWaitInfo,
+                SemaphoreCount = 1,
+                PSemaphores = &semaphore,
+                PValues = &value
+            };
+            
+            var result = TimelineSemaphoreApi.WaitSemaphores(Device, &waitInfo, timeout);
+            return result == Result.Success;
+        }
+        
+        // 获取当前时间线信号量值（公开版本）
+        public ulong GetCurrentTimelineValue()
+        {
+            return GetTimelineSemaphoreValue();
         }
     }
 }
