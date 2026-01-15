@@ -2,6 +2,7 @@ using Ryujinx.Graphics.GAL;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Vulkan.Queries
 {
