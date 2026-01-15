@@ -42,7 +42,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private readonly List<CounterQueueEvent> _pendingBatchEvents = new();
         private readonly object _batchLock = new();
         private int _batchSize = 0;
-        private const int TargetBatchSize = 64; // 目标批次大小
+        private const int TargetBatchSize = 64;
 
         internal CounterQueue(VulkanRenderer gd, Device device, PipelineFull pipeline, CounterType type, bool isTbdrPlatform)
         {
@@ -114,8 +114,12 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 }
                 else
                 {
-                    // 异步处理事件，不阻塞消费者线程
-                    ProcessEventAsync(evt);
+                    // 使用新的方法签名，移除ref参数
+                    var result = evt.TryConsumeWithResult(true, _waiterCount == 0 ? _wakeSignal : null);
+                    if (result.Success)
+                    {
+                        _accumulatedCounter = result.Result;
+                    }
                 }
 
                 if (_waiterCount > 0)
@@ -125,12 +129,16 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             }
         }
         
+        // 异步处理事件
         private async void ProcessEventAsync(CounterQueueEvent evt)
         {
             try
             {
-                // 使用异步方式获取结果
-                await evt.TryConsumeAsync(ref _accumulatedCounter, true, _waiterCount == 0 ? _wakeSignal : null);
+                var result = await evt.TryConsumeAsync(true, _waiterCount == 0 ? _wakeSignal : null);
+                if (result.Success)
+                {
+                    Interlocked.Exchange(ref _accumulatedCounter, result.Result);
+                }
             }
             catch (Exception ex)
             {
@@ -156,7 +164,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         {
             lock (_lock)
             {
-                query.ResetState(); // 重置查询状态以便重用
+                query.ResetState();
                 _queryPool.Enqueue(query);
             }
         }
@@ -175,13 +183,11 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
                 _current.Complete(draws > 0 && Type != CounterType.TransformFeedbackPrimitivesWritten, divisor);
                 
-                // 添加到批次或直接入队
                 lock (_batchLock)
                 {
                     _pendingBatchEvents.Add(_current);
                     _batchSize++;
                     
-                    // 达到批次大小时处理批次
                     if (_batchSize >= TargetBatchSize)
                     {
                         ProcessBatch();
@@ -206,7 +212,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             
             lock (_batchLock)
             {
-                // 批量提交所有待处理事件
                 foreach (var evt in _pendingBatchEvents)
                 {
                     _events.Enqueue(evt);
@@ -229,7 +234,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
         public void Flush(bool blocking)
         {
-            // 处理剩余批次
             lock (_batchLock)
             {
                 ProcessBatch();
@@ -246,10 +250,12 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 while (_events.Count > 0)
                 {
                     CounterQueueEvent flush = _events.Peek();
-                    if (!flush.TryConsume(ref _accumulatedCounter, true))
+                    var result = flush.TryConsumeWithResult(true);
+                    if (!result.Success)
                     {
                         return;
                     }
+                    _accumulatedCounter = result.Result;
                     _events.Dequeue();
                 }
             }
@@ -269,10 +275,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             Interlocked.Decrement(ref _waiterCount);
         }
         
-        // 异步刷新
         public async Task FlushAsync()
         {
-            // 处理剩余批次
             lock (_batchLock)
             {
                 ProcessBatch();
@@ -280,7 +284,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             
             _wakeSignal.Set();
             
-            // 异步等待事件处理完成
             await Task.Run(() =>
             {
                 while (true)
@@ -305,7 +308,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     evt.Dispose();
                 }
                 
-                // 处理剩余批次事件
                 lock (_batchLock)
                 {
                     foreach (var evt in _pendingBatchEvents)

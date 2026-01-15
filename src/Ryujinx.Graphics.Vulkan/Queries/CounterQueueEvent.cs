@@ -28,7 +28,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private double _divisor = 1f;
         
         // 异步支持
-        private TaskCompletionSource<bool> _asyncCompletionSource;
+        private TaskCompletionSource<ulong> _asyncCompletionSource;
         private bool _asyncResultPending;
 
         public CounterQueueEvent(CounterQueue queue, CounterType type, ulong drawIndex)
@@ -66,7 +66,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _asyncResultPending = withResult;
         }
 
-        internal bool TryConsume(ref ulong result, bool block, AutoResetEvent wakeSignal = null)
+        internal bool TryConsume(ref ulong accumulatedResult, bool block, AutoResetEvent wakeSignal = null)
         {
             lock (_lock)
             {
@@ -77,7 +77,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
                 if (ClearCounter)
                 {
-                    result = 0;
+                    accumulatedResult = 0;
                 }
 
                 long queryResult;
@@ -94,16 +94,16 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     }
                 }
 
-                result += _divisor == 1 ? (ulong)queryResult : (ulong)Math.Ceiling(queryResult / _divisor);
+                accumulatedResult += _divisor == 1 ? (ulong)queryResult : (ulong)Math.Ceiling(queryResult / _divisor);
 
-                _result = result;
+                _result = accumulatedResult;
 
-                OnResult?.Invoke(this, result);
+                OnResult?.Invoke(this, accumulatedResult);
                 
                 // 通知异步等待者
                 if (_asyncResultPending)
                 {
-                    _asyncCompletionSource?.TrySetResult(true);
+                    _asyncCompletionSource?.TrySetResult(accumulatedResult);
                     _asyncResultPending = false;
                 }
 
@@ -113,25 +113,87 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             }
         }
         
-        // 异步消费结果
-        internal async Task<bool> TryConsumeAsync(ref ulong result, bool block, AutoResetEvent wakeSignal = null)
+        // 移除有ref参数的异步方法，改为返回结果的方法
+        internal (bool Success, ulong Result) TryConsumeWithResult(bool block, AutoResetEvent wakeSignal = null)
         {
-            return await Task.Run(() => TryConsume(ref result, block, wakeSignal));
+            lock (_lock)
+            {
+                if (Disposed)
+                {
+                    return (true, _result);
+                }
+
+                long queryResult;
+                ulong currentResult = _result;
+
+                if (ClearCounter)
+                {
+                    currentResult = 0;
+                }
+
+                if (block)
+                {
+                    queryResult = _counter.AwaitResult(wakeSignal);
+                }
+                else
+                {
+                    if (!_counter.TryGetResult(out queryResult))
+                    {
+                        return (false, currentResult);
+                    }
+                }
+
+                ulong increment = _divisor == 1 ? (ulong)queryResult : (ulong)Math.Ceiling(queryResult / _divisor);
+                currentResult += increment;
+
+                _result = currentResult;
+
+                OnResult?.Invoke(this, currentResult);
+                
+                // 通知异步等待者
+                if (_asyncResultPending)
+                {
+                    _asyncCompletionSource?.TrySetResult(currentResult);
+                    _asyncResultPending = false;
+                }
+
+                Dispose();
+
+                return (true, currentResult);
+            }
+        }
+        
+        // 异步消费结果 - 移除ref参数
+        internal async Task<(bool Success, ulong Result)> TryConsumeAsync(bool block, AutoResetEvent wakeSignal = null)
+        {
+            return await Task.Run(() => TryConsumeWithResult(block, wakeSignal));
         }
         
         // 异步获取结果
         public async Task<ulong> GetResultAsync(CancellationToken cancellationToken = default)
         {
-            if (Disposed || !_asyncResultPending)
+            if (Disposed)
             {
                 return _result != ulong.MaxValue ? _result : 0;
             }
             
-            // 创建异步完成源
-            _asyncCompletionSource = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            // 如果已经有结果，直接返回
+            if (_result != ulong.MaxValue)
+            {
+                return _result;
+            }
             
-            // 启动异步任务等待查询结果
-            var waitTask = Task.Run(async () =>
+            // 如果异步结果已经在等待中，返回现有的任务
+            if (_asyncCompletionSource != null)
+            {
+                return await _asyncCompletionSource.Task;
+            }
+            
+            // 创建新的异步完成源
+            _asyncCompletionSource = new TaskCompletionSource<ulong>(TaskCreationOptions.RunContinuationsAsynchronously);
+            
+            // 启动后台任务等待查询结果
+            _ = Task.Run(async () =>
             {
                 try
                 {
@@ -142,7 +204,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     {
                         if (Disposed)
                         {
-                            return 0UL;
+                            _asyncCompletionSource.TrySetResult(0);
+                            return;
                         }
                         
                         ulong finalResult = _divisor == 1 ? (ulong)queryResult : (ulong)Math.Ceiling(queryResult / _divisor);
@@ -152,35 +215,44 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                             finalResult = 0;
                         }
                         
+                        // 注意：这里我们没有累加到任何外部变量，只是返回本次查询的结果
                         _result = finalResult;
                         
                         // 触发结果事件
                         OnResult?.Invoke(this, finalResult);
                         
                         _asyncResultPending = false;
-                        _asyncCompletionSource?.TrySetResult(true);
+                        _asyncCompletionSource.TrySetResult(finalResult);
                         
                         Dispose();
-                        
-                        return finalResult;
                     }
                 }
                 catch (Exception ex)
                 {
-                    _asyncCompletionSource?.TrySetException(ex);
-                    return 0UL;
+                    _asyncCompletionSource.TrySetException(ex);
                 }
             }, cancellationToken);
             
             // 等待异步完成
-            await Task.WhenAny(_asyncCompletionSource.Task, Task.Delay(5000, cancellationToken));
-            
-            if (cancellationToken.IsCancellationRequested)
+            try
             {
+                return await _asyncCompletionSource.Task.WaitAsync(cancellationToken);
+            }
+            catch (TimeoutException)
+            {
+                Logger.Error?.Print(LogClass.Gpu, $"GetResultAsync timeout for query {Type}");
                 return 0UL;
             }
-            
-            return _result != ulong.MaxValue ? _result : 0;
+            catch (OperationCanceledException)
+            {
+                Logger.Debug?.Print(LogClass.Gpu, $"GetResultAsync cancelled for query {Type}");
+                return 0UL;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Gpu, $"GetResultAsync error: {ex.Message}");
+                return 0UL;
+            }
         }
 
         public void Flush()
@@ -247,6 +319,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         {
             _queue.ReturnQueryObject(_counter);
             _asyncCompletionSource?.TrySetCanceled();
+            _asyncCompletionSource = null;
         }
 
         private bool IsValueAvailable()
