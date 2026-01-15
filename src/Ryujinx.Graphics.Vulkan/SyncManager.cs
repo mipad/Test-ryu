@@ -31,24 +31,20 @@ namespace Ryujinx.Graphics.Vulkan
         private ulong _flushId;
         private long _waitTicks;
 
-        // 统计信息
-        private SyncStats _stats = new SyncStats();
-
         public SyncManager(VulkanRenderer gd, Device device)
         {
             _gd = gd;
             _device = device;
             _handles = [];
-
-            Logger.Info?.Print(LogClass.Gpu, 
-                $"SyncManager initialized. Timeline semaphores supported: {_gd.SupportsTimelineSemaphores}");
+            
+            // 输出时间线信号量支持信息
+            Logger.Info?.PrintMsg(LogClass.Gpu, 
+                $"SyncManager初始化: 时间线信号量支持 = {_gd.SupportsTimelineSemaphores}");
         }
 
         public void RegisterFlush()
         {
             _flushId++;
-            Logger.Trace?.Print(LogClass.Gpu, 
-                $"Register flush #{_flushId}");
         }
 
         public void Create(ulong id, bool strict)
@@ -63,8 +59,9 @@ namespace Ryujinx.Graphics.Vulkan
                 FlushId = flushId,
             };
 
-            // 更新统计
-            _stats.TotalSyncObjectsCreated++;
+            // 输出创建同步对象的日志
+            Logger.Info?.PrintMsg(LogClass.Gpu, 
+                $"创建同步对象 ID={id}, TimelineValue={timelineValue}, FlushId={flushId}, Strict={strict}");
 
             if (strict || _gd.InterruptAction == null)
             {
@@ -73,27 +70,17 @@ namespace Ryujinx.Graphics.Vulkan
                 // 提交命令缓冲区时设置时间线信号量值
                 if (_gd.SupportsTimelineSemaphores)
                 {
+                    Logger.Info?.PrintMsg(LogClass.Gpu, 
+                        $"使用时间线信号量严格模式: 信号值={timelineValue}");
                     _gd.SignalTimelineSemaphore(timelineValue);
-                    
-                    // 更新统计
-                    _stats.StrictTimelineSyncsCreated++;
-                    
-                    // 添加日志
-                    Logger.Debug?.Print(LogClass.Gpu, 
-                        $"Created strict sync object {id} with timeline value {timelineValue} (FlushId: {flushId})");
                 }
                 else
                 {
+                    Logger.Info?.PrintMsg(LogClass.Gpu, 
+                        $"时间线信号量不支持，使用栅栏回退机制");
                     // 回退到旧的栅栏机制
                     MultiFenceHolder waitable = new();
                     _gd.CommandBufferPool.AddWaitable(waitable);
-                    
-                    // 更新统计
-                    _stats.StrictFallbackSyncsCreated++;
-                    
-                    // 添加日志
-                    Logger.Debug?.Print(LogClass.Gpu, 
-                        $"Created strict sync object {id} using fallback fence mechanism (no timeline support)");
                 }
             }
             else
@@ -102,35 +89,23 @@ namespace Ryujinx.Graphics.Vulkan
                 // 如果在此同步对象被等待之前提交了命令缓冲区，中断GPU线程并手动刷新
                 if (_gd.SupportsTimelineSemaphores)
                 {
+                    Logger.Info?.PrintMsg(LogClass.Gpu, 
+                        $"使用时间线信号量非严格模式: 信号值={timelineValue}");
                     _gd.CommandBufferPool.AddInUseTimelineSignal(_gd.TimelineSemaphore, timelineValue);
-                    
-                    // 更新统计
-                    _stats.NonStrictTimelineSyncsCreated++;
-                    
-                    // 添加日志
-                    Logger.Debug?.Print(LogClass.Gpu, 
-                        $"Created non-strict sync object {id} with timeline value {timelineValue} (FlushId: {flushId})");
                 }
                 else
                 {
+                    Logger.Info?.PrintMsg(LogClass.Gpu, 
+                        $"时间线信号量不支持，使用栅栏回退机制（非严格模式）");
                     // 回退到旧的栅栏机制
                     MultiFenceHolder waitable = new();
                     _gd.CommandBufferPool.AddInUseWaitable(waitable);
-                    
-                    // 更新统计
-                    _stats.NonStrictFallbackSyncsCreated++;
-                    
-                    // 添加日志
-                    Logger.Debug?.Print(LogClass.Gpu, 
-                        $"Created non-strict sync object {id} using fallback fence mechanism");
                 }
             }
 
             lock (_handles)
             {
                 _handles.Add(handle);
-                Logger.Trace?.Print(LogClass.Gpu, 
-                    $"Sync object {id} added to handles list. Total handles: {_handles.Count}");
             }
         }
 
@@ -160,11 +135,10 @@ namespace Ryujinx.Graphics.Vulkan
                             
                             if (currentValue >= handle.TimelineValue)
                             {
+                                Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                                    $"同步对象 ID={handle.ID} 已发出信号，时间线值={handle.TimelineValue}，当前值={currentValue}");
                                 lastHandle = handle.ID;
                                 handle.Signalled = true;
-                                
-                                Logger.Trace?.Print(LogClass.Gpu, 
-                                    $"Sync object {handle.ID} signalled (timeline value reached: {currentValue} >= {handle.TimelineValue})");
                             }
                         }
                         else
@@ -176,8 +150,6 @@ namespace Ryujinx.Graphics.Vulkan
                     }
                 }
 
-                Logger.Trace?.Print(LogClass.Gpu, 
-                    $"GetCurrentSync returning: {lastHandle}");
                 return lastHandle;
             }
         }
@@ -190,8 +162,8 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 if ((long)(_firstHandle - id) > 0)
                 {
-                    Logger.Debug?.Print(LogClass.Gpu, 
-                        $"Sync object {id} already signaled (firstHandle: {_firstHandle})");
+                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                        $"同步对象 ID={id} 已发出信号或已删除，无需等待");
                     return; // 句柄已发出信号或已删除
                 }
 
@@ -207,23 +179,21 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (result != null)
             {
+                Logger.Info?.PrintMsg(LogClass.Gpu, 
+                    $"开始等待同步对象 ID={result.ID}, TimelineValue={result.TimelineValue}");
+
                 long beforeTicks = Stopwatch.GetTimestamp();
-                
-                // 更新统计
-                _stats.TotalSyncWaits++;
-                
-                // 添加等待开始日志
-                Logger.Debug?.Print(LogClass.Gpu, 
-                    $"Starting wait for sync object {id} (timeline value: {result.TimelineValue}, flushId: {result.FlushId})");
 
                 if (result.NeedsFlush(_flushId))
                 {
+                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                        $"同步对象需要刷新，当前FlushId={_flushId}，对象FlushId={result.FlushId}");
                     _gd.InterruptAction(() =>
                     {
                         if (result.NeedsFlush(_flushId))
                         {
-                            Logger.Trace?.Print(LogClass.Gpu, 
-                                $"Flushing commands for sync object {id} (needs flush)");
+                            Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                                $"中断GPU线程并刷新所有命令");
                             _gd.FlushAllCommands();
                         }
                     });
@@ -233,8 +203,8 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     if (result.Signalled)
                     {
-                        Logger.Trace?.Print(LogClass.Gpu, 
-                            $"Sync object {id} already signalled, no wait needed");
+                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                            $"同步对象 ID={result.ID} 已发出信号，无需等待");
                         return;
                     }
 
@@ -242,16 +212,12 @@ namespace Ryujinx.Graphics.Vulkan
                     
                     if (_gd.SupportsTimelineSemaphores)
                     {
-                        // 更新统计
-                        _stats.TimelineSemaphoreWaits++;
+                        Logger.Info?.PrintMsg(LogClass.Gpu, 
+                            $"使用时间线信号量等待: 目标值={result.TimelineValue}");
                         
                         // 等待时间线信号量达到特定值
                         unsafe
                         {
-                            // 添加详细日志
-                            Logger.Debug?.Print(LogClass.Gpu, 
-                                $"Waiting for timeline semaphore to reach value {result.TimelineValue}");
-                            
                             var timelineSemaphore = _gd.TimelineSemaphore;
                             var waitValue = result.TimelineValue;
                             
@@ -263,6 +229,9 @@ namespace Ryujinx.Graphics.Vulkan
                                 PValues = &waitValue
                             };
 
+                            Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                                $"调用vkWaitSemaphores，超时=1秒");
+                            
                             var resultCode = _gd.TimelineSemaphoreApi.WaitSemaphores(
                                 _device, 
                                 &waitInfo, 
@@ -271,27 +240,19 @@ namespace Ryujinx.Graphics.Vulkan
                             
                             signaled = resultCode == Result.Success;
                             
-                            if (signaled)
-                            {
-                                Logger.Trace?.Print(LogClass.Gpu, 
-                                    $"Timeline semaphore wait successful for value {result.TimelineValue}");
-                            }
-                            else
-                            {
-                                Logger.Warning?.Print(LogClass.Gpu, 
-                                    $"Timeline semaphore wait failed or timed out for value {result.TimelineValue}: {resultCode}");
-                            }
+                            Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                                $"vkWaitSemaphores 结果: {resultCode}, 成功={signaled}");
                         }
                     }
                     else
                     {
-                        // 更新统计
-                        _stats.FallbackFenceWaits++;
+                        Logger.Info?.PrintMsg(LogClass.Gpu, 
+                            "时间线信号量不支持，使用回退栅栏等待机制");
                         
                         // 回退到旧的栅栏等待机制
                         // 注意：由于我们不再存储waitable，这里无法等待
                         // 这应该是回退路径，实际上不应该执行到这里
-                        Logger.Warning?.Print(LogClass.Gpu, "Timeline semaphores not supported, using fallback sync");
+                        Logger.Warning?.PrintMsg(LogClass.Gpu, "Timeline semaphores not supported, using fallback sync");
                         
                         // 回退到等待栅栏
                         // 这里需要实现回退逻辑，但为了简化，我们假设已发出信号
@@ -300,30 +261,29 @@ namespace Ryujinx.Graphics.Vulkan
 
                     if (!signaled)
                     {
-                        Logger.Error?.Print(LogClass.Gpu, $"VK Sync Object {result.ID} failed to signal within 1000ms. Continuing...");
-                        _stats.FailedSyncWaits++;
+                        Logger.Error?.PrintMsg(LogClass.Gpu, $"VK Sync Object {result.ID} failed to signal within 1000ms. Continuing...");
                     }
                     else
                     {
-                        long waitTimeMs = (Stopwatch.GetTimestamp() - beforeTicks) * 1000 / Stopwatch.Frequency;
                         _waitTicks += Stopwatch.GetTimestamp() - beforeTicks;
                         result.Signalled = true;
-                        
-                        Logger.Debug?.Print(LogClass.Gpu, 
-                            $"Sync object {id} signaled after {waitTimeMs}ms");
+                        Logger.Info?.PrintMsg(LogClass.Gpu, 
+                            $"同步对象 ID={result.ID} 等待成功，耗时={Stopwatch.GetTimestamp() - beforeTicks} ticks");
                     }
                 }
             }
             else
             {
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Sync object {id} not found in handles list");
-                _stats.MissingSyncWaits++;
+                Logger.Warning?.PrintMsg(LogClass.Gpu, 
+                    $"等待同步对象 ID={id} 未找到");
             }
         }
 
         public void Cleanup()
         {
+            Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                $"开始清理同步对象，当前句柄数量={_handles.Count}");
+            
             // 迭代句柄并删除任何已发出信号的句柄
             while (true)
             {
@@ -335,6 +295,8 @@ namespace Ryujinx.Graphics.Vulkan
 
                 if (first == null || first.NeedsFlush(_flushId))
                 {
+                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                        $"清理完成或需要刷新，当前FlushId={_flushId}");
                     break;
                 }
 
@@ -346,16 +308,15 @@ namespace Ryujinx.Graphics.Vulkan
                     ulong currentValue = _gd.GetTimelineSemaphoreValue();
                     signaled = currentValue >= first.TimelineValue;
                     
-                    if (signaled)
-                    {
-                        Logger.Trace?.Print(LogClass.Gpu, 
-                            $"Cleanup: Sync object {first.ID} signalled (timeline {currentValue} >= {first.TimelineValue})");
-                    }
+                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                        $"检查同步对象 ID={first.ID}: 当前时间线值={currentValue}, 目标值={first.TimelineValue}, 已发出信号={signaled}");
                 }
                 else
                 {
                     // 回退：我们无法检查，假设已发出信号
                     signaled = true;
+                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                        $"时间线信号量不支持，假设同步对象 ID={first.ID} 已发出信号");
                 }
 
                 if (signaled)
@@ -367,21 +328,22 @@ namespace Ryujinx.Graphics.Vulkan
                         {
                             _firstHandle = first.ID + 1;
                             _handles.RemoveAt(0);
-                            _stats.SyncObjectsCleanedUp++;
-                            
-                            Logger.Trace?.Print(LogClass.Gpu, 
-                                $"Cleanup: Removed sync object {first.ID}. Remaining: {_handles.Count}");
+                            Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                                $"删除同步对象 ID={first.ID}，新的_firstHandle={_firstHandle}");
                         }
                     }
                 }
                 else
                 {
                     // 此同步句柄及后续的尚未到达
-                    Logger.Trace?.Print(LogClass.Gpu, 
-                        $"Cleanup: Sync object {first.ID} not yet signalled, stopping cleanup");
+                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                        $"同步对象 ID={first.ID} 尚未发出信号，停止清理");
                     break;
                 }
             }
+            
+            Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                $"清理完成，剩余句柄数量={_handles.Count}");
         }
 
         public long GetAndResetWaitTicks()
@@ -389,52 +351,10 @@ namespace Ryujinx.Graphics.Vulkan
             long result = _waitTicks;
             _waitTicks = 0;
 
+            Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                $"获取并重置等待ticks: {result}");
+            
             return result;
-        }
-
-        public void LogStats()
-        {
-            if (Logger.IsInfoEnabled(LogClass.Gpu))
-            {
-                Logger.Info?.Print(LogClass.Gpu, "SyncManager Statistics:");
-                Logger.Info?.Print(LogClass.Gpu, $"  Total sync objects created: {_stats.TotalSyncObjectsCreated}");
-                Logger.Info?.Print(LogClass.Gpu, $"  Strict timeline syncs: {_stats.StrictTimelineSyncsCreated}");
-                Logger.Info?.Print(LogClass.Gpu, $"  Strict fallback syncs: {_stats.StrictFallbackSyncsCreated}");
-                Logger.Info?.Print(LogClass.Gpu, $"  Non-strict timeline syncs: {_stats.NonStrictTimelineSyncsCreated}");
-                Logger.Info?.Print(LogClass.Gpu, $"  Non-strict fallback syncs: {_stats.NonStrictFallbackSyncsCreated}");
-                
-                if (_stats.TotalSyncObjectsCreated > 0)
-                {
-                    int timelinePercentage = _stats.TotalSyncObjectsCreated > 0 ? 
-                        (_stats.StrictTimelineSyncsCreated + _stats.NonStrictTimelineSyncsCreated) * 100 / _stats.TotalSyncObjectsCreated : 0;
-                    Logger.Info?.Print(LogClass.Gpu, $"  Timeline sync usage: {timelinePercentage}%");
-                }
-                
-                Logger.Info?.Print(LogClass.Gpu, $"  Total sync waits: {_stats.TotalSyncWaits}");
-                Logger.Info?.Print(LogClass.Gpu, $"  Timeline semaphore waits: {_stats.TimelineSemaphoreWaits}");
-                Logger.Info?.Print(LogClass.Gpu, $"  Fallback fence waits: {_stats.FallbackFenceWaits}");
-                Logger.Info?.Print(LogClass.Gpu, $"  Failed sync waits: {_stats.FailedSyncWaits}");
-                Logger.Info?.Print(LogClass.Gpu, $"  Missing sync waits: {_stats.MissingSyncWaits}");
-                Logger.Info?.Print(LogClass.Gpu, $"  Sync objects cleaned up: {_stats.SyncObjectsCleanedUp}");
-                
-                long totalWaitMs = GetAndResetWaitTicks() * 1000 / Stopwatch.Frequency;
-                Logger.Info?.Print(LogClass.Gpu, $"  Total wait time: {totalWaitMs}ms");
-            }
-        }
-
-        private class SyncStats
-        {
-            public int TotalSyncObjectsCreated { get; set; }
-            public int StrictTimelineSyncsCreated { get; set; }
-            public int StrictFallbackSyncsCreated { get; set; }
-            public int NonStrictTimelineSyncsCreated { get; set; }
-            public int NonStrictFallbackSyncsCreated { get; set; }
-            public int TotalSyncWaits { get; set; }
-            public int TimelineSemaphoreWaits { get; set; }
-            public int FallbackFenceWaits { get; set; }
-            public int FailedSyncWaits { get; set; }
-            public int MissingSyncWaits { get; set; }
-            public int SyncObjectsCleanedUp { get; set; }
         }
     }
 }
