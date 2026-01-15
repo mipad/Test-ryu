@@ -1207,7 +1207,12 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         public void PreFrame()
         {
             SyncManager.Cleanup();
-        
+            
+            // TBDR平台：预优化批量查询
+            if (IsTBDR && _pipeline != null)
+            {
+                _pipeline.OptimizeBatchQueries();
+            }
         }
 
         public ICounterEvent ReportCounter(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved)
@@ -1402,6 +1407,37 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             }
         }
 
+        // 获取当前命令缓冲区索引
+        internal int GetCurrentCommandBufferIndex()
+        {
+            // 如果 CommandBufferPool 有 GetCurrentCommandBufferIndex 方法，则调用它
+            // 否则返回 -1
+            return CommandBufferPool?.GetCurrentCommandBufferIndex() ?? -1;
+        }
+
+        // 立即结束并提交命令缓冲区，并发出时间线信号量
+        internal unsafe void EndAndSubmitCommandBuffer(CommandBufferScoped cbs, ReadOnlySpan<Semaphore> waitSemaphores, ReadOnlySpan<PipelineStageFlags> waitDstStageMask, ReadOnlySpan<Semaphore> signalSemaphores, ulong timelineSignalValue)
+        {
+            Logger.Info?.PrintMsg(LogClass.Gpu, 
+                $"EndAndSubmitCommandBuffer: 命令缓冲区 {cbs.CommandBufferIndex}, 时间线信号值={timelineSignalValue}");
+            
+            // 如果需要时间线信号量，添加到命令缓冲区
+            if (SupportsTimelineSemaphores && TimelineSemaphore.Handle != 0 && timelineSignalValue > 0)
+            {
+                // 将时间线信号量添加到指定的命令缓冲区
+                CommandBufferPool.AddTimelineSignalToBuffer(cbs.CommandBufferIndex, TimelineSemaphore, timelineSignalValue);
+            }
+            
+            // 提交命令缓冲区
+            CommandBufferPool.Return(cbs, waitSemaphores, waitDstStageMask, signalSemaphores);
+        }
+
+        // 重载版本：不需要额外信号量
+        internal void EndAndSubmitCommandBuffer(CommandBufferScoped cbs, ulong timelineSignalValue)
+        {
+            EndAndSubmitCommandBuffer(cbs, default, default, default, timelineSignalValue);
+        }
+
         public unsafe void Dispose()
         {
             if (!_initialized)
@@ -1409,6 +1445,9 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 return;
             }
 
+            // 销毁同步管理器（包含严格模式命令池）
+            SyncManager?.Dispose();
+            
             CommandBufferPool?.Dispose();
             _computeCommandPool?.Dispose();
             BackgroundResources?.Dispose();

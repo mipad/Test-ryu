@@ -1,3 +1,4 @@
+using Ryujinx.Common.Logging;
 using Silk.NET.Vulkan;
 using System;
 using System.Collections.Generic;
@@ -23,6 +24,12 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly Thread _owner;
         private readonly bool _supportsTimelineSemaphores;
         private readonly VulkanRenderer _renderer;
+        
+        // 用于跟踪已添加的时间线信号量值，避免重复添加
+        private readonly Dictionary<int, HashSet<ulong>> _addedTimelineSignals = new();
+        
+        // 跟踪每个命令缓冲区已添加的时间线等待值
+        private readonly Dictionary<int, HashSet<ulong>> _addedTimelineWaits = new();
 
         public bool OwnedByCurrentThread => _owner == Thread.CurrentThread;
 
@@ -77,6 +84,9 @@ namespace Ryujinx.Graphics.Vulkan
         private int _queuedIndexesPtr;
         private int _queuedCount;
         private int _inUseCount;
+        
+        // 当前活动的命令缓冲区索引
+        private int _currentCommandBufferIndex = -1;
 
         public unsafe CommandBufferPool(
             Vk api,
@@ -109,6 +119,17 @@ namespace Ryujinx.Graphics.Vulkan
             _supportsTimelineSemaphores = supportsTimelineSemaphores;
             _renderer = renderer;
             _owner = Thread.CurrentThread;
+
+            // 初始化已添加信号量跟踪
+            int bufferCount = isLight ? 2 : MaxCommandBuffers;
+            for (int i = 0; i < bufferCount; i++)
+            {
+                _addedTimelineSignals[i] = new HashSet<ulong>();
+                _addedTimelineWaits[i] = new HashSet<ulong>();
+            }
+
+            Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                $"CommandBufferPool初始化: 时间线信号量支持 = {_supportsTimelineSemaphores}, 轻量模式 = {isLight}");
 
             CommandPoolCreateInfo commandPoolCreateInfo = new()
             {
@@ -199,9 +220,60 @@ namespace Ryujinx.Graphics.Vulkan
 
                     if (entry.InConsumption)
                     {
+                        // 检查是否已经添加过相同的信号量值
+                        if (_addedTimelineSignals.ContainsKey(i) && _addedTimelineSignals[i].Contains(value))
+                        {
+                            continue;
+                        }
+                        
                         entry.TimelineSignals.Add(new TimelineSignal { Semaphore = semaphore, Value = value });
+                        
+                        // 记录已添加的信号量值
+                        if (!_addedTimelineSignals.ContainsKey(i))
+                        {
+                            _addedTimelineSignals[i] = new HashSet<ulong>();
+                        }
+                        _addedTimelineSignals[i].Add(value);
                     }
                 }
+            }
+        }
+
+        public void AddTimelineSignalToBuffer(int cbIndex, Semaphore semaphore, ulong value)
+        {
+            if (!_supportsTimelineSemaphores || semaphore.Handle == 0)
+            {
+                return;
+            }
+
+            if (cbIndex < 0 || cbIndex >= _totalCommandBuffers)
+            {
+                return;
+            }
+
+            lock (_commandBuffers)
+            {
+                ref ReservedCommandBuffer entry = ref _commandBuffers[cbIndex];
+
+                // 检查是否已经添加过相同的信号量值
+                if (_addedTimelineSignals.ContainsKey(cbIndex) && _addedTimelineSignals[cbIndex].Contains(value))
+                {
+                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                        $"跳过重复添加时间线信号量值={value} 到命令缓冲区 {cbIndex}");
+                    return;
+                }
+                
+                entry.TimelineSignals.Add(new TimelineSignal { Semaphore = semaphore, Value = value });
+                
+                // 记录已添加的信号量值
+                if (!_addedTimelineSignals.ContainsKey(cbIndex))
+                {
+                    _addedTimelineSignals[cbIndex] = new HashSet<ulong>();
+                }
+                _addedTimelineSignals[cbIndex].Add(value);
+                
+                Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                    $"添加时间线信号量值={value} 到命令缓冲区 {cbIndex}");
             }
         }
 
@@ -214,13 +286,55 @@ namespace Ryujinx.Graphics.Vulkan
 
             lock (_commandBuffers)
             {
-                for (int i = 0; i < _totalCommandBuffers; i++)
+                // 只添加到当前活动的命令缓冲区，而不是所有使用中的命令缓冲区
+                if (_currentCommandBufferIndex >= 0 && _currentCommandBufferIndex < _totalCommandBuffers)
                 {
-                    ref ReservedCommandBuffer entry = ref _commandBuffers[i];
-
+                    ref ReservedCommandBuffer entry = ref _commandBuffers[_currentCommandBufferIndex];
+                    
                     if (entry.InUse)
                     {
+                        // 检查是否已经添加过相同的信号量值
+                        if (_addedTimelineSignals.ContainsKey(_currentCommandBufferIndex) && 
+                            _addedTimelineSignals[_currentCommandBufferIndex].Contains(value))
+                        {
+                            return;
+                        }
+                        
                         entry.TimelineSignals.Add(new TimelineSignal { Semaphore = semaphore, Value = value });
+                        
+                        // 记录已添加的信号量值
+                        if (!_addedTimelineSignals.ContainsKey(_currentCommandBufferIndex))
+                        {
+                            _addedTimelineSignals[_currentCommandBufferIndex] = new HashSet<ulong>();
+                        }
+                        _addedTimelineSignals[_currentCommandBufferIndex].Add(value);
+                    }
+                }
+                else
+                {
+                    // 回退：如果没有当前命令缓冲区，则添加到第一个使用中的命令缓冲区
+                    for (int i = 0; i < _totalCommandBuffers; i++)
+                    {
+                        ref ReservedCommandBuffer entry = ref _commandBuffers[i];
+
+                        if (entry.InUse)
+                        {
+                            // 检查是否已经添加过相同的信号量值
+                            if (_addedTimelineSignals.ContainsKey(i) && _addedTimelineSignals[i].Contains(value))
+                            {
+                                return;
+                            }
+                            
+                            entry.TimelineSignals.Add(new TimelineSignal { Semaphore = semaphore, Value = value });
+                            
+                            // 记录已添加的信号量值
+                            if (!_addedTimelineSignals.ContainsKey(i))
+                            {
+                                _addedTimelineSignals[i] = new HashSet<ulong>();
+                            }
+                            _addedTimelineSignals[i].Add(value);
+                            break; // 只添加到一个命令缓冲区
+                        }
                     }
                 }
             }
@@ -241,7 +355,20 @@ namespace Ryujinx.Graphics.Vulkan
 
                     if (entry.InConsumption)
                     {
+                        // 检查是否已经添加过相同的等待值
+                        if (_addedTimelineWaits.ContainsKey(i) && _addedTimelineWaits[i].Contains(value))
+                        {
+                            continue;
+                        }
+                        
                         entry.TimelineWaits.Add(new TimelineWait { Semaphore = semaphore, Value = value, Stage = stage });
+                        
+                        // 记录已添加的等待值
+                        if (!_addedTimelineWaits.ContainsKey(i))
+                        {
+                            _addedTimelineWaits[i] = new HashSet<ulong>();
+                        }
+                        _addedTimelineWaits[i].Add(value);
                     }
                 }
             }
@@ -262,7 +389,20 @@ namespace Ryujinx.Graphics.Vulkan
 
                     if (entry.InUse)
                     {
+                        // 检查是否已经添加过相同的等待值
+                        if (_addedTimelineWaits.ContainsKey(i) && _addedTimelineWaits[i].Contains(value))
+                        {
+                            continue;
+                        }
+                        
                         entry.TimelineWaits.Add(new TimelineWait { Semaphore = semaphore, Value = value, Stage = stage });
+                        
+                        // 记录已添加的等待值
+                        if (!_addedTimelineWaits.ContainsKey(i))
+                        {
+                            _addedTimelineWaits[i] = new HashSet<ulong>();
+                        }
+                        _addedTimelineWaits[i].Add(value);
                     }
                 }
             }
@@ -364,6 +504,7 @@ namespace Ryujinx.Graphics.Vulkan
                     if (!entry.InUse && !entry.InConsumption)
                     {
                         entry.InUse = true;
+                        _currentCommandBufferIndex = cursor; // 更新当前命令缓冲区索引
 
                         _inUseCount++;
 
@@ -382,6 +523,54 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             throw new InvalidOperationException($"Out of command buffers (In use: {_inUseCount}, queued: {_queuedCount}, total: {_totalCommandBuffers})");
+        }
+
+        // 租用特定索引的命令缓冲区
+        public CommandBufferScoped RentSpecific(int desiredIndex)
+        {
+            lock (_commandBuffers)
+            {
+                if (desiredIndex < 0 || desiredIndex >= _totalCommandBuffers)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(desiredIndex));
+                }
+
+                ref ReservedCommandBuffer entry = ref _commandBuffers[desiredIndex];
+
+                if (entry.InUse || entry.InConsumption)
+                {
+                    // 如果指定的缓冲区不可用，回退到正常租用
+                    return Rent();
+                }
+
+                entry.InUse = true;
+                _currentCommandBufferIndex = desiredIndex;
+                _inUseCount++;
+
+                CommandBufferBeginInfo commandBufferBeginInfo = new()
+                {
+                    SType = StructureType.CommandBufferBeginInfo,
+                };
+
+                _api.BeginCommandBuffer(entry.CommandBuffer, in commandBufferBeginInfo).ThrowOnError();
+
+                return new CommandBufferScoped(this, entry.CommandBuffer, desiredIndex);
+            }
+        }
+
+        // 检查命令缓冲区是否可用
+        public bool IsBufferAvailable(int bufferIndex)
+        {
+            lock (_commandBuffers)
+            {
+                if (bufferIndex < 0 || bufferIndex >= _totalCommandBuffers)
+                {
+                    return false;
+                }
+
+                ref ReservedCommandBuffer entry = ref _commandBuffers[bufferIndex];
+                return !entry.InUse && !entry.InConsumption;
+            }
         }
 
         public void Return(CommandBufferScoped cbs)
@@ -407,6 +596,12 @@ namespace Ryujinx.Graphics.Vulkan
                 entry.InConsumption = true;
                 entry.SubmissionCount++;
                 _inUseCount--;
+                
+                // 清除当前命令缓冲区索引
+                if (_currentCommandBufferIndex == cbIndex)
+                {
+                    _currentCommandBufferIndex = -1;
+                }
 
                 CommandBuffer commandBuffer = entry.CommandBuffer;
 
@@ -436,11 +631,19 @@ namespace Ryujinx.Graphics.Vulkan
                         }
                     }
 
-                    // 添加时间线信号
+                    // 添加时间线信号（去重检查）
+                    HashSet<ulong> addedSignalValues = new();
                     foreach (var timelineSignal in entry.TimelineSignals)
                     {
+                        // 防止同一个命令缓冲区中重复的时间线信号量值
+                        if (addedSignalValues.Contains(timelineSignal.Value))
+                        {
+                            continue;
+                        }
+                        
                         allSignalSemaphores.Add(timelineSignal.Semaphore);
                         allSignalValues.Add(timelineSignal.Value);
+                        addedSignalValues.Add(timelineSignal.Value);
                     }
 
                     // 添加额外传入的等待信号量
@@ -454,18 +657,25 @@ namespace Ryujinx.Graphics.Vulkan
                         }
                     }
 
-                    // 添加时间线等待
+                    // 添加时间线等待（去重检查）
+                    HashSet<ulong> addedWaitValues = new();
                     foreach (var timelineWait in entry.TimelineWaits)
                     {
+                        // 防止同一个命令缓冲区中重复的时间线等待值
+                        if (addedWaitValues.Contains(timelineWait.Value))
+                        {
+                            continue;
+                        }
+                        
                         allWaitSemaphores.Add(timelineWait.Semaphore);
                         allWaitValues.Add(timelineWait.Value);
                         allWaitStages.Add(timelineWait.Stage);
+                        addedWaitValues.Add(timelineWait.Value);
                     }
 
                     // 分配内存
                     if (allSignalSemaphores.Count > 0)
                     {
-                        // 修复：stackalloc返回的就是指针类型，不需要转换
                         ulong* signalValues = stackalloc ulong[allSignalSemaphores.Count];
                         pSignalSemaphoreValues = signalValues;
                         for (int i = 0; i < allSignalValues.Count; i++)
@@ -476,7 +686,6 @@ namespace Ryujinx.Graphics.Vulkan
                     
                     if (allWaitSemaphores.Count > 0)
                     {
-                        // 修复：stackalloc返回的就是指针类型，不需要转换
                         ulong* waitValues = stackalloc ulong[allWaitSemaphores.Count];
                         pWaitSemaphoreValues = waitValues;
                         for (int i = 0; i < allWaitValues.Count; i++)
@@ -578,6 +787,17 @@ namespace Ryujinx.Graphics.Vulkan
             entry.TimelineWaits.Clear();
             entry.Fence?.Dispose();
 
+            // 清理已添加信号量值的跟踪
+            if (_addedTimelineSignals.ContainsKey(cbIndex))
+            {
+                _addedTimelineSignals[cbIndex].Clear();
+            }
+            
+            if (_addedTimelineWaits.ContainsKey(cbIndex))
+            {
+                _addedTimelineWaits[cbIndex].Clear();
+            }
+
             if (refreshFence)
             {
                 entry.Fence = new FenceHolder(_api, _device, _concurrentFenceWaitUnsupported);
@@ -596,6 +816,12 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             _api.DestroyCommandPool(_device, _pool, null);
+        }
+        
+        // 获取当前命令缓冲区索引（用于调试）
+        public int GetCurrentCommandBufferIndex()
+        {
+            return _currentCommandBufferIndex;
         }
     }
 }
