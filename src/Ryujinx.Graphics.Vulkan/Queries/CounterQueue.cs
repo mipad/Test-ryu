@@ -4,7 +4,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
 using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Vulkan.Queries
@@ -37,12 +36,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private readonly Thread _consumerThread;
 
         public int ResetSequence { get; private set; }
-        
-        // 批量处理相关
-        private readonly List<CounterQueueEvent> _pendingBatchEvents = new();
-        private readonly object _batchLock = new();
-        private int _batchSize = 0;
-        private const int TargetBatchSize = 64;
 
         internal CounterQueue(VulkanRenderer gd, Device device, PipelineFull pipeline, CounterType type, bool isTbdrPlatform)
         {
@@ -114,35 +107,13 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 }
                 else
                 {
-                    // 使用新的方法签名，移除ref参数
-                    var result = evt.TryConsumeWithResult(true, _waiterCount == 0 ? _wakeSignal : null);
-                    if (result.Success)
-                    {
-                        _accumulatedCounter = result.Result;
-                    }
+                    evt.TryConsume(ref _accumulatedCounter, true, _waiterCount == 0 ? _wakeSignal : null);
                 }
 
                 if (_waiterCount > 0)
                 {
                     _eventConsumed.Set();
                 }
-            }
-        }
-        
-        // 异步处理事件
-        private async void ProcessEventAsync(CounterQueueEvent evt)
-        {
-            try
-            {
-                var result = await evt.TryConsumeAsync(true, _waiterCount == 0 ? _wakeSignal : null);
-                if (result.Success)
-                {
-                    Interlocked.Exchange(ref _accumulatedCounter, result.Result);
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.Print(LogClass.Gpu, $"Error processing counter event: {ex.Message}");
             }
         }
 
@@ -164,7 +135,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         {
             lock (_lock)
             {
-                query.ResetState();
+                query.ResetState(); // 重置查询状态以便重用
                 _queryPool.Enqueue(query);
             }
         }
@@ -182,17 +153,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 }
 
                 _current.Complete(draws > 0 && Type != CounterType.TransformFeedbackPrimitivesWritten, divisor);
-                
-                lock (_batchLock)
-                {
-                    _pendingBatchEvents.Add(_current);
-                    _batchSize++;
-                    
-                    if (_batchSize >= TargetBatchSize)
-                    {
-                        ProcessBatch();
-                    }
-                }
+                _events.Enqueue(_current);
 
                 _current.OnResult += resultHandler;
 
@@ -204,22 +165,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _queuedEvent.Set();
 
             return result;
-        }
-        
-        private void ProcessBatch()
-        {
-            if (_pendingBatchEvents.Count == 0) return;
-            
-            lock (_batchLock)
-            {
-                foreach (var evt in _pendingBatchEvents)
-                {
-                    _events.Enqueue(evt);
-                }
-                
-                _pendingBatchEvents.Clear();
-                _batchSize = 0;
-            }
         }
 
         public void QueueReset(ulong lastDrawIndex)
@@ -234,11 +179,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
         public void Flush(bool blocking)
         {
-            lock (_batchLock)
-            {
-                ProcessBatch();
-            }
-            
             if (!blocking)
             {
                 _wakeSignal.Set();
@@ -250,12 +190,10 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 while (_events.Count > 0)
                 {
                     CounterQueueEvent flush = _events.Peek();
-                    var result = flush.TryConsumeWithResult(true);
-                    if (!result.Success)
+                    if (!flush.TryConsume(ref _accumulatedCounter, true))
                     {
                         return;
                     }
-                    _accumulatedCounter = result.Result;
                     _events.Dequeue();
                 }
             }
@@ -274,29 +212,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
             Interlocked.Decrement(ref _waiterCount);
         }
-        
-        public async Task FlushAsync()
-        {
-            lock (_batchLock)
-            {
-                ProcessBatch();
-            }
-            
-            _wakeSignal.Set();
-            
-            await Task.Run(() =>
-            {
-                while (true)
-                {
-                    lock (_lock)
-                    {
-                        if (_events.Count == 0)
-                            break;
-                    }
-                    Thread.Sleep(1);
-                }
-            });
-        }
 
         public void Dispose()
         {
@@ -305,16 +220,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 while (_events.Count > 0)
                 {
                     CounterQueueEvent evt = _events.Dequeue();
+
                     evt.Dispose();
-                }
-                
-                lock (_batchLock)
-                {
-                    foreach (var evt in _pendingBatchEvents)
-                    {
-                        evt.Dispose();
-                    }
-                    _pendingBatchEvents.Clear();
                 }
 
                 Disposed = true;

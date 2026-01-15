@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Threading;
-using System.Threading.Tasks;
 using Buffer = Silk.NET.Vulkan.Buffer;
 
 namespace Ryujinx.Graphics.Vulkan.Queries
@@ -38,8 +37,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         // 时间线信号量支持
         private ulong? _timelineSignalValue;
         private readonly bool _useTimelineSemaphores;
-        private TaskCompletionSource<long> _asyncResultTask;
-        private bool _asyncResultPending;
 
         // 查询池管理
         private static readonly ConcurrentDictionary<CounterType, QueryPoolManager> _queryPoolManagers = new();
@@ -47,9 +44,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
         // 统计信息
         private static long _totalQueriesCreated;
-        private static long _totalQueriesReused;
-        private static long _totalAsyncWaits;
-        private static long _totalTimelineWaits;
 
         private class QueryPoolManager
         {
@@ -194,8 +188,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             }
             _resetSequence = null;
             _timelineSignalValue = null; // 重置时间线信号量值
-            _asyncResultPending = false;
-            _asyncResultTask = null;
         }
 
         public void End(bool withResult)
@@ -214,7 +206,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 if (_useTimelineSemaphores)
                 {
                     _timelineSignalValue = _gd.GetNextTimelineValue();
-                    _asyncResultPending = true;
                 }
             }
             else
@@ -232,33 +223,22 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         public bool TryGetResult(out long result)
         {
             result = Marshal.ReadInt64(_bufferMap);
-            bool hasResult = result != _defaultValue;
-            
-            if (hasResult && _asyncResultPending)
-            {
-                _asyncResultPending = false;
-                _asyncResultTask?.TrySetResult(result);
-            }
-            
-            return hasResult;
+            return result != _defaultValue;
         }
 
         public long AwaitResult(AutoResetEvent wakeSignal = null)
         {
             long data = _defaultValue;
 
-            // 优先使用时间线信号量异步等待
-            if (_useTimelineSemaphores && _timelineSignalValue.HasValue && _asyncResultPending)
+            // 优先使用时间线信号量等待
+            if (_useTimelineSemaphores && _timelineSignalValue.HasValue)
             {
-                Interlocked.Increment(ref _totalTimelineWaits);
                 ulong targetValue = _timelineSignalValue.Value;
                 
-                // 异步等待时间线信号量
+                // 等待时间线信号量达到指定值
                 if (_gd.WaitTimelineSemaphore(targetValue, 1000000000)) // 1秒超时
                 {
                     data = Marshal.ReadInt64(_bufferMap);
-                    _asyncResultPending = false;
-                    _asyncResultTask?.TrySetResult(data);
                     return data != _defaultValue ? data : 0;
                 }
                 else
@@ -266,8 +246,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     Logger.Error?.Print(LogClass.Gpu, 
                         $"Timeline semaphore wait timed out for query {_type}. Value: {targetValue}");
                     
-                    _asyncResultPending = false;
-                    _asyncResultTask?.TrySetCanceled();
+                    // 强制返回默认值，避免阻塞
                     return 0;
                 }
             }
@@ -305,91 +284,12 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     Logger.Error?.Print(LogClass.Gpu, 
                         $"Error: Query result {_type} timed out. Attempts: {iterations}");
                     
+                    // 强制返回默认值，避免阻塞
                     return 0;
                 }
             }
 
-            if (!WaitingForValue(data))
-            {
-                _asyncResultPending = false;
-                _asyncResultTask?.TrySetResult(data);
-            }
-            
             return data;
-        }
-
-        // 异步获取结果，不阻塞调用线程
-        public Task<long> GetResultAsync(CancellationToken cancellationToken = default)
-        {
-            Interlocked.Increment(ref _totalAsyncWaits);
-            
-            // 首先尝试直接获取结果
-            if (TryGetResult(out long immediateResult))
-            {
-                return Task.FromResult(immediateResult);
-            }
-            
-            // 如果支持时间线信号量且有待处理的结果
-            if (_useTimelineSemaphores && _timelineSignalValue.HasValue && _asyncResultPending)
-            {
-                _asyncResultTask = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
-                
-                // 启动后台任务等待时间线信号量
-                Task.Run(async () =>
-                {
-                    try
-                    {
-                        ulong targetValue = _timelineSignalValue.Value;
-                        
-                        if (await Task.Run(() => _gd.WaitTimelineSemaphore(targetValue, 1000000000)))
-                        {
-                            long result = Marshal.ReadInt64(_bufferMap);
-                            _asyncResultPending = false;
-                            _asyncResultTask.TrySetResult(result != _defaultValue ? result : 0);
-                        }
-                        else
-                        {
-                            Logger.Warning?.Print(LogClass.Gpu, 
-                                $"Async timeline semaphore wait timed out for query {_type}");
-                            _asyncResultPending = false;
-                            _asyncResultTask.TrySetResult(0);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error?.Print(LogClass.Gpu, 
-                            $"Async query wait failed: {ex.Message}");
-                        _asyncResultPending = false;
-                        _asyncResultTask.TrySetResult(0);
-                    }
-                }, cancellationToken);
-                
-                return _asyncResultTask.Task;
-            }
-            
-            // 回退到轮询方式
-            return Task.Run(() =>
-            {
-                int iterations = 0;
-                while (iterations++ < MaxQueryRetries)
-                {
-                    if (TryGetResult(out long result))
-                    {
-                        return result;
-                    }
-                    
-                    Thread.Sleep(_isTbdrPlatform ? 0 : 1);
-                    
-                    if (cancellationToken.IsCancellationRequested)
-                    {
-                        return 0L;
-                    }
-                }
-                
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Async query poll timed out for {_type}");
-                return 0L;
-            }, cancellationToken);
         }
 
         // 批量复制查询结果
@@ -442,9 +342,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             
             // 重置时间线信号量值
             _timelineSignalValue = null;
-            _asyncResultPending = false;
-            _asyncResultTask?.TrySetCanceled();
-            _asyncResultTask = null;
             
             if (_isSupported && _isPooledQuery && _queryPoolManagers.TryGetValue(_type, out var manager))
             {
@@ -460,9 +357,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                         
                         // 记录统计信息
                         Logger.Info?.Print(LogClass.Gpu, 
-                            $"Query pool for {_type} destroyed. Stats: Created={_totalQueriesCreated}, " +
-                            $"Reused={_totalQueriesReused}, AsyncWaits={_totalAsyncWaits}, " +
-                            $"TimelineWaits={_totalTimelineWaits}");
+                            $"Query pool for {_type} destroyed. Stats: Created={_totalQueriesCreated}");
                     }
                 }
             }
@@ -478,7 +373,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             if (_useTimelineSemaphores)
             {
                 _timelineSignalValue = timelineValue;
-                _asyncResultPending = true;
             }
         }
         
@@ -486,16 +380,13 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         public static void LogStatistics()
         {
             Logger.Info?.Print(LogClass.Gpu, 
-                $"Query Statistics: Created={_totalQueriesCreated}, Reused={_totalQueriesReused}, " +
-                $"AsyncWaits={_totalAsyncWaits}, TimelineWaits={_totalTimelineWaits}");
+                $"Query Statistics: Created={_totalQueriesCreated}");
         }
         
         // 重置查询状态（用于重用）
         public void ResetState()
         {
             _timelineSignalValue = null;
-            _asyncResultPending = false;
-            _asyncResultTask = null;
             Marshal.WriteInt64(_bufferMap, _defaultValue);
         }
     }
