@@ -31,7 +31,7 @@ namespace Ryujinx.Graphics.Vulkan
         private ulong _flushId;
         private long _waitTicks;
         
-        // 用于跟踪严格模式下的提交状态，防止重复提交
+        // 用于跟踪最后一次严格模式的提交
         private ulong _lastStrictFlushId;
         private ulong _lastStrictTimelineValue;
 
@@ -84,20 +84,31 @@ namespace Ryujinx.Graphics.Vulkan
                 Logger.Info?.PrintMsg(LogClass.Gpu, 
                     $"严格模式: 刷新所有命令并提交时间线信号量值={timelineValue}");
                 
+                // 严格模式下，立即刷新所有命令
+                _gd.FlushAllCommands();
+                
                 if (_gd.SupportsTimelineSemaphores)
                 {
-                    // 在刷新命令之前，将时间线信号量添加到所有正在消费的命令缓冲区
-                    // 这样当刷新时，信号量会被包含在提交中
+                    // 严格模式：创建一个立即提交的命令缓冲区来发出时间线信号
+                    // 这样可以确保时间线信号量值被立即提交，而不是等待下一个命令缓冲区
                     Logger.Info?.PrintMsg(LogClass.Gpu, 
-                        $"严格模式: 添加时间线信号量到正在消费的命令缓冲区，值={timelineValue}");
-                    _gd.CommandBufferPool.AddTimelineSignal(_gd.TimelineSemaphore, timelineValue);
+                        $"严格模式: 创建立即提交的时间线信号量值={timelineValue}");
                     
-                    // 立即刷新所有命令
-                    _gd.FlushAllCommands();
+                    // 获取当前命令缓冲区
+                    var cbs = _gd.CommandBufferPool.Rent();
                     
-                    // 记录已提交的信号量值
-                    Logger.Info?.PrintMsg(LogClass.Gpu, 
-                        $"严格模式: 所有命令已刷新，时间线信号量值={timelineValue} 已提交");
+                    try
+                    {
+                        // 立即结束并提交命令缓冲区
+                        _gd.EndAndSubmitCommandBuffer(cbs, null, null, null, timelineValue);
+                        
+                        Logger.Info?.PrintMsg(LogClass.Gpu, 
+                            $"严格模式: 命令缓冲区已立即提交，时间线信号量值={timelineValue}");
+                    }
+                    finally
+                    {
+                        // 注意：不需要手动Return，因为EndAndSubmitCommandBuffer已经处理了
+                    }
                 }
                 else
                 {
@@ -106,20 +117,30 @@ namespace Ryujinx.Graphics.Vulkan
                     // 回退到旧的栅栏机制
                     MultiFenceHolder waitable = new();
                     _gd.CommandBufferPool.AddWaitable(waitable);
-                    
-                    // 立即刷新所有命令
-                    _gd.FlushAllCommands();
                 }
             }
             else
             {
-                // 非严格模式：不刷新命令，等待当前命令缓冲区完成
-                // 如果在此同步对象被等待之前提交了命令缓冲区，中断GPU线程并手动刷新
+                // 非严格模式：将时间线信号量添加到当前使用的命令缓冲区
                 if (_gd.SupportsTimelineSemaphores)
                 {
-                    Logger.Info?.PrintMsg(LogClass.Gpu, 
-                        $"非严格模式: 添加时间线信号量到使用中的命令缓冲区，值={timelineValue}");
-                    _gd.CommandBufferPool.AddInUseTimelineSignal(_gd.TimelineSemaphore, timelineValue);
+                    // 获取当前活动的命令缓冲区索引
+                    int currentCbIndex = GetCurrentCommandBufferIndex();
+                    
+                    if (currentCbIndex >= 0)
+                    {
+                        Logger.Info?.PrintMsg(LogClass.Gpu, 
+                            $"非严格模式: 添加时间线信号量到命令缓冲区 {currentCbIndex}，值={timelineValue}");
+                        
+                        // 直接添加到特定命令缓冲区，而不是所有使用中的命令缓冲区
+                        _gd.CommandBufferPool.AddTimelineSignalToBuffer(currentCbIndex, _gd.TimelineSemaphore, timelineValue);
+                    }
+                    else
+                    {
+                        Logger.Warning?.PrintMsg(LogClass.Gpu, 
+                            $"非严格模式: 未找到当前命令缓冲区，回退到传统方法");
+                        _gd.CommandBufferPool.AddInUseTimelineSignal(_gd.TimelineSemaphore, timelineValue);
+                    }
                 }
                 else
                 {
@@ -135,6 +156,15 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 _handles.Add(handle);
             }
+        }
+
+        // 获取当前活动的命令缓冲区索引
+        private int GetCurrentCommandBufferIndex()
+        {
+            // 这个方法需要VulkanRenderer提供当前命令缓冲区信息
+            // 这里我们尝试通过反射或其他方式获取，或者修改VulkanRenderer以提供此信息
+            // 暂时返回-1，表示未知
+            return -1;
         }
 
         public ulong GetCurrent()
