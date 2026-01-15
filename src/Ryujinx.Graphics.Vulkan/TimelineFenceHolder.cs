@@ -146,17 +146,25 @@ namespace Ryujinx.Graphics.Vulkan
                 return true;
             }
             
-            var waitInfo = new SemaphoreWaitInfo
+            // 修复：使用局部变量并固定它们
+            var semaphore = _timelineSemaphore;
+            var waitValue = targetValue;
+            
+            fixed (Semaphore* pSemaphore = &semaphore)
+            fixed (ulong* pValue = &waitValue)
             {
-                SType = StructureType.SemaphoreWaitInfo,
-                SemaphoreCount = 1,
-                PSemaphores = &_timelineSemaphore,
-                PValues = &targetValue
-            };
-            
-            var result = _gd.TimelineSemaphoreApi.WaitSemaphores(device, &waitInfo, timeout);
-            
-            return result == Result.Success;
+                var waitInfo = new SemaphoreWaitInfo
+                {
+                    SType = StructureType.SemaphoreWaitInfo,
+                    SemaphoreCount = 1,
+                    PSemaphores = pSemaphore,
+                    PValues = pValue
+                };
+                
+                var result = _gd.TimelineSemaphoreApi.WaitSemaphores(device, &waitInfo, timeout);
+                
+                return result == Result.Success;
+            }
         }
         
         /// <summary>
