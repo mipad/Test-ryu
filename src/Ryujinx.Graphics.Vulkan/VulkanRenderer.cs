@@ -100,6 +100,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Device Device => _device;
         
+        // 时间线信号量
+        internal Semaphore TimelineSemaphore { get; private set; }
+        
         private readonly Func<Instance, Vk, SurfaceKHR> _getSurface;
         private readonly Func<string[]> _getRequiredExtensions;
         private readonly string _preferredGpuId;
@@ -195,6 +198,9 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 TimelineSemaphoreApi = timelineSemaphoreApi;
                 SupportsTimelineSemaphores = true;
+                
+                // 创建时间线信号量
+                CreateTimelineSemaphore();
             }
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrSynchronization2 synchronization2Api))
@@ -650,7 +656,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtExternalMemoryHost hostMemoryApi);
             HostMemoryAllocator = new HostMemoryAllocator(MemoryAllocator, Api, hostMemoryApi, _device);
 
-            CommandBufferPool = new CommandBufferPool(Api, _device, Queue, QueueLock, queueFamilyIndex, IsQualcommProprietary);
+            CommandBufferPool = new CommandBufferPool(Api, _device, Queue, QueueLock, queueFamilyIndex, IsQualcommProprietary, SupportsTimelineSemaphores, this);
 
             PipelineLayoutCache = new PipelineLayoutCache();
 
@@ -667,6 +673,32 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             Barriers = new BarrierBatch(this);
 
             _counters = new Counters(this, _device, _pipeline);
+        }
+
+        private unsafe void CreateTimelineSemaphore()
+        {
+            if (!SupportsTimelineSemaphores || TimelineSemaphore.Handle != 0)
+            {
+                return;
+            }
+
+            var semaphoreTypeCreateInfo = new SemaphoreTypeCreateInfo
+            {
+                SType = StructureType.SemaphoreTypeCreateInfo,
+                SemaphoreType = (SemaphoreType)SemaphoreTypeKHR.Timeline,
+                InitialValue = 0
+            };
+
+            var semaphoreCreateInfo = new SemaphoreCreateInfo
+            {
+                SType = StructureType.SemaphoreCreateInfo,
+                PNext = &semaphoreTypeCreateInfo
+            };
+
+            // 修复：使用局部变量作为out参数
+            Semaphore semaphore;
+            Api.CreateSemaphore(_device, semaphoreCreateInfo, null, out semaphore).ThrowOnError();
+            TimelineSemaphore = semaphore;
         }
 
         private uint FindComputeQueueFamily()
@@ -827,7 +859,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         {
             if (info.Width == 0 || info.Height == 0 || info.Depth == 0)
             {
-                
                 throw new ArgumentException("Invalid texture dimensions");
             }
             return new TextureStorage(this, _device, info);
@@ -1037,11 +1068,13 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 maximumGpuMemory: GetTotalGPUMemory());
         }
 
-        private ulong GetTotalGPUMemory()
+        private unsafe ulong GetTotalGPUMemory()
         {
             ulong totalMemory = 0;
 
-            Api.GetPhysicalDeviceMemoryProperties(_physicalDevice.PhysicalDevice, out PhysicalDeviceMemoryProperties memoryProperties);
+            // 修复：使用局部变量而不是属性作为out参数
+            var physicalDevice = _physicalDevice.PhysicalDevice;
+            Api.GetPhysicalDeviceMemoryProperties(physicalDevice, out PhysicalDeviceMemoryProperties memoryProperties);
 
             for (int i = 0; i < memoryProperties.MemoryHeapCount; i++)
             {
@@ -1130,7 +1163,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             Logger.Notice.Print(LogClass.Gpu, $"{GpuVendor} {GpuRenderer} ({GpuVersion})");
             Logger.Notice.Print(LogClass.Gpu, $"GPU Memory: {GetTotalGPUMemory() / (1024 * 1024)} MiB");
             
-            // 打印新支持的功能
             if (SupportsTimelineSemaphores)
                 Logger.Notice.Print(LogClass.Gpu, "Supports: Timeline Semaphores");
             if (SupportsSynchronization2)
@@ -1141,6 +1173,12 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 Logger.Notice.Print(LogClass.Gpu, "Supports: Multiview");
             if (SupportsASTCDecodeMode)
                 Logger.Notice.Print(LogClass.Gpu, "Supports: ASTC Decode Mode");
+            
+            if (IsTBDR)
+            {
+                Logger.Notice.Print(LogClass.Gpu, "Platform: TBDR (Tile-Based Deferred Rendering)");
+                Logger.Notice.Print(LogClass.Gpu, "Query Optimization: Batch processing enabled");
+            }
         }
 
         public void Initialize(GraphicsDebugLevel logLevel)
@@ -1169,6 +1207,12 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         public void PreFrame()
         {
             SyncManager.Cleanup();
+            
+            // TBDR平台：预优化批量查询
+            if (IsTBDR && _pipeline != null)
+            {
+                _pipeline.OptimizeBatchQueries();
+            }
         }
 
         public ICounterEvent ReportCounter(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved)
@@ -1199,6 +1243,12 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         public void ResetFutureCounters(CommandBuffer cmd, int count)
         {
             _counters?.ResetFutureCounters(cmd, count);
+        }
+        
+        // 暴露Counters接口给PipelineFull
+        internal Counters GetCounters()
+        {
+            return _counters;
         }
 
         public void BackgroundContextAction(Action action, bool alwaysBackground = false)
@@ -1278,7 +1328,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 }
                 catch (Exception ex)
                 {
-                    
                     return false;
                 }
             }
@@ -1288,7 +1337,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         {
             if (SurfaceLock == null)
             {
-                
                 return;
             }
 
@@ -1302,12 +1350,10 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                     {
                         SurfaceApi.DestroySurface(_instance.Instance, _surface, null);
                         _surface = new SurfaceKHR(0);
-                        
                     }
                 }
                 catch (Exception ex)
                 {
-                    
                 }
 
                 ( _window as Window )?.OnSurfaceLost();
@@ -1318,12 +1364,10 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         {
             if (!_initialized || SurfaceLock == null)
             {
-                
                 return;
             }
 
             PresentAllowed = enabled;
-            
 
             if (!enabled)
             {
@@ -1340,12 +1384,10 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         {
             if (!_initialized || SurfaceLock == null)
             {
-                
                 return;
             }
 
             PresentAllowed = allowed;
-            
 
             if (allowed)
             {
@@ -1357,7 +1399,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 }
                 catch (Exception ex)
                 {
-                    
                 }
             }
             else
@@ -1390,6 +1431,13 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             foreach (var texture in Textures) texture.Release();
             foreach (var sampler in Samplers) sampler.Dispose();
 
+            // 销毁时间线信号量
+            if (TimelineSemaphore.Handle != 0)
+            {
+                Api.DestroySemaphore(_device, TimelineSemaphore, null);
+                TimelineSemaphore = default;
+            }
+
             if (_surface.Handle != 0)
             {
                 SurfaceApi.DestroySurface(_instance.Instance, _surface, null);
@@ -1412,9 +1460,43 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         // 针对Mali GPU的特殊处理
         internal bool ShouldUseSoftwareASTCDecode()
         {
-            // 检测到Mali GPU且ASTC解码模式可能有问题时，使用软件解码
             return IsMaliGPU && !SupportsASTCDecodeMode;
+        }
+        
+        // 获取时间线信号量的当前值
+        internal unsafe ulong GetTimelineSemaphoreValue()
+        {
+            if (!SupportsTimelineSemaphores || TimelineSemaphore.Handle == 0)
+            {
+                return 0;
+            }
+            
+            ulong currentValue;
+            var timelineSemaphore = TimelineSemaphore;
+            TimelineSemaphoreApi.GetSemaphoreCounterValue(_device, timelineSemaphore, &currentValue);
+            return currentValue;
+        }
+        
+        // 提交时间线信号量值
+        internal void SignalTimelineSemaphore(ulong value)
+        {
+            if (!SupportsTimelineSemaphores || TimelineSemaphore.Handle == 0)
+            {
+                return;
+            }
+            
+            CommandBufferPool?.AddTimelineSignal(TimelineSemaphore, value);
+        }
+        
+        // 添加等待时间线信号量值
+        internal void AddWaitTimelineSemaphore(ulong value)
+        {
+            if (!SupportsTimelineSemaphores || TimelineSemaphore.Handle == 0)
+            {
+                return;
+            }
+            
+            CommandBufferPool?.AddWaitTimelineSemaphore(TimelineSemaphore, value);
         }
     }
 }
-

@@ -46,7 +46,13 @@ namespace Ryujinx.Graphics.Vulkan
             "VK_KHR_8bit_storage",
             "VK_KHR_maintenance2",
             "VK_EXT_attachment_feedback_loop_layout",
-            "VK_EXT_attachment_feedback_loop_dynamic_state"
+            "VK_EXT_attachment_feedback_loop_dynamic_state",
+            // 添加时间线信号量扩展（Vulkan 1.1+ 需要这个扩展）
+            KhrTimelineSemaphore.ExtensionName,
+            // 添加同步2和动态渲染扩展
+            KhrSynchronization2.ExtensionName,
+            KhrDynamicRendering.ExtensionName,
+            "VK_EXT_extended_dynamic_state2"
         ];
 
         private static readonly string[] _requiredExtensions =
@@ -292,6 +298,20 @@ namespace Ryujinx.Graphics.Vulkan
                 SType = StructureType.PhysicalDeviceFeatures2,
             };
 
+            // 为Vulkan 1.1+添加时间线信号量特性链（通过扩展）
+            PhysicalDeviceTimelineSemaphoreFeaturesKHR supportedTimelineSemaphoreFeatures = new()
+            {
+                SType = StructureType.PhysicalDeviceTimelineSemaphoreFeatures,
+                PNext = features2.PNext,
+                TimelineSemaphore = true
+            };
+            
+            // 只有当设备支持时间线信号量扩展时才添加这个特性
+            if (physicalDevice.IsDeviceExtensionPresent(KhrTimelineSemaphore.ExtensionName))
+            {
+                features2.PNext = &supportedTimelineSemaphoreFeatures;
+            }
+
             PhysicalDeviceVulkan11Features supportedFeaturesVk11 = new()
             {
                 SType = StructureType.PhysicalDeviceVulkan11Features,
@@ -299,6 +319,45 @@ namespace Ryujinx.Graphics.Vulkan
             };
 
             features2.PNext = &supportedFeaturesVk11;
+
+            // 为同步2扩展添加特性
+            PhysicalDeviceSynchronization2FeaturesKHR supportedSynchronization2Features = new()
+            {
+                SType = StructureType.PhysicalDeviceSynchronization2Features,
+                PNext = features2.PNext,
+                Synchronization2 = true
+            };
+            
+            if (physicalDevice.IsDeviceExtensionPresent(KhrSynchronization2.ExtensionName))
+            {
+                features2.PNext = &supportedSynchronization2Features;
+            }
+
+            // 为动态渲染扩展添加特性
+            PhysicalDeviceDynamicRenderingFeaturesKHR supportedDynamicRenderingFeatures = new()
+            {
+                SType = StructureType.PhysicalDeviceDynamicRenderingFeatures,
+                PNext = features2.PNext,
+                DynamicRendering = true
+            };
+            
+            if (physicalDevice.IsDeviceExtensionPresent(KhrDynamicRendering.ExtensionName))
+            {
+                features2.PNext = &supportedDynamicRenderingFeatures;
+            }
+
+            // 为扩展动态状态2添加特性
+            PhysicalDeviceExtendedDynamicState2FeaturesEXT supportedExtendedDynamicState2Features = new()
+            {
+                SType = StructureType.PhysicalDeviceExtendedDynamicState2FeaturesExt,
+                PNext = features2.PNext,
+                ExtendedDynamicState2 = true
+            };
+            
+            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_extended_dynamic_state2"))
+            {
+                features2.PNext = &supportedExtendedDynamicState2Features;
+            }
 
             PhysicalDeviceCustomBorderColorFeaturesEXT supportedFeaturesCustomBorderColor = new()
             {
@@ -417,6 +476,54 @@ namespace Ryujinx.Graphics.Vulkan
             };
 
             void* pExtendedFeatures = null;
+
+            // 在创建设备时启用时间线信号量特性（如果支持）
+            if (supportedTimelineSemaphoreFeatures.TimelineSemaphore)
+            {
+                var featuresTimelineSemaphore = new PhysicalDeviceTimelineSemaphoreFeaturesKHR
+                {
+                    SType = StructureType.PhysicalDeviceTimelineSemaphoreFeatures,
+                    PNext = pExtendedFeatures,
+                    TimelineSemaphore = true,
+                };
+                pExtendedFeatures = &featuresTimelineSemaphore;
+            }
+
+            // 在创建设备时启用同步2特性（如果支持）
+            if (supportedSynchronization2Features.Synchronization2)
+            {
+                var featuresSynchronization2 = new PhysicalDeviceSynchronization2FeaturesKHR
+                {
+                    SType = StructureType.PhysicalDeviceSynchronization2Features,
+                    PNext = pExtendedFeatures,
+                    Synchronization2 = true,
+                };
+                pExtendedFeatures = &featuresSynchronization2;
+            }
+
+            // 在创建设备时启用动态渲染特性（如果支持）
+            if (supportedDynamicRenderingFeatures.DynamicRendering)
+            {
+                var featuresDynamicRendering = new PhysicalDeviceDynamicRenderingFeaturesKHR
+                {
+                    SType = StructureType.PhysicalDeviceDynamicRenderingFeatures,
+                    PNext = pExtendedFeatures,
+                    DynamicRendering = true,
+                };
+                pExtendedFeatures = &featuresDynamicRendering;
+            }
+
+            // 在创建设备时启用扩展动态状态2特性（如果支持）
+            if (supportedExtendedDynamicState2Features.ExtendedDynamicState2)
+            {
+                var featuresExtendedDynamicState2 = new PhysicalDeviceExtendedDynamicState2FeaturesEXT
+                {
+                    SType = StructureType.PhysicalDeviceExtendedDynamicState2FeaturesExt,
+                    PNext = pExtendedFeatures,
+                    ExtendedDynamicState2 = true,
+                };
+                pExtendedFeatures = &featuresExtendedDynamicState2;
+            }
 
             PhysicalDeviceTransformFeedbackFeaturesEXT featuresTransformFeedback;
 
