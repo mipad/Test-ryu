@@ -25,7 +25,7 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly bool _supportsTimelineSemaphores;
         private readonly VulkanRenderer _renderer;
         
-        // 跟踪每个命令缓冲区已添加的时间线信号量值
+        // 用于跟踪已添加的时间线信号量值，避免重复添加
         private readonly Dictionary<int, HashSet<ulong>> _addedTimelineSignals = new();
         
         // 跟踪每个命令缓冲区已添加的时间线等待值

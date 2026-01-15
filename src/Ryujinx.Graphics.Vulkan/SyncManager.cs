@@ -100,7 +100,7 @@ namespace Ryujinx.Graphics.Vulkan
                     try
                     {
                         // 立即结束并提交命令缓冲区
-                        _gd.EndAndSubmitCommandBuffer(cbs, null, null, null, timelineValue);
+                        _gd.EndAndSubmitCommandBuffer(cbs, timelineValue);
                         
                         Logger.Info?.PrintMsg(LogClass.Gpu, 
                             $"严格模式: 命令缓冲区已立即提交，时间线信号量值={timelineValue}");
@@ -125,7 +125,7 @@ namespace Ryujinx.Graphics.Vulkan
                 if (_gd.SupportsTimelineSemaphores)
                 {
                     // 获取当前活动的命令缓冲区索引
-                    int currentCbIndex = GetCurrentCommandBufferIndex();
+                    int currentCbIndex = _gd.GetCurrentCommandBufferIndex();
                     
                     if (currentCbIndex >= 0)
                     {
@@ -156,15 +156,6 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 _handles.Add(handle);
             }
-        }
-
-        // 获取当前活动的命令缓冲区索引
-        private int GetCurrentCommandBufferIndex()
-        {
-            // 这个方法需要VulkanRenderer提供当前命令缓冲区信息
-            // 这里我们尝试通过反射或其他方式获取，或者修改VulkanRenderer以提供此信息
-            // 暂时返回-1，表示未知
-            return -1;
         }
 
         public ulong GetCurrent()
