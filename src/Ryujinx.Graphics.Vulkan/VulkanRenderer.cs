@@ -1203,11 +1203,26 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             alignment = 1;
             return false;
         }
+        
+        // 在VulkanRenderer类中添加
+internal TimelineFenceHolder CreateTimelineFenceHolder()
+{
+    if (SupportsTimelineSemaphores && TimelineSemaphore.Handle != 0)
+    {
+        return new TimelineFenceHolder(this, _device, TimelineSemaphore);
+    }
+    return null;
+}
 
         public void PreFrame()
         {
             SyncManager.Cleanup();
             
+            // TBDR平台：预优化批量查询
+            if (IsTBDR && _pipeline != null)
+            {
+                _pipeline.OptimizeBatchQueries();
+            }
         }
 
         public ICounterEvent ReportCounter(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved)
