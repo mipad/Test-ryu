@@ -103,6 +103,10 @@ namespace Ryujinx.Graphics.Vulkan
         // 时间线信号量
         internal Semaphore TimelineSemaphore { get; private set; }
         
+        private readonly Func<Instance, Vk, SurfaceKHR> _getSurface;
+        private readonly Func<string[]> _getRequiredExtensions;
+        private readonly string _preferredGpuId;
+        
         // 时间线信号量计数器
         private ulong _timelineValueCounter = 1;
         private readonly object _timelineLock = new object();
