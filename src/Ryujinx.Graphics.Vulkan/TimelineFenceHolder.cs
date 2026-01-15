@@ -146,25 +146,27 @@ namespace Ryujinx.Graphics.Vulkan
                 return true;
             }
             
-            // 修复：使用局部变量并固定它们
-            var semaphore = _timelineSemaphore;
-            var waitValue = targetValue;
+            // 简化方法：直接调用Vulkan API，不尝试获取结构体的地址
+            // 我们可以使用stackalloc在栈上分配数组
+            Semaphore* pSemaphore = stackalloc Semaphore[1];
+            ulong* pValue = stackalloc ulong[1];
             
-            fixed (Semaphore* pSemaphore = &semaphore)
-            fixed (ulong* pValue = &waitValue)
+            // 将值复制到栈上分配的内存中
+            *pSemaphore = _timelineSemaphore;
+            *pValue = targetValue;
+            
+            // 现在直接使用这些指针，它们已经是固定的（在栈上）
+            var waitInfo = new SemaphoreWaitInfo
             {
-                var waitInfo = new SemaphoreWaitInfo
-                {
-                    SType = StructureType.SemaphoreWaitInfo,
-                    SemaphoreCount = 1,
-                    PSemaphores = pSemaphore,
-                    PValues = pValue
-                };
-                
-                var result = _gd.TimelineSemaphoreApi.WaitSemaphores(device, &waitInfo, timeout);
-                
-                return result == Result.Success;
-            }
+                SType = StructureType.SemaphoreWaitInfo,
+                SemaphoreCount = 1,
+                PSemaphores = pSemaphore,
+                PValues = pValue
+            };
+            
+            var result = _gd.TimelineSemaphoreApi.WaitSemaphores(device, &waitInfo, timeout);
+            
+            return result == Result.Success;
         }
         
         /// <summary>
