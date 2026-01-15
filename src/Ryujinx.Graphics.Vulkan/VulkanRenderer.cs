@@ -103,6 +103,9 @@ namespace Ryujinx.Graphics.Vulkan
         // 时间线信号量
         internal Semaphore TimelineSemaphore { get; private set; }
         
+        // 时间线信号量池
+        private TimelineFenceHolderPool _timelineFenceHolderPool;
+
         private readonly Func<Instance, Vk, SurfaceKHR> _getSurface;
         private readonly Func<string[]> _getRequiredExtensions;
         private readonly string _preferredGpuId;
@@ -201,6 +204,12 @@ namespace Ryujinx.Graphics.Vulkan
                 
                 // 创建时间线信号量
                 CreateTimelineSemaphore();
+                
+                // 初始化时间线信号量池
+                if (TimelineSemaphore.Handle != 0)
+                {
+                    _timelineFenceHolderPool = TimelineFenceHolderPool.GetInstance(this, _device, TimelineSemaphore);
+                }
             }
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrSynchronization2 synchronization2Api))
@@ -1203,53 +1212,21 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             alignment = 1;
             return false;
         }
-        
-        // 在VulkanRenderer类中添加
-internal TimelineFenceHolder CreateTimelineFenceHolder()
-{
-    if (SupportsTimelineSemaphores && TimelineSemaphore.Handle != 0)
-    {
-        return new TimelineFenceHolder(this, _device, TimelineSemaphore);
-    }
-    return null;
-}
 
-        // 在VulkanRenderer类中添加批量处理相关方法
-
-// 批量创建同步对象
-public void CreateSyncBulk(ulong[] ids, bool[] strictFlags)
-{
-    SyncManager?.CreateBulk(ids, strictFlags);
-}
-
-// 批量等待同步对象
-public void WaitSyncBulk(ulong[] ids)
-{
-    SyncManager?.WaitBulk(ids);
-}
-
-// 批量获取当前同步状态
-public ulong[] GetCurrentSyncBulk(ulong[] ids)
-{
-    return SyncManager?.GetCurrentBulk(ids) ?? Array.Empty<ulong>();
-}
-
-// 刷新所有待处理的批量信号
-public void FlushPendingBatches()
-{
-    SyncManager?.FlushPendingBatches();
-    CommandBufferPool?.FlushAllPendingSignals(TimelineSemaphore);
-}
-
-// 在PreFrame方法中调用批量刷新
-public void PreFrame()
-{
-    SyncManager?.Cleanup();
-    
-    // 刷新待处理的批量信号
-    FlushPendingBatches();
-    
-}
+        public void PreFrame()
+        {
+            // 刷新所有待处理的批量信号
+            FlushPendingBatches();
+            
+            // 清理同步对象
+            SyncManager.Cleanup();
+            
+            // TBDR平台：预优化批量查询
+            if (IsTBDR && _pipeline != null)
+            {
+                _pipeline.OptimizeBatchQueries();
+            }
+        }
 
         public ICounterEvent ReportCounter(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved)
         {
@@ -1297,6 +1274,23 @@ public void PreFrame()
             SyncManager.Create(id, strict);
         }
 
+        // 批量创建同步对象
+        public void CreateSyncBulk(ulong[] ids, bool[] strictFlags)
+        {
+            if (ids == null || strictFlags == null || ids.Length != strictFlags.Length)
+            {
+                Logger.Error?.PrintMsg(LogClass.Gpu, 
+                    $"批量创建同步对象失败: 参数无效");
+                return;
+            }
+            
+            // 简化：逐个创建
+            for (int i = 0; i < ids.Length; i++)
+            {
+                CreateSync(ids[i], strictFlags[i]);
+            }
+        }
+
         public IProgram LoadProgramBinary(byte[] programBinary, bool isFragment, ShaderInfo info)
         {
             throw new NotImplementedException();
@@ -1307,9 +1301,36 @@ public void PreFrame()
             SyncManager.Wait(id);
         }
 
+        // 批量等待同步对象
+        public void WaitSyncBulk(ulong[] ids)
+        {
+            if (ids == null || ids.Length == 0)
+                return;
+                
+            // 简化：逐个等待
+            foreach (var id in ids)
+            {
+                WaitSync(id);
+            }
+        }
+
         public ulong GetCurrentSync()
         {
             return SyncManager.GetCurrent();
+        }
+
+        // 批量获取当前同步状态
+        public ulong[] GetCurrentSyncBulk(ulong[] ids)
+        {
+            if (ids == null || ids.Length == 0)
+                return Array.Empty<ulong>();
+                
+            ulong[] results = new ulong[ids.Length];
+            for (int i = 0; i < ids.Length; i++)
+            {
+                results[i] = GetCurrentSync();
+            }
+            return results;
         }
 
         public void SetInterruptAction(Action<Action> interruptAction)
@@ -1450,6 +1471,10 @@ public void PreFrame()
                 return;
             }
 
+            // 销毁时间线信号量池
+            _timelineFenceHolderPool?.Dispose();
+            _timelineFenceHolderPool = null;
+            
             CommandBufferPool?.Dispose();
             _computeCommandPool?.Dispose();
             BackgroundResources?.Dispose();
@@ -1524,6 +1549,17 @@ public void PreFrame()
             CommandBufferPool?.AddTimelineSignal(TimelineSemaphore, value);
         }
         
+        // 批量提交时间线信号量值
+        internal void SignalTimelineSemaphores(ulong[] values)
+        {
+            if (!SupportsTimelineSemaphores || TimelineSemaphore.Handle == 0 || values == null || values.Length == 0)
+            {
+                return;
+            }
+            
+            CommandBufferPool?.AddTimelineSignals(TimelineSemaphore, values);
+        }
+        
         // 添加等待时间线信号量值
         internal void AddWaitTimelineSemaphore(ulong value)
         {
@@ -1535,11 +1571,20 @@ public void PreFrame()
             CommandBufferPool?.AddWaitTimelineSemaphore(TimelineSemaphore, value);
         }
         
+        // 批量添加等待时间线信号量值
+        internal void AddWaitTimelineSemaphores(ulong[] values)
+        {
+            if (!SupportsTimelineSemaphores || TimelineSemaphore.Handle == 0 || values == null || values.Length == 0)
+            {
+                return;
+            }
+            
+            CommandBufferPool?.AddWaitTimelineSemaphores(TimelineSemaphore, values);
+        }
+        
         // 获取当前命令缓冲区索引
         internal int GetCurrentCommandBufferIndex()
         {
-            // 如果 CommandBufferPool 有 GetCurrentCommandBufferIndex 方法，则调用它
-            // 否则返回 -1
             return CommandBufferPool?.GetCurrentCommandBufferIndex() ?? -1;
         }
 
@@ -1564,6 +1609,46 @@ public void PreFrame()
         internal void EndAndSubmitCommandBuffer(CommandBufferScoped cbs, ulong timelineSignalValue)
         {
             EndAndSubmitCommandBuffer(cbs, default, default, default, timelineSignalValue);
+        }
+        
+        // 刷新所有待处理的批量信号
+        internal void FlushPendingBatches()
+        {
+            _timelineFenceHolderPool?.FlushNow();
+            
+            // 刷新CommandBufferPool中的待处理信号
+            if (SupportsTimelineSemaphores && TimelineSemaphore.Handle != 0)
+            {
+                CommandBufferPool?.FlushAllPendingSignals(TimelineSemaphore);
+            }
+        }
+        
+        // 获取时间线信号量池
+        internal TimelineFenceHolderPool GetTimelineFenceHolderPool()
+        {
+            return _timelineFenceHolderPool;
+        }
+        
+        // 检查时间线信号量是否已发出特定值
+        internal bool IsTimelineValueSignaled(ulong targetValue)
+        {
+            if (!SupportsTimelineSemaphores || TimelineSemaphore.Handle == 0)
+            {
+                return true;
+            }
+            
+            return GetTimelineSemaphoreValue() >= targetValue;
+        }
+        
+        // 等待时间线信号量达到特定值
+        internal bool WaitForTimelineValue(ulong targetValue, ulong timeout = 1000000000)
+        {
+            if (!SupportsTimelineSemaphores || TimelineSemaphore.Handle == 0)
+            {
+                return true;
+            }
+            
+            return _timelineFenceHolderPool?.WaitForValue(targetValue, timeout) ?? true;
         }
     }
 }
