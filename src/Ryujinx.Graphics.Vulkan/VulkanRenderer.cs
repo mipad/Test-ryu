@@ -695,6 +695,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 PNext = &semaphoreTypeCreateInfo
             };
 
+            // 修复：使用局部变量作为out参数
             Semaphore semaphore;
             Api.CreateSemaphore(_device, semaphoreCreateInfo, null, out semaphore).ThrowOnError();
             TimelineSemaphore = semaphore;
@@ -1071,6 +1072,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         {
             ulong totalMemory = 0;
 
+            // 修复：使用局部变量而不是属性作为out参数
             var physicalDevice = _physicalDevice.PhysicalDevice;
             Api.GetPhysicalDeviceMemoryProperties(physicalDevice, out PhysicalDeviceMemoryProperties memoryProperties);
 
@@ -1162,20 +1164,20 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             Logger.Notice.Print(LogClass.Gpu, $"GPU Memory: {GetTotalGPUMemory() / (1024 * 1024)} MiB");
             
             if (SupportsTimelineSemaphores)
-                Logger.Debug?.Print(LogClass.Gpu, "Supports: Timeline Semaphores");
+                Logger.Notice.Print(LogClass.Gpu, "Supports: Timeline Semaphores");
             if (SupportsSynchronization2)
-                Logger.Debug?.Print(LogClass.Gpu, "Supports: Synchronization2");
+                Logger.Notice.Print(LogClass.Gpu, "Supports: Synchronization2");
             if (SupportsDynamicRendering)
-                Logger.Debug?.Print(LogClass.Gpu, "Supports: Dynamic Rendering");
+                Logger.Notice.Print(LogClass.Gpu, "Supports: Dynamic Rendering");
             if (SupportsMultiview)
-                Logger.Debug?.Print(LogClass.Gpu, "Supports: Multiview");
+                Logger.Notice.Print(LogClass.Gpu, "Supports: Multiview");
             if (SupportsASTCDecodeMode)
-                Logger.Debug?.Print(LogClass.Gpu, "Supports: ASTC Decode Mode");
+                Logger.Notice.Print(LogClass.Gpu, "Supports: ASTC Decode Mode");
             
             if (IsTBDR)
             {
-                Logger.Debug?.Print(LogClass.Gpu, "Platform: TBDR (Tile-Based Deferred Rendering)");
-                Logger.Debug?.Print(LogClass.Gpu, "Query Optimization: Batch processing enabled");
+                Logger.Notice.Print(LogClass.Gpu, "Platform: TBDR (Tile-Based Deferred Rendering)");
+                Logger.Notice.Print(LogClass.Gpu, "Query Optimization: Batch processing enabled");
             }
         }
 
@@ -1405,6 +1407,37 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             }
         }
 
+        // 获取当前命令缓冲区索引
+        internal int GetCurrentCommandBufferIndex()
+        {
+            // 如果 CommandBufferPool 有 GetCurrentCommandBufferIndex 方法，则调用它
+            // 否则返回 -1
+            return CommandBufferPool?.GetCurrentCommandBufferIndex() ?? -1;
+        }
+
+        // 立即结束并提交命令缓冲区，并发出时间线信号量
+        internal unsafe void EndAndSubmitCommandBuffer(CommandBufferScoped cbs, ReadOnlySpan<Semaphore> waitSemaphores, ReadOnlySpan<PipelineStageFlags> waitDstStageMask, ReadOnlySpan<Semaphore> signalSemaphores, ulong timelineSignalValue)
+        {
+            Logger.Info?.PrintMsg(LogClass.Gpu, 
+                $"EndAndSubmitCommandBuffer: 命令缓冲区 {cbs.CommandBufferIndex}, 时间线信号值={timelineSignalValue}");
+            
+            // 如果需要时间线信号量，添加到命令缓冲区
+            if (SupportsTimelineSemaphores && TimelineSemaphore.Handle != 0 && timelineSignalValue > 0)
+            {
+                // 将时间线信号量添加到指定的命令缓冲区
+                CommandBufferPool.AddTimelineSignalToBuffer(cbs.CommandBufferIndex, TimelineSemaphore, timelineSignalValue);
+            }
+            
+            // 提交命令缓冲区
+            CommandBufferPool.Return(cbs, waitSemaphores, waitDstStageMask, signalSemaphores);
+        }
+
+        // 重载版本：不需要额外信号量
+        internal void EndAndSubmitCommandBuffer(CommandBufferScoped cbs, ulong timelineSignalValue)
+        {
+            EndAndSubmitCommandBuffer(cbs, default, default, default, timelineSignalValue);
+        }
+
         public unsafe void Dispose()
         {
             if (!_initialized)
@@ -1412,6 +1445,9 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 return;
             }
 
+            // 销毁同步管理器（包含严格模式命令池）
+            SyncManager?.Dispose();
+            
             CommandBufferPool?.Dispose();
             _computeCommandPool?.Dispose();
             BackgroundResources?.Dispose();
@@ -1495,41 +1531,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             }
             
             CommandBufferPool?.AddWaitTimelineSemaphore(TimelineSemaphore, value);
-        }
-        
-        // 获取当前命令缓冲区索引
-        internal int GetCurrentCommandBufferIndex()
-        {
-            return CommandBufferPool?.GetCurrentCommandBufferIndex() ?? -1;
-        }
-
-        // 立即结束并提交命令缓冲区，并发出时间线信号量
-        internal unsafe void EndAndSubmitCommandBuffer(CommandBufferScoped cbs, ReadOnlySpan<Semaphore> waitSemaphores, ReadOnlySpan<PipelineStageFlags> waitDstStageMask, ReadOnlySpan<Semaphore> signalSemaphores, ulong timelineSignalValue)
-        {
-            // 如果需要时间线信号量，添加到命令缓冲区
-            if (SupportsTimelineSemaphores && TimelineSemaphore.Handle != 0 && timelineSignalValue > 0)
-            {
-                // 将时间线信号量添加到指定的命令缓冲区
-                CommandBufferPool.AddTimelineSignalToBuffer(cbs.CommandBufferIndex, TimelineSemaphore, timelineSignalValue);
-            }
-            
-            try
-            {
-                // 提交命令缓冲区
-                CommandBufferPool.Return(cbs, waitSemaphores, waitDstStageMask, signalSemaphores);
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.PrintMsg(LogClass.Gpu, 
-                    $"提交命令缓冲区失败: {ex.Message}");
-                throw;
-            }
-        }
-
-        // 重载版本：不需要额外信号量
-        internal void EndAndSubmitCommandBuffer(CommandBufferScoped cbs, ulong timelineSignalValue)
-        {
-            EndAndSubmitCommandBuffer(cbs, default, default, default, timelineSignalValue);
         }
     }
 }
