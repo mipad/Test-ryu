@@ -21,12 +21,7 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly Queue<(BufferedQuery, uint)> _queryBatchQueue = new();
         private int _batchQueryCount = 0;
         private readonly bool _isTbdrPlatform;
-        private readonly int _targetBatchSize;
         private readonly object _batchLock = new();
-        
-        // 批次时间线信号量映射
-        private readonly Dictionary<ulong, List<BufferedQuery>> _batchTimelineMap = new();
-        private ulong _currentBatchTimelineValue = 0;
 
         private ulong _byteWeight;
 
@@ -44,7 +39,6 @@ namespace Ryujinx.Graphics.Vulkan
             IsMainPipeline = true;
             
             _isTbdrPlatform = gd.IsTBDR;
-            _targetBatchSize = _isTbdrPlatform ? 32 : 64;
             
             if (_isTbdrPlatform)
             {
@@ -57,31 +51,10 @@ namespace Ryujinx.Graphics.Vulkan
             // 批量复制所有查询结果
             foreach (var (query, index) in _pendingQueryCopies)
             {
-                query.BatchCopy(Cbs, index, _currentBatchTimelineValue);
+                query.PoolCopy(Cbs, index);
             }
 
             _pendingQueryCopies.Clear();
-            
-            // 如果有批次时间线信号量值，提交它
-            if (_currentBatchTimelineValue > 0 && Gd.SupportsTimelineSemaphores && Gd.TimelineSemaphore.Handle != 0)
-            {
-                Gd.CommandBufferPool.AddTimelineSignalToBuffer(
-                    Cbs.CommandBufferIndex, 
-                    Gd.TimelineSemaphore, 
-                    _currentBatchTimelineValue);
-                
-                // 通知批次中的所有查询
-                if (_batchTimelineMap.TryGetValue(_currentBatchTimelineValue, out var batchQueries))
-                {
-                    foreach (var query in batchQueries)
-                    {
-                        query.SetBatchTimelineValue(_currentBatchTimelineValue);
-                    }
-                    _batchTimelineMap.Remove(_currentBatchTimelineValue);
-                }
-                
-                _currentBatchTimelineValue = 0;
-            }
         }
 
         public void ClearRenderTargetColor(int index, int layer, int layerCount, uint componentMask, ColorF color)
@@ -346,8 +319,9 @@ namespace Ryujinx.Graphics.Vulkan
                 _queryBatchQueue.Enqueue((query, index));
                 _batchQueryCount++;
                 
-                // 达到批次大小时处理批次
-                if (_batchQueryCount >= _targetBatchSize)
+                // 达到一定数量时处理批次
+                const int batchSize = 32;
+                if (_batchQueryCount >= batchSize)
                 {
                     ProcessQueryBatch(false);
                 }
@@ -360,62 +334,25 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 if (_batchQueryCount == 0) return;
                 
-                // 对于TBDR平台，更激进的批处理
-                int targetSize = _isTbdrPlatform ? 
-                    (forceFlush ? 1 : 8) :
-                    (forceFlush ? 1 : 32);
-                
-                if (!forceFlush && _batchQueryCount < targetSize)
+                const int minBatchSize = 8;
+                if (!forceFlush && _batchQueryCount < minBatchSize)
                 {
                     return;
                 }
                 
-                // 分配批次时间线信号量值
-                ulong batchTimelineValue = 0;
-                if (Gd.SupportsTimelineSemaphores && Gd.TimelineSemaphore.Handle != 0)
+                // 将查询添加到待处理列表
+                while (_queryBatchQueue.Count > 0)
                 {
-                    batchTimelineValue = Gd.GetNextTimelineValue();
-                    _currentBatchTimelineValue = batchTimelineValue;
-                    
-                    var batchQueries = new List<BufferedQuery>();
-                    
-                    // 收集批次中的所有查询
-                    while (_queryBatchQueue.Count > 0)
-                    {
-                        var (query, index) = _queryBatchQueue.Dequeue();
-                        batchQueries.Add(query);
-                        _pendingQueryCopies.Add((query, index));
-                    }
-                    
-                    // 存储映射关系，以便后续通知查询
-                    _batchTimelineMap[batchTimelineValue] = batchQueries;
-                    
-                    if (_isTbdrPlatform)
-                    {
-                        Logger.Debug?.Print(LogClass.Gpu, 
-                            $"TBDR: Batch of {batchQueries.Count} queries, timeline={batchTimelineValue}");
-                    }
-                }
-                else
-                {
-                    // 没有时间线信号量支持，直接复制
-                    while (_queryBatchQueue.Count > 0)
-                    {
-                        var (query, index) = _queryBatchQueue.Dequeue();
-                        _pendingQueryCopies.Add((query, index));
-                    }
+                    var (query, index) = _queryBatchQueue.Dequeue();
+                    _pendingQueryCopies.Add((query, index));
                 }
                 
                 _batchQueryCount = 0;
                 
-                // 如果强制刷新或需要刷新命令缓冲区
-                if (forceFlush || (_pendingQueryCopies.Count > 0 && AutoFlush.RegisterPendingQuery()))
+                if (_isTbdrPlatform)
                 {
-                    if (_isTbdrPlatform)
-                    {
-                        Logger.Debug?.Print(LogClass.Gpu, 
-                            $"TBDR: Processing batch of {_pendingQueryCopies.Count} queries");
-                    }
+                    Logger.Debug?.Print(LogClass.Gpu, 
+                        $"TBDR: Processing batch of {_pendingQueryCopies.Count} queries");
                 }
             }
         }
