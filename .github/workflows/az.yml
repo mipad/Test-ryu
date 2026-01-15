@@ -1,6 +1,6 @@
 name: Android CI Fixed 
 
-on: 
+on:  
   push:
     branches: [ "批量复制1" ]  
   pull_request:
