@@ -695,7 +695,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 PNext = &semaphoreTypeCreateInfo
             };
 
-            // 修复：使用局部变量作为out参数
             Semaphore semaphore;
             Api.CreateSemaphore(_device, semaphoreCreateInfo, null, out semaphore).ThrowOnError();
             TimelineSemaphore = semaphore;
@@ -1072,7 +1071,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         {
             ulong totalMemory = 0;
 
-            // 修复：使用局部变量而不是属性作为out参数
             var physicalDevice = _physicalDevice.PhysicalDevice;
             Api.GetPhysicalDeviceMemoryProperties(physicalDevice, out PhysicalDeviceMemoryProperties memoryProperties);
 
@@ -1164,20 +1162,20 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             Logger.Notice.Print(LogClass.Gpu, $"GPU Memory: {GetTotalGPUMemory() / (1024 * 1024)} MiB");
             
             if (SupportsTimelineSemaphores)
-                Logger.Notice.Print(LogClass.Gpu, "Supports: Timeline Semaphores");
+                Logger.Debug?.Print(LogClass.Gpu, "Supports: Timeline Semaphores");
             if (SupportsSynchronization2)
-                Logger.Notice.Print(LogClass.Gpu, "Supports: Synchronization2");
+                Logger.Debug?.Print(LogClass.Gpu, "Supports: Synchronization2");
             if (SupportsDynamicRendering)
-                Logger.Notice.Print(LogClass.Gpu, "Supports: Dynamic Rendering");
+                Logger.Debug?.Print(LogClass.Gpu, "Supports: Dynamic Rendering");
             if (SupportsMultiview)
-                Logger.Notice.Print(LogClass.Gpu, "Supports: Multiview");
+                Logger.Debug?.Print(LogClass.Gpu, "Supports: Multiview");
             if (SupportsASTCDecodeMode)
-                Logger.Notice.Print(LogClass.Gpu, "Supports: ASTC Decode Mode");
+                Logger.Debug?.Print(LogClass.Gpu, "Supports: ASTC Decode Mode");
             
             if (IsTBDR)
             {
-                Logger.Notice.Print(LogClass.Gpu, "Platform: TBDR (Tile-Based Deferred Rendering)");
-                Logger.Notice.Print(LogClass.Gpu, "Query Optimization: Batch processing enabled");
+                Logger.Debug?.Print(LogClass.Gpu, "Platform: TBDR (Tile-Based Deferred Rendering)");
+                Logger.Debug?.Print(LogClass.Gpu, "Query Optimization: Batch processing enabled");
             }
         }
 
@@ -1502,17 +1500,12 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         // 获取当前命令缓冲区索引
         internal int GetCurrentCommandBufferIndex()
         {
-            // 如果 CommandBufferPool 有 GetCurrentCommandBufferIndex 方法，则调用它
-            // 否则返回 -1
             return CommandBufferPool?.GetCurrentCommandBufferIndex() ?? -1;
         }
 
         // 立即结束并提交命令缓冲区，并发出时间线信号量
         internal unsafe void EndAndSubmitCommandBuffer(CommandBufferScoped cbs, ReadOnlySpan<Semaphore> waitSemaphores, ReadOnlySpan<PipelineStageFlags> waitDstStageMask, ReadOnlySpan<Semaphore> signalSemaphores, ulong timelineSignalValue)
         {
-            Logger.Info?.PrintMsg(LogClass.Gpu, 
-                $"EndAndSubmitCommandBuffer: 命令缓冲区 {cbs.CommandBufferIndex}, 时间线信号值={timelineSignalValue}");
-            
             // 如果需要时间线信号量，添加到命令缓冲区
             if (SupportsTimelineSemaphores && TimelineSemaphore.Handle != 0 && timelineSignalValue > 0)
             {

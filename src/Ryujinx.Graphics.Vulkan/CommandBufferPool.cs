@@ -128,7 +128,7 @@ namespace Ryujinx.Graphics.Vulkan
                 _addedTimelineWaits[i] = new HashSet<ulong>();
             }
 
-            Logger.Info?.PrintMsg(LogClass.Gpu, 
+            Logger.Debug?.PrintMsg(LogClass.Gpu, 
                 $"CommandBufferPool初始化: 时间线信号量支持 = {_supportsTimelineSemaphores}, 轻量模式 = {isLight}");
 
             CommandPoolCreateInfo commandPoolCreateInfo = new()
@@ -156,9 +156,6 @@ namespace Ryujinx.Graphics.Vulkan
                 _commandBuffers[i].Initialize(api, device, _pool);
                 WaitAndDecrementRef(i);
             }
-            
-            Logger.Info?.PrintMsg(LogClass.Gpu, 
-                $"CommandBufferPool初始化完成: 总共命令缓冲区数量 = {_totalCommandBuffers}");
         }
 
         public void AddDependant(int cbIndex, IAuto dependant)
@@ -205,8 +202,6 @@ namespace Ryujinx.Graphics.Vulkan
             if (waitable.AddFence(cbIndex, entry.Fence))
             {
                 entry.Waitables.Add(waitable);
-                Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                    $"添加等待对象到命令缓冲区 {cbIndex}");
             }
         }
 
@@ -214,13 +209,8 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (!_supportsTimelineSemaphores || semaphore.Handle == 0)
             {
-                Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                    $"添加时间线信号失败: 不支持或信号量无效");
                 return;
             }
-
-            Logger.Info?.PrintMsg(LogClass.Gpu, 
-                $"添加时间线信号: 信号量={semaphore.Handle:X}, 值={value}");
 
             lock (_commandBuffers)
             {
@@ -233,8 +223,6 @@ namespace Ryujinx.Graphics.Vulkan
                         // 检查是否已经添加过相同的信号量值
                         if (_addedTimelineSignals.ContainsKey(i) && _addedTimelineSignals[i].Contains(value))
                         {
-                            Logger.Warning?.PrintMsg(LogClass.Gpu, 
-                                $"检测到重复的时间线信号量值: 命令缓冲区={i}, 值={value}，跳过添加");
                             continue;
                         }
                         
@@ -246,9 +234,6 @@ namespace Ryujinx.Graphics.Vulkan
                             _addedTimelineSignals[i] = new HashSet<ulong>();
                         }
                         _addedTimelineSignals[i].Add(value);
-                        
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                            $"时间线信号添加到命令缓冲区 {i}");
                     }
                 }
             }
@@ -258,20 +243,13 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (!_supportsTimelineSemaphores || semaphore.Handle == 0)
             {
-                Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                    $"添加时间线信号到缓冲区失败: 不支持或信号量无效");
                 return;
             }
 
             if (cbIndex < 0 || cbIndex >= _totalCommandBuffers)
             {
-                Logger.Error?.PrintMsg(LogClass.Gpu, 
-                    $"添加时间线信号失败: 无效的命令缓冲区索引 {cbIndex}");
                 return;
             }
-
-            Logger.Info?.PrintMsg(LogClass.Gpu, 
-                $"添加时间线信号到缓冲区 {cbIndex}: 信号量={semaphore.Handle:X}, 值={value}");
 
             lock (_commandBuffers)
             {
@@ -280,8 +258,6 @@ namespace Ryujinx.Graphics.Vulkan
                 // 检查是否已经添加过相同的信号量值
                 if (_addedTimelineSignals.ContainsKey(cbIndex) && _addedTimelineSignals[cbIndex].Contains(value))
                 {
-                    Logger.Warning?.PrintMsg(LogClass.Gpu, 
-                        $"检测到重复的时间线信号量值: 命令缓冲区={cbIndex}, 值={value}，跳过添加");
                     return;
                 }
                 
@@ -293,9 +269,6 @@ namespace Ryujinx.Graphics.Vulkan
                     _addedTimelineSignals[cbIndex] = new HashSet<ulong>();
                 }
                 _addedTimelineSignals[cbIndex].Add(value);
-                
-                Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                    $"时间线信号添加到指定命令缓冲区 {cbIndex}");
             }
         }
 
@@ -303,13 +276,8 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (!_supportsTimelineSemaphores || semaphore.Handle == 0)
             {
-                Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                    $"添加使用中时间线信号失败: 不支持或信号量无效");
                 return;
             }
-
-            Logger.Info?.PrintMsg(LogClass.Gpu, 
-                $"添加使用中时间线信号: 信号量={semaphore.Handle:X}, 值={value}");
 
             lock (_commandBuffers)
             {
@@ -324,8 +292,6 @@ namespace Ryujinx.Graphics.Vulkan
                         if (_addedTimelineSignals.ContainsKey(_currentCommandBufferIndex) && 
                             _addedTimelineSignals[_currentCommandBufferIndex].Contains(value))
                         {
-                            Logger.Warning?.PrintMsg(LogClass.Gpu, 
-                                $"检测到重复的时间线信号量值（使用中）: 命令缓冲区={_currentCommandBufferIndex}, 值={value}，跳过添加");
                             return;
                         }
                         
@@ -337,14 +303,6 @@ namespace Ryujinx.Graphics.Vulkan
                             _addedTimelineSignals[_currentCommandBufferIndex] = new HashSet<ulong>();
                         }
                         _addedTimelineSignals[_currentCommandBufferIndex].Add(value);
-                        
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                            $"时间线信号添加到当前使用中命令缓冲区 {_currentCommandBufferIndex}");
-                    }
-                    else
-                    {
-                        Logger.Warning?.PrintMsg(LogClass.Gpu, 
-                            $"当前命令缓冲区 {_currentCommandBufferIndex} 不在使用中");
                     }
                 }
                 else
@@ -359,8 +317,6 @@ namespace Ryujinx.Graphics.Vulkan
                             // 检查是否已经添加过相同的信号量值
                             if (_addedTimelineSignals.ContainsKey(i) && _addedTimelineSignals[i].Contains(value))
                             {
-                                Logger.Warning?.PrintMsg(LogClass.Gpu, 
-                                    $"检测到重复的时间线信号量值（使用中）: 命令缓冲区={i}, 值={value}，跳过添加");
                                 return;
                             }
                             
@@ -372,9 +328,6 @@ namespace Ryujinx.Graphics.Vulkan
                                 _addedTimelineSignals[i] = new HashSet<ulong>();
                             }
                             _addedTimelineSignals[i].Add(value);
-                            
-                            Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                                $"时间线信号添加到使用中命令缓冲区 {i} (回退)");
                             break; // 只添加到一个命令缓冲区
                         }
                     }
@@ -386,13 +339,8 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (!_supportsTimelineSemaphores || semaphore.Handle == 0)
             {
-                Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                    $"添加时间线等待失败: 不支持或信号量无效");
                 return;
             }
-
-            Logger.Info?.PrintMsg(LogClass.Gpu, 
-                $"添加时间线等待: 信号量={semaphore.Handle:X}, 值={value}, 阶段={stage}");
 
             lock (_commandBuffers)
             {
@@ -405,8 +353,6 @@ namespace Ryujinx.Graphics.Vulkan
                         // 检查是否已经添加过相同的等待值
                         if (_addedTimelineWaits.ContainsKey(i) && _addedTimelineWaits[i].Contains(value))
                         {
-                            Logger.Warning?.PrintMsg(LogClass.Gpu, 
-                                $"检测到重复的时间线等待值: 命令缓冲区={i}, 值={value}，跳过添加");
                             continue;
                         }
                         
@@ -418,9 +364,6 @@ namespace Ryujinx.Graphics.Vulkan
                             _addedTimelineWaits[i] = new HashSet<ulong>();
                         }
                         _addedTimelineWaits[i].Add(value);
-                        
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                            $"时间线等待添加到命令缓冲区 {i}");
                     }
                 }
             }
@@ -430,13 +373,8 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (!_supportsTimelineSemaphores || semaphore.Handle == 0)
             {
-                Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                    $"添加使用中时间线等待失败: 不支持或信号量无效");
                 return;
             }
-
-            Logger.Info?.PrintMsg(LogClass.Gpu, 
-                $"添加使用中时间线等待: 信号量={semaphore.Handle:X}, 值={value}, 阶段={stage}");
 
             lock (_commandBuffers)
             {
@@ -449,8 +387,6 @@ namespace Ryujinx.Graphics.Vulkan
                         // 检查是否已经添加过相同的等待值
                         if (_addedTimelineWaits.ContainsKey(i) && _addedTimelineWaits[i].Contains(value))
                         {
-                            Logger.Warning?.PrintMsg(LogClass.Gpu, 
-                                $"检测到重复的时间线等待值: 命令缓冲区={i}, 值={value}，跳过添加");
                             continue;
                         }
                         
@@ -462,9 +398,6 @@ namespace Ryujinx.Graphics.Vulkan
                             _addedTimelineWaits[i] = new HashSet<ulong>();
                         }
                         _addedTimelineWaits[i].Add(value);
-                        
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                            $"时间线等待添加到使用中命令缓冲区 {i}");
                     }
                 }
             }
@@ -577,9 +510,6 @@ namespace Ryujinx.Graphics.Vulkan
 
                         _api.BeginCommandBuffer(entry.CommandBuffer, in commandBufferBeginInfo).ThrowOnError();
 
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                            $"租用命令缓冲区 {cursor}，当前使用中={_inUseCount}，排队中={_queuedCount}");
-
                         return new CommandBufferScoped(this, entry.CommandBuffer, cursor);
                     }
 
@@ -588,6 +518,54 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             throw new InvalidOperationException($"Out of command buffers (In use: {_inUseCount}, queued: {_queuedCount}, total: {_totalCommandBuffers})");
+        }
+
+        // 租用特定索引的命令缓冲区
+        public CommandBufferScoped RentSpecific(int desiredIndex)
+        {
+            lock (_commandBuffers)
+            {
+                if (desiredIndex < 0 || desiredIndex >= _totalCommandBuffers)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(desiredIndex));
+                }
+
+                ref ReservedCommandBuffer entry = ref _commandBuffers[desiredIndex];
+
+                if (entry.InUse || entry.InConsumption)
+                {
+                    // 如果指定的缓冲区不可用，回退到正常租用
+                    return Rent();
+                }
+
+                entry.InUse = true;
+                _currentCommandBufferIndex = desiredIndex;
+                _inUseCount++;
+
+                CommandBufferBeginInfo commandBufferBeginInfo = new()
+                {
+                    SType = StructureType.CommandBufferBeginInfo,
+                };
+
+                _api.BeginCommandBuffer(entry.CommandBuffer, in commandBufferBeginInfo).ThrowOnError();
+
+                return new CommandBufferScoped(this, entry.CommandBuffer, desiredIndex);
+            }
+        }
+
+        // 检查命令缓冲区是否可用
+        public bool IsBufferAvailable(int bufferIndex)
+        {
+            lock (_commandBuffers)
+            {
+                if (bufferIndex < 0 || bufferIndex >= _totalCommandBuffers)
+                {
+                    return false;
+                }
+
+                ref ReservedCommandBuffer entry = ref _commandBuffers[bufferIndex];
+                return !entry.InUse && !entry.InConsumption;
+            }
         }
 
         public void Return(CommandBufferScoped cbs)
@@ -620,9 +598,6 @@ namespace Ryujinx.Graphics.Vulkan
                     _currentCommandBufferIndex = -1;
                 }
 
-                Logger.Info?.PrintMsg(LogClass.Gpu, 
-                    $"返回命令缓冲区 {cbIndex}，提交次数={entry.SubmissionCount}，时间线信号={entry.TimelineSignals.Count}，时间线等待={entry.TimelineWaits.Count}");
-
                 CommandBuffer commandBuffer = entry.CommandBuffer;
 
                 _api.EndCommandBuffer(commandBuffer).ThrowOnError();
@@ -634,9 +609,6 @@ namespace Ryujinx.Graphics.Vulkan
                 
                 if (_supportsTimelineSemaphores && (entry.TimelineSignals.Count > 0 || entry.TimelineWaits.Count > 0))
                 {
-                    Logger.Info?.PrintMsg(LogClass.Gpu, 
-                        $"使用时间线信号量提交: 信号数量={entry.TimelineSignals.Count}，等待数量={entry.TimelineWaits.Count}");
-                    
                     // 收集所有时间线信号量
                     var allSignalSemaphores = new List<Semaphore>();
                     var allSignalValues = new List<ulong>();
@@ -647,8 +619,6 @@ namespace Ryujinx.Graphics.Vulkan
                     // 添加额外传入的信号量
                     if (!signalSemaphores.IsEmpty)
                     {
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                            $"额外信号量数量: {signalSemaphores.Length}");
                         foreach (var semaphore in signalSemaphores)
                         {
                             allSignalSemaphores.Add(semaphore);
@@ -663,24 +633,17 @@ namespace Ryujinx.Graphics.Vulkan
                         // 防止同一个命令缓冲区中重复的时间线信号量值
                         if (addedSignalValues.Contains(timelineSignal.Value))
                         {
-                            Logger.Warning?.PrintMsg(LogClass.Gpu, 
-                                $"命令缓冲区 {cbIndex} 中检测到重复的时间线信号量值: {timelineSignal.Value}，跳过");
                             continue;
                         }
                         
                         allSignalSemaphores.Add(timelineSignal.Semaphore);
                         allSignalValues.Add(timelineSignal.Value);
                         addedSignalValues.Add(timelineSignal.Value);
-                        
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                            $"时间线信号: 信号量={timelineSignal.Semaphore.Handle:X}，值={timelineSignal.Value}");
                     }
 
                     // 添加额外传入的等待信号量
                     if (!waitSemaphores.IsEmpty)
                     {
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                            $"额外等待信号量数量: {waitSemaphores.Length}");
                         for (int i = 0; i < waitSemaphores.Length; i++)
                         {
                             allWaitSemaphores.Add(waitSemaphores[i]);
@@ -696,8 +659,6 @@ namespace Ryujinx.Graphics.Vulkan
                         // 防止同一个命令缓冲区中重复的时间线等待值
                         if (addedWaitValues.Contains(timelineWait.Value))
                         {
-                            Logger.Warning?.PrintMsg(LogClass.Gpu, 
-                                $"命令缓冲区 {cbIndex} 中检测到重复的时间线等待值: {timelineWait.Value}，跳过");
                             continue;
                         }
                         
@@ -705,15 +666,11 @@ namespace Ryujinx.Graphics.Vulkan
                         allWaitValues.Add(timelineWait.Value);
                         allWaitStages.Add(timelineWait.Stage);
                         addedWaitValues.Add(timelineWait.Value);
-                        
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                            $"时间线等待: 信号量={timelineWait.Semaphore.Handle:X}，值={timelineWait.Value}，阶段={timelineWait.Stage}");
                     }
 
                     // 分配内存
                     if (allSignalSemaphores.Count > 0)
                     {
-                        // 修复：stackalloc返回的就是指针类型，不需要转换
                         ulong* signalValues = stackalloc ulong[allSignalSemaphores.Count];
                         pSignalSemaphoreValues = signalValues;
                         for (int i = 0; i < allSignalValues.Count; i++)
@@ -724,7 +681,6 @@ namespace Ryujinx.Graphics.Vulkan
                     
                     if (allWaitSemaphores.Count > 0)
                     {
-                        // 修复：stackalloc返回的就是指针类型，不需要转换
                         ulong* waitValues = stackalloc ulong[allWaitSemaphores.Count];
                         pWaitSemaphoreValues = waitValues;
                         for (int i = 0; i < allWaitValues.Count; i++)
@@ -760,9 +716,6 @@ namespace Ryujinx.Graphics.Vulkan
                             PSignalSemaphores = pSignalSemaphores,
                         };
 
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                            $"队列提交: 等待信号量={allWaitSemaphores.Count}，信号信号量={allSignalSemaphores.Count}");
-
                         lock (_queueLock)
                         {
                             _api.QueueSubmit(_queue, 1, in sInfo, entry.Fence.GetUnsafe()).ThrowOnError();
@@ -771,9 +724,6 @@ namespace Ryujinx.Graphics.Vulkan
                 }
                 else
                 {
-                    Logger.Info?.PrintMsg(LogClass.Gpu, 
-                        $"使用传统二进制信号量提交");
-                    
                     // 传统提交方式
                     fixed (Semaphore* pWaitSemaphores = waitSemaphores, pSignalSemaphores = signalSemaphores)
                     {
@@ -802,9 +752,6 @@ namespace Ryujinx.Graphics.Vulkan
                 int ptr = (_queuedIndexesPtr + _queuedCount) % _totalCommandBuffers;
                 _queuedIndexes[ptr] = cbIndex;
                 _queuedCount++;
-                
-                Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                    $"命令缓冲区 {cbIndex} 已排队，排队数量={_queuedCount}");
             }
         }
 
@@ -812,13 +759,8 @@ namespace Ryujinx.Graphics.Vulkan
         {
             ref ReservedCommandBuffer entry = ref _commandBuffers[cbIndex];
 
-            Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                $"等待并释放命令缓冲区 {cbIndex} 的引用");
-
             if (entry.InConsumption)
             {
-                Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                    $"等待命令缓冲区 {cbIndex} 的栅栏");
                 entry.Fence.Wait();
                 entry.InConsumption = false;
             }
@@ -859,25 +801,16 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 entry.Fence = null;
             }
-            
-            Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                $"命令缓冲区 {cbIndex} 清理完成");
         }
 
         public unsafe void Dispose()
         {
-            Logger.Info?.PrintMsg(LogClass.Gpu, 
-                $"销毁CommandBufferPool");
-            
             for (int i = 0; i < _totalCommandBuffers; i++)
             {
                 WaitAndDecrementRef(i, refreshFence: false);
             }
 
             _api.DestroyCommandPool(_device, _pool, null);
-            
-            Logger.Info?.PrintMsg(LogClass.Gpu, 
-                $"CommandBufferPool销毁完成");
         }
         
         // 获取当前命令缓冲区索引（用于调试）
