@@ -17,7 +17,7 @@ namespace Ryujinx.Graphics.Vulkan
         
         private readonly VulkanRenderer _gd;
         private readonly Device _device;
-        private readonly Semaphore _timelineSemaphore;
+        private readonly Silk.NET.Vulkan.Semaphore _timelineSemaphore; // 使用完全限定名
         private readonly ConcurrentDictionary<int, TimelineFenceHolder> _holderMap;
         private readonly object _syncLock = new object();
         private bool _disposed;
@@ -31,7 +31,7 @@ namespace Ryujinx.Graphics.Vulkan
         private Timer _flushTimer;
         private const int FlushIntervalMs = 5; // 5ms刷新一次
         
-        public static TimelineFenceHolderPool GetInstance(VulkanRenderer gd, Device device, Semaphore timelineSemaphore)
+        public static TimelineFenceHolderPool GetInstance(VulkanRenderer gd, Device device, Silk.NET.Vulkan.Semaphore timelineSemaphore)
         {
             lock (_instanceLock)
             {
@@ -45,7 +45,7 @@ namespace Ryujinx.Graphics.Vulkan
         
         public static bool IsInitialized => _instance != null;
         
-        private TimelineFenceHolderPool(VulkanRenderer gd, Device device, Semaphore timelineSemaphore)
+        private TimelineFenceHolderPool(VulkanRenderer gd, Device device, Silk.NET.Vulkan.Semaphore timelineSemaphore)
         {
             _gd = gd;
             _device = device;

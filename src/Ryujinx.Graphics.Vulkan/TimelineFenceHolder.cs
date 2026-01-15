@@ -12,10 +12,10 @@ namespace Ryujinx.Graphics.Vulkan
     {
         private readonly VulkanRenderer _gd;
         private readonly Device _device;
-        private readonly Semaphore _timelineSemaphore;
+        private readonly Silk.NET.Vulkan.Semaphore _timelineSemaphore; // 使用完全限定名
         private readonly Dictionary<int, List<ulong>> _commandBufferSignals;
         
-        public TimelineFenceHolder(VulkanRenderer gd, Device device, Semaphore timelineSemaphore)
+        public TimelineFenceHolder(VulkanRenderer gd, Device device, Silk.NET.Vulkan.Semaphore timelineSemaphore)
         {
             _gd = gd;
             _device = device;
@@ -153,7 +153,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
             
             // 使用栈分配来避免GC
-            Semaphore* pSemaphore = stackalloc Semaphore[1];
+            Silk.NET.Vulkan.Semaphore* pSemaphore = stackalloc Silk.NET.Vulkan.Semaphore[1]; // 使用完全限定名
             ulong* pValue = stackalloc ulong[1];
             
             // 将值复制到栈上分配的内存中
