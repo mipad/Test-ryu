@@ -1432,59 +1432,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             CommandBufferPool.Return(cbs, waitSemaphores, waitDstStageMask, signalSemaphores);
         }
 
-        // 重载版本：不需要额外信号量
-        internal void EndAndSubmitCommandBuffer(CommandBufferScoped cbs, ulong timelineSignalValue)
-        {
-            EndAndSubmitCommandBuffer(cbs, default, default, default, timelineSignalValue);
-        }
-
-        public unsafe void Dispose()
-        {
-            if (!_initialized)
-            {
-                return;
-            }
-
-            // 销毁同步管理器（包含严格模式命令池）
-            SyncManager?.Dispose();
-            
-            CommandBufferPool?.Dispose();
-            _computeCommandPool?.Dispose();
-            BackgroundResources?.Dispose();
-            _counters?.Dispose();
-            _window?.Dispose();
-            HelperShader?.Dispose();
-            _pipeline?.Dispose();
-            BufferManager?.Dispose();
-            PipelineLayoutCache?.Dispose();
-            Barriers?.Dispose();
-
-            MemoryAllocator?.Dispose();
-
-            foreach (var shader in Shaders) shader.Dispose();
-            foreach (var texture in Textures) texture.Release();
-            foreach (var sampler in Samplers) sampler.Dispose();
-
-            // 销毁时间线信号量
-            if (TimelineSemaphore.Handle != 0)
-            {
-                Api.DestroySemaphore(_device, TimelineSemaphore, null);
-                TimelineSemaphore = default;
-            }
-
-            if (_surface.Handle != 0)
-            {
-                SurfaceApi.DestroySurface(_instance.Instance, _surface, null);
-            }
-
-            Api.DestroyDevice(_device, null);
-
-            _debugMessenger?.Dispose();
-
-            // Last step destroy the instance
-            _instance?.Dispose();
-        }
-
         public bool PrepareHostMapping(nint address, ulong size)
         {
             return Capabilities.SupportsHostImportedMemory &&
