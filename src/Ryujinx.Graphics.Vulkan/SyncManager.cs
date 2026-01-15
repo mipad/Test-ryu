@@ -7,7 +7,7 @@ using System.Linq;
 
 namespace Ryujinx.Graphics.Vulkan
 {
-    class SyncManager : IDisposable
+    class SyncManager
     {
         private class SyncHandle
         {
@@ -15,6 +15,7 @@ namespace Ryujinx.Graphics.Vulkan
             public ulong TimelineValue; // 时间线信号量值
             public ulong FlushId;
             public bool Signalled;
+            public long WaitStartTime; // 等待开始时间
 
             public bool NeedsFlush(ulong currentFlushId)
             {
@@ -35,8 +36,8 @@ namespace Ryujinx.Graphics.Vulkan
         private ulong _lastStrictFlushId;
         private ulong _lastStrictTimelineValue;
         
-        // 专门用于严格模式的命令池
-        private StrictCommandPool _strictCommandPool;
+        // 用于跟踪等待超时的同步对象
+        private readonly Dictionary<ulong, int> _waitTimeoutCounts = new();
 
         public SyncManager(VulkanRenderer gd, Device device)
         {
@@ -45,9 +46,6 @@ namespace Ryujinx.Graphics.Vulkan
             _handles = [];
             _lastStrictFlushId = 0;
             _lastStrictTimelineValue = 0;
-            
-            // 初始化严格模式命令池
-            _strictCommandPool = new StrictCommandPool(gd, device);
             
             // 输出时间线信号量支持信息
             Logger.Info?.PrintMsg(LogClass.Gpu, 
@@ -69,6 +67,7 @@ namespace Ryujinx.Graphics.Vulkan
                 ID = id,
                 TimelineValue = timelineValue,
                 FlushId = flushId,
+                WaitStartTime = 0
             };
 
             // 输出创建同步对象的日志
@@ -95,25 +94,35 @@ namespace Ryujinx.Graphics.Vulkan
                 
                 if (_gd.SupportsTimelineSemaphores)
                 {
-                    // 严格模式：使用专门的命令池来发出时间线信号
-                    // 这样可以复用命令缓冲区，减少创建开销
+                    // 严格模式：创建一个立即提交的命令缓冲区来发出时间线信号
+                    // 这样可以确保时间线信号量值被立即提交，而不是等待下一个命令缓冲区
                     Logger.Info?.PrintMsg(LogClass.Gpu, 
-                        $"严格模式: 使用命令池提交时间线信号量值={timelineValue}");
+                        $"严格模式: 创建立即提交的时间线信号量值={timelineValue}");
                     
-                    // 从严格模式命令池获取命令缓冲区
-                    var cbs = _strictCommandPool.Rent();
+                    // 获取当前命令缓冲区
+                    var cbs = _gd.CommandBufferPool.Rent();
                     
                     try
                     {
                         // 立即结束并提交命令缓冲区
-                        _strictCommandPool.EndAndSubmitCommandBuffer(cbs, timelineValue);
+                        _gd.EndAndSubmitCommandBuffer(cbs, timelineValue);
                         
                         Logger.Info?.PrintMsg(LogClass.Gpu, 
                             $"严格模式: 命令缓冲区已立即提交，时间线信号量值={timelineValue}");
+                        
+                        // 验证时间线信号量值是否已递增
+                        ulong currentValue = _gd.GetTimelineSemaphoreValue();
+                        Logger.Info?.PrintMsg(LogClass.Gpu,
+                            $"严格模式: 提交后时间线信号量当前值={currentValue}, 目标值={timelineValue}, 差值={(long)(currentValue - timelineValue)}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error?.PrintMsg(LogClass.Gpu, 
+                            $"严格模式: 提交命令缓冲区时出错: {ex.Message}");
                     }
                     finally
                     {
-                        // 命令池会管理命令缓冲区的归还
+                        // 注意：不需要手动Return，因为EndAndSubmitCommandBuffer已经处理了
                     }
                 }
                 else
@@ -195,6 +204,11 @@ namespace Ryujinx.Graphics.Vulkan
                                 lastHandle = handle.ID;
                                 handle.Signalled = true;
                             }
+                            else
+                            {
+                                Logger.Trace?.PrintMsg(LogClass.Gpu,
+                                    $"同步对象 ID={handle.ID} 尚未发出信号，时间线值={handle.TimelineValue}，当前值={currentValue}，差值={(long)(currentValue - handle.TimelineValue)}");
+                            }
                         }
                         else
                         {
@@ -234,6 +248,15 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (result != null)
             {
+                // 记录等待开始时间
+                result.WaitStartTime = Stopwatch.GetTimestamp();
+                
+                // 跟踪等待次数
+                if (!_waitTimeoutCounts.ContainsKey(id))
+                {
+                    _waitTimeoutCounts[id] = 0;
+                }
+                
                 Logger.Info?.PrintMsg(LogClass.Gpu, 
                     $"开始等待同步对象 ID={result.ID}, TimelineValue={result.TimelineValue}");
 
@@ -256,11 +279,28 @@ namespace Ryujinx.Graphics.Vulkan
 
                 lock (result)
                 {
+                    // 检查是否已经发出信号（可能在等待期间已经发出）
                     if (result.Signalled)
                     {
                         Logger.Debug?.PrintMsg(LogClass.Gpu, 
                             $"同步对象 ID={result.ID} 已发出信号，无需等待");
                         return;
+                    }
+
+                    // 在等待前检查一次时间线信号量值
+                    if (_gd.SupportsTimelineSemaphores)
+                    {
+                        ulong currentValueBeforeWait = _gd.GetTimelineSemaphoreValue();
+                        Logger.Debug?.PrintMsg(LogClass.Gpu,
+                            $"等待前检查: 当前时间线值={currentValueBeforeWait}, 目标值={result.TimelineValue}, 差值={(long)(currentValueBeforeWait - result.TimelineValue)}");
+                        
+                        if (currentValueBeforeWait >= result.TimelineValue)
+                        {
+                            Logger.Info?.PrintMsg(LogClass.Gpu,
+                                $"同步对象 ID={result.ID} 在等待前已发出信号");
+                            result.Signalled = true;
+                            return;
+                        }
                     }
 
                     bool signaled = false;
@@ -316,12 +356,39 @@ namespace Ryujinx.Graphics.Vulkan
 
                     if (!signaled)
                     {
-                        Logger.Error?.PrintMsg(LogClass.Gpu, $"VK Sync Object {result.ID} failed to signal within 1000ms. Continuing...");
+                        // 增加超时计数
+                        _waitTimeoutCounts[result.ID]++;
+                        int timeoutCount = _waitTimeoutCounts[result.ID];
+                        
+                        // 获取当前时间线信号量值
+                        ulong currentValueAfterTimeout = _gd.SupportsTimelineSemaphores ? _gd.GetTimelineSemaphoreValue() : 0;
+                        long waitDurationMs = (Stopwatch.GetTimestamp() - beforeTicks) / (Stopwatch.Frequency / 1000);
+                        
+                        Logger.Error?.PrintMsg(LogClass.Gpu, 
+                            $"VK同步对象 {result.ID} (TimelineValue={result.TimelineValue}) 在 {waitDurationMs}ms 后仍未发出信号 (第{timeoutCount}次超时)。" +
+                            $"当前时间线值: {currentValueAfterTimeout}, 差值: {(long)(currentValueAfterTimeout - result.TimelineValue)}");
+                        
+                        // 如果多次超时，尝试强制刷新命令
+                        if (timeoutCount >= 3)
+                        {
+                            Logger.Warning?.PrintMsg(LogClass.Gpu,
+                                $"同步对象 {result.ID} 多次超时，尝试强制处理");
+                            
+                            // 强制标记为已发出信号，避免死锁
+                            result.Signalled = true;
+                            
+                            // 强制刷新所有命令
+                            _gd.FlushAllCommands();
+                        }
                     }
                     else
                     {
                         _waitTicks += Stopwatch.GetTimestamp() - beforeTicks;
                         result.Signalled = true;
+                        
+                        // 清除超时计数
+                        _waitTimeoutCounts.Remove(result.ID);
+                        
                         Logger.Info?.PrintMsg(LogClass.Gpu, 
                             $"同步对象 ID={result.ID} 等待成功，耗时={Stopwatch.GetTimestamp() - beforeTicks} ticks");
                     }
@@ -397,8 +464,34 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
             
+            // 清理长时间未响应的同步对象
+            CleanupStalledHandles();
+            
             Logger.Debug?.PrintMsg(LogClass.Gpu, 
                 $"清理完成，剩余句柄数量={_handles.Count}");
+        }
+
+        private void CleanupStalledHandles()
+        {
+            long currentTime = Stopwatch.GetTimestamp();
+            long timeoutTicks = Stopwatch.Frequency * 5; // 5秒超时
+            
+            lock (_handles)
+            {
+                for (int i = _handles.Count - 1; i >= 0; i--)
+                {
+                    var handle = _handles[i];
+                    
+                    // 检查是否有等待开始时间，并且已经等待超过5秒
+                    if (handle.WaitStartTime > 0 && (currentTime - handle.WaitStartTime) > timeoutTicks)
+                    {
+                        Logger.Warning?.PrintMsg(LogClass.Gpu,
+                            $"检测到停滞的同步对象 ID={handle.ID}，等待时间超过5秒，强制标记为已发出信号");
+                        
+                        handle.Signalled = true;
+                    }
+                }
+            }
         }
 
         public long GetAndResetWaitTicks()
@@ -410,213 +503,6 @@ namespace Ryujinx.Graphics.Vulkan
                 $"获取并重置等待ticks: {result}");
             
             return result;
-        }
-        
-        public void Dispose()
-        {
-            Logger.Info?.PrintMsg(LogClass.Gpu, $"销毁SyncManager");
-            _strictCommandPool?.Dispose();
-            _strictCommandPool = null;
-        }
-        
-        // 严格模式命令池类
-        private class StrictCommandPool : IDisposable
-        {
-            private readonly VulkanRenderer _gd;
-            private readonly Device _device;
-            private readonly List<StrictCommandBuffer> _commandBuffers = [];
-            private readonly Queue<StrictCommandBuffer> _availableBuffers = new();
-            private readonly object _lock = new();
-            private bool _disposed;
-            
-            public StrictCommandPool(VulkanRenderer gd, Device device)
-            {
-                _gd = gd;
-                _device = device;
-                
-                // 预分配2个命令缓冲区用于严格模式
-                for (int i = 0; i < 2; i++)
-                {
-                    var commandBuffer = new StrictCommandBuffer(gd, device, i);
-                    _commandBuffers.Add(commandBuffer);
-                    _availableBuffers.Enqueue(commandBuffer);
-                }
-                
-                Logger.Info?.PrintMsg(LogClass.Gpu, $"严格模式命令池初始化: 预分配 {_commandBuffers.Count} 个命令缓冲区");
-            }
-            
-            public StrictCommandBuffer Rent()
-            {
-                lock (_lock)
-                {
-                    if (_disposed)
-                    {
-                        throw new ObjectDisposedException(nameof(StrictCommandPool));
-                    }
-                    
-                    // 尝试从可用队列中获取
-                    if (_availableBuffers.Count > 0)
-                    {
-                        var buffer = _availableBuffers.Dequeue();
-                        
-                        // 确保命令缓冲区已完成
-                        buffer.WaitIfNeeded();
-                        
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, $"严格模式命令池: 复用命令缓冲区 {buffer.Index}");
-                        return buffer;
-                    }
-                    
-                    // 如果没有可用的，创建一个新的
-                    int newIndex = _commandBuffers.Count;
-                    var newBuffer = new StrictCommandBuffer(_gd, _device, newIndex);
-                    _commandBuffers.Add(newBuffer);
-                    
-                    Logger.Info?.PrintMsg(LogClass.Gpu, $"严格模式命令池: 创建新命令缓冲区 {newIndex}");
-                    return newBuffer;
-                }
-            }
-            
-            public void Return(StrictCommandBuffer commandBuffer)
-            {
-                lock (_lock)
-                {
-                    if (_disposed) return;
-                    
-                    // 重置命令缓冲区以便重用
-                    commandBuffer.Reset();
-                    
-                    // 放回可用队列
-                    _availableBuffers.Enqueue(commandBuffer);
-                    
-                    Logger.Debug?.PrintMsg(LogClass.Gpu, $"严格模式命令池: 归还命令缓冲区 {commandBuffer.Index}");
-                }
-            }
-            
-            public void EndAndSubmitCommandBuffer(StrictCommandBuffer commandBuffer, ulong timelineSignalValue)
-            {
-                Logger.Info?.PrintMsg(LogClass.Gpu, 
-                    $"严格模式命令池: 提交命令缓冲区 {commandBuffer.Index}, 时间线信号值={timelineSignalValue}");
-                
-                // 结束并提交命令缓冲区
-                commandBuffer.EndAndSubmit(timelineSignalValue);
-                
-                // 命令缓冲区提交后，它将在完成后自动变得可用
-                // 我们不需要立即归还，因为提交是异步的
-            }
-            
-            public void Dispose()
-            {
-                lock (_lock)
-                {
-                    if (_disposed) return;
-                    
-                    Logger.Info?.PrintMsg(LogClass.Gpu, $"销毁严格模式命令池");
-                    
-                    foreach (var buffer in _commandBuffers)
-                    {
-                        buffer.Dispose();
-                    }
-                    
-                    _commandBuffers.Clear();
-                    _availableBuffers.Clear();
-                    _disposed = true;
-                }
-            }
-        }
-        
-        // 严格模式命令缓冲区类
-        private class StrictCommandBuffer : IDisposable
-        {
-            private readonly VulkanRenderer _gd;
-            private readonly Device _device;
-            private readonly int _index;
-            private CommandBufferScoped _cbs;
-            private FenceHolder _fence;
-            private bool _inUse;
-            private bool _disposed;
-            
-            public int Index => _index;
-            
-            public StrictCommandBuffer(VulkanRenderer gd, Device device, int index)
-            {
-                _gd = gd;
-                _device = device;
-                _index = index;
-                
-                // 从主命令缓冲区池租用一个命令缓冲区
-                _cbs = gd.CommandBufferPool.Rent();
-                
-                // 创建一个栅栏用于等待
-                _fence = new FenceHolder(gd.Api, device, false);
-                
-                Logger.Debug?.PrintMsg(LogClass.Gpu, $"创建严格模式命令缓冲区 {index}");
-            }
-            
-            public void WaitIfNeeded()
-            {
-                if (_inUse)
-                {
-                    Logger.Debug?.PrintMsg(LogClass.Gpu, $"等待严格模式命令缓冲区 {_index} 完成");
-                    _fence.Wait();
-                    _inUse = false;
-                }
-            }
-            
-            public void EndAndSubmit(ulong timelineSignalValue)
-            {
-                if (_disposed) throw new ObjectDisposedException(nameof(StrictCommandBuffer));
-                
-                Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                    $"严格模式命令缓冲区 {_index}: 结束并提交，时间线信号值={timelineSignalValue}");
-                
-                // 将时间线信号量添加到命令缓冲区
-                _gd.CommandBufferPool.AddTimelineSignalToBuffer(_cbs.CommandBufferIndex, 
-                    _gd.TimelineSemaphore, timelineSignalValue);
-                
-                // 提交命令缓冲区
-                _gd.CommandBufferPool.Return(_cbs, null, null, null);
-                
-                // 记录当前正在使用
-                _inUse = true;
-                
-                // 注意：我们不需要立即等待，因为命令缓冲区是异步执行的
-                // 当需要重用时，WaitIfNeeded会等待它完成
-            }
-            
-            public void Reset()
-            {
-                if (!_inUse) return;
-                
-                // 等待命令缓冲区完成
-                WaitIfNeeded();
-                
-                // 归还到主命令缓冲区池并重新租用
-                _gd.CommandBufferPool.Return(_cbs);
-                _cbs = _gd.CommandBufferPool.Rent();
-                
-                Logger.Debug?.PrintMsg(LogClass.Gpu, $"重置严格模式命令缓冲区 {_index}");
-            }
-            
-            public void Dispose()
-            {
-                if (_disposed) return;
-                
-                Logger.Debug?.PrintMsg(LogClass.Gpu, $"销毁严格模式命令缓冲区 {_index}");
-                
-                WaitIfNeeded();
-                
-                _fence?.Dispose();
-                _fence = null;
-                
-                if (_cbs.CommandBuffer.Handle != 0)
-                {
-                    // 归还命令缓冲区
-                    _gd.CommandBufferPool.Return(_cbs);
-                    _cbs = default;
-                }
-                
-                _disposed = true;
-            }
         }
     }
 }
