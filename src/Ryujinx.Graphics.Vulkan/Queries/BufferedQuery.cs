@@ -19,6 +19,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private readonly Vk _api;
         private readonly Device _device;
         private readonly PipelineFull _pipeline;
+        private readonly VulkanRenderer _gd; // 添加对VulkanRenderer的引用
 
         private QueryPool _queryPool;
         private readonly uint _queryIndex;
@@ -32,6 +33,10 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
         private readonly long _defaultValue;
         private int? _resetSequence;
+        
+        // 时间线信号量支持
+        private ulong? _timelineSignalValue;
+        private readonly bool _useTimelineSemaphores;
 
         // 添加查询池管理
         private static readonly ConcurrentDictionary<CounterType, QueryPoolManager> _queryPoolManagers = new();
@@ -47,12 +52,16 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
         public unsafe BufferedQuery(VulkanRenderer gd, Device device, PipelineFull pipeline, CounterType type, bool result32Bit, bool isTbdrPlatform)
         {
+            _gd = gd; // 保存gd引用
             _api = gd.Api;
             _device = device;
             _pipeline = pipeline;
             _type = type;
             _result32Bit = result32Bit;
             _isTbdrPlatform = isTbdrPlatform;
+            
+            // 检查是否支持时间线信号量
+            _useTimelineSemaphores = gd.SupportsTimelineSemaphores && gd.TimelineSemaphore.Handle != 0;
 
             _isSupported = QueryTypeSupported(gd, type);
 
@@ -166,6 +175,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 _pipeline.BeginQuery(this, _queryPool, _queryIndex, needsReset, isOcclusion, isOcclusion && resetSequence != null);
             }
             _resetSequence = null;
+            _timelineSignalValue = null; // 重置时间线信号量值
         }
 
         public void End(bool withResult)
@@ -179,6 +189,12 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             {
                 Marshal.WriteInt64(_bufferMap, _defaultValue);
                 _pipeline.CopyQueryResults(this, _queryIndex);
+                
+                // 如果支持时间线信号量，分配一个信号量值
+                if (_useTimelineSemaphores)
+                {
+                    _timelineSignalValue = _gd.GetNextTimelineValue();
+                }
             }
             else
             {
@@ -202,6 +218,28 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         {
             long data = _defaultValue;
 
+            // 优先使用时间线信号量等待
+            if (_useTimelineSemaphores && _timelineSignalValue.HasValue)
+            {
+                ulong targetValue = _timelineSignalValue.Value;
+                
+                // 等待时间线信号量达到指定值
+                if (_gd.WaitTimelineSemaphore(targetValue, 1000000000)) // 1秒超时
+                {
+                    data = Marshal.ReadInt64(_bufferMap);
+                    return data != _defaultValue ? data : 0;
+                }
+                else
+                {
+                    Logger.Error?.Print(LogClass.Gpu, 
+                        $"Timeline semaphore wait timed out for query {_type}. Value: {targetValue}");
+                    
+                    // 强制返回默认值，避免阻塞
+                    return 0;
+                }
+            }
+
+            // 否则使用原有的轮询机制
             if (wakeSignal == null)
             {
                 if (WaitingForValue(data))
@@ -279,6 +317,9 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         {
             _buffer.Dispose();
             
+            // 重置时间线信号量值
+            _timelineSignalValue = null;
+            
             if (_isSupported && _isPooledQuery && _queryPoolManagers.TryGetValue(_type, out var manager))
             {
                 lock (manager)
@@ -294,6 +335,15 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             else if (_isSupported && !_isPooledQuery)
             {
                 _api.DestroyQueryPool(_device, _queryPool, null);
+            }
+        }
+        
+        // 设置批次时间线信号量值
+        internal void SetBatchTimelineValue(ulong timelineValue)
+        {
+            if (_useTimelineSemaphores)
+            {
+                _timelineSignalValue = timelineValue;
             }
         }
     }
