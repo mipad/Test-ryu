@@ -1204,6 +1204,14 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             return false;
         }
 
+        public void PreFrame()
+        {
+            SyncManager.Cleanup();
+            
+           
+            }
+        }
+
         public ICounterEvent ReportCounter(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved)
         {
             return _counters.QueueReport(type, resultHandler, divisor, hostReserved);
