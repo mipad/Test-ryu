@@ -1513,8 +1513,17 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 CommandBufferPool.AddTimelineSignalToBuffer(cbs.CommandBufferIndex, TimelineSemaphore, timelineSignalValue);
             }
             
-            // 提交命令缓冲区
-            CommandBufferPool.Return(cbs, waitSemaphores, waitDstStageMask, signalSemaphores);
+            try
+            {
+                // 提交命令缓冲区
+                CommandBufferPool.Return(cbs, waitSemaphores, waitDstStageMask, signalSemaphores);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.PrintMsg(LogClass.Gpu, 
+                    $"提交命令缓冲区失败: {ex.Message}");
+                throw;
+            }
         }
 
         // 重载版本：不需要额外信号量

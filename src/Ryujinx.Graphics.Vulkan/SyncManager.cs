@@ -42,6 +42,7 @@ namespace Ryujinx.Graphics.Vulkan
         
         // 用于重用命令缓冲区的索引
         private int _reusableStrictBufferIndex = -1;
+        private bool _isStrictBufferInUse = false;
 
         public SyncManager(VulkanRenderer gd, Device device)
         {
@@ -161,31 +162,41 @@ namespace Ryujinx.Graphics.Vulkan
             
             if (_gd.SupportsTimelineSemaphores)
             {
-                // 获取或创建可重用的命令缓冲区
-                CommandBufferScoped cbs = GetOrCreateStrictCommandBuffer();
+                // 创建新的命令缓冲区，而不是重用旧的
+                CommandBufferScoped cbs = _gd.CommandBufferPool.Rent();
                 
                 try
                 {
-                    // 批量添加所有待处理的时间线信号量值
+                    // 批量添加所有待处理的时间线信号量值，去重处理
+                    HashSet<ulong> addedValues = new();
                     foreach (var handle in _pendingStrictHandles)
                     {
+                        if (addedValues.Contains(handle.TimelineValue))
+                        {
+                            Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                                $"跳过重复的时间线信号量值={handle.TimelineValue}");
+                            continue;
+                        }
+                        
                         Logger.Debug?.PrintMsg(LogClass.Gpu, 
                             $"批量添加时间线信号量值={handle.TimelineValue}");
                         
                         _gd.CommandBufferPool.AddTimelineSignalToBuffer(cbs.CommandBufferIndex, 
                             _gd.TimelineSemaphore, handle.TimelineValue);
+                        addedValues.Add(handle.TimelineValue);
                     }
                     
                     // 立即提交命令缓冲区
                     _gd.EndAndSubmitCommandBuffer(cbs, 0); // 使用0表示我们已经通过AddTimelineSignalToBuffer添加了值
                     
                     Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                        $"批量提交完成，提交了 {_pendingStrictHandles.Count} 个时间线信号量值");
+                        $"批量提交完成，提交了 {addedValues.Count} 个时间线信号量值");
                 }
                 finally
                 {
-                    // 保存可重用的命令缓冲区索引
-                    _reusableStrictBufferIndex = cbs.CommandBufferIndex;
+                    // 不保存可重用的命令缓冲区索引，避免冲突
+                    _reusableStrictBufferIndex = -1;
+                    _isStrictBufferInUse = false;
                 }
             }
             else
@@ -216,8 +227,8 @@ namespace Ryujinx.Graphics.Vulkan
         // 获取或创建用于严格模式的命令缓冲区
         private CommandBufferScoped GetOrCreateStrictCommandBuffer()
         {
-            // 如果之前有可重用的命令缓冲区，尝试重新租用
-            if (_reusableStrictBufferIndex >= 0)
+            // 如果之前有可重用的命令缓冲区，并且不在使用中，尝试重新租用
+            if (_reusableStrictBufferIndex >= 0 && !_isStrictBufferInUse)
             {
                 try
                 {
@@ -226,14 +237,22 @@ namespace Ryujinx.Graphics.Vulkan
                     {
                         Logger.Debug?.PrintMsg(LogClass.Gpu, 
                             $"重用命令缓冲区 {_reusableStrictBufferIndex} 用于严格模式");
+                        _isStrictBufferInUse = true;
                         return _gd.CommandBufferPool.RentSpecific(_reusableStrictBufferIndex);
                     }
+                    else
+                    {
+                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                            $"命令缓冲区 {_reusableStrictBufferIndex} 不可用，重新租用");
+                        _reusableStrictBufferIndex = -1;
+                    }
                 }
-                catch
+                catch (Exception ex)
                 {
                     // 如果不可用，回退到正常租用
                     Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                        $"命令缓冲区 {_reusableStrictBufferIndex} 不可用，重新租用");
+                        $"命令缓冲区 {_reusableStrictBufferIndex} 租用失败: {ex.Message}");
+                    _reusableStrictBufferIndex = -1;
                 }
             }
             
@@ -435,10 +454,10 @@ namespace Ryujinx.Graphics.Vulkan
                     first = _handles.FirstOrDefault();
                 }
 
-                if (first == null || first.NeedsFlush(_flushId))
+                if (first == null)
                 {
                     Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                        $"清理完成或需要刷新，当前FlushId={_flushId}");
+                        $"清理完成: 没有更多句柄");
                     break;
                 }
 
@@ -467,10 +486,20 @@ namespace Ryujinx.Graphics.Vulkan
                             _handles.RemoveAt(0);
                         }
                     }
+                    
+                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                        $"清理同步对象 ID={first.ID}, TimelineValue={first.TimelineValue}");
+                }
+                else if (first.NeedsFlush(_flushId))
+                {
+                    // 此同步句柄尚未到达，且需要刷新，则跳出循环
+                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                        $"同步对象需要刷新，停止清理: ID={first.ID}, FlushId={first.FlushId}, 当前FlushId={_flushId}");
+                    break;
                 }
                 else
                 {
-                    // 此同步句柄及后续的尚未到达
+                    // 此同步句柄尚未到达，但不需要刷新，继续等待
                     break;
                 }
             }

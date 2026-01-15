@@ -258,6 +258,8 @@ namespace Ryujinx.Graphics.Vulkan
                 // 检查是否已经添加过相同的信号量值
                 if (_addedTimelineSignals.ContainsKey(cbIndex) && _addedTimelineSignals[cbIndex].Contains(value))
                 {
+                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                        $"跳过重复添加时间线信号量值={value} 到命令缓冲区 {cbIndex}");
                     return;
                 }
                 
@@ -269,6 +271,9 @@ namespace Ryujinx.Graphics.Vulkan
                     _addedTimelineSignals[cbIndex] = new HashSet<ulong>();
                 }
                 _addedTimelineSignals[cbIndex].Add(value);
+                
+                Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                    $"添加时间线信号量值={value} 到命令缓冲区 {cbIndex}");
             }
         }
 
