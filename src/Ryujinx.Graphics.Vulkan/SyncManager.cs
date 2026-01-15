@@ -15,7 +15,6 @@ namespace Ryujinx.Graphics.Vulkan
             public ulong TimelineValue; // 时间线信号量值
             public ulong FlushId;
             public bool Signalled;
-            public TimelineFenceHolder TimelineFenceHolder; // 时间线等待器
             public MultiFenceHolder MultiFenceHolder; // 传统的MultiFenceHolder（用于不支持时间线信号量的情况）
 
             public bool NeedsFlush(ulong currentFlushId)
@@ -37,10 +36,9 @@ namespace Ryujinx.Graphics.Vulkan
         private ulong _lastStrictFlushId;
         private ulong _lastStrictTimelineValue;
         
-        // 批量创建缓冲区
-        private readonly List<SyncHandle> _batchCreateBuffer = new();
-        private readonly object _batchCreateLock = new();
-        private const int MaxBatchSize = 16;
+        // 时间线等待器池
+        private TimelineFenceHolderPool _timelinePool;
+        private TimelineFenceHolder _sharedTimelineHolder;
 
         public SyncManager(VulkanRenderer gd, Device device)
         {
@@ -50,7 +48,13 @@ namespace Ryujinx.Graphics.Vulkan
             _lastStrictFlushId = 0;
             _lastStrictTimelineValue = 0;
             
-            // 输出时间线信号量支持信息
+            // 初始化时间线等待器池
+            if (_gd.SupportsTimelineSemaphores && _gd.TimelineSemaphore.Handle != 0)
+            {
+                _timelinePool = TimelineFenceHolderPool.GetInstance(_gd, _device, _gd.TimelineSemaphore);
+                _sharedTimelineHolder = _timelinePool.GetMainHolder();
+            }
+            
             Logger.Info?.PrintMsg(LogClass.Gpu, 
                 $"SyncManager初始化: 时间线信号量支持 = {_gd.SupportsTimelineSemaphores}");
         }
@@ -60,187 +64,114 @@ namespace Ryujinx.Graphics.Vulkan
             _flushId++;
         }
 
-        // 批量创建同步对象
-        public void CreateBulk(ulong[] ids, bool[] strictFlags)
+        public void Create(ulong id, bool strict)
         {
-            if (ids == null || strictFlags == null || ids.Length != strictFlags.Length)
+            ulong flushId = _flushId;
+            ulong timelineValue = _nextTimelineValue++;
+
+            SyncHandle handle = new()
             {
-                Logger.Error?.PrintMsg(LogClass.Gpu, 
-                    $"批量创建同步对象失败: 参数无效");
-                return;
-            }
-            
-            if (ids.Length == 0)
-                return;
-                
+                ID = id,
+                TimelineValue = timelineValue,
+                FlushId = flushId,
+            };
+
             Logger.Info?.PrintMsg(LogClass.Gpu, 
-                $"批量创建同步对象: 数量={ids.Length}");
-            
-            // 批量分配时间线值
-            ulong[] timelineValues = new ulong[ids.Length];
-            for (int i = 0; i < ids.Length; i++)
+                $"创建同步对象 ID={id}, TimelineValue={timelineValue}, FlushId={flushId}, Strict={strict}");
+
+            if (strict || _gd.InterruptAction == null)
             {
-                timelineValues[i] = _nextTimelineValue++;
-            }
-            
-            // 检查是否需要立即刷新（严格模式）
-            bool anyStrict = false;
-            for (int i = 0; i < strictFlags.Length; i++)
-            {
-                if (strictFlags[i])
+                // 检查是否是重复的严格模式提交
+                if (strict && flushId == _lastStrictFlushId && timelineValue == _lastStrictTimelineValue + 1)
                 {
-                    anyStrict = true;
-                    break;
+                    Logger.Warning?.PrintMsg(LogClass.Gpu, 
+                        $"检测到可能的重复严格模式提交: FlushId={flushId}, TimelineValue={timelineValue}");
                 }
-            }
-            
-            if (anyStrict)
-            {
-                // 严格模式：立即刷新并批量提交
+                
+                _lastStrictFlushId = flushId;
+                _lastStrictTimelineValue = timelineValue;
+                
+                Logger.Info?.PrintMsg(LogClass.Gpu, 
+                    $"严格模式: 刷新所有命令并提交时间线信号量值={timelineValue}");
+                
+                // 严格模式下，立即刷新所有命令
                 _gd.FlushAllCommands();
                 
                 if (_gd.SupportsTimelineSemaphores && _gd.TimelineSemaphore.Handle != 0)
                 {
-                    // 批量提交时间线信号量
-                    _gd.CommandBufferPool.AddTimelineSignals(_gd.TimelineSemaphore, timelineValues);
+                    Logger.Info?.PrintMsg(LogClass.Gpu, 
+                        $"严格模式: 创建立即提交的时间线信号量值={timelineValue}");
                     
-                    // 创建专门的命令缓冲区来批量发送信号
+                    // 使用时间线等待器池添加信号
+                    _timelinePool.AddSignal(timelineValue);
+                    
+                    // 严格模式：创建一个立即提交的命令缓冲区来发出时间线信号
                     var cbs = _gd.CommandBufferPool.Rent();
+                    
                     try
                     {
-                        _gd.EndAndSubmitCommandBuffer(cbs, 0);
+                        _gd.EndAndSubmitCommandBuffer(cbs, timelineValue);
+                        
+                        Logger.Info?.PrintMsg(LogClass.Gpu, 
+                            $"严格模式: 命令缓冲区已立即提交，时间线信号量值={timelineValue}");
                     }
                     finally
                     {
-                        // 注意：EndAndSubmitCommandBuffer已经处理了返回
-                    }
-                }
-            }
-            
-            // 批量创建同步句柄
-            List<SyncHandle> handles = new List<SyncHandle>();
-            for (int i = 0; i < ids.Length; i++)
-            {
-                SyncHandle handle = new()
-                {
-                    ID = ids[i],
-                    TimelineValue = timelineValues[i],
-                    FlushId = _flushId,
-                };
-                
-                if (_gd.SupportsTimelineSemaphores && _gd.TimelineSemaphore.Handle != 0)
-                {
-                    // 创建共享的TimelineFenceHolder
-                    handle.TimelineFenceHolder = new TimelineFenceHolder(_gd, _device, _gd.TimelineSemaphore);
-                    
-                    // 批量添加到命令缓冲区
-                    if (!strictFlags[i]) // 非严格模式才需要延迟添加
-                    {
-                        int currentCbIndex = _gd.GetCurrentCommandBufferIndex();
-                        if (currentCbIndex >= 0)
-                        {
-                            _gd.CommandBufferPool.AddTimelineSignalToBuffer(currentCbIndex, _gd.TimelineSemaphore, timelineValues[i]);
-                            _gd.CommandBufferPool.AddTimelineFenceHolder(currentCbIndex, handle.TimelineFenceHolder);
-                        }
-                        else
-                        {
-                            // 添加到待处理队列
-                            _gd.CommandBufferPool.AddPendingTimelineSignals(-1, new ulong[] { timelineValues[i] });
-                        }
+                        // 注意：不需要手动Return，因为EndAndSubmitCommandBuffer已经处理了
                     }
                 }
                 else
                 {
-                    // 回退到传统的MultiFenceHolder
+                    Logger.Info?.PrintMsg(LogClass.Gpu, 
+                        $"严格模式: 时间线信号量不支持，使用栅栏回退机制");
+                    // 回退到旧的栅栏机制
                     handle.MultiFenceHolder = new MultiFenceHolder();
-                    if (strictFlags[i] || _gd.InterruptAction == null)
+                    _gd.CommandBufferPool.AddWaitable(handle.MultiFenceHolder);
+                }
+            }
+            else
+            {
+                // 非严格模式
+                if (_gd.SupportsTimelineSemaphores && _gd.TimelineSemaphore.Handle != 0)
+                {
+                    // 使用时间线等待器池添加信号
+                    _timelinePool.AddSignal(timelineValue);
+                    
+                    // 获取当前活动的命令缓冲区索引
+                    int currentCbIndex = _gd.GetCurrentCommandBufferIndex();
+                    
+                    if (currentCbIndex >= 0)
                     {
-                        _gd.CommandBufferPool.AddWaitable(handle.MultiFenceHolder);
+                        Logger.Info?.PrintMsg(LogClass.Gpu, 
+                            $"非严格模式: 添加时间线信号量到命令缓冲区 {currentCbIndex}，值={timelineValue}");
+                        
+                        // 直接添加到特定命令缓冲区
+                        _gd.CommandBufferPool.AddTimelineSignalToBuffer(currentCbIndex, _gd.TimelineSemaphore, timelineValue);
+                        
+                        // 同时添加到池中该缓冲区的等待器
+                        _timelinePool.AddSignalToBuffer(currentCbIndex, timelineValue);
                     }
                     else
                     {
-                        _gd.CommandBufferPool.AddInUseWaitable(handle.MultiFenceHolder);
+                        Logger.Warning?.PrintMsg(LogClass.Gpu, 
+                            $"非严格模式: 未找到当前命令缓冲区，使用延迟提交");
+                        // 延迟提交，等待器池会自动处理
                     }
                 }
-                
-                handles.Add(handle);
-            }
-            
-            // 添加到主列表
-            lock (_handles)
-            {
-                _handles.AddRange(handles);
-            }
-            
-            Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                $"批量创建同步对象完成: 数量={handles.Count}");
-        }
-
-        // 单个创建（兼容性）
-        public void Create(ulong id, bool strict)
-        {
-            CreateBulk(new ulong[] { id }, new bool[] { strict });
-        }
-
-        // 批量获取当前同步状态
-        public ulong[] GetCurrentBulk(ulong[] ids)
-        {
-            if (ids == null || ids.Length == 0)
-                return Array.Empty<ulong>();
-                
-            ulong[] results = new ulong[ids.Length];
-            
-            lock (_handles)
-            {
-                for (int i = 0; i < ids.Length; i++)
+                else
                 {
-                    ulong id = ids[i];
-                    ulong lastHandle = _firstHandle;
-                    
-                    foreach (SyncHandle handle in _handles)
-                    {
-                        lock (handle)
-                        {
-                            if (handle.Signalled)
-                            {
-                                if (handle.ID > lastHandle)
-                                {
-                                    lastHandle = handle.ID;
-                                }
-                                continue;
-                            }
-                            
-                            if (handle.ID == id)
-                            {
-                                // 检查时间线信号量是否已达到此值
-                                if (_gd.SupportsTimelineSemaphores && _gd.TimelineSemaphore.Handle != 0 && handle.TimelineFenceHolder != null)
-                                {
-                                    if (handle.TimelineFenceHolder.WaitForSignals(_gd.Api, _device, 0))
-                                    {
-                                        lastHandle = handle.ID;
-                                        handle.Signalled = true;
-                                    }
-                                }
-                                else if (handle.MultiFenceHolder != null)
-                                {
-                                    // 使用传统的MultiFenceHolder检查
-                                    bool signaled = handle.Signalled || handle.MultiFenceHolder.WaitForFences(_gd.Api, _device, 0);
-                                    if (signaled)
-                                    {
-                                        lastHandle = handle.ID;
-                                        handle.Signalled = true;
-                                    }
-                                }
-                                break;
-                            }
-                        }
-                    }
-                    
-                    results[i] = lastHandle;
+                    Logger.Info?.PrintMsg(LogClass.Gpu, 
+                        $"非严格模式: 时间线信号量不支持，使用栅栏回退机制");
+                    // 回退到旧的栅栏机制
+                    handle.MultiFenceHolder = new MultiFenceHolder();
+                    _gd.CommandBufferPool.AddInUseWaitable(handle.MultiFenceHolder);
                 }
             }
-            
-            return results;
+
+            lock (_handles)
+            {
+                _handles.Add(handle);
+            }
         }
 
         public ulong GetCurrent()
@@ -263,9 +194,10 @@ namespace Ryujinx.Graphics.Vulkan
                         }
 
                         // 检查时间线信号量是否已达到此值
-                        if (_gd.SupportsTimelineSemaphores && _gd.TimelineSemaphore.Handle != 0 && handle.TimelineFenceHolder != null)
+                        if (_gd.SupportsTimelineSemaphores && _gd.TimelineSemaphore.Handle != 0 && 
+                            handle.TimelineValue > 0)
                         {
-                            if (handle.TimelineFenceHolder.WaitForSignals(_gd.Api, _device, 0))
+                            if (_timelinePool.IsValueSignaled(handle.TimelineValue))
                             {
                                 Logger.Debug?.PrintMsg(LogClass.Gpu, 
                                     $"同步对象 ID={handle.ID} 已发出信号，时间线值={handle.TimelineValue}");
@@ -294,160 +226,110 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        // 批量等待多个同步对象
-        public void WaitBulk(ulong[] ids)
-        {
-            if (ids == null || ids.Length == 0)
-                return;
-                
-            Logger.Info?.PrintMsg(LogClass.Gpu, 
-                $"批量等待同步对象: 数量={ids.Length}");
-            
-            // 收集所有需要等待的同步句柄
-            List<SyncHandle> handlesToWait = new List<SyncHandle>();
-            
-            lock (_handles)
-            {
-                foreach (ulong id in ids)
-                {
-                    if ((long)(_firstHandle - id) > 0)
-                    {
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                            $"同步对象 ID={id} 已发出信号或已删除，无需等待");
-                        continue;
-                    }
-
-                    foreach (SyncHandle handle in _handles)
-                    {
-                        if (handle.ID == id)
-                        {
-                            handlesToWait.Add(handle);
-                            break;
-                        }
-                    }
-                }
-            }
-            
-            if (handlesToWait.Count == 0)
-                return;
-                
-            // 按时间线值分组等待
-            Dictionary<TimelineFenceHolder, List<ulong>> timelineGroups = new();
-            List<SyncHandle> multiFenceHandles = new();
-            
-            foreach (var handle in handlesToWait)
-            {
-                if (handle.Signalled)
-                    continue;
-                    
-                if (_gd.SupportsTimelineSemaphores && _gd.TimelineSemaphore.Handle != 0 && handle.TimelineFenceHolder != null)
-                {
-                    if (!timelineGroups.ContainsKey(handle.TimelineFenceHolder))
-                    {
-                        timelineGroups[handle.TimelineFenceHolder] = new List<ulong>();
-                    }
-                    timelineGroups[handle.TimelineFenceHolder].Add(handle.TimelineValue);
-                }
-                else if (handle.MultiFenceHolder != null)
-                {
-                    multiFenceHandles.Add(handle);
-                }
-            }
-            
-            long beforeTicks = Stopwatch.GetTimestamp();
-            
-            // 批量等待时间线信号量
-            foreach (var kvp in timelineGroups)
-            {
-                var holder = kvp.Key;
-                var values = kvp.Value;
-                
-                // 检查是否需要刷新
-                bool needsFlush = false;
-                foreach (var value in values)
-                {
-                    // 找到对应的句柄
-                    foreach (var handle in handlesToWait)
-                    {
-                        if (handle.TimelineValue == value && handle.NeedsFlush(_flushId))
-                        {
-                            needsFlush = true;
-                            break;
-                        }
-                    }
-                    if (needsFlush) break;
-                }
-                
-                if (needsFlush)
-                {
-                    _gd.InterruptAction(() =>
-                    {
-                        _gd.FlushAllCommands();
-                    });
-                }
-                
-                // 批量等待多个值
-                bool signaled = holder.WaitForMultipleSignals(_gd.Api, _device, values.ToArray(), 1000000000);
-                
-                if (!signaled)
-                {
-                    Logger.Error?.PrintMsg(LogClass.Gpu, 
-                        $"批量等待时间线信号量失败，包含 {values.Count} 个值");
-                }
-                else
-                {
-                    // 标记所有已发出信号的句柄
-                    foreach (var value in values)
-                    {
-                        foreach (var handle in handlesToWait)
-                        {
-                            if (handle.TimelineValue == value)
-                            {
-                                handle.Signalled = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // 等待传统的MultiFenceHolder
-            foreach (var handle in multiFenceHandles)
-            {
-                if (handle.Signalled)
-                    continue;
-                    
-                if (handle.NeedsFlush(_flushId))
-                {
-                    _gd.InterruptAction(() =>
-                    {
-                        _gd.FlushAllCommands();
-                    });
-                }
-                
-                bool signaled = handle.MultiFenceHolder.WaitForFences(_gd.Api, _device, 1000000000);
-                
-                if (!signaled)
-                {
-                    Logger.Error?.PrintMsg(LogClass.Gpu, 
-                        $"VK Sync Object {handle.ID} failed to signal within 1000ms. Continuing...");
-                }
-                else
-                {
-                    handle.Signalled = true;
-                }
-            }
-            
-            _waitTicks += Stopwatch.GetTimestamp() - beforeTicks;
-            
-            Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                $"批量等待完成: 处理数量={handlesToWait.Count}，耗时={Stopwatch.GetTimestamp() - beforeTicks} ticks");
-        }
-
-        // 单个等待（兼容性）
         public void Wait(ulong id)
         {
-            WaitBulk(new ulong[] { id });
+            SyncHandle result = null;
+
+            lock (_handles)
+            {
+                if ((long)(_firstHandle - id) > 0)
+                {
+                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                        $"同步对象 ID={id} 已发出信号或已删除，无需等待");
+                    return; // 句柄已发出信号或已删除
+                }
+
+                foreach (SyncHandle handle in _handles)
+                {
+                    if (handle.ID == id)
+                    {
+                        result = handle;
+                        break;
+                    }
+                }
+            }
+
+            if (result != null)
+            {
+                Logger.Info?.PrintMsg(LogClass.Gpu, 
+                    $"开始等待同步对象 ID={result.ID}, TimelineValue={result.TimelineValue}");
+
+                long beforeTicks = Stopwatch.GetTimestamp();
+
+                if (result.NeedsFlush(_flushId))
+                {
+                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                        $"同步对象需要刷新，当前FlushId={_flushId}，对象FlushId={result.FlushId}");
+                    _gd.InterruptAction(() =>
+                    {
+                        if (result.NeedsFlush(_flushId))
+                        {
+                            Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                                $"中断GPU线程并刷新所有命令");
+                            _gd.FlushAllCommands();
+                        }
+                    });
+                }
+
+                lock (result)
+                {
+                    if (result.Signalled)
+                    {
+                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                            $"同步对象 ID={result.ID} 已发出信号，无需等待");
+                        return;
+                    }
+
+                    bool signaled = false;
+                    
+                    if (_gd.SupportsTimelineSemaphores && _gd.TimelineSemaphore.Handle != 0 && 
+                        result.TimelineValue > 0)
+                    {
+                        Logger.Info?.PrintMsg(LogClass.Gpu, 
+                            $"使用时间线信号量等待: 目标值={result.TimelineValue}");
+                        
+                        // 使用时间线等待器池等待
+                        signaled = _timelinePool.WaitForValue(result.TimelineValue, 1000000000);
+                        
+                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                            $"等待结果: {signaled}");
+                    }
+                    else if (result.MultiFenceHolder != null)
+                    {
+                        Logger.Info?.PrintMsg(LogClass.Gpu, 
+                            "使用传统MultiFenceHolder等待");
+                        
+                        // 使用传统的MultiFenceHolder等待
+                        signaled = result.Signalled || result.MultiFenceHolder.WaitForFences(_gd.Api, _device, 1000000000);
+                    }
+                    else
+                    {
+                        Logger.Info?.PrintMsg(LogClass.Gpu, 
+                            "时间线信号量不支持，使用回退栅栏等待机制");
+                        
+                        // 回退到等待栅栏
+                        signaled = true;
+                    }
+
+                    if (!signaled)
+                    {
+                        Logger.Error?.PrintMsg(LogClass.Gpu, 
+                            $"VK Sync Object {result.ID} failed to signal within 1000ms. Continuing...");
+                    }
+                    else
+                    {
+                        _waitTicks += Stopwatch.GetTimestamp() - beforeTicks;
+                        result.Signalled = true;
+                        Logger.Info?.PrintMsg(LogClass.Gpu, 
+                            $"同步对象 ID={result.ID} 等待成功，耗时={Stopwatch.GetTimestamp() - beforeTicks} ticks");
+                    }
+                }
+            }
+            else
+            {
+                Logger.Warning?.PrintMsg(LogClass.Gpu, 
+                    $"等待同步对象 ID={id} 未找到");
+            }
         }
 
         public void Cleanup()
@@ -455,79 +337,82 @@ namespace Ryujinx.Graphics.Vulkan
             Logger.Debug?.PrintMsg(LogClass.Gpu, 
                 $"开始清理同步对象，当前句柄数量={_handles.Count}");
             
-            // 批量清理：收集所有可以清理的句柄
-            List<SyncHandle> toRemove = new List<SyncHandle>();
-            
-            lock (_handles)
+            // 迭代句柄并删除任何已发出信号的句柄
+            while (true)
             {
-                foreach (var handle in _handles)
+                SyncHandle first = null;
+                lock (_handles)
                 {
-                    if (handle.NeedsFlush(_flushId))
-                    {
-                        continue; // 还需要刷新，不能清理
-                    }
-                    
-                    bool signaled = false;
-                    
-                    if (_gd.SupportsTimelineSemaphores && _gd.TimelineSemaphore.Handle != 0 && handle.TimelineFenceHolder != null)
-                    {
-                        // 检查时间线信号量是否已达到此值
-                        signaled = handle.TimelineFenceHolder.WaitForSignals(_gd.Api, _device, 0);
-                        
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                            $"检查同步对象 ID={handle.ID}: 已发出信号={signaled}");
-                    }
-                    else if (handle.MultiFenceHolder != null)
-                    {
-                        // 使用传统的MultiFenceHolder检查
-                        signaled = handle.MultiFenceHolder.WaitForFences(_gd.Api, _device, 0);
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                            $"检查同步对象 ID={handle.ID} (传统): 已发出信号={signaled}");
-                    }
-                    else
-                    {
-                        // 回退：我们无法检查，假设已发出信号
-                        signaled = true;
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                            $"时间线信号量不支持，假设同步对象 ID={handle.ID} 已发出信号");
-                    }
+                    first = _handles.FirstOrDefault();
+                }
 
-                    if (signaled)
+                if (first == null || first.NeedsFlush(_flushId))
+                {
+                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                        $"清理完成或需要刷新，当前FlushId={_flushId}");
+                    break;
+                }
+
+                bool signaled = false;
+                
+                if (_gd.SupportsTimelineSemaphores && _gd.TimelineSemaphore.Handle != 0 && 
+                    first.TimelineValue > 0)
+                {
+                    // 检查时间线信号量是否已达到此值
+                    signaled = _timelinePool.IsValueSignaled(first.TimelineValue);
+                    
+                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                        $"检查同步对象 ID={first.ID}: 已发出信号={signaled}");
+                }
+                else if (first.MultiFenceHolder != null)
+                {
+                    // 使用传统的MultiFenceHolder检查
+                    signaled = first.MultiFenceHolder.WaitForFences(_gd.Api, _device, 0);
+                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                        $"检查同步对象 ID={first.ID} (传统): 已发出信号={signaled}");
+                }
+                else
+                {
+                    // 回退：我们无法检查，假设已发出信号
+                    signaled = true;
+                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                        $"时间线信号量不支持，假设同步对象 ID={first.ID} 已发出信号");
+                }
+
+                if (signaled)
+                {
+                    // 删除同步对象
+                    lock (_handles)
                     {
-                        toRemove.Add(handle);
+                        lock (first)
+                        {
+                            _firstHandle = first.ID + 1;
+                            _handles.RemoveAt(0);
+                            
+                            // 清理MultiFenceHolder资源
+                            if (first.MultiFenceHolder != null)
+                            {
+                                Array.Clear(first.MultiFenceHolder.Fences);
+                                MultiFenceHolder.FencePool.Release(first.MultiFenceHolder.Fences);
+                                first.MultiFenceHolder = null;
+                            }
+                            
+                            Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                                $"删除同步对象 ID={first.ID}，新的_firstHandle={_firstHandle}");
+                        }
                     }
                 }
-                
-                // 批量移除
-                foreach (var handle in toRemove)
+                else
                 {
-                    lock (handle)
-                    {
-                        if (handle.ID >= _firstHandle)
-                        {
-                            _firstHandle = handle.ID + 1;
-                        }
-                        
-                        // 清理TimelineFenceHolder资源
-                        handle.TimelineFenceHolder?.Clear();
-                        
-                        // 清理MultiFenceHolder资源
-                        if (handle.MultiFenceHolder != null)
-                        {
-                            Array.Clear(handle.MultiFenceHolder.Fences);
-                            MultiFenceHolder.FencePool.Release(handle.MultiFenceHolder.Fences);
-                            handle.MultiFenceHolder = null;
-                        }
-                        
-                        _handles.Remove(handle);
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                            $"删除同步对象 ID={handle.ID}");
-                    }
+                    // 此同步句柄及后续的尚未到达
+                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                        $"同步对象 ID={first.ID} 尚未发出信号，停止清理");
+                    break;
                 }
             }
             
             Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                $"清理完成: 删除数量={toRemove.Count}，剩余句柄数量={_handles.Count}");
+                $"清理完成，剩余句柄数量={_handles.Count}");
         }
 
         public long GetAndResetWaitTicks()
@@ -541,33 +426,17 @@ namespace Ryujinx.Graphics.Vulkan
             return result;
         }
         
-        // 刷新所有待处理的批量信号
-        public void FlushPendingBatches()
+        /// <summary>
+        /// 获取当前时间线信号量的值
+        /// </summary>
+        public ulong GetCurrentTimelineValue()
         {
-            if (_gd.SupportsTimelineSemaphores && _gd.TimelineSemaphore.Handle != 0)
+            if (!_gd.SupportsTimelineSemaphores || _gd.TimelineSemaphore.Handle == 0)
             {
-                // 查找所有TimelineFenceHolder并刷新
-                List<TimelineFenceHolder> holders = new List<TimelineFenceHolder>();
-                
-                lock (_handles)
-                {
-                    foreach (var handle in _handles)
-                    {
-                        if (handle.TimelineFenceHolder != null && !holders.Contains(handle.TimelineFenceHolder))
-                        {
-                            holders.Add(handle.TimelineFenceHolder);
-                        }
-                    }
-                }
-                
-                foreach (var holder in holders)
-                {
-                    holder.FlushPendingBatches(0, 1); // 强制刷新
-                }
-                
-                Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                    $"刷新待处理的批量信号: 数量={holders.Count}");
+                return 0;
             }
+            
+            return _gd.GetTimelineSemaphoreValue();
         }
     }
 }
