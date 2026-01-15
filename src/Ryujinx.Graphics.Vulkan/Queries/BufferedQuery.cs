@@ -5,13 +5,14 @@ using System;
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Buffer = Silk.NET.Vulkan.Buffer;
 
 namespace Ryujinx.Graphics.Vulkan.Queries
 {
     class BufferedQuery : IDisposable
     {
-        private const int MaxQueryRetries = 10000; // 增加重试次数
+        private const int MaxQueryRetries = 10000;
         private const long DefaultValue = unchecked((long)0xFFFFFFFEFFFFFFFE);
         private const long DefaultValueInt = 0xFFFFFFFE;
         private const ulong HighMask = 0xFFFFFFFF00000000;
@@ -19,7 +20,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private readonly Vk _api;
         private readonly Device _device;
         private readonly PipelineFull _pipeline;
-        private readonly VulkanRenderer _gd; // 添加对VulkanRenderer的引用
+        private readonly VulkanRenderer _gd;
 
         private QueryPool _queryPool;
         private readonly uint _queryIndex;
@@ -37,22 +38,34 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         // 时间线信号量支持
         private ulong? _timelineSignalValue;
         private readonly bool _useTimelineSemaphores;
+        private TaskCompletionSource<long> _asyncResultTask;
+        private bool _asyncResultPending;
 
-        // 添加查询池管理
+        // 查询池管理
         private static readonly ConcurrentDictionary<CounterType, QueryPoolManager> _queryPoolManagers = new();
         private readonly bool _isTbdrPlatform;
+
+        // 统计信息
+        private static long _totalQueriesCreated;
+        private static long _totalQueriesReused;
+        private static long _totalAsyncWaits;
+        private static long _totalTimelineWaits;
 
         private class QueryPoolManager
         {
             public QueryPool QueryPool { get; set; }
             public uint NextIndex { get; set; }
             public int ReferenceCount { get; set; }
-            public const uint PoolSize = 1024;
+            public int ActiveQueries { get; set; }
+            public const uint PoolSize = 4096; // 固定为4096
+            
+            public void IncrementActive() => ActiveQueries++;
+            public void DecrementActive() => ActiveQueries--;
         }
 
         public unsafe BufferedQuery(VulkanRenderer gd, Device device, PipelineFull pipeline, CounterType type, bool result32Bit, bool isTbdrPlatform)
         {
-            _gd = gd; // 保存gd引用
+            _gd = gd;
             _api = gd.Api;
             _device = device;
             _pipeline = pipeline;
@@ -88,13 +101,17 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     {
                         QueryPool = pool,
                         NextIndex = 0,
-                        ReferenceCount = 0
+                        ReferenceCount = 0,
+                        ActiveQueries = 0
                     };
                 });
 
                 lock (manager)
                 {
                     manager.ReferenceCount++;
+                    manager.IncrementActive();
+                    Interlocked.Increment(ref _totalQueriesCreated);
+                    
                     _queryPool = manager.QueryPool;
                     _queryIndex = manager.NextIndex;
                     manager.NextIndex = (manager.NextIndex + 1) % QueryPoolManager.PoolSize;
@@ -123,6 +140,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 gd.Api.CreateQueryPool(device, in queryPoolCreateInfo, null, out _queryPool).ThrowOnError();
                 _queryIndex = 0;
                 _isPooledQuery = false;
+                Interlocked.Increment(ref _totalQueriesCreated);
             }
 
             BufferHolder buffer = gd.BufferManager.Create(gd, sizeof(long), forConditionalRendering: true);
@@ -176,6 +194,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             }
             _resetSequence = null;
             _timelineSignalValue = null; // 重置时间线信号量值
+            _asyncResultPending = false;
+            _asyncResultTask = null;
         }
 
         public void End(bool withResult)
@@ -194,6 +214,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 if (_useTimelineSemaphores)
                 {
                     _timelineSignalValue = _gd.GetNextTimelineValue();
+                    _asyncResultPending = true;
                 }
             }
             else
@@ -211,22 +232,33 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         public bool TryGetResult(out long result)
         {
             result = Marshal.ReadInt64(_bufferMap);
-            return result != _defaultValue;
+            bool hasResult = result != _defaultValue;
+            
+            if (hasResult && _asyncResultPending)
+            {
+                _asyncResultPending = false;
+                _asyncResultTask?.TrySetResult(result);
+            }
+            
+            return hasResult;
         }
 
         public long AwaitResult(AutoResetEvent wakeSignal = null)
         {
             long data = _defaultValue;
 
-            // 优先使用时间线信号量等待
-            if (_useTimelineSemaphores && _timelineSignalValue.HasValue)
+            // 优先使用时间线信号量异步等待
+            if (_useTimelineSemaphores && _timelineSignalValue.HasValue && _asyncResultPending)
             {
+                Interlocked.Increment(ref _totalTimelineWaits);
                 ulong targetValue = _timelineSignalValue.Value;
                 
-                // 等待时间线信号量达到指定值
+                // 异步等待时间线信号量
                 if (_gd.WaitTimelineSemaphore(targetValue, 1000000000)) // 1秒超时
                 {
                     data = Marshal.ReadInt64(_bufferMap);
+                    _asyncResultPending = false;
+                    _asyncResultTask?.TrySetResult(data);
                     return data != _defaultValue ? data : 0;
                 }
                 else
@@ -234,7 +266,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     Logger.Error?.Print(LogClass.Gpu, 
                         $"Timeline semaphore wait timed out for query {_type}. Value: {targetValue}");
                     
-                    // 强制返回默认值，避免阻塞
+                    _asyncResultPending = false;
+                    _asyncResultTask?.TrySetCanceled();
                     return 0;
                 }
             }
@@ -251,13 +284,11 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             {
                 int iterations = 0;
                 
-                // TBDR平台优化：更积极的轮询策略
                 while (WaitingForValue(data) && iterations++ < MaxQueryRetries)
                 {
                     data = Marshal.ReadInt64(_bufferMap);
                     if (WaitingForValue(data))
                     {
-                        // TBDR平台：前1000次迭代不等待，之后使用短延迟
                         if (_isTbdrPlatform && iterations < 1000)
                         {
                             Thread.Yield();
@@ -274,24 +305,95 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     Logger.Error?.Print(LogClass.Gpu, 
                         $"Error: Query result {_type} timed out. Attempts: {iterations}");
                     
-                    // 强制返回默认值，避免阻塞
                     return 0;
                 }
             }
 
+            if (!WaitingForValue(data))
+            {
+                _asyncResultPending = false;
+                _asyncResultTask?.TrySetResult(data);
+            }
+            
             return data;
         }
 
-        public void PoolReset(CommandBuffer cmd, int resetSequence)
+        // 异步获取结果，不阻塞调用线程
+        public Task<long> GetResultAsync(CancellationToken cancellationToken = default)
         {
-            if (_isSupported && !_isPooledQuery)
+            Interlocked.Increment(ref _totalAsyncWaits);
+            
+            // 首先尝试直接获取结果
+            if (TryGetResult(out long immediateResult))
             {
-                _api.CmdResetQueryPool(cmd, _queryPool, 0, 1);
+                return Task.FromResult(immediateResult);
             }
-            _resetSequence = resetSequence;
+            
+            // 如果支持时间线信号量且有待处理的结果
+            if (_useTimelineSemaphores && _timelineSignalValue.HasValue && _asyncResultPending)
+            {
+                _asyncResultTask = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
+                
+                // 启动后台任务等待时间线信号量
+                Task.Run(async () =>
+                {
+                    try
+                    {
+                        ulong targetValue = _timelineSignalValue.Value;
+                        
+                        if (await Task.Run(() => _gd.WaitTimelineSemaphore(targetValue, 1000000000)))
+                        {
+                            long result = Marshal.ReadInt64(_bufferMap);
+                            _asyncResultPending = false;
+                            _asyncResultTask.TrySetResult(result != _defaultValue ? result : 0);
+                        }
+                        else
+                        {
+                            Logger.Warning?.Print(LogClass.Gpu, 
+                                $"Async timeline semaphore wait timed out for query {_type}");
+                            _asyncResultPending = false;
+                            _asyncResultTask.TrySetResult(0);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error?.Print(LogClass.Gpu, 
+                            $"Async query wait failed: {ex.Message}");
+                        _asyncResultPending = false;
+                        _asyncResultTask.TrySetResult(0);
+                    }
+                }, cancellationToken);
+                
+                return _asyncResultTask.Task;
+            }
+            
+            // 回退到轮询方式
+            return Task.Run(() =>
+            {
+                int iterations = 0;
+                while (iterations++ < MaxQueryRetries)
+                {
+                    if (TryGetResult(out long result))
+                    {
+                        return result;
+                    }
+                    
+                    Thread.Sleep(_isTbdrPlatform ? 0 : 1);
+                    
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        return 0L;
+                    }
+                }
+                
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Async query poll timed out for {_type}");
+                return 0L;
+            }, cancellationToken);
         }
 
-        public void PoolCopy(CommandBufferScoped cbs, uint queryIndex)
+        // 批量复制查询结果
+        public void BatchCopy(CommandBufferScoped cbs, uint queryIndex, ulong batchTimelineValue = 0)
         {
             Buffer buffer = _buffer.GetBuffer(cbs.CommandBuffer, true).Get(cbs, 0, sizeof(long), true).Value;
 
@@ -311,6 +413,27 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 0,
                 (ulong)(_result32Bit ? sizeof(int) : sizeof(long)),
                 flags);
+            
+            // 设置批次时间线信号量值
+            if (batchTimelineValue > 0 && _useTimelineSemaphores)
+            {
+                SetBatchTimelineValue(batchTimelineValue);
+            }
+        }
+
+        public void PoolReset(CommandBuffer cmd, int resetSequence)
+        {
+            if (_isSupported && !_isPooledQuery)
+            {
+                _api.CmdResetQueryPool(cmd, _queryPool, 0, 1);
+            }
+            _resetSequence = resetSequence;
+        }
+
+        public void PoolCopy(CommandBufferScoped cbs, uint queryIndex)
+        {
+            // 使用批量复制
+            BatchCopy(cbs, queryIndex);
         }
 
         public unsafe void Dispose()
@@ -319,16 +442,27 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             
             // 重置时间线信号量值
             _timelineSignalValue = null;
+            _asyncResultPending = false;
+            _asyncResultTask?.TrySetCanceled();
+            _asyncResultTask = null;
             
             if (_isSupported && _isPooledQuery && _queryPoolManagers.TryGetValue(_type, out var manager))
             {
                 lock (manager)
                 {
                     manager.ReferenceCount--;
+                    manager.DecrementActive();
+                    
                     if (manager.ReferenceCount == 0)
                     {
                         _api.DestroyQueryPool(_device, manager.QueryPool, null);
                         _queryPoolManagers.TryRemove(_type, out _);
+                        
+                        // 记录统计信息
+                        Logger.Info?.Print(LogClass.Gpu, 
+                            $"Query pool for {_type} destroyed. Stats: Created={_totalQueriesCreated}, " +
+                            $"Reused={_totalQueriesReused}, AsyncWaits={_totalAsyncWaits}, " +
+                            $"TimelineWaits={_totalTimelineWaits}");
                     }
                 }
             }
@@ -344,7 +478,25 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             if (_useTimelineSemaphores)
             {
                 _timelineSignalValue = timelineValue;
+                _asyncResultPending = true;
             }
+        }
+        
+        // 获取统计信息
+        public static void LogStatistics()
+        {
+            Logger.Info?.Print(LogClass.Gpu, 
+                $"Query Statistics: Created={_totalQueriesCreated}, Reused={_totalQueriesReused}, " +
+                $"AsyncWaits={_totalAsyncWaits}, TimelineWaits={_totalTimelineWaits}");
+        }
+        
+        // 重置查询状态（用于重用）
+        public void ResetState()
+        {
+            _timelineSignalValue = null;
+            _asyncResultPending = false;
+            _asyncResultTask = null;
+            Marshal.WriteInt64(_bufferMap, _defaultValue);
         }
     }
 }

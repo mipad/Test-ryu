@@ -1,6 +1,7 @@
 using Ryujinx.Graphics.GAL;
 using Silk.NET.Vulkan;
 using System;
+using System.Threading.Tasks;
 using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Vulkan.Queries
@@ -49,6 +50,17 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         {
             return _counterQueues[(int)type].QueueReport(resultHandler, divisor, _pipeline.DrawCount, hostReserved);
         }
+        
+        // 异步队列报告
+        public async Task<CounterQueueEvent> QueueReportAsync(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved)
+        {
+            var evt = _counterQueues[(int)type].QueueReport(resultHandler, divisor, _pipeline.DrawCount, hostReserved);
+            
+            // 异步等待结果
+            await evt.GetResultAsync();
+            
+            return evt;
+        }
 
         public void QueueReset(CounterType type)
         {
@@ -62,10 +74,29 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 queue.Flush(false);
             }
         }
+        
+        // 异步更新
+        public async Task UpdateAsync()
+        {
+            var tasks = new Task[_counterQueues.Length];
+            
+            for (int i = 0; i < _counterQueues.Length; i++)
+            {
+                tasks[i] = _counterQueues[i].FlushAsync();
+            }
+            
+            await Task.WhenAll(tasks);
+        }
 
         public void Flush(CounterType type)
         {
             _counterQueues[(int)type].Flush(true);
+        }
+        
+        // 异步刷新
+        public async Task FlushAsync(CounterType type)
+        {
+            await _counterQueues[(int)type].FlushAsync();
         }
 
         public void Dispose()

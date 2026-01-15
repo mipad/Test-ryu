@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Vulkan.Queries
@@ -36,6 +37,12 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private readonly Thread _consumerThread;
 
         public int ResetSequence { get; private set; }
+        
+        // 批量处理相关
+        private readonly List<CounterQueueEvent> _pendingBatchEvents = new();
+        private readonly object _batchLock = new();
+        private int _batchSize = 0;
+        private const int TargetBatchSize = 64; // 目标批次大小
 
         internal CounterQueue(VulkanRenderer gd, Device device, PipelineFull pipeline, CounterType type, bool isTbdrPlatform)
         {
@@ -48,7 +55,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _queryPool = new Queue<BufferedQuery>(QueryPoolInitialSize);
             for (int i = 0; i < QueryPoolInitialSize; i++)
             {
-                // 传递isTbdrPlatform参数给BufferedQuery
                 _queryPool.Enqueue(new BufferedQuery(_gd, _device, _pipeline, type, _gd.IsAmdWindows, _isTbdrPlatform));
             }
 
@@ -108,13 +114,27 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 }
                 else
                 {
-                    evt.TryConsume(ref _accumulatedCounter, true, _waiterCount == 0 ? _wakeSignal : null);
+                    // 异步处理事件，不阻塞消费者线程
+                    ProcessEventAsync(evt);
                 }
 
                 if (_waiterCount > 0)
                 {
                     _eventConsumed.Set();
                 }
+            }
+        }
+        
+        private async void ProcessEventAsync(CounterQueueEvent evt)
+        {
+            try
+            {
+                // 使用异步方式获取结果
+                await evt.TryConsumeAsync(ref _accumulatedCounter, true, _waiterCount == 0 ? _wakeSignal : null);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Gpu, $"Error processing counter event: {ex.Message}");
             }
         }
 
@@ -136,6 +156,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         {
             lock (_lock)
             {
+                query.ResetState(); // 重置查询状态以便重用
                 _queryPool.Enqueue(query);
             }
         }
@@ -153,7 +174,19 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 }
 
                 _current.Complete(draws > 0 && Type != CounterType.TransformFeedbackPrimitivesWritten, divisor);
-                _events.Enqueue(_current);
+                
+                // 添加到批次或直接入队
+                lock (_batchLock)
+                {
+                    _pendingBatchEvents.Add(_current);
+                    _batchSize++;
+                    
+                    // 达到批次大小时处理批次
+                    if (_batchSize >= TargetBatchSize)
+                    {
+                        ProcessBatch();
+                    }
+                }
 
                 _current.OnResult += resultHandler;
 
@@ -165,6 +198,23 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _queuedEvent.Set();
 
             return result;
+        }
+        
+        private void ProcessBatch()
+        {
+            if (_pendingBatchEvents.Count == 0) return;
+            
+            lock (_batchLock)
+            {
+                // 批量提交所有待处理事件
+                foreach (var evt in _pendingBatchEvents)
+                {
+                    _events.Enqueue(evt);
+                }
+                
+                _pendingBatchEvents.Clear();
+                _batchSize = 0;
+            }
         }
 
         public void QueueReset(ulong lastDrawIndex)
@@ -179,6 +229,12 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
         public void Flush(bool blocking)
         {
+            // 处理剩余批次
+            lock (_batchLock)
+            {
+                ProcessBatch();
+            }
+            
             if (!blocking)
             {
                 _wakeSignal.Set();
@@ -212,6 +268,32 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
             Interlocked.Decrement(ref _waiterCount);
         }
+        
+        // 异步刷新
+        public async Task FlushAsync()
+        {
+            // 处理剩余批次
+            lock (_batchLock)
+            {
+                ProcessBatch();
+            }
+            
+            _wakeSignal.Set();
+            
+            // 异步等待事件处理完成
+            await Task.Run(() =>
+            {
+                while (true)
+                {
+                    lock (_lock)
+                    {
+                        if (_events.Count == 0)
+                            break;
+                    }
+                    Thread.Sleep(1);
+                }
+            });
+        }
 
         public void Dispose()
         {
@@ -220,8 +302,17 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 while (_events.Count > 0)
                 {
                     CounterQueueEvent evt = _events.Dequeue();
-
                     evt.Dispose();
+                }
+                
+                // 处理剩余批次事件
+                lock (_batchLock)
+                {
+                    foreach (var evt in _pendingBatchEvents)
+                    {
+                        evt.Dispose();
+                    }
+                    _pendingBatchEvents.Clear();
                 }
 
                 Disposed = true;
