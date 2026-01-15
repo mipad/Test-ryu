@@ -713,7 +713,6 @@ namespace Ryujinx.Graphics.Vulkan
                     // 分配内存
                     if (allSignalSemaphores.Count > 0)
                     {
-                        // 修复：stackalloc返回的就是指针类型，不需要转换
                         ulong* signalValues = stackalloc ulong[allSignalSemaphores.Count];
                         pSignalSemaphoreValues = signalValues;
                         for (int i = 0; i < allSignalValues.Count; i++)
@@ -724,7 +723,6 @@ namespace Ryujinx.Graphics.Vulkan
                     
                     if (allWaitSemaphores.Count > 0)
                     {
-                        // 修复：stackalloc返回的就是指针类型，不需要转换
                         ulong* waitValues = stackalloc ulong[allWaitSemaphores.Count];
                         pWaitSemaphoreValues = waitValues;
                         for (int i = 0; i < allWaitValues.Count; i++)
