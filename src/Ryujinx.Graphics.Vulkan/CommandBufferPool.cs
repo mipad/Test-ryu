@@ -24,6 +24,9 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly Thread _owner;
         private readonly bool _supportsTimelineSemaphores;
         private readonly VulkanRenderer _renderer;
+        
+        // 用于跟踪已添加的时间线信号量值，避免重复添加
+        private readonly Dictionary<int, HashSet<ulong>> _addedTimelineSignals = new();
 
         public bool OwnedByCurrentThread => _owner == Thread.CurrentThread;
 
@@ -110,6 +113,12 @@ namespace Ryujinx.Graphics.Vulkan
             _supportsTimelineSemaphores = supportsTimelineSemaphores;
             _renderer = renderer;
             _owner = Thread.CurrentThread;
+
+            // 初始化已添加信号量跟踪
+            for (int i = 0; i < (isLight ? 2 : MaxCommandBuffers); i++)
+            {
+                _addedTimelineSignals[i] = new HashSet<ulong>();
+            }
 
             Logger.Info?.PrintMsg(LogClass.Gpu, 
                 $"CommandBufferPool初始化: 时间线信号量支持 = {_supportsTimelineSemaphores}, 轻量模式 = {isLight}");
@@ -213,7 +222,23 @@ namespace Ryujinx.Graphics.Vulkan
 
                     if (entry.InConsumption)
                     {
+                        // 检查是否已经添加过相同的信号量值
+                        if (_addedTimelineSignals.ContainsKey(i) && _addedTimelineSignals[i].Contains(value))
+                        {
+                            Logger.Warning?.PrintMsg(LogClass.Gpu, 
+                                $"检测到重复的时间线信号量值: 命令缓冲区={i}, 值={value}，跳过添加");
+                            continue;
+                        }
+                        
                         entry.TimelineSignals.Add(new TimelineSignal { Semaphore = semaphore, Value = value });
+                        
+                        // 记录已添加的信号量值
+                        if (!_addedTimelineSignals.ContainsKey(i))
+                        {
+                            _addedTimelineSignals[i] = new HashSet<ulong>();
+                        }
+                        _addedTimelineSignals[i].Add(value);
+                        
                         Logger.Debug?.PrintMsg(LogClass.Gpu, 
                             $"时间线信号添加到命令缓冲区 {i}");
                     }
@@ -241,7 +266,23 @@ namespace Ryujinx.Graphics.Vulkan
 
                     if (entry.InUse)
                     {
+                        // 检查是否已经添加过相同的信号量值
+                        if (_addedTimelineSignals.ContainsKey(i) && _addedTimelineSignals[i].Contains(value))
+                        {
+                            Logger.Warning?.PrintMsg(LogClass.Gpu, 
+                                $"检测到重复的时间线信号量值（使用中）: 命令缓冲区={i}, 值={value}，跳过添加");
+                            continue;
+                        }
+                        
                         entry.TimelineSignals.Add(new TimelineSignal { Semaphore = semaphore, Value = value });
+                        
+                        // 记录已添加的信号量值
+                        if (!_addedTimelineSignals.ContainsKey(i))
+                        {
+                            _addedTimelineSignals[i] = new HashSet<ulong>();
+                        }
+                        _addedTimelineSignals[i].Add(value);
+                        
                         Logger.Debug?.PrintMsg(LogClass.Gpu, 
                             $"时间线信号添加到使用中命令缓冲区 {i}");
                     }
@@ -484,11 +525,22 @@ namespace Ryujinx.Graphics.Vulkan
                         }
                     }
 
-                    // 添加时间线信号
+                    // 添加时间线信号（去重检查）
+                    HashSet<ulong> addedSignalValues = new();
                     foreach (var timelineSignal in entry.TimelineSignals)
                     {
+                        // 防止同一个命令缓冲区中重复的时间线信号量值
+                        if (addedSignalValues.Contains(timelineSignal.Value))
+                        {
+                            Logger.Warning?.PrintMsg(LogClass.Gpu, 
+                                $"命令缓冲区 {cbIndex} 中检测到重复的时间线信号量值: {timelineSignal.Value}，跳过");
+                            continue;
+                        }
+                        
                         allSignalSemaphores.Add(timelineSignal.Semaphore);
                         allSignalValues.Add(timelineSignal.Value);
+                        addedSignalValues.Add(timelineSignal.Value);
+                        
                         Logger.Debug?.PrintMsg(LogClass.Gpu, 
                             $"时间线信号: 信号量={timelineSignal.Semaphore.Handle:X}，值={timelineSignal.Value}");
                     }
@@ -645,6 +697,12 @@ namespace Ryujinx.Graphics.Vulkan
             entry.TimelineSignals.Clear();
             entry.TimelineWaits.Clear();
             entry.Fence?.Dispose();
+
+            // 清理已添加信号量值的跟踪
+            if (_addedTimelineSignals.ContainsKey(cbIndex))
+            {
+                _addedTimelineSignals[cbIndex].Clear();
+            }
 
             if (refreshFence)
             {
