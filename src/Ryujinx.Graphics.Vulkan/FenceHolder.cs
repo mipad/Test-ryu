@@ -293,7 +293,10 @@ namespace Ryujinx.Graphics.Vulkan
         {
             // 使用异步轮询实现带超时的等待
             long startTime = Stopwatch.GetTimestamp();
-            long timeoutTicks = (long)(timeout * Stopwatch.Frequency / 1_000_000_000L); // 纳秒转换为ticks
+            
+            // 修复类型转换错误：将ulong timeout转换为long进行计算
+            // 注意：这里假设timeout不会超过long.MaxValue纳秒（约292年）
+            long timeoutTicks = (long)(timeout * (ulong)Stopwatch.Frequency / 1_000_000_000UL);
             
             while (!IsSignaled())
             {
@@ -349,7 +352,9 @@ namespace Ryujinx.Graphics.Vulkan
         {
             // 重试获取锁并等待（带超时）
             long startTime = Stopwatch.GetTimestamp();
-            long timeoutTicks = (long)(timeout * Stopwatch.Frequency / 1_000_000_000L);
+            
+            // 修复类型转换错误：将ulong timeout转换为long进行计算
+            long timeoutTicks = (long)(timeout * (ulong)Stopwatch.Frequency / 1_000_000_000UL);
             
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -366,7 +371,15 @@ namespace Ryujinx.Graphics.Vulkan
                     {
                         // 计算剩余时间
                         long remainingTicks = timeoutTicks - elapsedTicks;
-                        ulong remainingNs = (ulong)(remainingTicks * 1_000_000_000L / Stopwatch.Frequency);
+                        
+                        // 修复类型转换错误：确保使用ulong进行计算
+                        // 首先确保remainingTicks不为负
+                        if (remainingTicks <= 0)
+                        {
+                            return false;
+                        }
+                        
+                        ulong remainingNs = (ulong)remainingTicks * 1_000_000_000UL / (ulong)Stopwatch.Frequency;
                         
                         return await WaitFenceAsync(remainingNs, cancellationToken).ConfigureAwait(false);
                     }
@@ -420,15 +433,19 @@ namespace Ryujinx.Graphics.Vulkan
             if (fences.Length == 0) return true;
             
             // 检查是否所有栅栏都已经收到信号
+            bool allSignaled = true;
             foreach (var fence in fences)
             {
-                if (fence.IsSignaled())
+                if (!fence.IsSignaled())
                 {
-                    continue;
+                    allSignaled = false;
+                    break;
                 }
-                
-                // 如果有栅栏未收到信号，使用异步等待
-                break;
+            }
+            
+            if (allSignaled)
+            {
+                return true;
             }
             
             // 如果所有栅栏都已收到信号，立即返回
