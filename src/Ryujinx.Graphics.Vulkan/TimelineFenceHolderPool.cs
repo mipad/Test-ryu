@@ -1,204 +1,298 @@
 using Ryujinx.Common.Logging;
 using Silk.NET.Vulkan;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace Ryujinx.Graphics.Vulkan
 {
     /// <summary>
-    /// 简化的时间线信号量等待器
+    /// 时间线信号量等待器池（单例）
     /// </summary>
-    class TimelineFenceHolder
+    class TimelineFenceHolderPool : IDisposable
     {
+        private static TimelineFenceHolderPool _instance;
+        private static readonly object _instanceLock = new object();
+        
         private readonly VulkanRenderer _gd;
         private readonly Device _device;
         private readonly Semaphore _timelineSemaphore;
-        private readonly Dictionary<int, List<ulong>> _commandBufferSignals;
+        private readonly ConcurrentDictionary<int, TimelineFenceHolder> _holderMap;
+        private readonly object _syncLock = new object();
+        private bool _disposed;
         
-        public TimelineFenceHolder(VulkanRenderer gd, Device device, Semaphore timelineSemaphore)
+        // 主时间线等待器（用于大多数同步操作）
+        private TimelineFenceHolder _mainHolder;
+        
+        // 待处理的时间线值队列
+        private readonly List<ulong> _pendingValues = new();
+        private readonly object _pendingLock = new();
+        private Timer _flushTimer;
+        private const int FlushIntervalMs = 5; // 5ms刷新一次
+        
+        public static TimelineFenceHolderPool GetInstance(VulkanRenderer gd, Device device, Semaphore timelineSemaphore)
+        {
+            lock (_instanceLock)
+            {
+                if (_instance == null)
+                {
+                    _instance = new TimelineFenceHolderPool(gd, device, timelineSemaphore);
+                }
+                return _instance;
+            }
+        }
+        
+        public static bool IsInitialized => _instance != null;
+        
+        private TimelineFenceHolderPool(VulkanRenderer gd, Device device, Semaphore timelineSemaphore)
         {
             _gd = gd;
             _device = device;
             _timelineSemaphore = timelineSemaphore;
-            _commandBufferSignals = new Dictionary<int, List<ulong>>();
+            _holderMap = new ConcurrentDictionary<int, TimelineFenceHolder>();
+            _mainHolder = new TimelineFenceHolder(gd, device, timelineSemaphore);
+            
+            // 启动定时刷新器
+            _flushTimer = new Timer(FlushPendingValues, null, FlushIntervalMs, FlushIntervalMs);
+            
+            Logger.Info?.PrintMsg(LogClass.Gpu, 
+                $"TimelineFenceHolderPool初始化完成");
         }
         
         /// <summary>
-        /// 批量添加时间线信号量值
+        /// 获取主时间线等待器
         /// </summary>
-        public void AddSignals(int cbIndex, ulong[] values)
+        public TimelineFenceHolder GetMainHolder()
+        {
+            return _mainHolder;
+        }
+        
+        /// <summary>
+        /// 为特定命令缓冲区获取时间线等待器
+        /// </summary>
+        public TimelineFenceHolder GetHolderForBuffer(int cbIndex)
+        {
+            return _holderMap.GetOrAdd(cbIndex, _ => new TimelineFenceHolder(_gd, _device, _timelineSemaphore));
+        }
+        
+        /// <summary>
+        /// 添加时间线信号量值到主等待器
+        /// </summary>
+        public void AddSignal(ulong value)
+        {
+            lock (_pendingLock)
+            {
+                _pendingValues.Add(value);
+            }
+        }
+        
+        /// <summary>
+        /// 批量添加时间线信号量值到主等待器
+        /// </summary>
+        public void AddSignals(ulong[] values)
         {
             if (values == null || values.Length == 0)
                 return;
                 
-            lock (_commandBufferSignals)
+            lock (_pendingLock)
             {
-                if (!_commandBufferSignals.ContainsKey(cbIndex))
-                {
-                    _commandBufferSignals[cbIndex] = new List<ulong>();
-                }
+                _pendingValues.AddRange(values);
+            }
+        }
+        
+        /// <summary>
+        /// 为特定命令缓冲区添加时间线信号量值
+        /// </summary>
+        public void AddSignalToBuffer(int cbIndex, ulong value)
+        {
+            var holder = GetHolderForBuffer(cbIndex);
+            holder.AddSignal(value);
+        }
+        
+        /// <summary>
+        /// 为特定命令缓冲区批量添加时间线信号量值
+        /// </summary>
+        public void AddSignalsToBuffer(int cbIndex, ulong[] values)
+        {
+            if (values == null || values.Length == 0)
+                return;
                 
-                var list = _commandBufferSignals[cbIndex];
-                foreach (var value in values)
+            var holder = GetHolderForBuffer(cbIndex);
+            holder.AddSignals(cbIndex, values);
+        }
+        
+        /// <summary>
+        /// 刷新待处理的时间线值
+        /// </summary>
+        private void FlushPendingValues(object state)
+        {
+            if (_disposed)
+                return;
+                
+            lock (_pendingLock)
+            {
+                if (_pendingValues.Count == 0)
+                    return;
+                    
+                // 批量提交到主等待器
+                ulong[] values = _pendingValues.ToArray();
+                _pendingValues.Clear();
+                
+                if (values.Length > 0)
                 {
-                    // 确保值递增且不重复
-                    if (list.Count == 0 || value > list[list.Count - 1])
+                    _mainHolder.AddSignals(-1, values); // -1表示主等待器
+                    
+                    // 如果需要，可以在这里批量提交到命令缓冲区
+                    if (_gd.SupportsTimelineSemaphores && _timelineSemaphore.Handle != 0)
                     {
-                        list.Add(value);
-                    }
-                }
-            }
-        }
-        
-        /// <summary>
-        /// 添加单个时间线信号量值
-        /// </summary>
-        public void AddSignal(ulong value)
-        {
-            AddSignals(-1, new ulong[] { value }); // -1表示无特定缓冲区
-        }
-        
-        /// <summary>
-        /// 添加单个时间线信号量值到特定缓冲区
-        /// </summary>
-        public void AddSignal(int cbIndex, ulong value)
-        {
-            AddSignals(cbIndex, new ulong[] { value });
-        }
-        
-        /// <summary>
-        /// 移除命令缓冲区的所有信号
-        /// </summary>
-        public void RemoveSignals(int cbIndex)
-        {
-            lock (_commandBufferSignals)
-            {
-                _commandBufferSignals.Remove(cbIndex);
-            }
-        }
-        
-        /// <summary>
-        /// 获取命令缓冲区的最大信号量值
-        /// </summary>
-        public ulong GetMaxSignalValue(int cbIndex)
-        {
-            lock (_commandBufferSignals)
-            {
-                if (_commandBufferSignals.TryGetValue(cbIndex, out var list) && list.Count > 0)
-                {
-                    return list[list.Count - 1]; // 列表已排序，最后一个最大
-                }
-                return 0;
-            }
-        }
-        
-        /// <summary>
-        /// 获取所有命令缓冲区中的最大信号量值
-        /// </summary>
-        public ulong GetGlobalMaxSignalValue()
-        {
-            lock (_commandBufferSignals)
-            {
-                ulong maxValue = 0;
-                foreach (var kvp in _commandBufferSignals)
-                {
-                    var list = kvp.Value;
-                    if (list.Count > 0)
-                    {
-                        ulong listMax = list[list.Count - 1];
-                        if (listMax > maxValue)
+                        // 创建专门的命令缓冲区来批量发送信号
+                        var cbs = _gd.CommandBufferPool.Rent();
+                        try
                         {
-                            maxValue = listMax;
+                            foreach (var value in values)
+                            {
+                                _gd.CommandBufferPool.AddTimelineSignalToBuffer(cbs.CommandBufferIndex, _timelineSemaphore, value);
+                            }
+                            _gd.EndAndSubmitCommandBuffer(cbs, 0);
+                        }
+                        finally
+                        {
+                            // EndAndSubmitCommandBuffer已经处理返回
                         }
                     }
                 }
-                return maxValue;
             }
         }
         
         /// <summary>
-        /// 等待所有信号
+        /// 立即刷新所有待处理值
         /// </summary>
-        public bool WaitForSignals(Vk api, Device device, ulong timeout = 0)
+        public void FlushNow()
         {
-            if (_timelineSemaphore.Handle == 0 || !_gd.SupportsTimelineSemaphores)
-            {
-                return true; // 不支持时间线信号量，假设已发出信号
-            }
-            
-            ulong targetValue = GetGlobalMaxSignalValue();
-            if (targetValue == 0)
-            {
-                return true; // 没有需要等待的信号
-            }
-            
-            return WaitForTimelineValue(api, device, targetValue, timeout);
+            FlushPendingValues(null);
         }
         
         /// <summary>
         /// 等待时间线信号量达到特定值
         /// </summary>
-        public unsafe bool WaitForTimelineValue(Vk api, Device device, ulong targetValue, ulong timeout)
+        public bool WaitForValue(ulong targetValue, ulong timeout = 1000000000)
         {
-            if (!_gd.SupportsTimelineSemaphores || _timelineSemaphore.Handle == 0)
-            {
-                return true;
-            }
-            
-            // 首先检查是否已经达到目标值
-            ulong currentValue = _gd.GetTimelineSemaphoreValue();
-            if (currentValue >= targetValue)
-            {
-                return true;
-            }
-            
-            // 使用栈分配来避免GC
-            Semaphore* pSemaphore = stackalloc Semaphore[1];
-            ulong* pValue = stackalloc ulong[1];
-            
-            // 将值复制到栈上分配的内存中
-            *pSemaphore = _timelineSemaphore;
-            *pValue = targetValue;
-            
-            // 现在直接使用这些指针，它们已经是固定的（在栈上）
-            var waitInfo = new SemaphoreWaitInfo
-            {
-                SType = StructureType.SemaphoreWaitInfo,
-                SemaphoreCount = 1,
-                PSemaphores = pSemaphore,
-                PValues = pValue
-            };
-            
-            var result = _gd.TimelineSemaphoreApi.WaitSemaphores(device, &waitInfo, timeout);
-            
-            if (result == Result.Success)
-            {
-                Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                    $"时间线信号量等待成功: 目标值={targetValue}");
-            }
-            else if (result == Result.Timeout)
-            {
-                Logger.Warning?.PrintMsg(LogClass.Gpu, 
-                    $"时间线信号量等待超时: 目标值={targetValue}, 当前值={_gd.GetTimelineSemaphoreValue()}");
-            }
-            else
-            {
-                Logger.Error?.PrintMsg(LogClass.Gpu, 
-                    $"时间线信号量等待失败: 目标值={targetValue}, 错误={result}");
-            }
-            
-            return result == Result.Success;
+            return _mainHolder.WaitForTimelineValue(_gd.Api, _device, targetValue, timeout);
         }
         
         /// <summary>
-        /// 清理所有信号
+        /// 等待多个时间线信号量值
         /// </summary>
-        public void Clear()
+        public bool WaitForValues(ulong[] targetValues, ulong timeout = 1000000000)
         {
-            lock (_commandBufferSignals)
+            if (targetValues == null || targetValues.Length == 0)
+                return true;
+                
+            // 找到最大值
+            ulong maxValue = 0;
+            foreach (var value in targetValues)
             {
-                _commandBufferSignals.Clear();
+                if (value > maxValue)
+                {
+                    maxValue = value;
+                }
             }
+            
+            return WaitForValue(maxValue, timeout);
+        }
+        
+        /// <summary>
+        /// 检查时间线信号量是否已达到特定值
+        /// </summary>
+        public bool IsValueSignaled(ulong targetValue)
+        {
+            if (!_gd.SupportsTimelineSemaphores || _timelineSemaphore.Handle == 0)
+                return true;
+                
+            ulong currentValue = _gd.GetTimelineSemaphoreValue();
+            return currentValue >= targetValue;
+        }
+        
+        /// <summary>
+        /// 批量检查多个时间线信号量值
+        /// </summary>
+        public bool AreValuesSignaled(ulong[] targetValues)
+        {
+            if (!_gd.SupportsTimelineSemaphores || _timelineSemaphore.Handle == 0 || targetValues == null)
+                return true;
+                
+            ulong currentValue = _gd.GetTimelineSemaphoreValue();
+            foreach (var target in targetValues)
+            {
+                if (currentValue < target)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+        
+        /// <summary>
+        /// 清理指定命令缓冲区的等待器
+        /// </summary>
+        public void ClearBuffer(int cbIndex)
+        {
+            if (_holderMap.TryRemove(cbIndex, out var holder))
+            {
+                holder.Clear();
+            }
+        }
+        
+        /// <summary>
+        /// 清理所有等待器
+        /// </summary>
+        public void ClearAll()
+        {
+            _mainHolder.Clear();
+            
+            foreach (var kvp in _holderMap)
+            {
+                kvp.Value.Clear();
+            }
+            _holderMap.Clear();
+            
+            lock (_pendingLock)
+            {
+                _pendingValues.Clear();
+            }
+        }
+        
+        /// <summary>
+        /// 获取当前时间线信号量的值
+        /// </summary>
+        public ulong GetCurrentTimelineValue()
+        {
+            if (!_gd.SupportsTimelineSemaphores || _timelineSemaphore.Handle == 0)
+                return 0;
+                
+            return _gd.GetTimelineSemaphoreValue();
+        }
+        
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+                
+            _disposed = true;
+            
+            _flushTimer?.Dispose();
+            _flushTimer = null;
+            
+            ClearAll();
+            
+            lock (_instanceLock)
+            {
+                _instance = null;
+            }
+            
+            Logger.Info?.PrintMsg(LogClass.Gpu, 
+                $"TimelineFenceHolderPool已销毁");
         }
     }
 }
