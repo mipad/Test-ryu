@@ -101,10 +101,7 @@ namespace Ryujinx.Graphics.Vulkan
         public Device Device => _device;
         
         // 时间线信号量
-        internal Silk.NET.Vulkan.Semaphore TimelineSemaphore { get; private set; }
-        
-        // 时间线信号量池
-        private TimelineFenceHolderPool _timelinePool;
+        internal Semaphore TimelineSemaphore { get; private set; }
         
         private readonly Func<Instance, Vk, SurfaceKHR> _getSurface;
         private readonly Func<string[]> _getRequiredExtensions;
@@ -204,12 +201,6 @@ namespace Ryujinx.Graphics.Vulkan
                 
                 // 创建时间线信号量
                 CreateTimelineSemaphore();
-                
-                // 初始化时间线等待器池
-                if (TimelineSemaphore.Handle != 0)
-                {
-                    _timelinePool = TimelineFenceHolderPool.GetInstance(this, _device, TimelineSemaphore);
-                }
             }
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrSynchronization2 synchronization2Api))
@@ -705,7 +696,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             };
 
             // 修复：使用局部变量作为out参数
-            Silk.NET.Vulkan.Semaphore semaphore;
+            Semaphore semaphore;
             Api.CreateSemaphore(_device, semaphoreCreateInfo, null, out semaphore).ThrowOnError();
             TimelineSemaphore = semaphore;
         }
@@ -1217,9 +1208,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         {
             SyncManager.Cleanup();
             
-            // 刷新时间线信号量池的待处理值
-            _timelinePool?.FlushNow();
-            
             // TBDR平台：预优化批量查询
             if (IsTBDR && _pipeline != null)
             {
@@ -1426,10 +1414,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 return;
             }
 
-            // 销毁时间线信号量池
-            _timelinePool?.Dispose();
-            _timelinePool = null;
-            
             CommandBufferPool?.Dispose();
             _computeCommandPool?.Dispose();
             BackgroundResources?.Dispose();
@@ -1524,7 +1508,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         }
 
         // 立即结束并提交命令缓冲区，并发出时间线信号量
-        internal unsafe void EndAndSubmitCommandBuffer(CommandBufferScoped cbs, ReadOnlySpan<Silk.NET.Vulkan.Semaphore> waitSemaphores, ReadOnlySpan<PipelineStageFlags> waitDstStageMask, ReadOnlySpan<Silk.NET.Vulkan.Semaphore> signalSemaphores, ulong timelineSignalValue)
+        internal unsafe void EndAndSubmitCommandBuffer(CommandBufferScoped cbs, ReadOnlySpan<Semaphore> waitSemaphores, ReadOnlySpan<PipelineStageFlags> waitDstStageMask, ReadOnlySpan<Semaphore> signalSemaphores, ulong timelineSignalValue)
         {
             Logger.Info?.PrintMsg(LogClass.Gpu, 
                 $"EndAndSubmitCommandBuffer: 命令缓冲区 {cbs.CommandBufferIndex}, 时间线信号值={timelineSignalValue}");
@@ -1534,9 +1518,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             {
                 // 将时间线信号量添加到指定的命令缓冲区
                 CommandBufferPool.AddTimelineSignalToBuffer(cbs.CommandBufferIndex, TimelineSemaphore, timelineSignalValue);
-                
-                // 同时添加到时间线信号量池
-                _timelinePool?.AddSignal(timelineSignalValue);
             }
             
             // 提交命令缓冲区
@@ -1547,59 +1528,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         internal void EndAndSubmitCommandBuffer(CommandBufferScoped cbs, ulong timelineSignalValue)
         {
             EndAndSubmitCommandBuffer(cbs, default, default, default, timelineSignalValue);
-        }
-        
-        // 批量创建同步对象
-        public void CreateSyncBulk(ulong[] ids, bool[] strictFlags)
-        {
-            if (ids == null || strictFlags == null || ids.Length != strictFlags.Length)
-            {
-                Logger.Error?.PrintMsg(LogClass.Gpu, 
-                    $"批量创建同步对象失败: 参数无效");
-                return;
-            }
-            
-            // 单个创建保持向后兼容
-            for (int i = 0; i < ids.Length; i++)
-            {
-                CreateSync(ids[i], strictFlags[i]);
-            }
-        }
-        
-        // 批量等待同步对象
-        public void WaitSyncBulk(ulong[] ids)
-        {
-            if (ids == null || ids.Length == 0)
-                return;
-                
-            // 单个等待保持向后兼容
-            foreach (var id in ids)
-            {
-                WaitSync(id);
-            }
-        }
-        
-        // 批量获取当前同步状态
-        public ulong[] GetCurrentSyncBulk(ulong[] ids)
-        {
-            if (ids == null || ids.Length == 0)
-                return Array.Empty<ulong>();
-                
-            ulong[] results = new ulong[ids.Length];
-            ulong current = GetCurrentSync();
-            
-            for (int i = 0; i < ids.Length; i++)
-            {
-                results[i] = current;
-            }
-            
-            return results;
-        }
-        
-        // 刷新所有待处理的批量信号
-        public void FlushPendingBatches()
-        {
-            _timelinePool?.FlushNow();
         }
     }
 }

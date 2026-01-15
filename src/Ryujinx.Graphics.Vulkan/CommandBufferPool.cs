@@ -67,13 +67,13 @@ namespace Ryujinx.Graphics.Vulkan
 
         private struct TimelineSignal
         {
-            public Silk.NET.Vulkan.Semaphore Semaphore;
+            public Semaphore Semaphore;
             public ulong Value;
         }
 
         private struct TimelineWait
         {
-            public Silk.NET.Vulkan.Semaphore Semaphore;
+            public Semaphore Semaphore;
             public ulong Value;
             public PipelineStageFlags Stage;
         }
@@ -210,7 +210,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        public void AddTimelineSignal(Silk.NET.Vulkan.Semaphore semaphore, ulong value)
+        public void AddTimelineSignal(Semaphore semaphore, ulong value)
         {
             if (!_supportsTimelineSemaphores || semaphore.Handle == 0)
             {
@@ -254,7 +254,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        public void AddTimelineSignalToBuffer(int cbIndex, Silk.NET.Vulkan.Semaphore semaphore, ulong value)
+        public void AddTimelineSignalToBuffer(int cbIndex, Semaphore semaphore, ulong value)
         {
             if (!_supportsTimelineSemaphores || semaphore.Handle == 0)
             {
@@ -299,7 +299,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        public void AddInUseTimelineSignal(Silk.NET.Vulkan.Semaphore semaphore, ulong value)
+        public void AddInUseTimelineSignal(Semaphore semaphore, ulong value)
         {
             if (!_supportsTimelineSemaphores || semaphore.Handle == 0)
             {
@@ -382,7 +382,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        public void AddWaitTimelineSemaphore(Silk.NET.Vulkan.Semaphore semaphore, ulong value, PipelineStageFlags stage = PipelineStageFlags.AllCommandsBit)
+        public void AddWaitTimelineSemaphore(Semaphore semaphore, ulong value, PipelineStageFlags stage = PipelineStageFlags.AllCommandsBit)
         {
             if (!_supportsTimelineSemaphores || semaphore.Handle == 0)
             {
@@ -426,7 +426,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        public void AddInUseWaitTimelineSemaphore(Silk.NET.Vulkan.Semaphore semaphore, ulong value, PipelineStageFlags stage = PipelineStageFlags.AllCommandsBit)
+        public void AddInUseWaitTimelineSemaphore(Semaphore semaphore, ulong value, PipelineStageFlags stage = PipelineStageFlags.AllCommandsBit)
         {
             if (!_supportsTimelineSemaphores || semaphore.Handle == 0)
             {
@@ -597,9 +597,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe void Return(
             CommandBufferScoped cbs,
-            ReadOnlySpan<Silk.NET.Vulkan.Semaphore> waitSemaphores,
+            ReadOnlySpan<Semaphore> waitSemaphores,
             ReadOnlySpan<PipelineStageFlags> waitDstStageMask,
-            ReadOnlySpan<Silk.NET.Vulkan.Semaphore> signalSemaphores)
+            ReadOnlySpan<Semaphore> signalSemaphores)
         {
             lock (_commandBuffers)
             {
@@ -638,9 +638,9 @@ namespace Ryujinx.Graphics.Vulkan
                         $"使用时间线信号量提交: 信号数量={entry.TimelineSignals.Count}，等待数量={entry.TimelineWaits.Count}");
                     
                     // 收集所有时间线信号量
-                    var allSignalSemaphores = new List<Silk.NET.Vulkan.Semaphore>();
+                    var allSignalSemaphores = new List<Semaphore>();
                     var allSignalValues = new List<ulong>();
-                    var allWaitSemaphores = new List<Silk.NET.Vulkan.Semaphore>();
+                    var allWaitSemaphores = new List<Semaphore>();
                     var allWaitValues = new List<ulong>();
                     var allWaitStages = new List<PipelineStageFlags>();
 
@@ -741,8 +741,8 @@ namespace Ryujinx.Graphics.Vulkan
                     };
 
                     // 提交
-                    fixed (Silk.NET.Vulkan.Semaphore* pWaitSemaphores = allWaitSemaphores.Count > 0 ? allWaitSemaphores.ToArray() : null)
-                    fixed (Silk.NET.Vulkan.Semaphore* pSignalSemaphores = allSignalSemaphores.Count > 0 ? allSignalSemaphores.ToArray() : null)
+                    fixed (Semaphore* pWaitSemaphores = allWaitSemaphores.Count > 0 ? allWaitSemaphores.ToArray() : null)
+                    fixed (Semaphore* pSignalSemaphores = allSignalSemaphores.Count > 0 ? allSignalSemaphores.ToArray() : null)
                     fixed (PipelineStageFlags* pWaitDstStageMask = allWaitStages.Count > 0 ? allWaitStages.ToArray() : null)
                     {
                         SubmitInfo sInfo = new()
@@ -773,7 +773,7 @@ namespace Ryujinx.Graphics.Vulkan
                         $"使用传统二进制信号量提交");
                     
                     // 传统提交方式
-                    fixed (Silk.NET.Vulkan.Semaphore* pWaitSemaphores = waitSemaphores, pSignalSemaphores = signalSemaphores)
+                    fixed (Semaphore* pWaitSemaphores = waitSemaphores, pSignalSemaphores = signalSemaphores)
                     {
                         fixed (PipelineStageFlags* pWaitDstStageMask = waitDstStageMask)
                         {
