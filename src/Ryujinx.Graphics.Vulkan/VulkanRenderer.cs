@@ -1214,16 +1214,47 @@ internal TimelineFenceHolder CreateTimelineFenceHolder()
     return null;
 }
 
-        public void PreFrame()
-        {
-            SyncManager.Cleanup();
-            
-            // TBDR平台：预优化批量查询
-            if (IsTBDR && _pipeline != null)
-            {
-                _pipeline.OptimizeBatchQueries();
-            }
-        }
+        // 在VulkanRenderer类中添加批量处理相关方法
+
+// 批量创建同步对象
+public void CreateSyncBulk(ulong[] ids, bool[] strictFlags)
+{
+    SyncManager?.CreateBulk(ids, strictFlags);
+}
+
+// 批量等待同步对象
+public void WaitSyncBulk(ulong[] ids)
+{
+    SyncManager?.WaitBulk(ids);
+}
+
+// 批量获取当前同步状态
+public ulong[] GetCurrentSyncBulk(ulong[] ids)
+{
+    return SyncManager?.GetCurrentBulk(ids) ?? Array.Empty<ulong>();
+}
+
+// 刷新所有待处理的批量信号
+public void FlushPendingBatches()
+{
+    SyncManager?.FlushPendingBatches();
+    CommandBufferPool?.FlushAllPendingSignals(TimelineSemaphore);
+}
+
+// 在PreFrame方法中调用批量刷新
+public void PreFrame()
+{
+    SyncManager?.Cleanup();
+    
+    // 刷新待处理的批量信号
+    FlushPendingBatches();
+    
+    // TBDR平台：预优化批量查询
+    if (IsTBDR && _pipeline != null)
+    {
+        _pipeline.OptimizeBatchQueries();
+    }
+}
 
         public ICounterEvent ReportCounter(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved)
         {
