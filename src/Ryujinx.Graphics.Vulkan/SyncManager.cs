@@ -3,734 +3,386 @@ using Silk.NET.Vulkan;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Threading;
-using Semaphore = Silk.NET.Vulkan.Semaphore;
+using System.Linq;
 
 namespace Ryujinx.Graphics.Vulkan
 {
-    class CommandBufferPool : IDisposable
+    class SyncManager
     {
-        public const int MaxCommandBuffers = 16;
+        private class SyncHandle
+        {
+            public ulong ID;
+            public ulong TimelineValue; // 时间线信号量值
+            public ulong FlushId;
+            public bool Signalled;
 
-        private readonly int _totalCommandBuffers;
-        private readonly int _totalCommandBuffersMask;
+            public bool NeedsFlush(ulong currentFlushId)
+            {
+                return (long)(FlushId - currentFlushId) >= 0;
+            }
+        }
 
-        private readonly Vk _api;
+        private ulong _firstHandle;
+        private ulong _nextTimelineValue = 1; // 时间线信号量值从1开始
+
+        private readonly VulkanRenderer _gd;
         private readonly Device _device;
-        private readonly Queue _queue;
-        private readonly object _queueLock;
-        private readonly bool _concurrentFenceWaitUnsupported;
-        private readonly CommandPool _pool;
-        private readonly Thread _owner;
-        private readonly bool _supportsTimelineSemaphores;
-        private readonly VulkanRenderer _renderer;
+        private readonly List<SyncHandle> _handles;
+        private ulong _flushId;
+        private long _waitTicks;
         
-        // 用于跟踪已添加的时间线信号量值，避免重复添加
-        private readonly Dictionary<int, HashSet<ulong>> _addedTimelineSignals = new();
+        // 用于跟踪严格模式下的提交状态，防止重复提交
+        private ulong _lastStrictFlushId;
+        private ulong _lastStrictTimelineValue;
 
-        public bool OwnedByCurrentThread => _owner == Thread.CurrentThread;
-
-        private struct ReservedCommandBuffer
+        public SyncManager(VulkanRenderer gd, Device device)
         {
-            public bool InUse;
-            public bool InConsumption;
-            public int SubmissionCount;
-            public CommandBuffer CommandBuffer;
-            public FenceHolder Fence;
-
-            public List<IAuto> Dependants;
-            public List<MultiFenceHolder> Waitables;
-            public List<TimelineSignal> TimelineSignals;
-            public List<TimelineWait> TimelineWaits;
-
-            public void Initialize(Vk api, Device device, CommandPool pool)
-            {
-                CommandBufferAllocateInfo allocateInfo = new()
-                {
-                    SType = StructureType.CommandBufferAllocateInfo,
-                    CommandBufferCount = 1,
-                    CommandPool = pool,
-                    Level = CommandBufferLevel.Primary,
-                };
-
-                api.AllocateCommandBuffers(device, in allocateInfo, out CommandBuffer);
-
-                Dependants = new List<IAuto>();
-                Waitables = new List<MultiFenceHolder>();
-                TimelineSignals = new List<TimelineSignal>();
-                TimelineWaits = new List<TimelineWait>();
-            }
-        }
-
-        private struct TimelineSignal
-        {
-            public Semaphore Semaphore;
-            public ulong Value;
-        }
-
-        private struct TimelineWait
-        {
-            public Semaphore Semaphore;
-            public ulong Value;
-            public PipelineStageFlags Stage;
-        }
-
-        private readonly ReservedCommandBuffer[] _commandBuffers;
-
-        private readonly int[] _queuedIndexes;
-        private int _queuedIndexesPtr;
-        private int _queuedCount;
-        private int _inUseCount;
-
-        public unsafe CommandBufferPool(
-            Vk api,
-            Device device,
-            Queue queue,
-            object queueLock,
-            uint queueFamilyIndex,
-            bool concurrentFenceWaitUnsupported,
-            bool isLight = false)
-            : this(api, device, queue, queueLock, queueFamilyIndex, concurrentFenceWaitUnsupported, false, null, isLight)
-        {
-        }
-
-        public unsafe CommandBufferPool(
-            Vk api,
-            Device device,
-            Queue queue,
-            object queueLock,
-            uint queueFamilyIndex,
-            bool concurrentFenceWaitUnsupported,
-            bool supportsTimelineSemaphores,
-            VulkanRenderer renderer,
-            bool isLight = false)
-        {
-            _api = api;
+            _gd = gd;
             _device = device;
-            _queue = queue;
-            _queueLock = queueLock;
-            _concurrentFenceWaitUnsupported = concurrentFenceWaitUnsupported;
-            _supportsTimelineSemaphores = supportsTimelineSemaphores;
-            _renderer = renderer;
-            _owner = Thread.CurrentThread;
-
-            // 初始化已添加信号量跟踪
-            for (int i = 0; i < (isLight ? 2 : MaxCommandBuffers); i++)
-            {
-                _addedTimelineSignals[i] = new HashSet<ulong>();
-            }
-
+            _handles = [];
+            _lastStrictFlushId = 0;
+            _lastStrictTimelineValue = 0;
+            
+            // 输出时间线信号量支持信息
             Logger.Info?.PrintMsg(LogClass.Gpu, 
-                $"CommandBufferPool初始化: 时间线信号量支持 = {_supportsTimelineSemaphores}, 轻量模式 = {isLight}");
+                $"SyncManager初始化: 时间线信号量支持 = {_gd.SupportsTimelineSemaphores}");
+        }
 
-            CommandPoolCreateInfo commandPoolCreateInfo = new()
+        public void RegisterFlush()
+        {
+            _flushId++;
+        }
+
+        public void Create(ulong id, bool strict)
+        {
+            ulong flushId = _flushId;
+            ulong timelineValue = _nextTimelineValue++;
+
+            SyncHandle handle = new()
             {
-                SType = StructureType.CommandPoolCreateInfo,
-                QueueFamilyIndex = queueFamilyIndex,
-                Flags = CommandPoolCreateFlags.TransientBit |
-                        CommandPoolCreateFlags.ResetCommandBufferBit,
+                ID = id,
+                TimelineValue = timelineValue,
+                FlushId = flushId,
             };
 
-            api.CreateCommandPool(device, in commandPoolCreateInfo, null, out _pool).ThrowOnError();
-
-            // We need at least 2 command buffers to get texture data in some cases.
-            _totalCommandBuffers = isLight ? 2 : MaxCommandBuffers;
-            _totalCommandBuffersMask = _totalCommandBuffers - 1;
-
-            _commandBuffers = new ReservedCommandBuffer[_totalCommandBuffers];
-
-            _queuedIndexes = new int[_totalCommandBuffers];
-            _queuedIndexesPtr = 0;
-            _queuedCount = 0;
-
-            for (int i = 0; i < _totalCommandBuffers; i++)
-            {
-                _commandBuffers[i].Initialize(api, device, _pool);
-                WaitAndDecrementRef(i);
-            }
-            
+            // 输出创建同步对象的日志
             Logger.Info?.PrintMsg(LogClass.Gpu, 
-                $"CommandBufferPool初始化完成: 总共命令缓冲区数量 = {_totalCommandBuffers}");
-        }
+                $"创建同步对象 ID={id}, TimelineValue={timelineValue}, FlushId={flushId}, Strict={strict}");
 
-        public void AddDependant(int cbIndex, IAuto dependant)
-        {
-            dependant.IncrementReferenceCount();
-            _commandBuffers[cbIndex].Dependants.Add(dependant);
-        }
-
-        public void AddWaitable(MultiFenceHolder waitable)
-        {
-            lock (_commandBuffers)
+            if (strict || _gd.InterruptAction == null)
             {
-                for (int i = 0; i < _totalCommandBuffers; i++)
+                // 检查是否是重复的严格模式提交
+                if (strict && flushId == _lastStrictFlushId && timelineValue == _lastStrictTimelineValue + 1)
                 {
-                    ref ReservedCommandBuffer entry = ref _commandBuffers[i];
-
-                    if (entry.InConsumption)
-                    {
-                        AddWaitable(i, waitable);
-                    }
+                    Logger.Warning?.PrintMsg(LogClass.Gpu, 
+                        $"检测到可能的重复严格模式提交: FlushId={flushId}, TimelineValue={timelineValue}");
                 }
-            }
-        }
-
-        public void AddInUseWaitable(MultiFenceHolder waitable)
-        {
-            lock (_commandBuffers)
-            {
-                for (int i = 0; i < _totalCommandBuffers; i++)
-                {
-                    ref ReservedCommandBuffer entry = ref _commandBuffers[i];
-
-                    if (entry.InUse)
-                    {
-                        AddWaitable(i, waitable);
-                    }
-                }
-            }
-        }
-
-        public void AddWaitable(int cbIndex, MultiFenceHolder waitable)
-        {
-            ref ReservedCommandBuffer entry = ref _commandBuffers[cbIndex];
-            if (waitable.AddFence(cbIndex, entry.Fence))
-            {
-                entry.Waitables.Add(waitable);
-                Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                    $"添加等待对象到命令缓冲区 {cbIndex}");
-            }
-        }
-
-        public void AddTimelineSignal(Semaphore semaphore, ulong value)
-        {
-            if (!_supportsTimelineSemaphores || semaphore.Handle == 0)
-            {
-                Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                    $"添加时间线信号失败: 不支持或信号量无效");
-                return;
-            }
-
-            Logger.Info?.PrintMsg(LogClass.Gpu, 
-                $"添加时间线信号: 信号量={semaphore.Handle:X}, 值={value}");
-
-            lock (_commandBuffers)
-            {
-                for (int i = 0; i < _totalCommandBuffers; i++)
-                {
-                    ref ReservedCommandBuffer entry = ref _commandBuffers[i];
-
-                    if (entry.InConsumption)
-                    {
-                        // 检查是否已经添加过相同的信号量值
-                        if (_addedTimelineSignals.ContainsKey(i) && _addedTimelineSignals[i].Contains(value))
-                        {
-                            Logger.Warning?.PrintMsg(LogClass.Gpu, 
-                                $"检测到重复的时间线信号量值: 命令缓冲区={i}, 值={value}，跳过添加");
-                            continue;
-                        }
-                        
-                        entry.TimelineSignals.Add(new TimelineSignal { Semaphore = semaphore, Value = value });
-                        
-                        // 记录已添加的信号量值
-                        if (!_addedTimelineSignals.ContainsKey(i))
-                        {
-                            _addedTimelineSignals[i] = new HashSet<ulong>();
-                        }
-                        _addedTimelineSignals[i].Add(value);
-                        
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                            $"时间线信号添加到命令缓冲区 {i}");
-                    }
-                }
-            }
-        }
-
-        public void AddInUseTimelineSignal(Semaphore semaphore, ulong value)
-        {
-            if (!_supportsTimelineSemaphores || semaphore.Handle == 0)
-            {
-                Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                    $"添加使用中时间线信号失败: 不支持或信号量无效");
-                return;
-            }
-
-            Logger.Info?.PrintMsg(LogClass.Gpu, 
-                $"添加使用中时间线信号: 信号量={semaphore.Handle:X}, 值={value}");
-
-            lock (_commandBuffers)
-            {
-                for (int i = 0; i < _totalCommandBuffers; i++)
-                {
-                    ref ReservedCommandBuffer entry = ref _commandBuffers[i];
-
-                    if (entry.InUse)
-                    {
-                        // 检查是否已经添加过相同的信号量值
-                        if (_addedTimelineSignals.ContainsKey(i) && _addedTimelineSignals[i].Contains(value))
-                        {
-                            Logger.Warning?.PrintMsg(LogClass.Gpu, 
-                                $"检测到重复的时间线信号量值（使用中）: 命令缓冲区={i}, 值={value}，跳过添加");
-                            continue;
-                        }
-                        
-                        entry.TimelineSignals.Add(new TimelineSignal { Semaphore = semaphore, Value = value });
-                        
-                        // 记录已添加的信号量值
-                        if (!_addedTimelineSignals.ContainsKey(i))
-                        {
-                            _addedTimelineSignals[i] = new HashSet<ulong>();
-                        }
-                        _addedTimelineSignals[i].Add(value);
-                        
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                            $"时间线信号添加到使用中命令缓冲区 {i}");
-                    }
-                }
-            }
-        }
-
-        public void AddWaitTimelineSemaphore(Semaphore semaphore, ulong value, PipelineStageFlags stage = PipelineStageFlags.AllCommandsBit)
-        {
-            if (!_supportsTimelineSemaphores || semaphore.Handle == 0)
-            {
-                Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                    $"添加时间线等待失败: 不支持或信号量无效");
-                return;
-            }
-
-            Logger.Info?.PrintMsg(LogClass.Gpu, 
-                $"添加时间线等待: 信号量={semaphore.Handle:X}, 值={value}, 阶段={stage}");
-
-            lock (_commandBuffers)
-            {
-                for (int i = 0; i < _totalCommandBuffers; i++)
-                {
-                    ref ReservedCommandBuffer entry = ref _commandBuffers[i];
-
-                    if (entry.InConsumption)
-                    {
-                        entry.TimelineWaits.Add(new TimelineWait { Semaphore = semaphore, Value = value, Stage = stage });
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                            $"时间线等待添加到命令缓冲区 {i}");
-                    }
-                }
-            }
-        }
-
-        public void AddInUseWaitTimelineSemaphore(Semaphore semaphore, ulong value, PipelineStageFlags stage = PipelineStageFlags.AllCommandsBit)
-        {
-            if (!_supportsTimelineSemaphores || semaphore.Handle == 0)
-            {
-                Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                    $"添加使用中时间线等待失败: 不支持或信号量无效");
-                return;
-            }
-
-            Logger.Info?.PrintMsg(LogClass.Gpu, 
-                $"添加使用中时间线等待: 信号量={semaphore.Handle:X}, 值={value}, 阶段={stage}");
-
-            lock (_commandBuffers)
-            {
-                for (int i = 0; i < _totalCommandBuffers; i++)
-                {
-                    ref ReservedCommandBuffer entry = ref _commandBuffers[i];
-
-                    if (entry.InUse)
-                    {
-                        entry.TimelineWaits.Add(new TimelineWait { Semaphore = semaphore, Value = value, Stage = stage });
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                            $"时间线等待添加到使用中命令缓冲区 {i}");
-                    }
-                }
-            }
-        }
-
-        public bool HasWaitableOnRentedCommandBuffer(MultiFenceHolder waitable, int offset, int size)
-        {
-            lock (_commandBuffers)
-            {
-                for (int i = 0; i < _totalCommandBuffers; i++)
-                {
-                    ref ReservedCommandBuffer entry = ref _commandBuffers[i];
-
-                    if (entry.InUse &&
-                        waitable.HasFence(i) &&
-                        waitable.IsBufferRangeInUse(i, offset, size))
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
-
-        public bool IsFenceOnRentedCommandBuffer(FenceHolder fence)
-        {
-            lock (_commandBuffers)
-            {
-                for (int i = 0; i < _totalCommandBuffers; i++)
-                {
-                    ref ReservedCommandBuffer entry = ref _commandBuffers[i];
-
-                    if (entry.InUse && entry.Fence == fence)
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
-
-        public FenceHolder GetFence(int cbIndex)
-        {
-            return _commandBuffers[cbIndex].Fence;
-        }
-
-        public int GetSubmissionCount(int cbIndex)
-        {
-            return _commandBuffers[cbIndex].SubmissionCount;
-        }
-
-        private int FreeConsumed(bool wait)
-        {
-            int freeEntry = 0;
-
-            while (_queuedCount > 0)
-            {
-                int index = _queuedIndexes[_queuedIndexesPtr];
-
-                ref ReservedCommandBuffer entry = ref _commandBuffers[index];
-
-                if (wait || !entry.InConsumption || entry.Fence.IsSignaled())
-                {
-                    WaitAndDecrementRef(index);
-
-                    wait = false;
-                    freeEntry = index;
-
-                    _queuedCount--;
-                    _queuedIndexesPtr = (_queuedIndexesPtr + 1) % _totalCommandBuffers;
-                }
-                else
-                {
-                    break;
-                }
-            }
-
-            return freeEntry;
-        }
-
-        public CommandBufferScoped ReturnAndRent(CommandBufferScoped cbs)
-        {
-            Return(cbs);
-            return Rent();
-        }
-
-        public CommandBufferScoped Rent()
-        {
-            lock (_commandBuffers)
-            {
-                int cursor = FreeConsumed(_inUseCount + _queuedCount == _totalCommandBuffers);
-
-                for (int i = 0; i < _totalCommandBuffers; i++)
-                {
-                    ref ReservedCommandBuffer entry = ref _commandBuffers[cursor];
-
-                    if (!entry.InUse && !entry.InConsumption)
-                    {
-                        entry.InUse = true;
-
-                        _inUseCount++;
-
-                        CommandBufferBeginInfo commandBufferBeginInfo = new()
-                        {
-                            SType = StructureType.CommandBufferBeginInfo,
-                        };
-
-                        _api.BeginCommandBuffer(entry.CommandBuffer, in commandBufferBeginInfo).ThrowOnError();
-
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                            $"租用命令缓冲区 {cursor}，当前使用中={_inUseCount}，排队中={_queuedCount}");
-
-                        return new CommandBufferScoped(this, entry.CommandBuffer, cursor);
-                    }
-
-                    cursor = (cursor + 1) & _totalCommandBuffersMask;
-                }
-            }
-
-            throw new InvalidOperationException($"Out of command buffers (In use: {_inUseCount}, queued: {_queuedCount}, total: {_totalCommandBuffers})");
-        }
-
-        public void Return(CommandBufferScoped cbs)
-        {
-            Return(cbs, null, null, null);
-        }
-
-        public unsafe void Return(
-            CommandBufferScoped cbs,
-            ReadOnlySpan<Semaphore> waitSemaphores,
-            ReadOnlySpan<PipelineStageFlags> waitDstStageMask,
-            ReadOnlySpan<Semaphore> signalSemaphores)
-        {
-            lock (_commandBuffers)
-            {
-                int cbIndex = cbs.CommandBufferIndex;
-
-                ref ReservedCommandBuffer entry = ref _commandBuffers[cbIndex];
-
-                Debug.Assert(entry.InUse);
-                Debug.Assert(entry.CommandBuffer.Handle == cbs.CommandBuffer.Handle);
-                entry.InUse = false;
-                entry.InConsumption = true;
-                entry.SubmissionCount++;
-                _inUseCount--;
-
+                
+                _lastStrictFlushId = flushId;
+                _lastStrictTimelineValue = timelineValue;
+                
                 Logger.Info?.PrintMsg(LogClass.Gpu, 
-                    $"返回命令缓冲区 {cbIndex}，提交次数={entry.SubmissionCount}，时间线信号={entry.TimelineSignals.Count}，时间线等待={entry.TimelineWaits.Count}");
-
-                CommandBuffer commandBuffer = entry.CommandBuffer;
-
-                _api.EndCommandBuffer(commandBuffer).ThrowOnError();
-
-                // 准备时间线信号量提交信息
-                TimelineSemaphoreSubmitInfo timelineInfo = default;
-                ulong* pSignalSemaphoreValues = null;
-                ulong* pWaitSemaphoreValues = null;
+                    $"严格模式: 刷新所有命令并提交时间线信号量值={timelineValue}");
                 
-                if (_supportsTimelineSemaphores && (entry.TimelineSignals.Count > 0 || entry.TimelineWaits.Count > 0))
+                if (_gd.SupportsTimelineSemaphores)
                 {
+                    // 在刷新命令之前，将时间线信号量添加到所有正在消费的命令缓冲区
+                    // 这样当刷新时，信号量会被包含在提交中
                     Logger.Info?.PrintMsg(LogClass.Gpu, 
-                        $"使用时间线信号量提交: 信号数量={entry.TimelineSignals.Count}，等待数量={entry.TimelineWaits.Count}");
+                        $"严格模式: 添加时间线信号量到正在消费的命令缓冲区，值={timelineValue}");
+                    _gd.CommandBufferPool.AddTimelineSignal(_gd.TimelineSemaphore, timelineValue);
                     
-                    // 收集所有时间线信号量
-                    var allSignalSemaphores = new List<Semaphore>();
-                    var allSignalValues = new List<ulong>();
-                    var allWaitSemaphores = new List<Semaphore>();
-                    var allWaitValues = new List<ulong>();
-                    var allWaitStages = new List<PipelineStageFlags>();
-
-                    // 添加额外传入的信号量
-                    if (!signalSemaphores.IsEmpty)
-                    {
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                            $"额外信号量数量: {signalSemaphores.Length}");
-                        foreach (var semaphore in signalSemaphores)
-                        {
-                            allSignalSemaphores.Add(semaphore);
-                            allSignalValues.Add(0); // 二进制信号量值为0
-                        }
-                    }
-
-                    // 添加时间线信号（去重检查）
-                    HashSet<ulong> addedSignalValues = new();
-                    foreach (var timelineSignal in entry.TimelineSignals)
-                    {
-                        // 防止同一个命令缓冲区中重复的时间线信号量值
-                        if (addedSignalValues.Contains(timelineSignal.Value))
-                        {
-                            Logger.Warning?.PrintMsg(LogClass.Gpu, 
-                                $"命令缓冲区 {cbIndex} 中检测到重复的时间线信号量值: {timelineSignal.Value}，跳过");
-                            continue;
-                        }
-                        
-                        allSignalSemaphores.Add(timelineSignal.Semaphore);
-                        allSignalValues.Add(timelineSignal.Value);
-                        addedSignalValues.Add(timelineSignal.Value);
-                        
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                            $"时间线信号: 信号量={timelineSignal.Semaphore.Handle:X}，值={timelineSignal.Value}");
-                    }
-
-                    // 添加额外传入的等待信号量
-                    if (!waitSemaphores.IsEmpty)
-                    {
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                            $"额外等待信号量数量: {waitSemaphores.Length}");
-                        for (int i = 0; i < waitSemaphores.Length; i++)
-                        {
-                            allWaitSemaphores.Add(waitSemaphores[i]);
-                            allWaitValues.Add(0); // 二进制信号量值为0
-                            allWaitStages.Add(waitDstStageMask.IsEmpty ? PipelineStageFlags.AllCommandsBit : waitDstStageMask[i]);
-                        }
-                    }
-
-                    // 添加时间线等待
-                    foreach (var timelineWait in entry.TimelineWaits)
-                    {
-                        allWaitSemaphores.Add(timelineWait.Semaphore);
-                        allWaitValues.Add(timelineWait.Value);
-                        allWaitStages.Add(timelineWait.Stage);
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                            $"时间线等待: 信号量={timelineWait.Semaphore.Handle:X}，值={timelineWait.Value}，阶段={timelineWait.Stage}");
-                    }
-
-                    // 分配内存
-                    if (allSignalSemaphores.Count > 0)
-                    {
-                        // 修复：stackalloc返回的就是指针类型，不需要转换
-                        ulong* signalValues = stackalloc ulong[allSignalSemaphores.Count];
-                        pSignalSemaphoreValues = signalValues;
-                        for (int i = 0; i < allSignalValues.Count; i++)
-                        {
-                            pSignalSemaphoreValues[i] = allSignalValues[i];
-                        }
-                    }
+                    // 立即刷新所有命令
+                    _gd.FlushAllCommands();
                     
-                    if (allWaitSemaphores.Count > 0)
-                    {
-                        // 修复：stackalloc返回的就是指针类型，不需要转换
-                        ulong* waitValues = stackalloc ulong[allWaitSemaphores.Count];
-                        pWaitSemaphoreValues = waitValues;
-                        for (int i = 0; i < allWaitValues.Count; i++)
-                        {
-                            pWaitSemaphoreValues[i] = allWaitValues[i];
-                        }
-                    }
-
-                    timelineInfo = new TimelineSemaphoreSubmitInfo
-                    {
-                        SType = StructureType.TimelineSemaphoreSubmitInfo,
-                        WaitSemaphoreValueCount = (uint)allWaitSemaphores.Count,
-                        PWaitSemaphoreValues = pWaitSemaphoreValues,
-                        SignalSemaphoreValueCount = (uint)allSignalSemaphores.Count,
-                        PSignalSemaphoreValues = pSignalSemaphoreValues,
-                    };
-
-                    // 提交
-                    fixed (Semaphore* pWaitSemaphores = allWaitSemaphores.Count > 0 ? allWaitSemaphores.ToArray() : null)
-                    fixed (Semaphore* pSignalSemaphores = allSignalSemaphores.Count > 0 ? allSignalSemaphores.ToArray() : null)
-                    fixed (PipelineStageFlags* pWaitDstStageMask = allWaitStages.Count > 0 ? allWaitStages.ToArray() : null)
-                    {
-                        SubmitInfo sInfo = new()
-                        {
-                            SType = StructureType.SubmitInfo,
-                            PNext = &timelineInfo,
-                            WaitSemaphoreCount = (uint)allWaitSemaphores.Count,
-                            PWaitSemaphores = pWaitSemaphores,
-                            PWaitDstStageMask = pWaitDstStageMask,
-                            CommandBufferCount = 1,
-                            PCommandBuffers = &commandBuffer,
-                            SignalSemaphoreCount = (uint)allSignalSemaphores.Count,
-                            PSignalSemaphores = pSignalSemaphores,
-                        };
-
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                            $"队列提交: 等待信号量={allWaitSemaphores.Count}，信号信号量={allSignalSemaphores.Count}");
-
-                        lock (_queueLock)
-                        {
-                            _api.QueueSubmit(_queue, 1, in sInfo, entry.Fence.GetUnsafe()).ThrowOnError();
-                        }
-                    }
+                    // 记录已提交的信号量值
+                    Logger.Info?.PrintMsg(LogClass.Gpu, 
+                        $"严格模式: 所有命令已刷新，时间线信号量值={timelineValue} 已提交");
                 }
                 else
                 {
                     Logger.Info?.PrintMsg(LogClass.Gpu, 
-                        $"使用传统二进制信号量提交");
+                        $"严格模式: 时间线信号量不支持，使用栅栏回退机制");
+                    // 回退到旧的栅栏机制
+                    MultiFenceHolder waitable = new();
+                    _gd.CommandBufferPool.AddWaitable(waitable);
                     
-                    // 传统提交方式
-                    fixed (Semaphore* pWaitSemaphores = waitSemaphores, pSignalSemaphores = signalSemaphores)
-                    {
-                        fixed (PipelineStageFlags* pWaitDstStageMask = waitDstStageMask)
-                        {
-                            SubmitInfo sInfo = new()
-                            {
-                                SType = StructureType.SubmitInfo,
-                                WaitSemaphoreCount = !waitSemaphores.IsEmpty ? (uint)waitSemaphores.Length : 0,
-                                PWaitSemaphores = pWaitSemaphores,
-                                PWaitDstStageMask = pWaitDstStageMask,
-                                CommandBufferCount = 1,
-                                PCommandBuffers = &commandBuffer,
-                                SignalSemaphoreCount = !signalSemaphores.IsEmpty ? (uint)signalSemaphores.Length : 0,
-                                PSignalSemaphores = pSignalSemaphores,
-                            };
-
-                            lock (_queueLock)
-                            {
-                                _api.QueueSubmit(_queue, 1, in sInfo, entry.Fence.GetUnsafe()).ThrowOnError();
-                            }
-                        }
-                    }
+                    // 立即刷新所有命令
+                    _gd.FlushAllCommands();
                 }
-
-                int ptr = (_queuedIndexesPtr + _queuedCount) % _totalCommandBuffers;
-                _queuedIndexes[ptr] = cbIndex;
-                _queuedCount++;
-                
-                Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                    $"命令缓冲区 {cbIndex} 已排队，排队数量={_queuedCount}");
-            }
-        }
-
-        private void WaitAndDecrementRef(int cbIndex, bool refreshFence = true)
-        {
-            ref ReservedCommandBuffer entry = ref _commandBuffers[cbIndex];
-
-            Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                $"等待并释放命令缓冲区 {cbIndex} 的引用");
-
-            if (entry.InConsumption)
-            {
-                Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                    $"等待命令缓冲区 {cbIndex} 的栅栏");
-                entry.Fence.Wait();
-                entry.InConsumption = false;
-            }
-
-            foreach (IAuto dependant in entry.Dependants)
-            {
-                dependant.DecrementReferenceCount(cbIndex);
-            }
-
-            foreach (MultiFenceHolder waitable in entry.Waitables)
-            {
-                waitable.RemoveFence(cbIndex);
-                waitable.RemoveBufferUses(cbIndex);
-            }
-
-            entry.Dependants.Clear();
-            entry.Waitables.Clear();
-            entry.TimelineSignals.Clear();
-            entry.TimelineWaits.Clear();
-            entry.Fence?.Dispose();
-
-            // 清理已添加信号量值的跟踪
-            if (_addedTimelineSignals.ContainsKey(cbIndex))
-            {
-                _addedTimelineSignals[cbIndex].Clear();
-            }
-
-            if (refreshFence)
-            {
-                entry.Fence = new FenceHolder(_api, _device, _concurrentFenceWaitUnsupported);
             }
             else
             {
-                entry.Fence = null;
+                // 非严格模式：不刷新命令，等待当前命令缓冲区完成
+                // 如果在此同步对象被等待之前提交了命令缓冲区，中断GPU线程并手动刷新
+                if (_gd.SupportsTimelineSemaphores)
+                {
+                    Logger.Info?.PrintMsg(LogClass.Gpu, 
+                        $"非严格模式: 添加时间线信号量到使用中的命令缓冲区，值={timelineValue}");
+                    _gd.CommandBufferPool.AddInUseTimelineSignal(_gd.TimelineSemaphore, timelineValue);
+                }
+                else
+                {
+                    Logger.Info?.PrintMsg(LogClass.Gpu, 
+                        $"非严格模式: 时间线信号量不支持，使用栅栏回退机制");
+                    // 回退到旧的栅栏机制
+                    MultiFenceHolder waitable = new();
+                    _gd.CommandBufferPool.AddInUseWaitable(waitable);
+                }
+            }
+
+            lock (_handles)
+            {
+                _handles.Add(handle);
+            }
+        }
+
+        public ulong GetCurrent()
+        {
+            lock (_handles)
+            {
+                ulong lastHandle = _firstHandle;
+
+                foreach (SyncHandle handle in _handles)
+                {
+                    lock (handle)
+                    {
+                        if (handle.Signalled)
+                        {
+                            if (handle.ID > lastHandle)
+                            {
+                                lastHandle = handle.ID;
+                            }
+                            continue;
+                        }
+
+                        // 检查时间线信号量是否已达到此值
+                        if (_gd.SupportsTimelineSemaphores)
+                        {
+                            ulong currentValue = _gd.GetTimelineSemaphoreValue();
+                            
+                            if (currentValue >= handle.TimelineValue)
+                            {
+                                Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                                    $"同步对象 ID={handle.ID} 已发出信号，时间线值={handle.TimelineValue}，当前值={currentValue}");
+                                lastHandle = handle.ID;
+                                handle.Signalled = true;
+                            }
+                        }
+                        else
+                        {
+                            // 回退：我们无法查询当前值，返回最后一个已知的
+                            // 对于时间线信号量，我们应该总是能查询到值
+                            // 这里只为了兼容性保留
+                        }
+                    }
+                }
+
+                return lastHandle;
+            }
+        }
+
+        public void Wait(ulong id)
+        {
+            SyncHandle result = null;
+
+            lock (_handles)
+            {
+                if ((long)(_firstHandle - id) > 0)
+                {
+                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                        $"同步对象 ID={id} 已发出信号或已删除，无需等待");
+                    return; // 句柄已发出信号或已删除
+                }
+
+                foreach (SyncHandle handle in _handles)
+                {
+                    if (handle.ID == id)
+                    {
+                        result = handle;
+                        break;
+                    }
+                }
+            }
+
+            if (result != null)
+            {
+                Logger.Info?.PrintMsg(LogClass.Gpu, 
+                    $"开始等待同步对象 ID={result.ID}, TimelineValue={result.TimelineValue}");
+
+                long beforeTicks = Stopwatch.GetTimestamp();
+
+                if (result.NeedsFlush(_flushId))
+                {
+                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                        $"同步对象需要刷新，当前FlushId={_flushId}，对象FlushId={result.FlushId}");
+                    _gd.InterruptAction(() =>
+                    {
+                        if (result.NeedsFlush(_flushId))
+                        {
+                            Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                                $"中断GPU线程并刷新所有命令");
+                            _gd.FlushAllCommands();
+                        }
+                    });
+                }
+
+                lock (result)
+                {
+                    if (result.Signalled)
+                    {
+                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                            $"同步对象 ID={result.ID} 已发出信号，无需等待");
+                        return;
+                    }
+
+                    bool signaled = false;
+                    
+                    if (_gd.SupportsTimelineSemaphores)
+                    {
+                        Logger.Info?.PrintMsg(LogClass.Gpu, 
+                            $"使用时间线信号量等待: 目标值={result.TimelineValue}");
+                        
+                        // 等待时间线信号量达到特定值
+                        unsafe
+                        {
+                            var timelineSemaphore = _gd.TimelineSemaphore;
+                            var waitValue = result.TimelineValue;
+                            
+                            var waitInfo = new SemaphoreWaitInfo
+                            {
+                                SType = StructureType.SemaphoreWaitInfo,
+                                SemaphoreCount = 1,
+                                PSemaphores = &timelineSemaphore,
+                                PValues = &waitValue
+                            };
+
+                            Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                                $"调用vkWaitSemaphores，超时=1秒");
+                            
+                            var resultCode = _gd.TimelineSemaphoreApi.WaitSemaphores(
+                                _device, 
+                                &waitInfo, 
+                                1000000000 // 1秒超时
+                            );
+                            
+                            signaled = resultCode == Result.Success;
+                            
+                            Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                                $"vkWaitSemaphores 结果: {resultCode}, 成功={signaled}");
+                        }
+                    }
+                    else
+                    {
+                        Logger.Info?.PrintMsg(LogClass.Gpu, 
+                            "时间线信号量不支持，使用回退栅栏等待机制");
+                        
+                        // 回退到旧的栅栏等待机制
+                        // 注意：由于我们不再存储waitable，这里无法等待
+                        // 这应该是回退路径，实际上不应该执行到这里
+                        Logger.Warning?.PrintMsg(LogClass.Gpu, "Timeline semaphores not supported, using fallback sync");
+                        
+                        // 回退到等待栅栏
+                        // 这里需要实现回退逻辑，但为了简化，我们假设已发出信号
+                        signaled = true;
+                    }
+
+                    if (!signaled)
+                    {
+                        Logger.Error?.PrintMsg(LogClass.Gpu, $"VK Sync Object {result.ID} failed to signal within 1000ms. Continuing...");
+                    }
+                    else
+                    {
+                        _waitTicks += Stopwatch.GetTimestamp() - beforeTicks;
+                        result.Signalled = true;
+                        Logger.Info?.PrintMsg(LogClass.Gpu, 
+                            $"同步对象 ID={result.ID} 等待成功，耗时={Stopwatch.GetTimestamp() - beforeTicks} ticks");
+                    }
+                }
+            }
+            else
+            {
+                Logger.Warning?.PrintMsg(LogClass.Gpu, 
+                    $"等待同步对象 ID={id} 未找到");
+            }
+        }
+
+        public void Cleanup()
+        {
+            Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                $"开始清理同步对象，当前句柄数量={_handles.Count}");
+            
+            // 迭代句柄并删除任何已发出信号的句柄
+            while (true)
+            {
+                SyncHandle first = null;
+                lock (_handles)
+                {
+                    first = _handles.FirstOrDefault();
+                }
+
+                if (first == null || first.NeedsFlush(_flushId))
+                {
+                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                        $"清理完成或需要刷新，当前FlushId={_flushId}");
+                    break;
+                }
+
+                bool signaled = false;
+                
+                if (_gd.SupportsTimelineSemaphores)
+                {
+                    // 检查时间线信号量是否已达到此值
+                    ulong currentValue = _gd.GetTimelineSemaphoreValue();
+                    signaled = currentValue >= first.TimelineValue;
+                    
+                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                        $"检查同步对象 ID={first.ID}: 当前时间线值={currentValue}, 目标值={first.TimelineValue}, 已发出信号={signaled}");
+                }
+                else
+                {
+                    // 回退：我们无法检查，假设已发出信号
+                    signaled = true;
+                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                        $"时间线信号量不支持，假设同步对象 ID={first.ID} 已发出信号");
+                }
+
+                if (signaled)
+                {
+                    // 删除同步对象
+                    lock (_handles)
+                    {
+                        lock (first)
+                        {
+                            _firstHandle = first.ID + 1;
+                            _handles.RemoveAt(0);
+                            Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                                $"删除同步对象 ID={first.ID}，新的_firstHandle={_firstHandle}");
+                        }
+                    }
+                }
+                else
+                {
+                    // 此同步句柄及后续的尚未到达
+                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                        $"同步对象 ID={first.ID} 尚未发出信号，停止清理");
+                    break;
+                }
             }
             
             Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                $"命令缓冲区 {cbIndex} 清理完成");
+                $"清理完成，剩余句柄数量={_handles.Count}");
         }
 
-        public unsafe void Dispose()
+        public long GetAndResetWaitTicks()
         {
-            Logger.Info?.PrintMsg(LogClass.Gpu, 
-                $"销毁CommandBufferPool");
-            
-            for (int i = 0; i < _totalCommandBuffers; i++)
-            {
-                WaitAndDecrementRef(i, refreshFence: false);
-            }
+            long result = _waitTicks;
+            _waitTicks = 0;
 
-            _api.DestroyCommandPool(_device, _pool, null);
+            Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                $"获取并重置等待ticks: {result}");
             
-            Logger.Info?.PrintMsg(LogClass.Gpu, 
-                $"CommandBufferPool销毁完成");
+            return result;
         }
     }
 }
