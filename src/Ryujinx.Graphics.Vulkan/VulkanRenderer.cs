@@ -1208,7 +1208,11 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         {
             SyncManager.Cleanup();
             
-           
+            // TBDR平台：预优化批量查询
+            if (IsTBDR && _pipeline != null)
+            {
+                _pipeline.OptimizeBatchQueries();
+            }
         }
 
         public ICounterEvent ReportCounter(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved)
@@ -1403,29 +1407,48 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             }
         }
 
-        // 获取当前命令缓冲区索引
-        internal int GetCurrentCommandBufferIndex()
+        public unsafe void Dispose()
         {
-            // 如果 CommandBufferPool 有 GetCurrentCommandBufferIndex 方法，则调用它
-            // 否则返回 -1
-            return CommandBufferPool?.GetCurrentCommandBufferIndex() ?? -1;
-        }
-
-        // 立即结束并提交命令缓冲区，并发出时间线信号量
-        internal unsafe void EndAndSubmitCommandBuffer(CommandBufferScoped cbs, ReadOnlySpan<Semaphore> waitSemaphores, ReadOnlySpan<PipelineStageFlags> waitDstStageMask, ReadOnlySpan<Semaphore> signalSemaphores, ulong timelineSignalValue)
-        {
-            Logger.Info?.PrintMsg(LogClass.Gpu, 
-                $"EndAndSubmitCommandBuffer: 命令缓冲区 {cbs.CommandBufferIndex}, 时间线信号值={timelineSignalValue}");
-            
-            // 如果需要时间线信号量，添加到命令缓冲区
-            if (SupportsTimelineSemaphores && TimelineSemaphore.Handle != 0 && timelineSignalValue > 0)
+            if (!_initialized)
             {
-                // 将时间线信号量添加到指定的命令缓冲区
-                CommandBufferPool.AddTimelineSignalToBuffer(cbs.CommandBufferIndex, TimelineSemaphore, timelineSignalValue);
+                return;
             }
-            
-            // 提交命令缓冲区
-            CommandBufferPool.Return(cbs, waitSemaphores, waitDstStageMask, signalSemaphores);
+
+            CommandBufferPool?.Dispose();
+            _computeCommandPool?.Dispose();
+            BackgroundResources?.Dispose();
+            _counters?.Dispose();
+            _window?.Dispose();
+            HelperShader?.Dispose();
+            _pipeline?.Dispose();
+            BufferManager?.Dispose();
+            PipelineLayoutCache?.Dispose();
+            Barriers?.Dispose();
+
+            MemoryAllocator?.Dispose();
+
+            foreach (var shader in Shaders) shader.Dispose();
+            foreach (var texture in Textures) texture.Release();
+            foreach (var sampler in Samplers) sampler.Dispose();
+
+            // 销毁时间线信号量
+            if (TimelineSemaphore.Handle != 0)
+            {
+                Api.DestroySemaphore(_device, TimelineSemaphore, null);
+                TimelineSemaphore = default;
+            }
+
+            if (_surface.Handle != 0)
+            {
+                SurfaceApi.DestroySurface(_instance.Instance, _surface, null);
+            }
+
+            Api.DestroyDevice(_device, null);
+
+            _debugMessenger?.Dispose();
+
+            // Last step destroy the instance
+            _instance?.Dispose();
         }
 
         public bool PrepareHostMapping(nint address, ulong size)
@@ -1474,6 +1497,37 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             }
             
             CommandBufferPool?.AddWaitTimelineSemaphore(TimelineSemaphore, value);
+        }
+        
+        // 获取当前命令缓冲区索引
+        internal int GetCurrentCommandBufferIndex()
+        {
+            // 如果 CommandBufferPool 有 GetCurrentCommandBufferIndex 方法，则调用它
+            // 否则返回 -1
+            return CommandBufferPool?.GetCurrentCommandBufferIndex() ?? -1;
+        }
+
+        // 立即结束并提交命令缓冲区，并发出时间线信号量
+        internal unsafe void EndAndSubmitCommandBuffer(CommandBufferScoped cbs, ReadOnlySpan<Semaphore> waitSemaphores, ReadOnlySpan<PipelineStageFlags> waitDstStageMask, ReadOnlySpan<Semaphore> signalSemaphores, ulong timelineSignalValue)
+        {
+            Logger.Info?.PrintMsg(LogClass.Gpu, 
+                $"EndAndSubmitCommandBuffer: 命令缓冲区 {cbs.CommandBufferIndex}, 时间线信号值={timelineSignalValue}");
+            
+            // 如果需要时间线信号量，添加到命令缓冲区
+            if (SupportsTimelineSemaphores && TimelineSemaphore.Handle != 0 && timelineSignalValue > 0)
+            {
+                // 将时间线信号量添加到指定的命令缓冲区
+                CommandBufferPool.AddTimelineSignalToBuffer(cbs.CommandBufferIndex, TimelineSemaphore, timelineSignalValue);
+            }
+            
+            // 提交命令缓冲区
+            CommandBufferPool.Return(cbs, waitSemaphores, waitDstStageMask, signalSemaphores);
+        }
+
+        // 重载版本：不需要额外信号量
+        internal void EndAndSubmitCommandBuffer(CommandBufferScoped cbs, ulong timelineSignalValue)
+        {
+            EndAndSubmitCommandBuffer(cbs, default, default, default, timelineSignalValue);
         }
     }
 }
