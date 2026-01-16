@@ -1212,11 +1212,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         {
             SyncManager.Cleanup();
 
-            // TBDR平台：预优化批量查询
-            if (IsTBDR && _pipeline != null)
-            {
-                _pipeline.OptimizeBatchQueries();
-            }
         }
 
         public ICounterEvent ReportCounter(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved)
