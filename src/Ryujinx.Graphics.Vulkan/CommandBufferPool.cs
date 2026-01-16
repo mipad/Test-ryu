@@ -1,3 +1,4 @@
+// CommandBufferPool.cs - 修复版
 using Ryujinx.Common.Logging;
 using Silk.NET.Vulkan;
 using System;
@@ -241,10 +242,6 @@ namespace Ryujinx.Graphics.Vulkan
                         entry.TimelineSignals.Add(new TimelineSignal { Semaphore = semaphore, Value = value });
                         
                         // 记录已添加的信号量值
-                        if (!_addedTimelineSignals.ContainsKey(i))
-                        {
-                            _addedTimelineSignals[i] = new HashSet<ulong>();
-                        }
                         _addedTimelineSignals[i].Add(value);
                         
                         Logger.Debug?.PrintMsg(LogClass.Gpu, 
@@ -288,10 +285,6 @@ namespace Ryujinx.Graphics.Vulkan
                 entry.TimelineSignals.Add(new TimelineSignal { Semaphore = semaphore, Value = value });
                 
                 // 记录已添加的信号量值
-                if (!_addedTimelineSignals.ContainsKey(cbIndex))
-                {
-                    _addedTimelineSignals[cbIndex] = new HashSet<ulong>();
-                }
                 _addedTimelineSignals[cbIndex].Add(value);
                 
                 Logger.Debug?.PrintMsg(LogClass.Gpu, 
@@ -332,10 +325,6 @@ namespace Ryujinx.Graphics.Vulkan
                         entry.TimelineSignals.Add(new TimelineSignal { Semaphore = semaphore, Value = value });
                         
                         // 记录已添加的信号量值
-                        if (!_addedTimelineSignals.ContainsKey(_currentCommandBufferIndex))
-                        {
-                            _addedTimelineSignals[_currentCommandBufferIndex] = new HashSet<ulong>();
-                        }
                         _addedTimelineSignals[_currentCommandBufferIndex].Add(value);
                         
                         Logger.Debug?.PrintMsg(LogClass.Gpu, 
@@ -367,10 +356,6 @@ namespace Ryujinx.Graphics.Vulkan
                             entry.TimelineSignals.Add(new TimelineSignal { Semaphore = semaphore, Value = value });
                             
                             // 记录已添加的信号量值
-                            if (!_addedTimelineSignals.ContainsKey(i))
-                            {
-                                _addedTimelineSignals[i] = new HashSet<ulong>();
-                            }
                             _addedTimelineSignals[i].Add(value);
                             
                             Logger.Debug?.PrintMsg(LogClass.Gpu, 
@@ -413,10 +398,6 @@ namespace Ryujinx.Graphics.Vulkan
                         entry.TimelineWaits.Add(new TimelineWait { Semaphore = semaphore, Value = value, Stage = stage });
                         
                         // 记录已添加的等待值
-                        if (!_addedTimelineWaits.ContainsKey(i))
-                        {
-                            _addedTimelineWaits[i] = new HashSet<ulong>();
-                        }
                         _addedTimelineWaits[i].Add(value);
                         
                         Logger.Debug?.PrintMsg(LogClass.Gpu, 
@@ -457,10 +438,6 @@ namespace Ryujinx.Graphics.Vulkan
                         entry.TimelineWaits.Add(new TimelineWait { Semaphore = semaphore, Value = value, Stage = stage });
                         
                         // 记录已添加的等待值
-                        if (!_addedTimelineWaits.ContainsKey(i))
-                        {
-                            _addedTimelineWaits[i] = new HashSet<ulong>();
-                        }
                         _addedTimelineWaits[i].Add(value);
                         
                         Logger.Debug?.PrintMsg(LogClass.Gpu, 
@@ -839,15 +816,8 @@ namespace Ryujinx.Graphics.Vulkan
             entry.Fence?.Dispose();
 
             // 清理已添加信号量值的跟踪
-            if (_addedTimelineSignals.ContainsKey(cbIndex))
-            {
-                _addedTimelineSignals[cbIndex].Clear();
-            }
-            
-            if (_addedTimelineWaits.ContainsKey(cbIndex))
-            {
-                _addedTimelineWaits[cbIndex].Clear();
-            }
+            _addedTimelineSignals[cbIndex].Clear();
+            _addedTimelineWaits[cbIndex].Clear();
 
             if (refreshFence)
             {
