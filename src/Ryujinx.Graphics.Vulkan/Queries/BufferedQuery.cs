@@ -1,3 +1,4 @@
+// BufferedQuery.cs - 修改版
 using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.GAL;
 using Silk.NET.Vulkan;
@@ -37,6 +38,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         // 时间线信号量支持
         private ulong? _timelineSignalValue;
         private readonly bool _useTimelineSemaphores;
+        private bool _timelineValueSubmitted;
 
         // 查询池管理
         private static readonly ConcurrentDictionary<CounterType, QueryPoolManager> _queryPoolManagers = new();
@@ -187,7 +189,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 _pipeline.BeginQuery(this, _queryPool, _queryIndex, needsReset, isOcclusion, isOcclusion && resetSequence != null);
             }
             _resetSequence = null;
-            _timelineSignalValue = null; // 重置时间线信号量值
+            _timelineSignalValue = null;
+            _timelineValueSubmitted = false;
         }
 
         public void End(bool withResult)
@@ -201,12 +204,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             {
                 Marshal.WriteInt64(_bufferMap, _defaultValue);
                 _pipeline.CopyQueryResults(this, _queryIndex);
-                
-                // 如果支持时间线信号量，分配一个信号量值
-                if (_useTimelineSemaphores)
-                {
-                    _timelineSignalValue = _gd.GetNextTimelineValue();
-                }
             }
             else
             {
@@ -226,7 +223,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             return result != _defaultValue;
         }
 
-        public long AwaitResult(AutoResetEvent wakeSignal = null)
+        public long AwaitResult()
         {
             long data = _defaultValue;
 
@@ -239,61 +236,63 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 if (_gd.WaitTimelineSemaphore(targetValue, 1000000000)) // 1秒超时
                 {
                     data = Marshal.ReadInt64(_bufferMap);
-                    return data != _defaultValue ? data : 0;
-                }
-                else
-                {
-                    Logger.Error?.Print(LogClass.Gpu, 
-                        $"Timeline semaphore wait timed out for query {_type}. Value: {targetValue}");
-                    
-                    // 强制返回默认值，避免阻塞
-                    return 0;
-                }
-            }
-
-            // 否则使用原有的轮询机制
-            if (wakeSignal == null)
-            {
-                if (WaitingForValue(data))
-                {
-                    data = Marshal.ReadInt64(_bufferMap);
-                }
-            }
-            else
-            {
-                int iterations = 0;
-                
-                while (WaitingForValue(data) && iterations++ < MaxQueryRetries)
-                {
-                    data = Marshal.ReadInt64(_bufferMap);
-                    if (WaitingForValue(data))
+                    if (data != _defaultValue)
                     {
-                        if (_isTbdrPlatform && iterations < 1000)
+                        return data;
+                    }
+                    else
+                    {
+                        // 信号量已到达但结果未准备好，可能GPU还在写入，短暂等待
+                        for (int i = 0; i < 100; i++)
                         {
-                            Thread.Yield();
-                        }
-                        else
-                        {
-                            wakeSignal.WaitOne(_isTbdrPlatform ? 0 : 1);
+                            Thread.SpinWait(100);
+                            data = Marshal.ReadInt64(_bufferMap);
+                            if (data != _defaultValue)
+                            {
+                                return data;
+                            }
                         }
                     }
                 }
-
-                if (iterations >= MaxQueryRetries)
+                else
                 {
-                    Logger.Error?.Print(LogClass.Gpu, 
-                        $"Error: Query result {_type} timed out. Attempts: {iterations}");
-                    
-                    // 强制返回默认值，避免阻塞
-                    return 0;
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        $"Timeline semaphore wait timed out for query {_type}. Value: {targetValue}");
                 }
+            }
+
+            // 回退到原有的轮询机制（仅在不支持时间线信号量或等待失败时使用）
+            int iterations = 0;
+            while (WaitingForValue(data) && iterations++ < MaxQueryRetries)
+            {
+                data = Marshal.ReadInt64(_bufferMap);
+                if (WaitingForValue(data))
+                {
+                    if (_isTbdrPlatform && iterations < 1000)
+                    {
+                        Thread.Yield();
+                    }
+                    else
+                    {
+                        Thread.Sleep(_isTbdrPlatform ? 0 : 1);
+                    }
+                }
+            }
+
+            if (iterations >= MaxQueryRetries)
+            {
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Error: Query result {_type} timed out. Attempts: {iterations}");
+                
+                // 强制返回默认值，避免阻塞
+                return 0;
             }
 
             return data;
         }
 
         // 批量复制查询结果
-        public void BatchCopy(CommandBufferScoped cbs, uint queryIndex, ulong batchTimelineValue = 0)
+        public unsafe void BatchCopy(CommandBufferScoped cbs, uint queryIndex, ulong batchTimelineValue = 0)
         {
             Buffer buffer = _buffer.GetBuffer(cbs.CommandBuffer, true).Get(cbs, 0, sizeof(long), true).Value;
 
@@ -314,10 +313,11 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 (ulong)(_result32Bit ? sizeof(int) : sizeof(long)),
                 flags);
             
-            // 设置批次时间线信号量值
+            // 记录批次时间线信号量值
             if (batchTimelineValue > 0 && _useTimelineSemaphores)
             {
-                SetBatchTimelineValue(batchTimelineValue);
+                _timelineSignalValue = batchTimelineValue;
+                _timelineValueSubmitted = true;
             }
         }
 
@@ -342,6 +342,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             
             // 重置时间线信号量值
             _timelineSignalValue = null;
+            _timelineValueSubmitted = false;
             
             if (_isSupported && _isPooledQuery && _queryPoolManagers.TryGetValue(_type, out var manager))
             {
@@ -370,9 +371,10 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         // 设置批次时间线信号量值
         internal void SetBatchTimelineValue(ulong timelineValue)
         {
-            if (_useTimelineSemaphores)
+            if (_useTimelineSemaphores && !_timelineValueSubmitted)
             {
                 _timelineSignalValue = timelineValue;
+                _timelineValueSubmitted = true;
             }
         }
         
@@ -387,7 +389,14 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         public void ResetState()
         {
             _timelineSignalValue = null;
+            _timelineValueSubmitted = false;
             Marshal.WriteInt64(_bufferMap, _defaultValue);
+        }
+        
+        // 获取时间线信号量值（用于调试）
+        public ulong? GetTimelineValue()
+        {
+            return _timelineSignalValue;
         }
     }
 }

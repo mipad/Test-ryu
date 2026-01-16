@@ -1,3 +1,4 @@
+// CounterQueueEvent.cs - 修改版
 using Ryujinx.Graphics.GAL;
 using System;
 using System.Threading;
@@ -25,6 +26,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private readonly object _lock = new();
         private ulong _result = ulong.MaxValue;
         private double _divisor = 1f;
+        private bool _asyncResultPending;
 
         public CounterQueueEvent(CounterQueue queue, CounterType type, ulong drawIndex)
         {
@@ -58,6 +60,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _counter.End(withResult);
 
             _divisor = divisor;
+            _asyncResultPending = withResult;
         }
 
         internal bool TryConsume(ref ulong result, bool block, AutoResetEvent wakeSignal = null)
@@ -78,10 +81,12 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
                 if (block)
                 {
-                    queryResult = _counter.AwaitResult(wakeSignal);
+                    // 使用异步等待机制（基于时间线信号量）
+                    queryResult = _counter.AwaitResult();
                 }
                 else
                 {
+                    // 非阻塞模式：尝试获取结果，但不等待
                     if (!_counter.TryGetResult(out queryResult))
                     {
                         return false;
@@ -107,6 +112,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 return;
             }
 
+            // 使用队列的FlushTo方法，但使用新的异步机制
             _queue.FlushTo(this);
         }
 
@@ -164,6 +170,12 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             Disposed = true;
 
             DecrementRefCount();
+        }
+        
+        // 检查异步结果是否就绪
+        public bool IsAsyncResultReady()
+        {
+            return !_asyncResultPending || IsValueAvailable();
         }
     }
 }
