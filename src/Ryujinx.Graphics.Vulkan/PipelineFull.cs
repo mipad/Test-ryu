@@ -17,7 +17,7 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly List<(BufferedQuery, uint)> _pendingQueryCopies;
         private readonly List<BufferHolder> _activeBufferMirrors;
 
-        // 批量查询处理
+        // 批量查询处理 - 参考Skyline的批处理机制
         private readonly Queue<(BufferedQuery, uint)> _queryBatchQueue = new();
         private int _batchQueryCount = 0;
         private readonly bool _isTbdrPlatform;
@@ -27,6 +27,11 @@ namespace Ryujinx.Graphics.Vulkan
         // 批次时间线信号量映射
         private readonly Dictionary<ulong, List<BufferedQuery>> _batchTimelineMap = new();
         private ulong _currentBatchTimelineValue = 0;
+        
+        // 查询状态追踪
+        private readonly Dictionary<(QueryPool, uint), bool> _queryActiveState = new();
+        private int _totalQueriesStarted = 0;
+        private int _totalQueriesEnded = 0;
 
         private ulong _byteWeight;
 
@@ -48,39 +53,58 @@ namespace Ryujinx.Graphics.Vulkan
             
             if (_isTbdrPlatform)
             {
-                Logger.Info?.Print(LogClass.Gpu, "TBDR platform: Using batch query processing");
+                Logger.Info?.Print(LogClass.Gpu, "TBDR platform: Using batch query processing with target size " + _targetBatchSize);
             }
+            
+            Logger.Debug?.Print(LogClass.Gpu, "PipelineFull initialized");
         }
 
         private void CopyPendingQuery()
         {
             // 批量复制所有查询结果
-            foreach (var (query, index) in _pendingQueryCopies)
-            {
-                query.BatchCopy(Cbs, index, _currentBatchTimelineValue);
-            }
-
-            _pendingQueryCopies.Clear();
+            int copyCount = _pendingQueryCopies.Count;
             
-            // 如果有批次时间线信号量值，提交它
-            if (_currentBatchTimelineValue > 0 && Gd.SupportsTimelineSemaphores && Gd.TimelineSemaphore.Handle != 0)
+            if (copyCount > 0)
             {
-                Gd.CommandBufferPool.AddTimelineSignalToBuffer(
-                    Cbs.CommandBufferIndex, 
-                    Gd.TimelineSemaphore, 
-                    _currentBatchTimelineValue);
-                
-                // 通知批次中的所有查询
-                if (_batchTimelineMap.TryGetValue(_currentBatchTimelineValue, out var batchQueries))
+                if (_isTbdrPlatform)
                 {
-                    foreach (var query in batchQueries)
-                    {
-                        query.SetBatchTimelineValue(_currentBatchTimelineValue);
-                    }
-                    _batchTimelineMap.Remove(_currentBatchTimelineValue);
+                    Logger.Debug?.Print(LogClass.Gpu, 
+                        $"PipelineFull CopyPendingQuery: Copying {copyCount} queries");
                 }
                 
-                _currentBatchTimelineValue = 0;
+                foreach (var (query, index) in _pendingQueryCopies)
+                {
+                    query.BatchCopy(Cbs, index, _currentBatchTimelineValue);
+                }
+
+                _pendingQueryCopies.Clear();
+                
+                // 如果有批次时间线信号量值，提交它
+                if (_currentBatchTimelineValue > 0 && Gd.SupportsTimelineSemaphores && Gd.TimelineSemaphore.Handle != 0)
+                {
+                    Gd.CommandBufferPool.AddTimelineSignalToBuffer(
+                        Cbs.CommandBufferIndex, 
+                        Gd.TimelineSemaphore, 
+                        _currentBatchTimelineValue);
+                    
+                    // 通知批次中的所有查询
+                    if (_batchTimelineMap.TryGetValue(_currentBatchTimelineValue, out var batchQueries))
+                    {
+                        foreach (var query in batchQueries)
+                        {
+                            query.SetBatchTimelineValue(_currentBatchTimelineValue);
+                        }
+                        _batchTimelineMap.Remove(_currentBatchTimelineValue);
+                    }
+                    
+                    if (_isTbdrPlatform)
+                    {
+                        Logger.Debug?.Print(LogClass.Gpu, 
+                            $"PipelineFull timeline signal submitted: Value={_currentBatchTimelineValue}");
+                    }
+                    
+                    _currentBatchTimelineValue = 0;
+                }
             }
         }
 
@@ -158,10 +182,17 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (Gd.Capabilities.SupportsConditionalRendering)
             {
+                // 条件渲染结束逻辑
             }
 
             _activeConditionalRender?.ReleaseHostAccess();
             _activeConditionalRender = null;
+            
+            if (_isTbdrPlatform)
+            {
+                Logger.Debug?.Print(LogClass.Gpu, 
+                    "PipelineFull EndHostConditionalRendering");
+            }
         }
 
         public bool TryHostConditionalRendering(ICounterEvent value, ulong compare, bool isEqual)
@@ -172,25 +203,51 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     if (!value.ReserveForHostAccess())
                     {
+                        if (_isTbdrPlatform)
+                        {
+                            Logger.Debug?.Print(LogClass.Gpu, 
+                                "PipelineFull TryHostConditionalRendering: Failed to reserve host access");
+                        }
                         return false;
                     }
 
                     if (Gd.Capabilities.SupportsConditionalRendering)
                     {
+                        // 条件渲染开始逻辑
                     }
 
                     _activeConditionalRender = evt;
+                    
+                    if (_isTbdrPlatform)
+                    {
+                        Logger.Debug?.Print(LogClass.Gpu, 
+                            "PipelineFull TryHostConditionalRendering: Conditional rendering enabled");
+                    }
                     return true;
                 }
             }
 
             FlushPendingQuery();
+            
+            if (_isTbdrPlatform)
+            {
+                Logger.Debug?.Print(LogClass.Gpu, 
+                    "PipelineFull TryHostConditionalRendering: Fallback to flush");
+            }
+            
             return false;
         }
 
         public bool TryHostConditionalRendering(ICounterEvent value, ICounterEvent compare, bool isEqual)
         {
             FlushPendingQuery();
+            
+            if (_isTbdrPlatform)
+            {
+                Logger.Debug?.Print(LogClass.Gpu, 
+                    "PipelineFull TryHostConditionalRendering with compare event");
+            }
+            
             return false;
         }
 
@@ -198,6 +255,12 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (AutoFlush.ShouldFlushQuery())
             {
+                if (_isTbdrPlatform)
+                {
+                    Logger.Debug?.Print(LogClass.Gpu, 
+                        "PipelineFull FlushPendingQuery: Auto-flushing commands");
+                }
+                
                 FlushCommandsImpl();
             }
         }
@@ -224,6 +287,12 @@ namespace Ryujinx.Graphics.Vulkan
 
                 if (_byteWeight >= MinByteWeightForFlush)
                 {
+                    if (_isTbdrPlatform)
+                    {
+                        Logger.Debug?.Print(LogClass.Gpu, 
+                            $"PipelineFull FlushCommandsIfWeightExceeding: Weight={_byteWeight}, Flushing");
+                    }
+                    
                     FlushCommandsImpl();
                 }
             }
@@ -252,9 +321,14 @@ namespace Ryujinx.Graphics.Vulkan
             AutoFlush.RegisterFlush(DrawCount);
             EndRenderPass();
 
+            // 结束所有活动的查询
             foreach ((var queryPool, var index, _) in _activeQueries)
             {
                 Gd.Api.CmdEndQuery(CommandBuffer, queryPool, index);
+                _totalQueriesEnded++;
+                
+                // 更新查询状态
+                _queryActiveState[(queryPool, index)] = false;
             }
 
             _byteWeight = 0;
@@ -276,6 +350,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             _activeBufferMirrors.Clear();
 
+            // 重新开始所有活动的查询
             foreach ((var queryPool, var index, var isOcclusion) in _activeQueries)
             {
                 bool isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
@@ -287,11 +362,22 @@ namespace Ryujinx.Graphics.Vulkan
 
                 Gd.Api.CmdResetQueryPool(CommandBuffer, queryPool, index, 1);
                 Gd.Api.CmdBeginQuery(CommandBuffer, queryPool, index, isPrecise ? QueryControlFlags.PreciseBit : 0);
+                _totalQueriesStarted++;
+                
+                // 更新查询状态
+                _queryActiveState[(queryPool, index)] = true;
             }
 
             Gd.ResetCounterPool();
 
             Restore();
+            
+            // 记录统计信息
+            if (_isTbdrPlatform && (_totalQueriesStarted % 100 == 0 || _totalQueriesEnded % 100 == 0))
+            {
+                Logger.Debug?.Print(LogClass.Gpu, 
+                    $"PipelineFull query stats: Started={_totalQueriesStarted}, Ended={_totalQueriesEnded}, Active={_activeQueries.Count}");
+            }
         }
 
         public void RegisterActiveMirror(BufferHolder buffer)
@@ -309,7 +395,20 @@ namespace Ryujinx.Graphics.Vulkan
 
                 if (fromSamplePool)
                 {
-                    Gd.ResetFutureCounters(CommandBuffer, AutoFlush.GetRemainingQueries());
+                    int remainingQueries = AutoFlush.GetRemainingQueries();
+                    Gd.ResetFutureCounters(CommandBuffer, remainingQueries);
+                    
+                    if (_isTbdrPlatform && remainingQueries > 0)
+                    {
+                        Logger.Debug?.Print(LogClass.Gpu, 
+                            $"PipelineFull BeginQuery reset future counters: Count={remainingQueries}");
+                    }
+                }
+                
+                if (_isTbdrPlatform)
+                {
+                    Logger.Debug?.Print(LogClass.Gpu, 
+                        $"PipelineFull BeginQuery with reset: Pool={pool.Handle}, Index={index}, Occlusion={isOcclusion}");
                 }
             }
 
@@ -318,24 +417,42 @@ namespace Ryujinx.Graphics.Vulkan
             if (_isTbdrPlatform && isOcclusion)
             {
                 isPrecise = false;
+                Logger.Debug?.Print(LogClass.Gpu, 
+                    $"PipelineFull BeginQuery on TBDR: Disabling precise occlusion");
             }
             
             Gd.Api.CmdBeginQuery(CommandBuffer, pool, index, isPrecise ? QueryControlFlags.PreciseBit : 0);
+            _totalQueriesStarted++;
 
             _activeQueries.Add((pool, index, isOcclusion));
+            _queryActiveState[(pool, index)] = true;
+            
+            if (_isTbdrPlatform)
+            {
+                Logger.Debug?.Print(LogClass.Gpu, 
+                    $"PipelineFull BeginQuery: ActiveQueries={_activeQueries.Count}");
+            }
         }
 
         public void EndQuery(QueryPool pool, uint index)
         {
             Gd.Api.CmdEndQuery(CommandBuffer, pool, index);
+            _totalQueriesEnded++;
 
             for (int i = 0; i < _activeQueries.Count; i++)
             {
                 if (_activeQueries[i].Item1.Handle == pool.Handle && _activeQueries[i].Item2 == index)
                 {
                     _activeQueries.RemoveAt(i);
+                    _queryActiveState[(pool, index)] = false;
                     break;
                 }
+            }
+            
+            if (_isTbdrPlatform)
+            {
+                Logger.Debug?.Print(LogClass.Gpu, 
+                    $"PipelineFull EndQuery: Pool={pool.Handle}, Index={index}, RemainingActive={_activeQueries.Count}");
             }
         }
 
@@ -345,6 +462,12 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 _queryBatchQueue.Enqueue((query, index));
                 _batchQueryCount++;
+                
+                if (_isTbdrPlatform)
+                {
+                    Logger.Debug?.Print(LogClass.Gpu, 
+                        $"PipelineFull CopyQueryResults queued: Type={query.GetType()}, Index={index}, BatchCount={_batchQueryCount}");
+                }
                 
                 // 达到批次大小时处理批次
                 if (_batchQueryCount >= _targetBatchSize)
@@ -367,6 +490,11 @@ namespace Ryujinx.Graphics.Vulkan
                 
                 if (!forceFlush && _batchQueryCount < targetSize)
                 {
+                    if (_isTbdrPlatform)
+                    {
+                        Logger.Debug?.Print(LogClass.Gpu, 
+                            $"PipelineFull ProcessQueryBatch: Not enough queries ({_batchQueryCount} < {targetSize}), deferring");
+                    }
                     return;
                 }
                 
@@ -393,7 +521,7 @@ namespace Ryujinx.Graphics.Vulkan
                     if (_isTbdrPlatform)
                     {
                         Logger.Debug?.Print(LogClass.Gpu, 
-                            $"TBDR: Batch of {batchQueries.Count} queries, timeline={batchTimelineValue}");
+                            $"TBDR: Processing batch of {batchQueries.Count} queries, timeline={batchTimelineValue}");
                     }
                 }
                 else
@@ -403,6 +531,12 @@ namespace Ryujinx.Graphics.Vulkan
                     {
                         var (query, index) = _queryBatchQueue.Dequeue();
                         _pendingQueryCopies.Add((query, index));
+                    }
+                    
+                    if (_isTbdrPlatform)
+                    {
+                        Logger.Debug?.Print(LogClass.Gpu, 
+                            $"TBDR: Processing batch of {_pendingQueryCopies.Count} queries (no timeline)");
                     }
                 }
                 
@@ -414,8 +548,11 @@ namespace Ryujinx.Graphics.Vulkan
                     if (_isTbdrPlatform)
                     {
                         Logger.Debug?.Print(LogClass.Gpu, 
-                            $"TBDR: Processing batch of {_pendingQueryCopies.Count} queries");
+                            $"TBDR: Processing batch of {_pendingQueryCopies.Count} queries, forceFlush={forceFlush}");
                     }
+                    
+                    // 立即执行复制
+                    CopyPendingQuery();
                 }
             }
         }
@@ -424,6 +561,12 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (AutoFlush.ShouldFlushAttachmentChange(DrawCount))
             {
+                if (_isTbdrPlatform)
+                {
+                    Logger.Debug?.Print(LogClass.Gpu, 
+                        "PipelineFull SignalAttachmentChange: Flushing commands");
+                }
+                
                 FlushCommandsImpl();
             }
         }
@@ -431,8 +574,26 @@ namespace Ryujinx.Graphics.Vulkan
         protected override void SignalRenderPassEnd()
         {
             // 渲染过程结束时处理所有批次查询
+            if (_isTbdrPlatform && (_batchQueryCount > 0 || _pendingQueryCopies.Count > 0))
+            {
+                Logger.Debug?.Print(LogClass.Gpu, 
+                    $"PipelineFull SignalRenderPassEnd: Processing queries (Batch={_batchQueryCount}, Pending={_pendingQueryCopies.Count})");
+            }
+            
             ProcessQueryBatch(true);
             CopyPendingQuery();
+        }
+        
+        // 获取查询统计信息
+        public void LogQueryStatistics()
+        {
+            Logger.Info?.Print(LogClass.Gpu, 
+                $"PipelineFull Query Statistics: " +
+                $"Started={_totalQueriesStarted}, " +
+                $"Ended={_totalQueriesEnded}, " +
+                $"Active={_activeQueries.Count}, " +
+                $"BatchQueue={_batchQueryCount}, " +
+                $"PendingCopies={_pendingQueryCopies.Count}");
         }
     }
 }
