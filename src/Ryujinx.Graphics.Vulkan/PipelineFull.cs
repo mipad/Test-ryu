@@ -44,7 +44,7 @@ namespace Ryujinx.Graphics.Vulkan
             IsMainPipeline = true;
             
             _isTbdrPlatform = gd.IsTBDR;
-            _targetBatchSize = _isTbdrPlatform ? 1024 : 1024;
+            _targetBatchSize = _isTbdrPlatform ? 32 : 64;
             
             if (_isTbdrPlatform)
             {
@@ -454,92 +454,6 @@ namespace Ryujinx.Graphics.Vulkan
             ProcessQueryBatch(true);
             CopyPendingBatchQueries();
             CopyPendingQuery();
-        }
-        
-        // 收集所有批量查询进行优化处理
-        public void OptimizeBatchQueries()
-        {
-            if (!_isTbdrPlatform) return;
-            
-            var counters = Gd.GetCounters();
-            if (counters == null) return;
-            
-            var allBatches = counters.CollectAllBatchQueries();
-            
-            if (allBatches.Count > 0)
-            {
-                // 重新组织批次以减少状态切换
-                var optimizedBatches = OptimizeBatchGroups(allBatches);
-                
-                lock (_batchLock)
-                {
-                    _pendingBatchCopies.Clear();
-                    _batchQueriesToMarkReady.Clear();
-                    foreach (var batch in optimizedBatches)
-                    {
-                        var counterType = GetCounterTypeFromPool(batch.QueryPool);
-                        if (!_pendingBatchCopies.ContainsKey(counterType))
-                        {
-                            _pendingBatchCopies[counterType] = new List<QueryBatch>();
-                            _batchQueriesToMarkReady[counterType] = new List<BufferedQuery>();
-                        }
-                        _pendingBatchCopies[counterType].Add(batch);
-                    }
-                }
-                
-                Logger.Debug?.Print(LogClass.Gpu, 
-                    $"TBDR: Optimized {allBatches.Count} batches into {optimizedBatches.Count} groups");
-            }
-        }
-        
-        private List<QueryBatch> OptimizeBatchGroups(List<QueryBatch> batches)
-        {
-            var optimized = new List<QueryBatch>();
-            
-            // 按查询池和结果缓冲区排序
-            batches.Sort((a, b) => 
-            {
-                int poolCompare = a.QueryPool.Handle.CompareTo(b.QueryPool.Handle);
-                if (poolCompare != 0) return poolCompare;
-                return a.ResultBuffer.Handle.CompareTo(b.ResultBuffer.Handle);
-            });
-            
-            int i = 0;
-            while (i < batches.Count)
-            {
-                var current = batches[i];
-                int j = i + 1;
-                
-                // 尝试合并连续的批次
-                while (j < batches.Count && 
-                       batches[j].QueryPool.Handle == current.QueryPool.Handle &&
-                       batches[j].ResultBuffer.Handle == current.ResultBuffer.Handle &&
-                       batches[j].Is64Bit == current.Is64Bit &&
-                       batches[j].StartIndex == current.StartIndex + current.Count &&
-                       batches[j].ResultOffset == current.ResultOffset + 
-                        (ulong)(current.Is64Bit ? sizeof(long) : sizeof(int)) * current.Count)
-                {
-                    current = new QueryBatch(
-                        current.QueryPool,
-                        current.StartIndex,
-                        current.Count + batches[j].Count,
-                        current.ResultBuffer,
-                        current.ResultOffset,
-                        current.Is64Bit);
-                    j++;
-                }
-                
-                optimized.Add(current);
-                i = j;
-            }
-            
-            return optimized;
-        }
-        
-        private CounterType GetCounterTypeFromPool(QueryPool pool)
-        {
-            // 简化实现，实际需要更精确的映射
-            return CounterType.SamplesPassed;
         }
     }
 }
