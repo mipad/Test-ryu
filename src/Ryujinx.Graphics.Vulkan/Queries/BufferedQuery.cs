@@ -198,7 +198,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             public QueryPool QueryPool { get; set; }
             public uint NextIndex { get; set; }
             public int ReferenceCount { get; set; }
-            public const uint PoolSize = 24576; // 从1024改为30000
+            public const uint PoolSize = 4096; // 从1024改为30000
         }
 
         public unsafe BufferedQuery(VulkanRenderer gd, Device device, PipelineFull pipeline, CounterType type, bool result32Bit, bool isTbdrPlatform)
@@ -213,7 +213,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             // 初始化批量结果缓冲区
             if (isTbdrPlatform)
             {
-                BatchQueryManager.CreateResultBuffer(gd, device, type, !result32Bit, 8192); // 从1024改为30000
+                BatchQueryManager.CreateResultBuffer(gd, device, type, !result32Bit, 512); // 从1024改为30000
             }
 
             _isSupported = QueryTypeSupported(gd, type);
