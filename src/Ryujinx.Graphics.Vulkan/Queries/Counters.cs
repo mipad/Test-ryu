@@ -57,7 +57,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
         public void Update()
         {
-            foreach (var queue in _counterQueries)
+            foreach (var queue in _counterQueues)  
             {
                 queue.Flush(false);
             }
