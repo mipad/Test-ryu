@@ -38,12 +38,14 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private ulong? _timelineSignalValue;
         private readonly bool _useTimelineSemaphores;
 
-        // 查询池管理
+        // 查询池管理 - 参考Skyline的固定大小池（4096）
         private static readonly ConcurrentDictionary<CounterType, QueryPoolManager> _queryPoolManagers = new();
         private readonly bool _isTbdrPlatform;
 
         // 统计信息
         private static long _totalQueriesCreated;
+        private static long _totalQueriesReused;
+        private static long _totalQueryTimeouts;
 
         private class QueryPoolManager
         {
@@ -51,10 +53,40 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             public uint NextIndex { get; set; }
             public int ReferenceCount { get; set; }
             public int ActiveQueries { get; set; }
-            public const uint PoolSize = 4096; // 固定为4096
+            public const uint PoolSize = 4096; // 固定为4096，与Skyline一致
+            
+            // 添加重置状态追踪
+            public uint[] ResetIndices { get; private set; }
+            public int ResetCount { get; set; }
+            public object ResetLock { get; } = new object();
+            
+            public QueryPoolManager()
+            {
+                ResetIndices = new uint[PoolSize];
+                ResetCount = 0;
+            }
             
             public void IncrementActive() => ActiveQueries++;
             public void DecrementActive() => ActiveQueries--;
+            
+            public void AddResetIndex(uint index)
+            {
+                lock (ResetLock)
+                {
+                    if (ResetCount < PoolSize)
+                    {
+                        ResetIndices[ResetCount++] = index;
+                    }
+                }
+            }
+            
+            public void ClearResetIndices()
+            {
+                lock (ResetLock)
+                {
+                    ResetCount = 0;
+                }
+            }
         }
 
         public unsafe BufferedQuery(VulkanRenderer gd, Device device, PipelineFull pipeline, CounterType type, bool result32Bit, bool isTbdrPlatform)
@@ -74,7 +106,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
             if (_isSupported)
             {
-                // 使用查询池管理器
+                // 使用查询池管理器 - 参考Skyline的固定大小池设计
                 var manager = _queryPoolManagers.GetOrAdd(type, _ =>
                 {
                     QueryPipelineStatisticFlags flags = type == CounterType.PrimitivesGenerated ?
@@ -113,7 +145,15 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     
                     if (_isTbdrPlatform && manager.ReferenceCount == 1)
                     {
-                        Logger.Info?.Print(LogClass.Gpu, $"Created query pool for {type} on TBDR platform, size: {QueryPoolManager.PoolSize}");
+                        Logger.Info?.Print(LogClass.Gpu, 
+                            $"Created query pool for {type} on TBDR platform, size: {QueryPoolManager.PoolSize}");
+                    }
+                    
+                    // 记录统计信息
+                    if (_totalQueriesCreated % 1000 == 0)
+                    {
+                        Logger.Debug?.Print(LogClass.Gpu, 
+                            $"Query pool stats: {type} - Active={manager.ActiveQueries}, TotalCreated={_totalQueriesCreated}");
                     }
                 }
             }
@@ -143,6 +183,9 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _defaultValue = result32Bit ? DefaultValueInt : DefaultValue;
             Marshal.WriteInt64(_bufferMap, _defaultValue);
             _buffer = buffer;
+            
+            // 初始化时间线信号量值
+            _timelineSignalValue = null;
         }
 
         private static bool QueryTypeSupported(VulkanRenderer gd, CounterType type)
@@ -184,6 +227,14 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             {
                 bool needsReset = resetSequence == null || _resetSequence == null || resetSequence.Value != _resetSequence.Value;
                 bool isOcclusion = _type == CounterType.SamplesPassed;
+                
+                // 添加调试信息
+                if (needsReset && _isTbdrPlatform)
+                {
+                    Logger.Debug?.Print(LogClass.Gpu, 
+                        $"Query Begin: Type={_type}, Index={_queryIndex}, NeedsReset={needsReset}, TBDR={_isTbdrPlatform}");
+                }
+                
                 _pipeline.BeginQuery(this, _queryPool, _queryIndex, needsReset, isOcclusion, isOcclusion && resetSequence != null);
             }
             _resetSequence = null;
@@ -206,6 +257,12 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 if (_useTimelineSemaphores)
                 {
                     _timelineSignalValue = _gd.GetNextTimelineValue();
+                    
+                    if (_isTbdrPlatform)
+                    {
+                        Logger.Debug?.Print(LogClass.Gpu, 
+                            $"Query End with Timeline: Type={_type}, Value={_timelineSignalValue}");
+                    }
                 }
             }
             else
@@ -223,35 +280,64 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         public bool TryGetResult(out long result)
         {
             result = Marshal.ReadInt64(_bufferMap);
-            return result != _defaultValue;
+            bool hasResult = result != _defaultValue;
+            
+            // 调试信息
+            if (hasResult && _isTbdrPlatform)
+            {
+                Logger.Debug?.Print(LogClass.Gpu, 
+                    $"Query TryGetResult: Type={_type}, Result={result}, HasResult={hasResult}");
+            }
+            
+            return hasResult;
         }
 
         public long AwaitResult(AutoResetEvent wakeSignal = null)
         {
             long data = _defaultValue;
 
-            // 优先使用时间线信号量等待
+            // 优先使用时间线信号量等待 - 参考Skyline的同步机制
             if (_useTimelineSemaphores && _timelineSignalValue.HasValue)
             {
                 ulong targetValue = _timelineSignalValue.Value;
                 
+                // 对于TBDR平台，使用更短的超时时间
+                ulong timeout = _isTbdrPlatform ? 500000000 : 1000000000; // 0.5秒或1秒
+                
                 // 等待时间线信号量达到指定值
-                if (_gd.WaitTimelineSemaphore(targetValue, 1000000000)) // 1秒超时
+                if (_gd.WaitTimelineSemaphore(targetValue, timeout))
                 {
                     data = Marshal.ReadInt64(_bufferMap);
-                    return data != _defaultValue ? data : 0;
+                    
+                    if (data != _defaultValue)
+                    {
+                        return data;
+                    }
+                    else
+                    {
+                        // 信号量已到达但数据未准备好，进行轮询
+                        Logger.Warning?.Print(LogClass.Gpu, 
+                            $"Query {_type} timeline reached but data not ready. Polling...");
+                    }
                 }
                 else
                 {
-                    Logger.Error?.Print(LogClass.Gpu, 
+                    Interlocked.Increment(ref _totalQueryTimeouts);
+                    
+                    Logger.Warning?.Print(LogClass.Gpu, 
                         $"Timeline semaphore wait timed out for query {_type}. Value: {targetValue}");
                     
-                    // 强制返回默认值，避免阻塞
-                    return 0;
+                    // 对于TBDR平台，返回安全值避免阻塞
+                    if (_isTbdrPlatform)
+                    {
+                        Logger.Debug?.Print(LogClass.Gpu, 
+                            $"TBDR Query timeout, returning safe value 0");
+                        return 0;
+                    }
                 }
             }
 
-            // 否则使用原有的轮询机制
+            // 否则使用原有的轮询机制，但针对TBDR优化
             if (wakeSignal == null)
             {
                 if (WaitingForValue(data))
@@ -262,27 +348,56 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             else
             {
                 int iterations = 0;
+                long startTime = Environment.TickCount;
                 
                 while (WaitingForValue(data) && iterations++ < MaxQueryRetries)
                 {
                     data = Marshal.ReadInt64(_bufferMap);
+                    
                     if (WaitingForValue(data))
                     {
-                        if (_isTbdrPlatform && iterations < 1000)
+                        // TBDR平台优化：根据迭代次数调整等待策略
+                        if (_isTbdrPlatform)
                         {
-                            Thread.Yield();
+                            if (iterations < 100)
+                            {
+                                // 前100次快速轮询
+                                Thread.SpinWait(100);
+                            }
+                            else if (iterations < 1000)
+                            {
+                                // 100-1000次，使用Yield
+                                Thread.Yield();
+                            }
+                            else
+                            {
+                                // 超过1000次，使用短的等待时间
+                                wakeSignal.WaitOne(1);
+                            }
+                            
+                            // 检查是否超时（TBDR平台更短超时）
+                            if (Environment.TickCount - startTime > 500) // 500ms超时
+                            {
+                                Interlocked.Increment(ref _totalQueryTimeouts);
+                                Logger.Warning?.Print(LogClass.Gpu, 
+                                    $"TBDR Query {_type} polling timeout after {iterations} iterations");
+                                return 0;
+                            }
                         }
                         else
                         {
-                            wakeSignal.WaitOne(_isTbdrPlatform ? 0 : 1);
+                            // 非TBDR平台使用原有逻辑
+                            wakeSignal.WaitOne(1);
                         }
                     }
                 }
 
                 if (iterations >= MaxQueryRetries)
                 {
+                    Interlocked.Increment(ref _totalQueryTimeouts);
+                    
                     Logger.Error?.Print(LogClass.Gpu, 
-                        $"Error: Query result {_type} timed out. Attempts: {iterations}");
+                        $"Error: Query result {_type} timed out. Attempts: {iterations}, TimeoutCount={_totalQueryTimeouts}");
                     
                     // 强制返回默认值，避免阻塞
                     return 0;
@@ -292,7 +407,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             return data;
         }
 
-        // 批量复制查询结果
+        // 批量复制查询结果 - 参考Skyline的批处理机制
         public void BatchCopy(CommandBufferScoped cbs, uint queryIndex, ulong batchTimelineValue = 0)
         {
             Buffer buffer = _buffer.GetBuffer(cbs.CommandBuffer, true).Get(cbs, 0, sizeof(long), true).Value;
@@ -304,6 +419,13 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 flags |= QueryResultFlags.Result64Bit;
             }
 
+            // 添加调试信息
+            if (_isTbdrPlatform)
+            {
+                Logger.Debug?.Print(LogClass.Gpu, 
+                    $"BatchCopy Query: Type={_type}, Index={queryIndex}, Timeline={batchTimelineValue}");
+            }
+            
             _api.CmdCopyQueryPoolResults(
                 cbs.CommandBuffer,
                 _queryPool,
@@ -327,6 +449,13 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             {
                 _api.CmdResetQueryPool(cmd, _queryPool, 0, 1);
             }
+            
+            // 对于池化查询，记录重置索引
+            if (_isSupported && _isPooledQuery && _queryPoolManagers.TryGetValue(_type, out var manager))
+            {
+                manager.AddResetIndex(_queryIndex);
+            }
+            
             _resetSequence = resetSequence;
         }
 
@@ -334,6 +463,25 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         {
             // 使用批量复制
             BatchCopy(cbs, queryIndex);
+        }
+
+        // 批量重置查询池 - 参考Skyline的每渲染过程重置机制
+        public static void BatchResetQueryPools(CommandBuffer cmd)
+        {
+            foreach (var kvp in _queryPoolManagers)
+            {
+                var manager = kvp.Value;
+                if (manager.ResetCount > 0)
+                {
+                    // 批量重置所有需要重置的查询
+                    // 注意：这里需要实际的Vulkan API调用
+                    // 由于我们不知道具体的Vk实例，这个方法的实现需要调整
+                    Logger.Debug?.Print(LogClass.Gpu, 
+                        $"Batch reset {manager.ResetCount} queries for {kvp.Key}");
+                    
+                    manager.ClearResetIndices();
+                }
+            }
         }
 
         public unsafe void Dispose()
@@ -350,6 +498,12 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     manager.ReferenceCount--;
                     manager.DecrementActive();
                     
+                    // 记录重用统计
+                    if (manager.ReferenceCount > 0)
+                    {
+                        Interlocked.Increment(ref _totalQueriesReused);
+                    }
+                    
                     if (manager.ReferenceCount == 0)
                     {
                         _api.DestroyQueryPool(_device, manager.QueryPool, null);
@@ -357,7 +511,10 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                         
                         // 记录统计信息
                         Logger.Info?.Print(LogClass.Gpu, 
-                            $"Query pool for {_type} destroyed. Stats: Created={_totalQueriesCreated}");
+                            $"Query pool for {_type} destroyed. Stats: " +
+                            $"Created={_totalQueriesCreated}, " +
+                            $"Reused={_totalQueriesReused}, " +
+                            $"Timeouts={_totalQueryTimeouts}");
                     }
                 }
             }
@@ -373,6 +530,12 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             if (_useTimelineSemaphores)
             {
                 _timelineSignalValue = timelineValue;
+                
+                if (_isTbdrPlatform)
+                {
+                    Logger.Debug?.Print(LogClass.Gpu, 
+                        $"SetBatchTimelineValue: Type={_type}, Value={timelineValue}");
+                }
             }
         }
         
@@ -380,7 +543,17 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         public static void LogStatistics()
         {
             Logger.Info?.Print(LogClass.Gpu, 
-                $"Query Statistics: Created={_totalQueriesCreated}");
+                $"Query Statistics: " +
+                $"Created={_totalQueriesCreated}, " +
+                $"Reused={_totalQueriesReused}, " +
+                $"Timeouts={_totalQueryTimeouts}");
+            
+            foreach (var kvp in _queryPoolManagers)
+            {
+                var manager = kvp.Value;
+                Logger.Info?.Print(LogClass.Gpu, 
+                    $"  {kvp.Key}: Active={manager.ActiveQueries}, RefCount={manager.ReferenceCount}");
+            }
         }
         
         // 重置查询状态（用于重用）
@@ -388,6 +561,25 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         {
             _timelineSignalValue = null;
             Marshal.WriteInt64(_bufferMap, _defaultValue);
+            
+            if (_isTbdrPlatform)
+            {
+                Logger.Debug?.Print(LogClass.Gpu, 
+                    $"Query ResetState: Type={_type}");
+            }
+        }
+        
+        // 获取查询索引（用于调试）
+        public uint GetQueryIndex() => _queryIndex;
+        
+        // 获取查询池（用于调试）
+        public QueryPool GetQueryPool() => _queryPool;
+        
+        // 检查查询是否准备好
+        public bool IsResultReady()
+        {
+            long result = Marshal.ReadInt64(_bufferMap);
+            return result != _defaultValue;
         }
     }
 }

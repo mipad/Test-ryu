@@ -36,6 +36,11 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private readonly Thread _consumerThread;
 
         public int ResetSequence { get; private set; }
+        
+        // 统计信息
+        private long _eventsProcessed;
+        private long _eventsTimedOut;
+        private DateTime _lastStatisticsLog = DateTime.UtcNow;
 
         internal CounterQueue(VulkanRenderer gd, Device device, PipelineFull pipeline, CounterType type, bool isTbdrPlatform)
         {
@@ -53,18 +58,30 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
             _current = new CounterQueueEvent(this, type, 0);
 
-            _consumerThread = new Thread(EventConsumer);
+            _consumerThread = new Thread(EventConsumer)
+            {
+                Name = $"CounterQueue_{type}",
+                IsBackground = true
+            };
             _consumerThread.Start();
             
             if (_isTbdrPlatform)
             {
                 Logger.Debug?.Print(LogClass.Gpu, $"Created counter queue for {type} on TBDR platform");
             }
+            
+            Logger.Info?.Print(LogClass.Gpu, $"CounterQueue initialized for {type}");
         }
 
         public void ResetCounterPool()
         {
             ResetSequence++;
+            
+            if (_isTbdrPlatform)
+            {
+                Logger.Debug?.Print(LogClass.Gpu, 
+                    $"CounterQueue ResetCounterPool: Type={Type}, Sequence={ResetSequence}");
+            }
         }
 
         public void ResetFutureCounters(CommandBuffer cmd, int count)
@@ -84,6 +101,12 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                             break;
                         }
                     }
+                }
+                
+                if (_isTbdrPlatform && count > 0)
+                {
+                    Logger.Debug?.Print(LogClass.Gpu, 
+                        $"CounterQueue ResetFutureCounters: Type={Type}, Count={count}");
                 }
             }
         }
@@ -107,14 +130,38 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 }
                 else
                 {
-                    evt.TryConsume(ref _accumulatedCounter, true, _waiterCount == 0 ? _wakeSignal : null);
+                    Interlocked.Increment(ref _eventsProcessed);
+                    
+                    bool consumed = evt.TryConsume(ref _accumulatedCounter, true, _waiterCount == 0 ? _wakeSignal : null);
+                    
+                    if (!consumed)
+                    {
+                        Interlocked.Increment(ref _eventsTimedOut);
+                        
+                        // 对于TBDR平台，记录超时但继续处理
+                        if (_isTbdrPlatform)
+                        {
+                            Logger.Warning?.Print(LogClass.Gpu, 
+                                $"CounterQueue event timed out: Type={Type}, DrawIndex={evt.DrawIndex}");
+                        }
+                    }
                 }
 
                 if (_waiterCount > 0)
                 {
                     _eventConsumed.Set();
                 }
+                
+                // 定期记录统计信息
+                var now = DateTime.UtcNow;
+                if ((now - _lastStatisticsLog).TotalSeconds > 60)
+                {
+                    LogStatistics();
+                    _lastStatisticsLog = now;
+                }
             }
+            
+            Logger.Debug?.Print(LogClass.Gpu, $"CounterQueue consumer thread exiting: Type={Type}");
         }
 
         internal BufferedQuery GetQueryObject()
@@ -124,9 +171,20 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 if (_queryPool.Count > 0)
                 {
                     BufferedQuery result = _queryPool.Dequeue();
+                    
+                    if (_isTbdrPlatform)
+                    {
+                        Logger.Debug?.Print(LogClass.Gpu, 
+                            $"CounterQueue GetQueryObject from pool: Type={Type}, PoolSize={_queryPool.Count}");
+                    }
+                    
                     return result;
                 }
 
+                // 池为空，创建新的查询对象
+                Logger.Debug?.Print(LogClass.Gpu, 
+                    $"CounterQueue creating new query object: Type={Type}");
+                    
                 return new BufferedQuery(_gd, _device, _pipeline, Type, _gd.IsAmdWindows, _isTbdrPlatform);
             }
         }
@@ -137,6 +195,12 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             {
                 query.ResetState(); // 重置查询状态以便重用
                 _queryPool.Enqueue(query);
+                
+                if (_isTbdrPlatform && _queryPool.Count % 10 == 0)
+                {
+                    Logger.Debug?.Print(LogClass.Gpu, 
+                        $"CounterQueue ReturnQueryObject: Type={Type}, PoolSize={_queryPool.Count}");
+                }
             }
         }
 
@@ -160,6 +224,13 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 result = _current;
 
                 _current = new CounterQueueEvent(this, Type, lastDrawIndex);
+                
+                // 调试信息
+                if (_isTbdrPlatform)
+                {
+                    Logger.Debug?.Print(LogClass.Gpu, 
+                        $"CounterQueue QueueReport: Type={Type}, Draws={draws}, EventsCount={_events.Count}");
+                }
             }
 
             _queuedEvent.Set();
@@ -174,6 +245,12 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             lock (_lock)
             {
                 _current.Clear(draws != 0);
+                
+                if (_isTbdrPlatform && draws != 0)
+                {
+                    Logger.Debug?.Print(LogClass.Gpu, 
+                        $"CounterQueue QueueReset: Type={Type}, Draws={draws}");
+                }
             }
         }
 
@@ -187,6 +264,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
             lock (_lock)
             {
+                int flushedCount = 0;
+                
                 while (_events.Count > 0)
                 {
                     CounterQueueEvent flush = _events.Peek();
@@ -195,6 +274,13 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                         return;
                     }
                     _events.Dequeue();
+                    flushedCount++;
+                }
+                
+                if (_isTbdrPlatform && flushedCount > 0)
+                {
+                    Logger.Debug?.Print(LogClass.Gpu, 
+                        $"CounterQueue Flush: Type={Type}, Flushed={flushedCount}");
                 }
             }
         }
@@ -205,22 +291,55 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
             _wakeSignal.Set();
 
-            while (!evt.Disposed)
+            int waitIterations = 0;
+            while (!evt.Disposed && waitIterations++ < 1000) // 防止无限等待
             {
-                _eventConsumed.WaitOne(1);
+                _eventConsumed.WaitOne(_isTbdrPlatform ? 1 : 10);
+                
+                // 检查事件是否已处理
+                if (evt.Disposed)
+                {
+                    break;
+                }
+                
+                // 对于TBDR平台，如果等待时间过长，记录警告
+                if (_isTbdrPlatform && waitIterations > 100)
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        $"CounterQueue FlushTo taking too long: Type={Type}, Iterations={waitIterations}");
+                }
             }
 
             Interlocked.Decrement(ref _waiterCount);
+            
+            if (waitIterations >= 1000)
+            {
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"CounterQueue FlushTo timeout: Type={Type}");
+            }
+        }
+
+        private void LogStatistics()
+        {
+            Logger.Info?.Print(LogClass.Gpu, 
+                $"CounterQueue {Type} Stats: " +
+                $"EventsProcessed={_eventsProcessed}, " +
+                $"EventsTimedOut={_eventsTimedOut}, " +
+                $"CurrentEvents={_events.Count}, " +
+                $"QueryPoolSize={_queryPool.Count}");
         }
 
         public void Dispose()
         {
+            Logger.Info?.Print(LogClass.Gpu, $"CounterQueue disposing: Type={Type}");
+            
             lock (_lock)
             {
+                LogStatistics();
+                
                 while (_events.Count > 0)
                 {
                     CounterQueueEvent evt = _events.Dequeue();
-
                     evt.Dispose();
                 }
 
@@ -229,7 +348,14 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
             _queuedEvent.Set();
 
-            _consumerThread.Join();
+            if (_consumerThread.IsAlive)
+            {
+                if (!_consumerThread.Join(5000)) // 5秒超时
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        $"CounterQueue consumer thread did not exit gracefully: Type={Type}");
+                }
+            }
 
             _current?.Dispose();
 
@@ -241,6 +367,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _queuedEvent.Dispose();
             _wakeSignal.Dispose();
             _eventConsumed.Dispose();
+            
+            Logger.Info?.Print(LogClass.Gpu, $"CounterQueue disposed: Type={Type}");
         }
     }
 }
