@@ -213,7 +213,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             // 初始化批量结果缓冲区
             if (isTbdrPlatform)
             {
-                BatchQueryManager.CreateResultBuffer(gd, device, type, !result32Bit, 512); // 从1024改为30000
+                BatchQueryManager.CreateResultBuffer(gd, device, type, !result32Bit, 4096); // 从1024改为30000
             }
 
             _isSupported = QueryTypeSupported(gd, type);
