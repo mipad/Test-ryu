@@ -1,4 +1,4 @@
-// BufferedQuery.cs - 修改版
+// BufferedQuery.cs - 修复版
 using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.GAL;
 using Silk.NET.Vulkan;
@@ -235,14 +235,13 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 // 等待时间线信号量达到指定值
                 if (_gd.WaitTimelineSemaphore(targetValue, 1000000000)) // 1秒超时
                 {
+                    // 信号量已到达，检查结果是否就绪
                     data = Marshal.ReadInt64(_bufferMap);
-                    if (data != _defaultValue)
+                    
+                    // 如果结果还没准备好（可能是因为GPU还在写入），等待一小段时间
+                    if (data == _defaultValue)
                     {
-                        return data;
-                    }
-                    else
-                    {
-                        // 信号量已到达但结果未准备好，可能GPU还在写入，短暂等待
+                        // 短暂的等待，让GPU有时间完成写入
                         for (int i = 0; i < 100; i++)
                         {
                             Thread.SpinWait(100);
@@ -252,12 +251,22 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                                 return data;
                             }
                         }
+                        
+                        // 如果还是没准备好，记录警告但返回安全值
+                        Logger.Warning?.Print(LogClass.Gpu, 
+                            $"Timeline semaphore reached value {targetValue} but query result not ready");
+                        return 0;
                     }
+                    
+                    return data;
                 }
                 else
                 {
                     Logger.Warning?.Print(LogClass.Gpu, 
                         $"Timeline semaphore wait timed out for query {_type}. Value: {targetValue}");
+                    
+                    // 强制返回默认值，避免阻塞
+                    return 0;
                 }
             }
 
@@ -313,8 +322,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 (ulong)(_result32Bit ? sizeof(int) : sizeof(long)),
                 flags);
             
-            // 记录批次时间线信号量值
-            if (batchTimelineValue > 0 && _useTimelineSemaphores)
+            // 设置时间线信号量值
+            if (batchTimelineValue > 0 && _useTimelineSemaphores && !_timelineValueSubmitted)
             {
                 _timelineSignalValue = batchTimelineValue;
                 _timelineValueSubmitted = true;
@@ -365,16 +374,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             else if (_isSupported && !_isPooledQuery)
             {
                 _api.DestroyQueryPool(_device, _queryPool, null);
-            }
-        }
-        
-        // 设置批次时间线信号量值
-        internal void SetBatchTimelineValue(ulong timelineValue)
-        {
-            if (_useTimelineSemaphores && !_timelineValueSubmitted)
-            {
-                _timelineSignalValue = timelineValue;
-                _timelineValueSubmitted = true;
             }
         }
         
