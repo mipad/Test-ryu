@@ -44,7 +44,7 @@ namespace Ryujinx.Graphics.Vulkan
             IsMainPipeline = true;
             
             _isTbdrPlatform = gd.IsTBDR;
-            _targetBatchSize = _isTbdrPlatform ? 256 : 300;
+            _targetBatchSize = _isTbdrPlatform ? 1024 : 1024;
             
             if (_isTbdrPlatform)
             {
