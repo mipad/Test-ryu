@@ -179,41 +179,13 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             
             lock (_batchLock)
             {
-                // 按查询池和结果缓冲区分组
-                var groups = _activeBatchQueries
-                    .Where(q => q.GetBatchInfo().QueryPool.Handle != 0)
-                    .GroupBy(q => (q.GetQueryPool().Handle, q.GetBatchInfo().ResultBuffer.Handle, q.Is64Bit()))
-                    .ToList();
-                
-                foreach (var group in groups)
+                // 直接收集每个查询的批次信息，不进行分组合并
+                foreach (var query in _activeBatchQueries)
                 {
-                    var queries = group.OrderBy(q => q.GetQueryIndex()).ToList();
-                    
-                    // 将连续索引的查询分组
-                    int start = 0;
-                    while (start < queries.Count)
+                    var batchInfo = query.GetBatchInfo();
+                    if (batchInfo.QueryPool.Handle != 0)
                     {
-                        int end = start;
-                        while (end + 1 < queries.Count && 
-                               queries[end + 1].GetQueryIndex() == queries[end].GetQueryIndex() + 1 &&
-                               queries[end + 1].GetBatchInfo().ResultOffset == 
-                               queries[end].GetBatchInfo().ResultOffset + (ulong)(queries[end].Is64Bit() ? sizeof(long) : sizeof(int)))
-                        {
-                            end++;
-                        }
-                        
-                        var firstQuery = queries[start];
-                        var batchInfo = firstQuery.GetBatchInfo();
-                        var batch = new QueryBatch(
-                            batchInfo.QueryPool,
-                            firstQuery.GetQueryIndex(),
-                            (uint)(end - start + 1),
-                            batchInfo.ResultBuffer,
-                            batchInfo.ResultOffset,
-                            batchInfo.Is64Bit);
-                        
-                        batches.Add(batch);
-                        start = end + 1;
+                        batches.Add(batchInfo);
                     }
                 }
             }
@@ -221,7 +193,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             if (_isTbdrPlatform && batches.Count > 0)
             {
                 Logger.Debug?.Print(LogClass.Gpu, 
-                    $"TBDR: Collected {batches.Count} query batches for {Type}, total queries: {batches.Sum(b => b.Count)}");
+                    $"TBDR: Collected {batches.Count} query batches for {Type}, total queries: {batches.Count}");
             }
             
             return batches;
