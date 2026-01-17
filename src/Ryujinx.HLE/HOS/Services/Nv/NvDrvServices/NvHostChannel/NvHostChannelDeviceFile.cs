@@ -53,6 +53,9 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel
         private long _totalSubmitTime = 0;
         private int _submitCount = 0;
         private long _maxSubmitTime = 0;
+        private int _gpfifoSubmitCount = 0;
+        private long _totalGpfifoSubmitTime = 0;
+        private long _maxGpfifoSubmitTime = 0;
 
         public NvHostChannelDeviceFile(ServiceCtx context, IVirtualMemoryManager memory, ulong owner) : base(context, owner)
         {
@@ -205,6 +208,12 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel
                     $"Submit: cmdBufs={submitHeader.CmdBufsCount}, relocs={submitHeader.RelocsCount}, " +
                     $"syncptIncrs={submitHeader.SyncptIncrsCount}, fences={submitHeader.FencesCount}");
 
+                // 记录相关同步点状态
+                foreach (var syncptIncr in syncptIncrs)
+                {
+                    LogSyncpointState(syncptIncr.Id, $"Submit syncptIncr {syncptIncr.Id}");
+                }
+
                 lock (_device)
                 {
                     Logger.Debug?.Print(LogClass.ServiceNv, "Submit: Entered device lock");
@@ -215,13 +224,14 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel
                         SyncptIncr syncptIncr = syncptIncrs[i];
                         uint id = syncptIncr.Id;
                         
+                        uint currentValue = _device.System.HostSyncpoint.ReadSyncpointValue(id);
                         uint oldMax = _device.System.HostSyncpoint.ReadSyncpointMaxValue(id);
                         fenceThresholds[i] = Context.Device.System.HostSyncpoint.IncrementSyncpointMax(id, syncptIncr.Incrs);
                         uint newMax = fenceThresholds[i];
                         
                         Logger.Debug?.Print(LogClass.ServiceNv, 
                             $"Submit: Syncpoint incremented - id={id}, incrs={syncptIncr.Incrs}, " +
-                            $"oldMax={oldMax}, newMax={newMax}");
+                            $"current={currentValue}, oldMax={oldMax}, newMax={newMax}");
                     }
 
                     Logger.Debug?.Print(LogClass.ServiceNv, $"Submit: Processing {commandBuffers.Length} command buffers");
@@ -472,6 +482,9 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel
                     $"SubmitGpfifo: numEntries={gpfifoSubmissionHeader.NumEntries}, " +
                     $"flags={gpfifoSubmissionHeader.Flags}, fence=({gpfifoSubmissionHeader.Fence.Id}:{gpfifoSubmissionHeader.Fence.Value})");
 
+                // 记录通道同步点状态
+                LogSyncpointState(_channelSyncpoint.Id, "SubmitGpfifo start");
+
                 return SubmitGpfifo(ref gpfifoSubmissionHeader, gpfifoEntries);
             }
             catch (Exception ex)
@@ -549,6 +562,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel
 
             arguments.Fence = _channelSyncpoint;
 
+            LogSyncpointState(_channelSyncpoint.Id, "AllocGpfifoEx");
             Logger.Debug?.Print(LogClass.ServiceNv, 
                 $"AllocGpfifoEx: returning fence=({_channelSyncpoint.Id}:{_channelSyncpoint.Value})");
 
@@ -561,6 +575,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel
 
             arguments.Fence = _channelSyncpoint;
 
+            LogSyncpointState(_channelSyncpoint.Id, "AllocGpfifoEx2");
             Logger.Debug?.Print(LogClass.ServiceNv, 
                 $"AllocGpfifoEx2: returning fence=({_channelSyncpoint.Id}:{_channelSyncpoint.Value})");
 
@@ -612,9 +627,11 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel
                 // 检查是否需要等待同步点
                 if (header.Flags.HasFlag(SubmitGpfifoFlags.FenceWait))
                 {
+                    uint currentValue = _device.System.HostSyncpoint.ReadSyncpointValue(header.Fence.Id);
                     bool isExpired = _device.System.HostSyncpoint.IsSyncpointExpired(header.Fence.Id, header.Fence.Value);
                     Logger.Debug?.Print(LogClass.ServiceNv, 
-                        $"SubmitGpfifo: FenceWait check - fence=({header.Fence.Id}:{header.Fence.Value}), expired={isExpired}");
+                        $"SubmitGpfifo: FenceWait check - fence=({header.Fence.Id}:{header.Fence.Value}), " +
+                        $"current={currentValue}, expired={isExpired}");
                     
                     if (!isExpired)
                     {
@@ -631,7 +648,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel
                 // 设置通道同步点
                 header.Fence.Id = _channelSyncpoint.Id;
 
-                // 处理同步点递增
+                // 处理同步点递增 - 添加当前值日志
                 if (header.Flags.HasFlag(SubmitGpfifoFlags.FenceIncrement) || header.Flags.HasFlag(SubmitGpfifoFlags.IncrementWithValue))
                 {
                     uint incrementCount = header.Flags.HasFlag(SubmitGpfifoFlags.FenceIncrement) ? 2u : 0u;
@@ -641,20 +658,25 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel
                         incrementCount += header.Fence.Value;
                     }
 
+                    uint currentValue = _device.System.HostSyncpoint.ReadSyncpointValue(header.Fence.Id);
                     uint oldMax = _device.System.HostSyncpoint.ReadSyncpointMaxValue(header.Fence.Id);
                     header.Fence.Value = _device.System.HostSyncpoint.IncrementSyncpointMaxExt(header.Fence.Id, (int)incrementCount);
                     uint newMax = header.Fence.Value;
                     
                     Logger.Debug?.Print(LogClass.ServiceNv, 
                         $"SubmitGpfifo: Incremented syncpoint {header.Fence.Id} by {incrementCount}, " +
-                        $"oldMax={oldMax}, newMax={newMax}");
+                        $"current={currentValue}, oldMax={oldMax}, newMax={newMax}");
                 }
                 else
                 {
+                    uint currentValue = _device.System.HostSyncpoint.ReadSyncpointValue(header.Fence.Id);
                     header.Fence.Value = _device.System.HostSyncpoint.ReadSyncpointMaxValue(header.Fence.Id);
                     Logger.Debug?.Print(LogClass.ServiceNv, 
-                        $"SubmitGpfifo: Using current syncpoint max value: {header.Fence.Value}");
+                        $"SubmitGpfifo: Using current syncpoint max value: {header.Fence.Value}, current={currentValue}");
                 }
+
+                // 记录通道同步点状态
+                LogSyncpointState(header.Fence.Id, "Before PushEntries");
 
                 // 推送GPU命令
                 Logger.Debug?.Print(LogClass.ServiceNv, 
@@ -670,6 +692,9 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel
                 }
 
                 header.Flags = SubmitGpfifoFlags.None;
+
+                // 记录通道同步点状态
+                LogSyncpointState(header.Fence.Id, "After PushEntries");
 
                 // 通知GPU有新条目
                 _device.Gpu.GPFifo.SignalNewEntries();
@@ -690,11 +715,27 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel
                 stopwatch.Stop();
                 long elapsedMs = stopwatch.ElapsedMilliseconds;
                 
+                // 更新性能统计
+                lock (_perfStopwatch)
+                {
+                    _totalGpfifoSubmitTime += elapsedMs;
+                    _gpfifoSubmitCount++;
+                    _maxGpfifoSubmitTime = Math.Max(_maxGpfifoSubmitTime, elapsedMs);
+                }
+                
                 if (elapsedMs > 100)
                 {
                     Logger.Warning?.Print(LogClass.ServiceNv, 
                         $"SubmitGpfifo internal took {elapsedMs}ms - HIGH LATENCY, entries={entries.Length}");
                 }
+                else if (elapsedMs > 20)
+                {
+                    Logger.Debug?.Print(LogClass.ServiceNv, 
+                        $"SubmitGpfifo internal took {elapsedMs}ms, entries={entries.Length}");
+                }
+                
+                // 记录完成后的同步点状态
+                LogSyncpointState(_channelSyncpoint.Id, "SubmitGpfifo end");
             }
         }
 
@@ -789,6 +830,59 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel
             return commandBuffer;
         }
 
+        // 辅助方法：记录同步点状态
+        private void LogSyncpointState(uint syncpointId, string context)
+        {
+            try
+            {
+                uint current = _device.System.HostSyncpoint.ReadSyncpointValue(syncpointId);
+                uint max = _device.System.HostSyncpoint.ReadSyncpointMaxValue(syncpointId);
+                
+                Logger.Debug?.Print(LogClass.ServiceNv, 
+                    $"Syncpoint {syncpointId} state [{context}]: current={current}, max={max}, " +
+                    $"lag={max - current}");
+                    
+                // 如果滞后过大，记录警告
+                if (max - current > 50 && context.Contains("end"))
+                {
+                    Logger.Warning?.Print(LogClass.ServiceNv,
+                        $"Large syncpoint lag detected: syncpoint {syncpointId}, " +
+                        $"current={current}, max={max}, lag={max - current} in context {context}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.ServiceNv, 
+                    $"Failed to log syncpoint state for {syncpointId}: {ex.Message}");
+            }
+        }
+
+        // 监控GPU进度的方法
+        private void MonitorGpuProgress()
+        {
+            try
+            {
+                // 检查所有通道同步点
+                for (int i = 0; i < MaxModuleSyncpoint; i++)
+                {
+                    if (ChannelSyncpoints[i] != 0)
+                    {
+                        LogSyncpointState(ChannelSyncpoints[i], "Periodic monitor");
+                    }
+                }
+                
+                // 检查主通道同步点
+                if (_channelSyncpoint.Id != 0)
+                {
+                    LogSyncpointState(_channelSyncpoint.Id, "Periodic monitor (main)");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.ServiceNv, $"MonitorGpuProgress error: {ex.Message}");
+            }
+        }
+
         public override void Close()
         {
             Logger.Debug?.Print(LogClass.ServiceNv, 
@@ -851,18 +945,35 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel
         // 性能监控相关方法
         private void StartPerformanceMonitoring()
         {
-            // 可以在这里启动一个后台线程定期报告性能统计
-            // 由于这可能增加复杂性，暂时注释掉
-            /*
-            Task.Run(async () =>
+            // 启动一个简单的定时监控
+            // 由于模拟器环境可能不支持Task.Run，这里使用简单的线程方式
+            // 在实际使用中，你可能需要根据运行环境调整
+            try
             {
-                while (true)
+                System.Threading.Thread monitorThread = new System.Threading.Thread(() =>
                 {
-                    await Task.Delay(10000); // 每10秒报告一次
-                    LogPerformanceStats();
-                }
-            });
-            */
+                    while (true)
+                    {
+                        System.Threading.Thread.Sleep(30000); // 每30秒报告一次
+                        if (_submitCount > 0 || _gpfifoSubmitCount > 0)
+                        {
+                            LogPerformanceStats();
+                        }
+                        
+                        // 监控GPU进度
+                        MonitorGpuProgress();
+                    }
+                });
+                
+                monitorThread.IsBackground = true;
+                monitorThread.Start();
+                
+                Logger.Debug?.Print(LogClass.ServiceNv, "Started performance monitoring thread");
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.ServiceNv, $"Failed to start performance monitoring: {ex.Message}");
+            }
         }
 
         private void LogPerformanceStats()
@@ -874,9 +985,25 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel
                     double avgSubmitTime = (double)_totalSubmitTime / _submitCount;
                     
                     Logger.Info?.Print(LogClass.ServiceNv, 
-                        $"Performance Stats - Submits: {_submitCount}, " +
-                        $"Avg: {avgSubmitTime:F2}ms, Max: {_maxSubmitTime}ms, " +
-                        $"Total: {_totalSubmitTime}ms");
+                        $"Performance Stats [Submit]: Count={_submitCount}, " +
+                        $"Avg={avgSubmitTime:F2}ms, Max={_maxSubmitTime}ms, " +
+                        $"Total={_totalSubmitTime}ms");
+                }
+                
+                if (_gpfifoSubmitCount > 0)
+                {
+                    double avgGpfifoSubmitTime = (double)_totalGpfifoSubmitTime / _gpfifoSubmitCount;
+                    
+                    Logger.Info?.Print(LogClass.ServiceNv, 
+                        $"Performance Stats [SubmitGpfifo]: Count={_gpfifoSubmitCount}, " +
+                        $"Avg={avgGpfifoSubmitTime:F2}ms, Max={_maxGpfifoSubmitTime}ms, " +
+                        $"Total={_totalGpfifoSubmitTime}ms");
+                }
+                
+                // 记录通道同步点状态
+                if (_channelSyncpoint.Id != 0)
+                {
+                    LogSyncpointState(_channelSyncpoint.Id, "Performance stats");
                 }
             }
         }
