@@ -27,10 +27,10 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly VulkanRenderer _renderer;
         
         // 用于跟踪已添加的时间线信号量值，避免重复添加
-        private readonly Dictionary<int, HashSet<ulong>> _addedTimelineSignals = new();
+        private readonly Dictionary<int, HashSet<ulong>> _addedTimelineSignals = new Dictionary<int, HashSet<ulong>>();
         
         // 跟踪每个命令缓冲区已添加的时间线等待值
-        private readonly Dictionary<int, HashSet<ulong>> _addedTimelineWaits = new();
+        private readonly Dictionary<int, HashSet<ulong>> _addedTimelineWaits = new Dictionary<int, HashSet<ulong>>();
 
         public bool OwnedByCurrentThread => _owner == Thread.CurrentThread;
 
@@ -130,7 +130,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             Logger.Info?.PrintMsg(LogClass.Gpu, 
-                $"CommandBufferPool初始化: 时间线信号量支持 = {_supportsTimelineSemaphores}, 轻量模式 = {isLight}");
+                $"CommandBufferPool初始化: 时间线信号量支持 = {_supportsTimelineSemaphores}, 轻量模式 = {isLight}, TimelineManager可用 = {_renderer?.TimelineManager != null}");
 
             CommandPoolCreateInfo commandPoolCreateInfo = new()
             {
@@ -282,6 +282,18 @@ namespace Ryujinx.Graphics.Vulkan
                     return;
                 }
                 
+                // 如果TimelineManager可用，验证单调性
+                if (_renderer?.TimelineManager != null)
+                {
+                    bool valid = _renderer.TimelineManager.ValidateMonotonic(cbIndex, value, true);
+                    if (!valid)
+                    {
+                        Logger.Error?.PrintMsg(LogClass.Gpu, 
+                            $"时间线信号值单调性验证失败: 命令缓冲区={cbIndex}, 值={value}");
+                        return;
+                    }
+                }
+                
                 entry.TimelineSignals.Add(new TimelineSignal { Semaphore = semaphore, Value = value });
                 
                 // 记录已添加的信号量值
@@ -322,6 +334,18 @@ namespace Ryujinx.Graphics.Vulkan
                             return;
                         }
                         
+                        // 如果TimelineManager可用，验证单调性
+                        if (_renderer?.TimelineManager != null)
+                        {
+                            bool valid = _renderer.TimelineManager.ValidateMonotonic(_currentCommandBufferIndex, value, true);
+                            if (!valid)
+                            {
+                                Logger.Error?.PrintMsg(LogClass.Gpu, 
+                                    $"时间线信号值单调性验证失败（使用中）: 命令缓冲区={_currentCommandBufferIndex}, 值={value}");
+                                return;
+                            }
+                        }
+                        
                         entry.TimelineSignals.Add(new TimelineSignal { Semaphore = semaphore, Value = value });
                         
                         // 记录已添加的信号量值
@@ -351,6 +375,18 @@ namespace Ryujinx.Graphics.Vulkan
                                 Logger.Warning?.PrintMsg(LogClass.Gpu, 
                                     $"检测到重复的时间线信号量值（使用中）: 命令缓冲区={i}, 值={value}，跳过添加");
                                 return;
+                            }
+                            
+                            // 如果TimelineManager可用，验证单调性
+                            if (_renderer?.TimelineManager != null)
+                            {
+                                bool valid = _renderer.TimelineManager.ValidateMonotonic(i, value, true);
+                                if (!valid)
+                                {
+                                    Logger.Error?.PrintMsg(LogClass.Gpu, 
+                                        $"时间线信号值单调性验证失败（使用中回退）: 命令缓冲区={i}, 值={value}");
+                                    return;
+                                }
                             }
                             
                             entry.TimelineSignals.Add(new TimelineSignal { Semaphore = semaphore, Value = value });
@@ -395,6 +431,18 @@ namespace Ryujinx.Graphics.Vulkan
                             continue;
                         }
                         
+                        // 如果TimelineManager可用，验证单调性
+                        if (_renderer?.TimelineManager != null)
+                        {
+                            bool valid = _renderer.TimelineManager.ValidateMonotonic(i, value, false);
+                            if (!valid)
+                            {
+                                Logger.Error?.PrintMsg(LogClass.Gpu, 
+                                    $"时间线等待值单调性验证失败: 命令缓冲区={i}, 值={value}");
+                                continue;
+                            }
+                        }
+                        
                         entry.TimelineWaits.Add(new TimelineWait { Semaphore = semaphore, Value = value, Stage = stage });
                         
                         // 记录已添加的等待值
@@ -433,6 +481,18 @@ namespace Ryujinx.Graphics.Vulkan
                             Logger.Warning?.PrintMsg(LogClass.Gpu, 
                                 $"检测到重复的时间线等待值: 命令缓冲区={i}, 值={value}，跳过添加");
                             continue;
+                        }
+                        
+                        // 如果TimelineManager可用，验证单调性
+                        if (_renderer?.TimelineManager != null)
+                        {
+                            bool valid = _renderer.TimelineManager.ValidateMonotonic(i, value, false);
+                            if (!valid)
+                            {
+                                Logger.Error?.PrintMsg(LogClass.Gpu, 
+                                    $"时间线等待值单调性验证失败（使用中）: 命令缓冲区={i}, 值={value}");
+                                continue;
+                            }
                         }
                         
                         entry.TimelineWaits.Add(new TimelineWait { Semaphore = semaphore, Value = value, Stage = stage });
@@ -634,7 +694,7 @@ namespace Ryujinx.Graphics.Vulkan
                     }
 
                     // 添加时间线信号（去重检查）
-                    HashSet<ulong> addedSignalValues = new();
+                    HashSet<ulong> addedSignalValues = new HashSet<ulong>();
                     foreach (var timelineSignal in entry.TimelineSignals)
                     {
                         // 防止同一个命令缓冲区中重复的时间线信号量值
@@ -667,7 +727,7 @@ namespace Ryujinx.Graphics.Vulkan
                     }
 
                     // 添加时间线等待（去重检查）
-                    HashSet<ulong> addedWaitValues = new();
+                    HashSet<ulong> addedWaitValues = new HashSet<ulong>();
                     foreach (var timelineWait in entry.TimelineWaits)
                     {
                         // 防止同一个命令缓冲区中重复的时间线等待值
@@ -818,6 +878,12 @@ namespace Ryujinx.Graphics.Vulkan
             // 清理已添加信号量值的跟踪
             _addedTimelineSignals[cbIndex].Clear();
             _addedTimelineWaits[cbIndex].Clear();
+            
+            // 清理 TimelineManager 的跟踪
+            if (_renderer?.TimelineManager != null)
+            {
+                _renderer.TimelineManager.ClearCommandBufferTracking(cbIndex);
+            }
 
             if (refreshFence)
             {

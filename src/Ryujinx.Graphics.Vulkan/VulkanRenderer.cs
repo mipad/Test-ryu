@@ -103,11 +103,14 @@ namespace Ryujinx.Graphics.Vulkan
         // 时间线信号量
         internal Semaphore TimelineSemaphore { get; private set; }
         
+        // 时间线信号量管理器（新增）
+        internal TimelineSemaphoreManager TimelineManager { get; private set; }
+        
         private readonly Func<Instance, Vk, SurfaceKHR> _getSurface;
         private readonly Func<string[]> _getRequiredExtensions;
         private readonly string _preferredGpuId;
         
-        // 时间线信号量计数器
+        // 时间线信号量计数器（保留用于向后兼容）
         private ulong _timelineValueCounter = 1;
         private readonly object _timelineLock = new object();
 
@@ -205,6 +208,11 @@ namespace Ryujinx.Graphics.Vulkan
                 
                 // 创建时间线信号量
                 CreateTimelineSemaphore();
+                
+                // 初始化时间线管理器
+                TimelineManager = new TimelineSemaphoreManager(this);
+                Logger.Info?.PrintMsg(LogClass.Gpu, 
+                    "时间线信号量管理器已初始化");
             }
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrSynchronization2 synchronization2Api))
@@ -1168,7 +1176,13 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             Logger.Notice.Print(LogClass.Gpu, $"GPU Memory: {GetTotalGPUMemory() / (1024 * 1024)} MiB");
             
             if (SupportsTimelineSemaphores)
+            {
                 Logger.Notice.Print(LogClass.Gpu, "Supports: Timeline Semaphores");
+                if (TimelineManager != null)
+                {
+                    Logger.Notice.Print(LogClass.Gpu, "Timeline Manager: Active");
+                }
+            }
             if (SupportsSynchronization2)
                 Logger.Notice.Print(LogClass.Gpu, "Supports: Synchronization2");
             if (SupportsDynamicRendering)
@@ -1211,7 +1225,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         public void PreFrame()
         {
             SyncManager.Cleanup();
-
         }
 
         public ICounterEvent ReportCounter(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved)
@@ -1430,6 +1443,10 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             foreach (var texture in Textures) texture.Release();
             foreach (var sampler in Samplers) sampler.Dispose();
 
+            // 销毁时间线管理器
+            TimelineManager?.Dispose();
+            TimelineManager = null;
+
             // 销毁时间线信号量
             if (TimelineSemaphore.Handle != 0)
             {
@@ -1531,18 +1548,28 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         
         // ========== 新增时间线信号量相关方法 ==========
         
-        // 获取下一个时间线信号量值
+        // 获取下一个时间线信号量值（使用TimelineManager如果可用）
         public ulong GetNextTimelineValue()
         {
+            if (TimelineManager != null)
+            {
+                return TimelineManager.GetNextValue();
+            }
+            
             lock (_timelineLock)
             {
                 return _timelineValueCounter++;
             }
         }
         
-        // 等待时间线信号量达到指定值
+        // 等待时间线信号量达到指定值（使用TimelineManager如果可用）
         public unsafe bool WaitTimelineSemaphore(ulong value, ulong timeout = ulong.MaxValue)
         {
+            if (TimelineManager != null)
+            {
+                return TimelineManager.WaitForValue(value, timeout);
+            }
+            
             if (!SupportsTimelineSemaphores || TimelineSemaphore.Handle == 0)
                 return false;
             
@@ -1559,10 +1586,80 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             return result == Result.Success;
         }
         
-        // 获取当前时间线信号量值（公开版本）
+        // 获取当前时间线信号量值（公开版本，使用TimelineManager如果可用）
         public ulong GetCurrentTimelineValue()
         {
+            if (TimelineManager != null)
+            {
+                return TimelineManager.GetCurrentValue();
+            }
+            
             return GetTimelineSemaphoreValue();
+        }
+        
+        // 处理待定的时间线操作
+        public void ProcessPendingTimelineOperations(bool flushBeforeSignals = false)
+        {
+            TimelineManager?.ProcessPending(flushBeforeSignals);
+        }
+        
+        // 预定一个时间线信号
+        public ulong ScheduleTimelineSignal(bool isStrict = false, string debugInfo = null)
+        {
+            if (TimelineManager != null)
+            {
+                return TimelineManager.ScheduleSignal(isStrict, debugInfo);
+            }
+            
+            return GetNextTimelineValue();
+        }
+        
+        // 预定一个时间线等待
+        public void ScheduleTimelineWait(ulong value, PipelineStageFlags stage = PipelineStageFlags.AllCommandsBit, string debugInfo = null)
+        {
+            TimelineManager?.ScheduleWait(value, stage, debugInfo);
+        }
+        
+        // 立即添加时间线信号
+        public bool AddTimelineSignalImmediate(ulong value, bool flushCommands = true, string debugInfo = null)
+        {
+            if (TimelineManager != null)
+            {
+                return TimelineManager.AddSignalImmediate(value, flushCommands, debugInfo);
+            }
+            
+            // 回退实现
+            if (!SupportsTimelineSemaphores || TimelineSemaphore.Handle == 0)
+                return false;
+            
+            if (flushCommands)
+                FlushAllCommands();
+            
+            CommandBufferPool?.AddInUseTimelineSignal(TimelineSemaphore, value);
+            return true;
+        }
+        
+        // 获取时间线管理器统计信息
+        public (long TotalSignals, long TotalWaits, TimeSpan Uptime)? GetTimelineStatistics()
+        {
+            return TimelineManager?.GetStatistics();
+        }
+        
+        // 重置时间线管理器统计信息
+        public void ResetTimelineStatistics()
+        {
+            TimelineManager?.ResetStatistics();
+        }
+        
+        // 获取待处理的时间线操作数量
+        public (int PendingSignals, int PendingWaits) GetPendingTimelineOperations()
+        {
+            if (TimelineManager != null)
+            {
+                return TimelineManager.GetPendingCounts();
+            }
+            
+            return (0, 0);
         }
     }
 }
