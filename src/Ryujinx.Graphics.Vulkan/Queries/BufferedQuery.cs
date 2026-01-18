@@ -198,14 +198,9 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private bool _usingBatchBuffer;
         private bool _batchResultReady;
 
-        // 查询结果平滑处理 - 修复线程安全问题
-        private const long QueryResultThreshold = 16; // 阈值，低于此值的结果视为0
-        private const int SmoothingWindowSize = 3; // 平滑窗口大小
-        
-        // 使用线程安全的集合和锁
-        private readonly Queue<long> _recentResults = new();
-        private long _smoothedResult = 0;
-        private readonly object _smoothingLock = new(); // 添加锁对象
+        // 简单的结果稳定化
+        private long _lastStableResult = 0;
+        private const long StabilityThreshold = 32; // 用于稳定结果的阈值
 
         private class QueryPoolManager
         {
@@ -385,55 +380,44 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             if (result == _defaultValue)
                 return false;
             
-            // 应用阈值处理
-            result = ApplyThresholdAndSmoothing(result);
+            // 简单的结果稳定化处理
+            result = StabilizeResult(result);
             return true;
         }
         
-        // 应用阈值和平滑处理 - 修复线程安全问题
-        private long ApplyThresholdAndSmoothing(long rawResult)
+        // 简单的结果稳定化方法
+        private long StabilizeResult(long rawResult)
         {
-            lock (_smoothingLock)
+            // 对于32位结果，需要特殊处理
+            if (_result32Bit && rawResult > int.MaxValue)
             {
-                // 对于32位结果，需要特殊处理
-                if (_result32Bit && rawResult > int.MaxValue)
-                {
-                    rawResult = (int)rawResult;
-                }
-                
-                // 应用阈值：低于阈值的结果视为0
-                long thresholdedResult = (rawResult < QueryResultThreshold) ? 0 : rawResult;
-                
-                // 更新最近结果队列
-                _recentResults.Enqueue(thresholdedResult);
-                if (_recentResults.Count > SmoothingWindowSize)
-                {
-                    _recentResults.Dequeue();
-                }
-                
-                // 计算平滑结果（使用中值滤波减少噪声）
-                if (_recentResults.Count == SmoothingWindowSize)
-                {
-                    // 为了避免排序时的并发问题，复制队列到数组再排序
-                    long[] resultsArray = _recentResults.ToArray();
-                    Array.Sort(resultsArray);
-                    _smoothedResult = resultsArray[SmoothingWindowSize / 2]; // 中值
-                }
-                else if (_recentResults.Count > 0)
-                {
-                    // 窗口未满时，使用平均值
-                    _smoothedResult = (long)_recentResults.Average();
-                }
-                else
-                {
-                    _smoothedResult = thresholdedResult;
-                }
-                
-                return _smoothedResult;
+                rawResult = (int)rawResult;
             }
+            
+            // 使用滞后阈值来稳定结果，避免在阈值附近来回跳动
+            long newStableResult;
+            
+            if (rawResult == 0)
+            {
+                // 如果结果为0，直接使用0
+                newStableResult = 0;
+            }
+            else if (Math.Abs(rawResult - _lastStableResult) < StabilityThreshold)
+            {
+                // 如果变化小于阈值，保持上次的稳定结果（滞后作用）
+                newStableResult = _lastStableResult;
+            }
+            else
+            {
+                // 如果变化足够大，更新稳定结果
+                newStableResult = rawResult;
+            }
+            
+            _lastStableResult = newStableResult;
+            return newStableResult;
         }
         
-        // 获取原始结果（不应用阈值和平滑）
+        // 获取原始结果（不应用稳定化）
         public bool TryGetRawResult(out long result)
         {
             result = Marshal.ReadInt64(_bufferMap);
@@ -500,10 +484,10 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 }
             }
             
-            // 应用阈值和平滑处理
+            // 应用稳定化处理
             if (data != _defaultValue)
             {
-                data = ApplyThresholdAndSmoothing(data);
+                data = StabilizeResult(data);
             }
 
             return data;
@@ -565,8 +549,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                         result = Marshal.ReadInt64(srcPtr);
                     }
                     
-                    // 应用阈值和平滑处理
-                    result = ApplyThresholdAndSmoothing(result);
+                    // 应用稳定化处理
+                    result = StabilizeResult(result);
                     
                     Marshal.WriteInt64(_bufferMap, result);
                     _usingBatchBuffer = false;
