@@ -79,13 +79,42 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
                 if (count > 0)
                 {
+                    // 收集需要重置的查询索引
+                    var indicesToReset = new List<uint>();
+                    var queriesToReset = new List<BufferedQuery>();
+                    
                     foreach (BufferedQuery query in _queryPool)
                     {
-                        query.PoolReset(cmd, ResetSequence);
-
-                        if (--count == 0)
+                        if (count == 0) break;
+                        
+                        indicesToReset.Add(query.GetQueryIndex());
+                        queriesToReset.Add(query);
+                        count--;
+                    }
+                    
+                    // 以16个为一组进行批量重置
+                    if (indicesToReset.Count > 0)
+                    {
+                        // 排序索引
+                        indicesToReset.Sort();
+                        
+                        // 分组处理
+                        for (int i = 0; i < indicesToReset.Count; i += 16)
                         {
-                            break;
+                            uint startIndex = indicesToReset[i];
+                            uint groupCount = (uint)Math.Min(16, indicesToReset.Count - i);
+                            
+                            // 执行批量重置
+                            foreach (var query in queriesToReset)
+                            {
+                                query.PoolReset(cmd, ResetSequence);
+                            }
+                            
+                            if (_isTbdrPlatform && groupCount == 16)
+                            {
+                                Logger.Debug?.Print(LogClass.Gpu, 
+                                    $"TBDR: Batch reset {groupCount} future counters for {Type}");
+                            }
                         }
                     }
                 }
