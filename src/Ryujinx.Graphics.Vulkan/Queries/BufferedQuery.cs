@@ -139,8 +139,12 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     
                     if (gd.IsTBDR)
                     {
-                        Logger.Debug?.Print(LogClass.Gpu, 
-                            $"Created batch result buffer for {type} ({(is64Bit ? "64-bit" : "32-bit")}), capacity: {capacity}");
+                        // 使用安全检查后的日志
+                        if (Logger.Debug.HasValue)
+                        {
+                            Logger.Debug.Value.Print(LogClass.Gpu, 
+                                $"Created batch result buffer for {type} ({(is64Bit ? "64-bit" : "32-bit")}), capacity: {capacity}");
+                        }
                     }
                 }
             }
@@ -167,7 +171,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private const long DefaultValue = unchecked((long)0xFFFFFFFEFFFFFFFE);
         private const long DefaultValueInt = 0xFFFFFFFE;
         private const ulong HighMask = 0xFFFFFFFF00000000;
-        private const int BatchResetSize = 16; // 批量重置大小
 
         private readonly Vk _api;
         private readonly Device _device;
@@ -196,65 +199,12 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private bool _usingBatchBuffer;
         private bool _batchResultReady;
 
-        // 批量重置支持
-        private static Vk _sharedApi;
-        private static Device _sharedDevice;
-        private static readonly Dictionary<QueryPool, List<ResetRange>> _pendingResetRanges = new();
-        private static readonly object _resetLock = new();
-
         private class QueryPoolManager
         {
             public QueryPool QueryPool { get; set; }
             public uint NextIndex { get; set; }
             public int ReferenceCount { get; set; }
             public const uint PoolSize = 8192;
-            
-            // 批量重置管理
-            private readonly List<ResetRange> _resetRanges = new();
-            private readonly object _rangeLock = new();
-            
-            public void AddResetRange(uint startIndex, uint count)
-            {
-                lock (_rangeLock)
-                {
-                    _resetRanges.Add(new ResetRange(startIndex, count));
-                }
-            }
-            
-            public List<ResetRange> GetAndClearResetRanges()
-            {
-                lock (_rangeLock)
-                {
-                    var ranges = new List<ResetRange>(_resetRanges);
-                    _resetRanges.Clear();
-                    return ranges;
-                }
-            }
-        }
-        
-        private struct ResetRange
-        {
-            public uint StartIndex;
-            public uint Count;
-            public uint EndIndex => StartIndex + Count - 1;
-            
-            public ResetRange(uint start, uint count)
-            {
-                StartIndex = start;
-                Count = count;
-            }
-            
-            public bool Overlaps(ResetRange other)
-            {
-                return !(EndIndex < other.StartIndex || other.EndIndex < StartIndex);
-            }
-            
-            public ResetRange Merge(ResetRange other)
-            {
-                uint start = Math.Min(StartIndex, other.StartIndex);
-                uint end = Math.Max(EndIndex, other.EndIndex);
-                return new ResetRange(start, end - start + 1);
-            }
         }
 
         public unsafe BufferedQuery(VulkanRenderer gd, Device device, PipelineFull pipeline, CounterType type, bool result32Bit, bool isTbdrPlatform)
@@ -265,13 +215,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _type = type;
             _result32Bit = result32Bit;
             _isTbdrPlatform = isTbdrPlatform;
-            
-            // 初始化共享API和Device引用
-            if (_sharedApi == null)
-            {
-                _sharedApi = gd.Api;
-                _sharedDevice = device;
-            }
             
             // 初始化批量结果缓冲区
             if (isTbdrPlatform)
@@ -318,7 +261,11 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     
                     if (_isTbdrPlatform && manager.ReferenceCount == 1)
                     {
-                        Logger.Info?.Print(LogClass.Gpu, $"Created query pool for {type} on TBDR platform, size: {QueryPoolManager.PoolSize}");
+                        if (Logger.Info.HasValue)
+                        {
+                            Logger.Info.Value.Print(LogClass.Gpu, 
+                                $"Created query pool for {type} on TBDR platform, size: {QueryPoolManager.PoolSize}");
+                        }
                     }
                 }
             }
@@ -479,8 +426,11 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
                 if (iterations >= MaxQueryRetries)
                 {
-                    Logger.Error?.Print(LogClass.Gpu, 
-                        $"Error: Query result {_type} timed out. Attempts: {iterations}");
+                    if (Logger.Error.HasValue)
+                    {
+                        Logger.Error.Value.Print(LogClass.Gpu, 
+                            $"Error: Query result {_type} timed out. Attempts: {iterations}");
+                    }
                     
                     // 强制返回默认值，避免阻塞
                     return 0;
@@ -553,8 +503,11 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 }
                 catch (Exception ex)
                 {
-                    Logger.Error?.Print(LogClass.Gpu, 
-                        $"Error copying batch result for {_type}: {ex.Message}");
+                    if (Logger.Error.HasValue)
+                    {
+                        Logger.Error.Value.Print(LogClass.Gpu, 
+                            $"Error copying batch result for {_type}: {ex.Message}");
+                    }
                     return false;
                 }
             }
@@ -574,117 +527,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 _api.CmdResetQueryPool(cmd, _queryPool, 0, 1);
             }
             _resetSequence = resetSequence;
-        }
-        
-        // 批量重置方法 - 16个一组
-        public static void BatchReset(CommandBuffer cmd, CounterType type)
-        {
-            if (!_queryPoolManagers.TryGetValue(type, out var manager))
-                return;
-            
-            var ranges = manager.GetAndClearResetRanges();
-            if (ranges.Count == 0)
-                return;
-            
-            // 合并范围，确保每个范围最多16个查询
-            var mergedRanges = MergeRanges(ranges);
-            
-            foreach (var range in mergedRanges)
-            {
-                if (_sharedApi != null)
-                {
-                    _sharedApi.CmdResetQueryPool(cmd, manager.QueryPool, range.StartIndex, range.Count);
-                    
-                    if (Logger.Debug != null && range.Count >= BatchResetSize)
-                    {
-                        
-                      Logger.Debug?.PrintMsg(LogClass.Gpu, $"Created batch result buffer for {type}...");
-                    }
-                }
-            }
-        }
-        
-        // 合并重置范围，确保每个范围不超过16个查询
-        private static List<ResetRange> MergeRanges(List<ResetRange> ranges)
-        {
-            if (ranges.Count == 0)
-                return new List<ResetRange>();
-            
-            // 首先将所有索引展平并排序
-            var allIndices = new List<uint>();
-            foreach (var range in ranges)
-            {
-                for (uint i = range.StartIndex; i <= range.EndIndex; i++)
-                {
-                    allIndices.Add(i);
-                }
-            }
-            
-            allIndices.Sort();
-            
-            // 以BatchResetSize为一组创建范围
-            var mergedRanges = new List<ResetRange>();
-            
-            for (int i = 0; i < allIndices.Count; i += BatchResetSize)
-            {
-                uint startIndex = allIndices[i];
-                uint count = (uint)Math.Min(BatchResetSize, allIndices.Count - i);
-                
-                // 检查是否连续
-                bool isContinuous = true;
-                for (int j = 1; j < count; j++)
-                {
-                    if (allIndices[i + j] != allIndices[i + j - 1] + 1)
-                    {
-                        isContinuous = false;
-                        break;
-                    }
-                }
-                
-                if (isContinuous)
-                {
-                    mergedRanges.Add(new ResetRange(startIndex, count));
-                }
-                else
-                {
-                    // 如果不连续，分成更小的连续块
-                    uint currentStart = startIndex;
-                    uint currentCount = 1;
-                    
-                    for (int j = 1; j < count; j++)
-                    {
-                        if (allIndices[i + j] == allIndices[i + j - 1] + 1)
-                        {
-                            currentCount++;
-                        }
-                        else
-                        {
-                            if (currentCount > 0)
-                            {
-                                mergedRanges.Add(new ResetRange(currentStart, currentCount));
-                            }
-                            currentStart = allIndices[i + j];
-                            currentCount = 1;
-                        }
-                    }
-                    
-                    if (currentCount > 0)
-                    {
-                        mergedRanges.Add(new ResetRange(currentStart, currentCount));
-                    }
-                }
-            }
-            
-            return mergedRanges;
-        }
-        
-        // 添加重置范围到批处理队列
-        public static void AddResetRange(CounterType type, uint startIndex, uint count)
-        {
-            if (!_queryPoolManagers.TryGetValue(type, out var manager))
-                return;
-            
-            manager.AddResetRange(startIndex, count);
         }
 
         public void PoolCopy(CommandBufferScoped cbs, uint queryIndex)
@@ -742,13 +584,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     {
                         _api.DestroyQueryPool(_device, manager.QueryPool, null);
                         _queryPoolManagers.TryRemove(_type, out _);
-                        
-                        // 清理共享引用
-                        if (_queryPoolManagers.Count == 0)
-                        {
-                            _sharedApi = null;
-                            _sharedDevice = default;
-                        }
                     }
                 }
             }
