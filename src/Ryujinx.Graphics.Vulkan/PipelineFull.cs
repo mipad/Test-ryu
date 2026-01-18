@@ -32,9 +32,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         private readonly List<BufferHolder> _backingSwaps;
 
-        // 精确查询优化
-        private bool _useConservativePreciseQueries = true; // 使用保守的精确查询策略
-
         public PipelineFull(VulkanRenderer gd, Device device) : base(gd, device)
         {
             _activeQueries = [];
@@ -55,9 +52,6 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     Logger.Info.Value.Print(LogClass.Gpu, "TBDR platform: Using optimized batch query processing");
                 }
-                
-                // 在TBDR平台上，根据硬件能力调整精确查询策略
-                _useConservativePreciseQueries = !gd.Capabilities.SupportsPreciseOcclusionQueries;
             }
         }
 
@@ -306,8 +300,24 @@ namespace Ryujinx.Graphics.Vulkan
             // 使用原始的单个查询重置逻辑
             foreach ((var queryPool, var index, var isOcclusion) in _activeQueries)
             {
-                bool isPrecise = ShouldUsePreciseQuery(isOcclusion);
+                bool isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
                 
+                // 在TBDR平台上，如果查询结果是用于条件渲染，尽量使用精确查询以避免闪烁
+                if (_isTbdrPlatform && isOcclusion)
+                {
+                    // TBDR平台上的优化：对于条件渲染，如果支持精确查询，尽量使用
+                    if (Gd.Capabilities.SupportsPreciseOcclusionQueries)
+                    {
+                        // 对于条件渲染，使用精确查询以获得更稳定的结果
+                        isPrecise = true;
+                    }
+                    else
+                    {
+                        // 如果不支持精确查询，只能使用非精确查询
+                        isPrecise = false;
+                    }
+                }
+
                 Gd.Api.CmdResetQueryPool(CommandBuffer, queryPool, index, 1);
                 Gd.Api.CmdBeginQuery(CommandBuffer, queryPool, index, isPrecise ? QueryControlFlags.PreciseBit : 0);
             }
@@ -315,23 +325,6 @@ namespace Ryujinx.Graphics.Vulkan
             Gd.ResetCounterPool();
 
             Restore();
-        }
-        
-        // 决定是否使用精确查询
-        private bool ShouldUsePreciseQuery(bool isOcclusion)
-        {
-            if (!isOcclusion || !Gd.Capabilities.SupportsPreciseOcclusionQueries)
-                return false;
-                
-            if (_isTbdrPlatform)
-            {
-                // TBDR平台：只在必要时使用精确查询
-                // 使用保守策略，减少闪烁
-                return !_useConservativePreciseQueries;
-            }
-            
-            // 非TBDR平台：如果支持则使用精确查询
-            return true;
         }
 
         public void RegisterActiveMirror(BufferHolder buffer)
@@ -353,7 +346,23 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
 
-            bool isPrecise = ShouldUsePreciseQuery(isOcclusion);
+            bool isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
+            
+            // 在TBDR平台上，如果查询结果是用于条件渲染，尽量使用精确查询以避免闪烁
+            if (_isTbdrPlatform && isOcclusion)
+            {
+                // TBDR平台上的优化：对于条件渲染，如果支持精确查询，尽量使用
+                if (Gd.Capabilities.SupportsPreciseOcclusionQueries)
+                {
+                    // 对于条件渲染，使用精确查询以获得更稳定的结果
+                    isPrecise = true;
+                }
+                else
+                {
+                    // 如果不支持精确查询，只能使用非精确查询
+                    isPrecise = false;
+                }
+            }
             
             Gd.Api.CmdBeginQuery(CommandBuffer, pool, index, isPrecise ? QueryControlFlags.PreciseBit : 0);
 
