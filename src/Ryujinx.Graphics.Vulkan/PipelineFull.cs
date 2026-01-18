@@ -48,7 +48,10 @@ namespace Ryujinx.Graphics.Vulkan
             
             if (_isTbdrPlatform)
             {
-                Logger.Info?.Print(LogClass.Gpu, "TBDR platform: Using optimized batch query processing");
+                if (Logger.Info.HasValue)
+                {
+                    Logger.Info.Value.Print(LogClass.Gpu, "TBDR platform: Using optimized batch query processing");
+                }
             }
         }
 
@@ -77,10 +80,13 @@ namespace Ryujinx.Graphics.Vulkan
                         
                         if (_isTbdrPlatform)
                         {
-                            Logger.Debug?.Print(LogClass.Gpu, 
-                                $"TBDR: Executed batch copy: pool={batch.QueryPool.Handle:X}, " +
-                                $"start={batch.StartIndex}, count={batch.Count}, " +
-                                $"offset={batch.ResultOffset}");
+                            if (Logger.Debug.HasValue)
+                            {
+                                Logger.Debug.Value.Print(LogClass.Gpu, 
+                                    $"TBDR: Executed batch copy: pool={batch.QueryPool.Handle:X}, " +
+                                    $"start={batch.StartIndex}, count={batch.Count}, " +
+                                    $"offset={batch.ResultOffset}");
+                            }
                         }
                     }
                 }
@@ -291,74 +297,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             _activeBufferMirrors.Clear();
 
-            // 批量重置所有活动查询 - 16个一组
-            BatchResetActiveQueries();
-            
-            Gd.ResetCounterPool();
-
-            Restore();
-        }
-        
-        // 批量重置活动查询的方法
-        private void BatchResetActiveQueries()
-        {
-            // 按查询池和类型分组
-            var groupedQueries = new Dictionary<CounterType, Dictionary<QueryPool, List<uint>>>();
-            
-            foreach ((var queryPool, var index, var isOcclusion) in _activeQueries)
-            {
-                // 确定查询类型（这里需要根据查询池确定类型）
-                // 在实际实现中，需要从查询池映射到类型
-                CounterType type = GetCounterTypeFromPool(queryPool, isOcclusion);
-                
-                if (!groupedQueries.ContainsKey(type))
-                {
-                    groupedQueries[type] = new Dictionary<QueryPool, List<uint>>();
-                }
-                
-                if (!groupedQueries[type].ContainsKey(queryPool))
-                {
-                    groupedQueries[type][queryPool] = new List<uint>();
-                }
-                
-                groupedQueries[type][queryPool].Add(index);
-            }
-            
-            // 对每个类型执行批量重置
-            foreach (var typeGroup in groupedQueries)
-            {
-                CounterType type = typeGroup.Key;
-                
-                // 收集所有索引并排序
-                var allIndices = new List<uint>();
-                foreach (var poolIndices in typeGroup.Value.Values)
-                {
-                    allIndices.AddRange(poolIndices);
-                }
-                
-                allIndices.Sort();
-                
-                // 以16个为一组创建重置范围
-                for (int i = 0; i < allIndices.Count; i += 16)
-                {
-                    uint startIndex = allIndices[i];
-                    uint count = (uint)Math.Min(16, allIndices.Count - i);
-                    
-                    // 添加到批量重置队列
-                    BufferedQuery.AddResetRange(type, startIndex, count);
-                }
-                
-                // 执行批量重置
-                BufferedQuery.BatchReset(CommandBuffer, type);
-                
-                if (_isTbdrPlatform && allIndices.Count > 0)
-                {
-                    Logger.Debug?.Print(LogClass.Gpu, 
-                        $"TBDR: Batch reset {allIndices.Count} queries for {type} in groups of 16");
-                }
-            }
-
-            // 开始每个查询（保持原有逻辑）
+            // 使用原始的单个查询重置逻辑
             foreach ((var queryPool, var index, var isOcclusion) in _activeQueries)
             {
                 bool isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
@@ -368,18 +307,13 @@ namespace Ryujinx.Graphics.Vulkan
                     isPrecise = false;
                 }
 
+                Gd.Api.CmdResetQueryPool(CommandBuffer, queryPool, index, 1);
                 Gd.Api.CmdBeginQuery(CommandBuffer, queryPool, index, isPrecise ? QueryControlFlags.PreciseBit : 0);
             }
-        }
-        
-        // 辅助方法：从查询池获取计数器类型
-        private CounterType GetCounterTypeFromPool(QueryPool pool, bool isOcclusion)
-        {
-            // 这里需要实现从查询池到计数器类型的映射
-            // 在实际实现中，可能需要维护一个映射表
-            
-            // 简化实现：根据是否为遮挡查询返回类型
-            return isOcclusion ? CounterType.SamplesPassed : CounterType.PrimitivesGenerated;
+
+            Gd.ResetCounterPool();
+
+            Restore();
         }
 
         public void RegisterActiveMirror(BufferHolder buffer)
@@ -393,10 +327,8 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 EndRenderPass();
 
-                // 对于需要重置的查询，添加到批量重置队列
-                var type = query.GetCounterType();
-                BufferedQuery.AddResetRange(type, index, 1);
-                
+                Gd.Api.CmdResetQueryPool(CommandBuffer, pool, index, 1);
+
                 if (fromSamplePool)
                 {
                     Gd.ResetFutureCounters(CommandBuffer, AutoFlush.GetRemainingQueries());
@@ -501,8 +433,11 @@ namespace Ryujinx.Graphics.Vulkan
                                 }
                             }
                             
-                            Logger.Debug?.Print(LogClass.Gpu, 
-                                $"TBDR: Processing {batchCount} batches, {queryCount} queries");
+                            if (Logger.Debug.HasValue)
+                            {
+                                Logger.Debug.Value.Print(LogClass.Gpu, 
+                                    $"TBDR: Processing {batchCount} batches, {queryCount} queries");
+                            }
                         }
                     }
                     
