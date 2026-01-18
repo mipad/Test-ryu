@@ -597,8 +597,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     
                     if (Logger.Debug != null && range.Count >= BatchResetSize)
                     {
-                        Logger.Debug.Print(LogClass.Gpu, 
-                            $"Batch reset query pool: type={type}, start={range.StartIndex}, count={range.Count}");
+                        
+                      Logger.Debug?.PrintMsg(LogClass.Gpu, $"Created batch result buffer for {type}...");
                     }
                 }
             }
