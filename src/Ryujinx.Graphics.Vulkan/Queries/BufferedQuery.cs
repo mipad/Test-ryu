@@ -139,7 +139,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     
                     if (gd.IsTBDR)
                     {
-                        // 使用安全检查后的日志
                         if (Logger.Debug.HasValue)
                         {
                             Logger.Debug.Value.Print(LogClass.Gpu, 
@@ -198,6 +197,12 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private ulong _batchBufferOffset;
         private bool _usingBatchBuffer;
         private bool _batchResultReady;
+
+        // 查询结果平滑处理
+        private const long QueryResultThreshold = 16; // 阈值，低于此值的结果视为0
+        private const int SmoothingWindowSize = 3; // 平滑窗口大小
+        private readonly Queue<long> _recentResults = new();
+        private long _smoothedResult = 0;
 
         private class QueryPoolManager
         {
@@ -374,6 +379,52 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         public bool TryGetResult(out long result)
         {
             result = Marshal.ReadInt64(_bufferMap);
+            if (result == _defaultValue)
+                return false;
+            
+            // 应用阈值处理
+            result = ApplyThresholdAndSmoothing(result);
+            return true;
+        }
+        
+        // 应用阈值和平滑处理
+        private long ApplyThresholdAndSmoothing(long rawResult)
+        {
+            // 对于32位结果，需要特殊处理
+            if (_result32Bit && rawResult > int.MaxValue)
+            {
+                rawResult = (int)rawResult;
+            }
+            
+            // 应用阈值：低于阈值的结果视为0
+            long thresholdedResult = (rawResult < QueryResultThreshold) ? 0 : rawResult;
+            
+            // 更新最近结果队列
+            _recentResults.Enqueue(thresholdedResult);
+            if (_recentResults.Count > SmoothingWindowSize)
+            {
+                _recentResults.Dequeue();
+            }
+            
+            // 计算平滑结果（使用中值滤波减少噪声）
+            if (_recentResults.Count == SmoothingWindowSize)
+            {
+                var sortedResults = _recentResults.OrderBy(r => r).ToList();
+                _smoothedResult = sortedResults[SmoothingWindowSize / 2]; // 中值
+            }
+            else
+            {
+                // 窗口未满时，使用平均值
+                _smoothedResult = (long)_recentResults.Average();
+            }
+            
+            return _smoothedResult;
+        }
+        
+        // 获取原始结果（不应用阈值和平滑）
+        public bool TryGetRawResult(out long result)
+        {
+            result = Marshal.ReadInt64(_bufferMap);
             return result != _defaultValue;
         }
 
@@ -436,6 +487,12 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     return 0;
                 }
             }
+            
+            // 应用阈值和平滑处理
+            if (data != _defaultValue)
+            {
+                data = ApplyThresholdAndSmoothing(data);
+            }
 
             return data;
         }
@@ -495,6 +552,9 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     {
                         result = Marshal.ReadInt64(srcPtr);
                     }
+                    
+                    // 应用阈值和平滑处理
+                    result = ApplyThresholdAndSmoothing(result);
                     
                     Marshal.WriteInt64(_bufferMap, result);
                     _usingBatchBuffer = false;

@@ -26,6 +26,13 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private readonly object _lock = new();
         private ulong _result = ulong.MaxValue;
         private double _divisor = 1f;
+        
+        // 防抖动机制
+        private const int VisibilityChangeThreshold = 3; // 需要连续N帧状态相同才认为状态改变
+        private int _visibleFrameCount = 0;
+        private int _invisibleFrameCount = 0;
+        private bool _lastVisibleState = false;
+        private bool _currentVisibleState = false;
 
         public CounterQueueEvent(CounterQueue queue, CounterType type, ulong drawIndex)
         {
@@ -87,8 +94,11 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                         _counter.TryCopyFromBatchResult();
                         if (_counter.TryGetResult(out queryResult))
                         {
-                            Logger.Debug?.Print(LogClass.Gpu, 
-                                $"Query {Type} recovered from batch buffer after timeout");
+                            if (Logger.Debug.HasValue)
+                            {
+                                Logger.Debug.Value.Print(LogClass.Gpu, 
+                                    $"Query {Type} recovered from batch buffer after timeout");
+                            }
                         }
                     }
                 }
@@ -103,6 +113,20 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     }
                 }
 
+                // 应用防抖动逻辑
+                bool isVisible = ApplyDebouncing(queryResult);
+                
+                // 如果不可见，将结果视为0
+                if (!isVisible)
+                {
+                    queryResult = 0;
+                }
+                else if (queryResult == 0)
+                {
+                    // 如果逻辑上可见但查询结果为0，使用一个小的非零值
+                    queryResult = 1;
+                }
+
                 result += _divisor == 1 ? (ulong)queryResult : (ulong)Math.Ceiling(queryResult / _divisor);
 
                 _result = result;
@@ -113,6 +137,58 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
                 return true;
             }
+        }
+        
+        // 应用防抖动逻辑
+        private bool ApplyDebouncing(long queryResult)
+        {
+            // 判断当前帧是否可见
+            bool isCurrentlyVisible = queryResult > 0;
+            
+            // 更新状态计数器
+            if (isCurrentlyVisible)
+            {
+                _visibleFrameCount++;
+                _invisibleFrameCount = 0;
+            }
+            else
+            {
+                _invisibleFrameCount++;
+                _visibleFrameCount = 0;
+            }
+            
+            // 判断是否需要改变状态
+            if (isCurrentlyVisible != _currentVisibleState)
+            {
+                // 如果新状态持续足够多帧，则改变状态
+                if ((isCurrentlyVisible && _visibleFrameCount >= VisibilityChangeThreshold) ||
+                    (!isCurrentlyVisible && _invisibleFrameCount >= VisibilityChangeThreshold))
+                {
+                    _lastVisibleState = _currentVisibleState;
+                    _currentVisibleState = isCurrentlyVisible;
+                    
+                    if (Logger.Debug.HasValue && _lastVisibleState != _currentVisibleState)
+                    {
+                        Logger.Debug.Value.Print(LogClass.Gpu, 
+                            $"Query {Type} visibility changed: {_lastVisibleState} -> {_currentVisibleState}, " +
+                            $"queryResult={queryResult}, frames={Math.Max(_visibleFrameCount, _invisibleFrameCount)}");
+                    }
+                }
+            }
+            else
+            {
+                // 状态相同，重置另一状态的计数器
+                if (isCurrentlyVisible)
+                {
+                    _invisibleFrameCount = 0;
+                }
+                else
+                {
+                    _visibleFrameCount = 0;
+                }
+            }
+            
+            return _currentVisibleState;
         }
 
         public void Flush()
