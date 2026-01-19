@@ -27,6 +27,7 @@ namespace Ryujinx.Graphics.Vulkan
         // 批次时间线信号量映射
         private readonly Dictionary<ulong, List<BufferedQuery>> _batchTimelineMap = new();
         private ulong _currentBatchTimelineValue = 0;
+        private readonly Dictionary<ulong, bool> _timelineCompletionStatus = new();
 
         private ulong _byteWeight;
 
@@ -35,6 +36,8 @@ namespace Ryujinx.Graphics.Vulkan
         // 时间戳查询支持
         private bool _enableTimestampQueries = false;
         private ulong _lastTimestamp = 0;
+        private readonly object _timestampLock = new();
+        private readonly Dictionary<ulong, ulong> _drawTimestampMap = new();
 
         public PipelineFull(VulkanRenderer gd, Device device) : base(gd, device)
         {
@@ -53,7 +56,7 @@ namespace Ryujinx.Graphics.Vulkan
             
             if (_isTbdrPlatform)
             {
-                Logger.Info?.Print(LogClass.Gpu, "TBDR platform: Using batch query processing");
+                Logger.Info?.Print(LogClass.Gpu, "TBDR platform: Using batch query processing with timeline semaphores");
             }
         }
 
@@ -67,8 +70,11 @@ namespace Ryujinx.Graphics.Vulkan
                 // 如果查询包含时间戳，记录它
                 if (hasTimestamp && _enableTimestampQueries)
                 {
-                    _lastTimestamp = Gd.GetNextTimelineValue();
-                    Gd.RegisterTimestamp(DrawCount, _lastTimestamp);
+                    lock (_timestampLock)
+                    {
+                        _lastTimestamp = Gd.GetNextTimelineValue();
+                        _drawTimestampMap[DrawCount] = _lastTimestamp;
+                    }
                 }
             }
 
@@ -81,6 +87,9 @@ namespace Ryujinx.Graphics.Vulkan
                     Cbs.CommandBufferIndex, 
                     Gd.TimelineSemaphore, 
                     _currentBatchTimelineValue);
+                
+                // 标记时间线信号量为待完成
+                _timelineCompletionStatus[_currentBatchTimelineValue] = false;
                 
                 // 通知批次中的所有查询
                 if (_batchTimelineMap.TryGetValue(_currentBatchTimelineValue, out var batchQueries))
@@ -170,7 +179,6 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (Gd.Capabilities.SupportsConditionalRendering)
             {
-                // 实现条件渲染结束逻辑
             }
 
             _activeConditionalRender?.ReleaseHostAccess();
@@ -185,34 +193,11 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     if (!value.ReserveForHostAccess())
                     {
-                        // 无法保留主机访问，刷新查询并返回false
-                        FlushPendingQuery();
                         return false;
-                    }
-
-                    // 对于TBDR平台，需要确保查询结果可用
-                    if (_isTbdrPlatform)
-                    {
-                        // 确保命令缓冲区已提交
-                        if (AutoFlush.ShouldFlushQuery())
-                        {
-                            FlushCommandsImpl();
-                        }
-                        
-                        // 等待查询结果可用
-                        // 注意：这里我们只刷新，不阻塞等待，因为阻塞可能导致死锁
-                        // 条件渲染将依赖查询的AwaitResult方法
-                        
-                        // 记录日志以便调试
-                        Logger.Debug?.Print(LogClass.Gpu, 
-                            $"TBDR: Conditional rendering using query type={evt.Type}, drawIndex={evt.DrawIndex}");
                     }
 
                     if (Gd.Capabilities.SupportsConditionalRendering)
                     {
-                        // 条件渲染设置
-                        // 注意：这里需要确保查询结果已经可用
-                        // 实现条件渲染开始逻辑
                     }
 
                     _activeConditionalRender = evt;
@@ -220,14 +205,12 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
 
-            // 非遮挡查询或比较值不为0，刷新查询并返回false
             FlushPendingQuery();
             return false;
         }
 
         public bool TryHostConditionalRendering(ICounterEvent value, ICounterEvent compare, bool isEqual)
         {
-            // 总是刷新查询并返回false，因为我们不支持两个事件的比较
             FlushPendingQuery();
             return false;
         }
@@ -320,7 +303,7 @@ namespace Ryujinx.Graphics.Vulkan
                 
                 if (_isTbdrPlatform && isOcclusion)
                 {
-                    isPrecise = false; // TBDR平台禁用精确查询
+                    isPrecise = false;
                 }
 
                 Gd.Api.CmdResetQueryPool(CommandBuffer, queryPool, index, 1);
@@ -355,7 +338,7 @@ namespace Ryujinx.Graphics.Vulkan
             
             if (_isTbdrPlatform && isOcclusion)
             {
-                isPrecise = false; // TBDR平台禁用精确查询
+                isPrecise = false;
             }
             
             Gd.Api.CmdBeginQuery(CommandBuffer, pool, index, isPrecise ? QueryControlFlags.PreciseBit : 0);
@@ -400,8 +383,8 @@ namespace Ryujinx.Graphics.Vulkan
                 
                 // 对于TBDR平台，更激进的批处理
                 int targetSize = _isTbdrPlatform ? 
-                    (forceFlush ? 1 : 4) : // TBDR平台更小的批次
-                    (forceFlush ? 1 : 16); // 非TBDR平台正常批次
+                    (forceFlush ? 1 : 8) :
+                    (forceFlush ? 1 : 32);
                 
                 if (!forceFlush && _batchQueryCount < targetSize)
                 {
@@ -449,12 +432,10 @@ namespace Ryujinx.Graphics.Vulkan
                 // 如果强制刷新或需要刷新命令缓冲区
                 if (forceFlush || (_pendingQueryCopies.Count > 0 && AutoFlush.RegisterPendingQuery()))
                 {
-                    // 对于TBDR平台，立即复制查询结果
-                    if (_isTbdrPlatform && _pendingQueryCopies.Count > 0)
+                    if (_isTbdrPlatform)
                     {
-                        CopyPendingQuery();
                         Logger.Debug?.Print(LogClass.Gpu, 
-                            $"TBDR: Immediately copying {_pendingQueryCopies.Count} queries");
+                            $"TBDR: Processing batch of {_pendingQueryCopies.Count} queries");
                     }
                 }
             }
@@ -477,5 +458,48 @@ namespace Ryujinx.Graphics.Vulkan
 
         // 获取最后的时间戳
         public ulong GetLastTimestamp() => _lastTimestamp;
+        
+        // 等待所有挂起的查询完成（防止闪烁）
+        public void WaitForPendingQueries()
+        {
+            if (Gd.SupportsTimelineSemaphores)
+            {
+                lock (_batchLock)
+                {
+                    // 检查所有待处理的时间线信号量是否完成
+                    var pendingTimelines = new List<ulong>();
+                    foreach (var kvp in _timelineCompletionStatus)
+                    {
+                        if (!kvp.Value)
+                        {
+                            pendingTimelines.Add(kvp.Key);
+                        }
+                    }
+                    
+                    foreach (var timeline in pendingTimelines)
+                    {
+                        if (Gd.WaitTimelineSemaphore(timeline, 100000000)) // 100毫秒超时
+                        {
+                            _timelineCompletionStatus[timeline] = true;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 注册时间戳到渲染器
+        public void RegisterTimestampToRenderer(ulong drawIndex)
+        {
+            if (_enableTimestampQueries && Gd.SupportsTimelineSemaphores)
+            {
+                lock (_timestampLock)
+                {
+                    if (_drawTimestampMap.TryGetValue(drawIndex, out var timestamp))
+                    {
+                        Gd.RegisterTimestamp(drawIndex, timestamp);
+                    }
+                }
+            }
+        }
     }
 }
