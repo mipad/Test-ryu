@@ -115,6 +115,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 }
                 else
                 {
+                    // 在消费事件前等待查询完成（防止闪烁）
+                    evt.WaitForCompletion();
                     evt.TryConsume(ref _accumulatedCounter, true, _waiterCount == 0 ? _wakeSignal : null);
                 }
 
@@ -209,6 +211,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 while (_events.Count > 0)
                 {
                     CounterQueueEvent flush = _events.Peek();
+                    // 在刷新前等待查询完成
+                    flush.WaitForCompletion();
                     if (!flush.TryConsume(ref _accumulatedCounter, true))
                     {
                         return;
@@ -224,6 +228,9 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
             _wakeSignal.Set();
 
+            // 在等待前确保查询完成
+            evt.WaitForCompletion();
+            
             while (!evt.Disposed)
             {
                 _eventConsumed.WaitOne(1);
@@ -261,6 +268,15 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _eventConsumed.Dispose();
             
             _timestampMap.Clear();
+        }
+        
+        // 获取指定绘制的时间戳
+        public ulong GetTimestamp(ulong drawIndex)
+        {
+            lock (_lock)
+            {
+                return _timestampMap.TryGetValue(drawIndex, out var timestamp) ? timestamp : 0;
+            }
         }
     }
 }

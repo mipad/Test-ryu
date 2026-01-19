@@ -299,26 +299,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 // 等待时间线信号量达到指定值
                 if (_gd.WaitTimelineSemaphore(targetValue, 1000000000)) // 1秒超时
                 {
-                    // 确保命令缓冲区已执行完成
-                    if (_gd.CommandBufferPool != null)
-                    {
-                        // 注意：CommandBufferPool可能没有WaitForCompletion方法
-                        // 如果没有，我们将依赖时间线信号量
-                        try
-                        {
-                            // 尝试调用WaitForCompletion方法
-                            var method = _gd.CommandBufferPool.GetType().GetMethod("WaitForCompletion");
-                            if (method != null)
-                            {
-                                method.Invoke(_gd.CommandBufferPool, null);
-                            }
-                        }
-                        catch
-                        {
-                            // 方法不存在，继续使用时间线信号量
-                        }
-                    }
-                    
                     data = Marshal.ReadInt64(_bufferMap);
                     if (_includeTimestamp)
                     {
@@ -328,15 +308,13 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 }
                 else
                 {
-                    Logger.Warning?.Print(LogClass.Gpu, 
-                        $"Timeline semaphore wait timed out for query {_type}. Value: {targetValue}");
-                    
-                    // 不直接返回0，而是尝试轮询，避免条件渲染错误
-                    // 继续使用下面的轮询机制
+                    Logger.Error?.Print(LogClass.Gpu, 
+                        $"Timeline semaphore wait timed out for query {_type}. Value: {targetValue}, falling back to polling.");
+                    // 不直接返回，继续使用下面的轮询机制
                 }
             }
 
-            // 使用原有的轮询机制
+            // 否则使用原有的轮询机制
             if (wakeSignal == null)
             {
                 if (WaitingForValue(data))
@@ -351,7 +329,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             else
             {
                 int iterations = 0;
-                const int spinCount = 1000; // 自旋等待次数
                 
                 while (WaitingForValue(data) && iterations++ < MaxQueryRetries)
                 {
@@ -363,19 +340,12 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     
                     if (WaitingForValue(data))
                     {
-                        if (iterations < spinCount)
+                        if (_isTbdrPlatform && iterations < 1000)
                         {
-                            // 前几次自旋等待
-                            Thread.SpinWait(100);
-                        }
-                        else if (_isTbdrPlatform && iterations < spinCount + 1000)
-                        {
-                            // TBDR平台：更频繁的Yield
                             Thread.Yield();
                         }
                         else
                         {
-                            // 最终等待
                             wakeSignal.WaitOne(_isTbdrPlatform ? 0 : 1);
                         }
                     }
@@ -383,10 +353,10 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
                 if (iterations >= MaxQueryRetries)
                 {
-                    Logger.Warning?.Print(LogClass.Gpu, 
-                        $"Query result {_type} timed out. Attempts: {iterations}");
+                    Logger.Error?.Print(LogClass.Gpu, 
+                        $"Error: Query result {_type} timed out. Attempts: {iterations}");
                     
-                    // 返回0可能会导致条件渲染跳过绘制，但比阻塞好
+                    // 强制返回默认值，避免阻塞
                     return (0, 0);
                 }
             }
@@ -520,6 +490,16 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             {
                 Marshal.WriteInt64(_bufferMap + sizeof(long), 0);
             }
+        }
+        
+        // 等待查询完成（使用时间线信号量）
+        public bool WaitForCompletion(ulong timeout = ulong.MaxValue)
+        {
+            if (_useTimelineSemaphores && _timelineSignalValue.HasValue)
+            {
+                return _gd.WaitTimelineSemaphore(_timelineSignalValue.Value, timeout);
+            }
+            return true; // 如果不支持时间线信号量，假设已经完成
         }
     }
 }

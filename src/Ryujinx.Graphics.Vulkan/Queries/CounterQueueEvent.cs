@@ -126,6 +126,13 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 return _timestamp;
             }
         }
+        
+        // 等待查询完成（防止闪烁）
+        public void WaitForCompletion()
+        {
+            // 使用超时避免无限等待
+            _counter.WaitForCompletion(50000000); // 50毫秒超时
+        }
 
         public void Flush()
         {
