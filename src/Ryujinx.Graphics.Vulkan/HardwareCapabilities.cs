@@ -42,6 +42,7 @@ namespace Ryujinx.Graphics.Vulkan
         public readonly bool SupportsTransformFeedbackQueries;
         public readonly bool SupportsPreciseOcclusionQueries;
         public readonly bool SupportsPipelineStatisticsQuery;
+        public readonly bool SupportsTimestampQueries; // 新增：时间戳查询支持
         public readonly bool SupportsGeometryShader;
         public readonly bool SupportsTessellationShader;
         public readonly bool SupportsViewportArray2;
@@ -52,7 +53,7 @@ namespace Ryujinx.Graphics.Vulkan
         public readonly bool SupportsTimelineSemaphores;
         public readonly bool SupportsSynchronization2;
         public readonly bool SupportsDynamicRendering;
-        public readonly bool SupportsAstcDecodeMode; // 新增：ASTC 解码模式支持
+        public readonly bool SupportsAstcDecodeMode;
         public readonly uint SubgroupSize;
         public readonly SampleCountFlags SupportedSampleCounts;
         public readonly PortabilitySubsetFlags PortabilitySubset;
@@ -87,6 +88,7 @@ namespace Ryujinx.Graphics.Vulkan
             bool supportsTransformFeedbackQueries,
             bool supportsPreciseOcclusionQueries,
             bool supportsPipelineStatisticsQuery,
+            bool supportsTimestampQueries, // 新增参数
             bool supportsGeometryShader,
             bool supportsTessellationShader,
             bool supportsViewportArray2,
@@ -97,7 +99,7 @@ namespace Ryujinx.Graphics.Vulkan
             bool supportsTimelineSemaphores,
             bool supportsSynchronization2,
             bool supportsDynamicRendering,
-            bool supportsAstcDecodeMode, // 新增参数
+            bool supportsAstcDecodeMode,
             uint subgroupSize,
             SampleCountFlags supportedSampleCounts,
             PortabilitySubsetFlags portabilitySubset,
@@ -131,6 +133,7 @@ namespace Ryujinx.Graphics.Vulkan
             SupportsTransformFeedbackQueries = supportsTransformFeedbackQueries;
             SupportsPreciseOcclusionQueries = supportsPreciseOcclusionQueries;
             SupportsPipelineStatisticsQuery = supportsPipelineStatisticsQuery;
+            SupportsTimestampQueries = supportsTimestampQueries; // 新增赋值
             SupportsGeometryShader = supportsGeometryShader;
             SupportsTessellationShader = supportsTessellationShader;
             SupportsViewportArray2 = supportsViewportArray2;
@@ -141,7 +144,7 @@ namespace Ryujinx.Graphics.Vulkan
             SupportsTimelineSemaphores = supportsTimelineSemaphores;
             SupportsSynchronization2 = supportsSynchronization2;
             SupportsDynamicRendering = supportsDynamicRendering;
-            SupportsAstcDecodeMode = supportsAstcDecodeMode; // 新增赋值
+            SupportsAstcDecodeMode = supportsAstcDecodeMode;
             SubgroupSize = subgroupSize;
             SupportedSampleCounts = supportedSampleCounts;
             PortabilitySubset = portabilitySubset;

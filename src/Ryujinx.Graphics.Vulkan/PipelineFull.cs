@@ -7,18 +7,18 @@ using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Vulkan
 {
-    class PipelineFull : PipelineBase, IPipeline
+    partial class PipelineFull : PipelineBase, IPipeline
     {
         private const ulong MinByteWeightForFlush = 256 * 1024 * 1024;
 
         private readonly List<(QueryPool, uint, bool)> _activeQueries;
         private CounterQueueEvent _activeConditionalRender;
 
-        private readonly List<(BufferedQuery, uint)> _pendingQueryCopies;
+        private readonly List<(BufferedQuery, uint, bool)> _pendingQueryCopies; // 添加时间戳标志
         private readonly List<BufferHolder> _activeBufferMirrors;
 
-        // 批量查询处理
-        private readonly Queue<(BufferedQuery, uint)> _queryBatchQueue = new();
+        // 批量查询处理（与Skyline类似）
+        private readonly Queue<(BufferedQuery, uint, bool)> _queryBatchQueue = new();
         private int _batchQueryCount = 0;
         private readonly bool _isTbdrPlatform;
         private readonly int _targetBatchSize;
@@ -31,6 +31,10 @@ namespace Ryujinx.Graphics.Vulkan
         private ulong _byteWeight;
 
         private readonly List<BufferHolder> _backingSwaps;
+
+        // 时间戳查询支持
+        private bool _enableTimestampQueries = false;
+        private ulong _lastTimestamp = 0;
 
         public PipelineFull(VulkanRenderer gd, Device device) : base(gd, device)
         {
@@ -45,6 +49,7 @@ namespace Ryujinx.Graphics.Vulkan
             
             _isTbdrPlatform = gd.IsTBDR;
             _targetBatchSize = _isTbdrPlatform ? 8 : 64;
+            _enableTimestampQueries = gd.Capabilities.SupportsTimestampQueries;
             
             if (_isTbdrPlatform)
             {
@@ -54,10 +59,17 @@ namespace Ryujinx.Graphics.Vulkan
 
         private void CopyPendingQuery()
         {
-            // 批量复制所有查询结果
-            foreach (var (query, index) in _pendingQueryCopies)
+            // 批量复制所有查询结果（支持时间戳）
+            foreach (var (query, index, hasTimestamp) in _pendingQueryCopies)
             {
                 query.BatchCopy(Cbs, index, _currentBatchTimelineValue);
+                
+                // 如果查询包含时间戳，记录它
+                if (hasTimestamp && _enableTimestampQueries)
+                {
+                    _lastTimestamp = Gd.GetNextTimelineValue();
+                    Gd.RegisterTimestamp(DrawCount, _lastTimestamp);
+                }
             }
 
             _pendingQueryCopies.Clear();
@@ -339,11 +351,11 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        public void CopyQueryResults(BufferedQuery query, uint index)
+        public void CopyQueryResults(BufferedQuery query, uint index, bool includeTimestamp = false)
         {
             lock (_batchLock)
             {
-                _queryBatchQueue.Enqueue((query, index));
+                _queryBatchQueue.Enqueue((query, index, includeTimestamp));
                 _batchQueryCount++;
                 
                 // 达到批次大小时处理批次
@@ -382,9 +394,9 @@ namespace Ryujinx.Graphics.Vulkan
                     // 收集批次中的所有查询
                     while (_queryBatchQueue.Count > 0)
                     {
-                        var (query, index) = _queryBatchQueue.Dequeue();
+                        var (query, index, hasTimestamp) = _queryBatchQueue.Dequeue();
                         batchQueries.Add(query);
-                        _pendingQueryCopies.Add((query, index));
+                        _pendingQueryCopies.Add((query, index, hasTimestamp));
                     }
                     
                     // 存储映射关系，以便后续通知查询
@@ -401,8 +413,8 @@ namespace Ryujinx.Graphics.Vulkan
                     // 没有时间线信号量支持，直接复制
                     while (_queryBatchQueue.Count > 0)
                     {
-                        var (query, index) = _queryBatchQueue.Dequeue();
-                        _pendingQueryCopies.Add((query, index));
+                        var (query, index, hasTimestamp) = _queryBatchQueue.Dequeue();
+                        _pendingQueryCopies.Add((query, index, hasTimestamp));
                     }
                 }
                 
@@ -434,5 +446,8 @@ namespace Ryujinx.Graphics.Vulkan
             ProcessQueryBatch(true);
             CopyPendingQuery();
         }
+
+        // 获取最后的时间戳
+        public ulong GetLastTimestamp() => _lastTimestamp;
     }
 }

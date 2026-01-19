@@ -58,6 +58,7 @@ namespace Ryujinx.Graphics.Vulkan
         internal bool SupportsDynamicRendering { get; private set; }
         internal bool SupportsExtendedDynamicState2 { get; private set; }
         internal bool SupportsASTCDecodeMode { get; private set; }
+        internal bool SupportsTimestampQueries { get; private set; }
 
         internal uint QueueFamilyIndex { get; private set; }
         internal Queue Queue { get; private set; }
@@ -253,6 +254,9 @@ namespace Ryujinx.Graphics.Vulkan
             // 检测 ASTC 解码模式扩展支持
             SupportsASTCDecodeMode = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_astc_decode_mode");
 
+            // 检测时间戳查询支持
+            SupportsTimestampQueries = _physicalDevice.PhysicalDeviceFeatures.PipelineStatisticsQuery;
+
             SupportsFragmentDensityMap = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map");
             SupportsFragmentDensityMap2 = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map2");
             SupportsMultiview = _physicalDevice.IsDeviceExtensionPresent("VK_KHR_multiview");
@@ -333,6 +337,29 @@ namespace Ryujinx.Graphics.Vulkan
                 properties2.PNext = &propertiesAstcDecode;
             }
 
+            // 添加时间戳查询属性
+            PhysicalDeviceQueueFamilyProperties* queueFamilyProperties = null;
+            uint queueFamilyCount = 0;
+            Api.GetPhysicalDeviceQueueFamilyProperties(_physicalDevice.PhysicalDevice, &queueFamilyCount, null);
+            
+            queueFamilyProperties = (PhysicalDeviceQueueFamilyProperties*)NativeMemory.Alloc((nuint)(sizeof(PhysicalDeviceQueueFamilyProperties) * queueFamilyCount));
+            
+            try
+            {
+                Api.GetPhysicalDeviceQueueFamilyProperties(_physicalDevice.PhysicalDevice, &queueFamilyCount, queueFamilyProperties);
+                
+                // 检查图形队列是否支持时间戳查询
+                bool timestampValidBits = queueFamilyProperties[queueFamilyIndex].TimestampValidBits > 0;
+                SupportsTimestampQueries = SupportsTimestampQueries && timestampValidBits;
+            }
+            finally
+            {
+                if (queueFamilyProperties != null)
+                {
+                    NativeMemory.Free(queueFamilyProperties);
+                }
+            }
+
             PhysicalDeviceFeatures2 features2 = new()
             {
                 SType = StructureType.PhysicalDeviceFeatures2,
@@ -390,11 +417,10 @@ namespace Ryujinx.Graphics.Vulkan
                 features2.PNext = &featuresAstcDecode;
             }
 
-            
-PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
-{
-    SType = StructureType.PhysicalDeviceTextureCompressionAstcHdrFeaturesExt,
-};
+            PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
+            {
+                SType = StructureType.PhysicalDeviceTextureCompressionAstcHdrFeaturesExt,
+            };
 
             if (_physicalDevice.IsDeviceExtensionPresent("VK_EXT_texture_compression_astc_hdr"))
             {
@@ -635,6 +661,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 propertiesTransformFeedback.TransformFeedbackQueries,
                 features2.Features.OcclusionQueryPrecise,
                 _physicalDevice.PhysicalDeviceFeatures.PipelineStatisticsQuery,
+                SupportsTimestampQueries, // 时间戳查询支持
                 _physicalDevice.PhysicalDeviceFeatures.GeometryShader,
                 _physicalDevice.PhysicalDeviceFeatures.TessellationShader,
                 _physicalDevice.IsDeviceExtensionPresent("VK_NV_viewport_array2"),
@@ -676,7 +703,8 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
 
             Barriers = new BarrierBatch(this);
 
-            _counters = new Counters(this, _device, _pipeline);
+            // 创建Counters并传递时间戳支持标志
+            _counters = new Counters(this, _device, _pipeline, SupportsTimestampQueries);
         }
 
         private unsafe void CreateTimelineSemaphore()
@@ -1052,6 +1080,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 supportsSynchronization2: SupportsSynchronization2,
                 supportsDynamicRendering: SupportsDynamicRendering,
                 supportsExtendedDynamicState2: SupportsExtendedDynamicState2,
+                supportsTimestampQueries: SupportsTimestampQueries, // 新增：时间戳查询支持
                 supportsASTCDecodeMode: SupportsASTCDecodeMode,
                 uniformBufferSetIndex: PipelineBase.UniformSetIndex,
                 storageBufferSetIndex: PipelineBase.StorageSetIndex,
@@ -1177,6 +1206,8 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 Logger.Notice.Print(LogClass.Gpu, "Supports: Multiview");
             if (SupportsASTCDecodeMode)
                 Logger.Notice.Print(LogClass.Gpu, "Supports: ASTC Decode Mode");
+            if (SupportsTimestampQueries)
+                Logger.Notice.Print(LogClass.Gpu, "Supports: Timestamp Queries");
             
             if (IsTBDR)
             {
@@ -1247,6 +1278,12 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         internal Counters GetCounters()
         {
             return _counters;
+        }
+        
+        // 注册时间戳（用于像Skyline那样可选的时间戳记录）
+        public void RegisterTimestamp(ulong drawIndex, ulong timestamp)
+        {
+            _counters?.RegisterTimestamp(drawIndex, timestamp);
         }
 
         public void BackgroundContextAction(Action action, bool alwaysBackground = false)
