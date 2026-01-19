@@ -10,11 +10,13 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private readonly CounterQueue[] _counterQueues;
         private readonly PipelineFull _pipeline;
         private readonly bool _isTbdrPlatform;
+        private readonly bool _enableTimestamps;
 
-        public Counters(VulkanRenderer gd, Device device, PipelineFull pipeline)
+        public Counters(VulkanRenderer gd, Device device, PipelineFull pipeline, bool enableTimestamps = false)
         {
             _pipeline = pipeline;
             _isTbdrPlatform = gd.IsTBDR;
+            _enableTimestamps = enableTimestamps && gd.Capabilities.SupportsTimestampQueries;
 
             int count = Enum.GetNames(typeof(CounterType)).Length;
 
@@ -23,12 +25,14 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             for (int index = 0; index < _counterQueues.Length; index++)
             {
                 CounterType type = (CounterType)index;
-                _counterQueues[index] = new CounterQueue(gd, device, pipeline, type, _isTbdrPlatform);
+                _counterQueues[index] = new CounterQueue(gd, device, pipeline, type, 
+                    _isTbdrPlatform, _enableTimestamps);
             }
             
             if (_isTbdrPlatform)
             {
-                Logger.Info?.Print(LogClass.Gpu, $"Initialized {count} counter queues for TBDR platform");
+                Logger.Info?.Print(LogClass.Gpu, 
+                    $"Initialized {count} counter queues for TBDR platform, timestamps: {_enableTimestamps}");
             }
         }
 
@@ -45,14 +49,25 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _counterQueues[(int)CounterType.SamplesPassed].ResetFutureCounters(cmd, count);
         }
 
-        public CounterQueueEvent QueueReport(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved)
+        public CounterQueueEvent QueueReport(CounterType type, EventHandler<ulong> resultHandler, 
+                                           float divisor, bool hostReserved)
         {
-            return _counterQueues[(int)type].QueueReport(resultHandler, divisor, _pipeline.DrawCount, hostReserved);
+            return _counterQueues[(int)type].QueueReport(resultHandler, divisor, 
+                _pipeline.DrawCount, hostReserved);
         }
 
         public void QueueReset(CounterType type)
         {
             _counterQueues[(int)type].QueueReset(_pipeline.DrawCount);
+        }
+
+        // 注册时间戳
+        public void RegisterTimestamp(ulong drawIndex, ulong timestamp)
+        {
+            foreach (var queue in _counterQueues)
+            {
+                queue.RegisterTimestamp(drawIndex, timestamp);
+            }
         }
 
         public void Update()

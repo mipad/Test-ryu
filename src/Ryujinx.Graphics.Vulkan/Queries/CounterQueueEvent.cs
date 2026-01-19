@@ -18,21 +18,23 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
         private readonly CounterQueue _queue;
         private readonly BufferedQuery _counter;
+        private readonly bool _includeTimestamp;
 
         private bool _hostAccessReserved;
         private int _refCount = 1; // Starts with a reference from the counter queue.
 
         private readonly object _lock = new();
         private ulong _result = ulong.MaxValue;
+        private ulong _timestamp = 0;
         private double _divisor = 1f;
 
-        public CounterQueueEvent(CounterQueue queue, CounterType type, ulong drawIndex)
+        public CounterQueueEvent(CounterQueue queue, CounterType type, ulong drawIndex, bool includeTimestamp = false)
         {
             _queue = queue;
+            _includeTimestamp = includeTimestamp;
 
             _counter = queue.GetQueryObject();
             Type = type;
-
             DrawIndex = drawIndex;
 
             _counter.Begin(_queue.ResetSequence);
@@ -41,6 +43,11 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         public Auto<DisposableBuffer> GetBuffer()
         {
             return _counter.GetBuffer();
+        }
+
+        public Auto<DisposableBuffer> GetTimestampBuffer()
+        {
+            return _counter.GetTimestampBuffer();
         }
 
         internal void Clear(bool counterReset)
@@ -56,7 +63,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         internal void Complete(bool withResult, double divisor)
         {
             _counter.End(withResult);
-
             _divisor = divisor;
         }
 
@@ -75,28 +81,49 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 }
 
                 long queryResult;
+                ulong timestamp = 0;
 
                 if (block)
                 {
-                    queryResult = _counter.AwaitResult(wakeSignal);
+                    var (res, ts) = _counter.AwaitResult(wakeSignal);
+                    queryResult = res;
+                    timestamp = ts;
                 }
                 else
                 {
-                    if (!_counter.TryGetResult(out queryResult))
+                    if (_includeTimestamp)
                     {
-                        return false;
+                        if (!_counter.TryGetResult(out queryResult, out timestamp))
+                        {
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        if (!_counter.TryGetResult(out queryResult))
+                        {
+                            return false;
+                        }
                     }
                 }
 
                 result += _divisor == 1 ? (ulong)queryResult : (ulong)Math.Ceiling(queryResult / _divisor);
-
                 _result = result;
+                _timestamp = timestamp;
 
                 OnResult?.Invoke(this, result);
 
                 Dispose();
 
                 return true;
+            }
+        }
+
+        public ulong GetTimestamp()
+        {
+            lock (_lock)
+            {
+                return _timestamp;
             }
         }
 
@@ -162,7 +189,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         public void Dispose()
         {
             Disposed = true;
-
             DecrementRefCount();
         }
     }

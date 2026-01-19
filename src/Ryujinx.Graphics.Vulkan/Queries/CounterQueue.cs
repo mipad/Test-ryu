@@ -37,28 +37,36 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
         public int ResetSequence { get; private set; }
 
-        internal CounterQueue(VulkanRenderer gd, Device device, PipelineFull pipeline, CounterType type, bool isTbdrPlatform)
+        // 时间戳支持
+        private readonly bool _includeTimestamps;
+        private readonly Dictionary<ulong, ulong> _timestampMap = new();
+
+        internal CounterQueue(VulkanRenderer gd, Device device, PipelineFull pipeline, CounterType type, 
+                             bool isTbdrPlatform, bool includeTimestamps = false)
         {
             _gd = gd;
             _device = device;
             _pipeline = pipeline;
             Type = type;
             _isTbdrPlatform = isTbdrPlatform;
+            _includeTimestamps = includeTimestamps;
 
             _queryPool = new Queue<BufferedQuery>(QueryPoolInitialSize);
             for (int i = 0; i < QueryPoolInitialSize; i++)
             {
-                _queryPool.Enqueue(new BufferedQuery(_gd, _device, _pipeline, type, _gd.IsAmdWindows, _isTbdrPlatform));
+                _queryPool.Enqueue(new BufferedQuery(_gd, _device, _pipeline, type, _gd.IsAmdWindows, 
+                    _isTbdrPlatform, includeTimestamps));
             }
 
-            _current = new CounterQueueEvent(this, type, 0);
+            _current = new CounterQueueEvent(this, type, 0, includeTimestamps);
 
             _consumerThread = new Thread(EventConsumer);
             _consumerThread.Start();
             
             if (_isTbdrPlatform)
             {
-                Logger.Debug?.Print(LogClass.Gpu, $"Created counter queue for {type} on TBDR platform");
+                Logger.Debug?.Print(LogClass.Gpu, 
+                    $"Created counter queue for {type} on TBDR platform, timestamps: {includeTimestamps}");
             }
         }
 
@@ -127,7 +135,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     return result;
                 }
 
-                return new BufferedQuery(_gd, _device, _pipeline, Type, _gd.IsAmdWindows, _isTbdrPlatform);
+                return new BufferedQuery(_gd, _device, _pipeline, Type, _gd.IsAmdWindows, 
+                    _isTbdrPlatform, _includeTimestamps);
             }
         }
 
@@ -140,7 +149,17 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             }
         }
 
-        public CounterQueueEvent QueueReport(EventHandler<ulong> resultHandler, float divisor, ulong lastDrawIndex, bool hostReserved)
+        // 注册时间戳
+        public void RegisterTimestamp(ulong drawIndex, ulong timestamp)
+        {
+            lock (_lock)
+            {
+                _timestampMap[drawIndex] = timestamp;
+            }
+        }
+
+        public CounterQueueEvent QueueReport(EventHandler<ulong> resultHandler, float divisor, 
+                                           ulong lastDrawIndex, bool hostReserved)
         {
             CounterQueueEvent result;
             ulong draws = lastDrawIndex - _current.DrawIndex;
@@ -159,7 +178,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
                 result = _current;
 
-                _current = new CounterQueueEvent(this, Type, lastDrawIndex);
+                _current = new CounterQueueEvent(this, Type, lastDrawIndex, _includeTimestamps);
             }
 
             _queuedEvent.Set();
@@ -220,7 +239,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 while (_events.Count > 0)
                 {
                     CounterQueueEvent evt = _events.Dequeue();
-
                     evt.Dispose();
                 }
 
@@ -241,6 +259,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _queuedEvent.Dispose();
             _wakeSignal.Dispose();
             _eventConsumed.Dispose();
+            
+            _timestampMap.Clear();
         }
     }
 }

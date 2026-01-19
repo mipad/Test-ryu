@@ -15,6 +15,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private const long DefaultValue = unchecked((long)0xFFFFFFFEFFFFFFFE);
         private const long DefaultValueInt = 0xFFFFFFFE;
         private const ulong HighMask = 0xFFFFFFFF00000000;
+        private const uint QueryPoolSize = 0x1000; // 固定为4096，与Skyline一致
 
         private readonly Vk _api;
         private readonly Device _device;
@@ -34,11 +35,16 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         private readonly long _defaultValue;
         private int? _resetSequence;
         
+        // 时间戳支持（像Skyline那样可选）
+        private readonly bool _includeTimestamp;
+        private BufferHolder _timestampBuffer;
+        private nint _timestampMap;
+        
         // 时间线信号量支持
         private ulong? _timelineSignalValue;
         private readonly bool _useTimelineSemaphores;
 
-        // 查询池管理
+        // 查询池管理（与Skyline类似）
         private static readonly ConcurrentDictionary<CounterType, QueryPoolManager> _queryPoolManagers = new();
         private readonly bool _isTbdrPlatform;
 
@@ -51,13 +57,14 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             public uint NextIndex { get; set; }
             public int ReferenceCount { get; set; }
             public int ActiveQueries { get; set; }
-            public const uint PoolSize = 4096; // 固定为4096
+            public const uint PoolSize = QueryPoolSize;
             
             public void IncrementActive() => ActiveQueries++;
             public void DecrementActive() => ActiveQueries--;
         }
 
-        public unsafe BufferedQuery(VulkanRenderer gd, Device device, PipelineFull pipeline, CounterType type, bool result32Bit, bool isTbdrPlatform)
+        public unsafe BufferedQuery(VulkanRenderer gd, Device device, PipelineFull pipeline, CounterType type, 
+                                   bool result32Bit, bool isTbdrPlatform, bool includeTimestamp = false)
         {
             _gd = gd;
             _api = gd.Api;
@@ -66,6 +73,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _type = type;
             _result32Bit = result32Bit;
             _isTbdrPlatform = isTbdrPlatform;
+            _includeTimestamp = includeTimestamp;
             
             // 检查是否支持时间线信号量
             _useTimelineSemaphores = gd.SupportsTimelineSemaphores && gd.TimelineSemaphore.Handle != 0;
@@ -74,7 +82,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
             if (_isSupported)
             {
-                // 使用查询池管理器
+                // 使用查询池管理器（与Skyline类似）
                 var manager = _queryPoolManagers.GetOrAdd(type, _ =>
                 {
                     QueryPipelineStatisticFlags flags = type == CounterType.PrimitivesGenerated ?
@@ -113,7 +121,8 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     
                     if (_isTbdrPlatform && manager.ReferenceCount == 1)
                     {
-                        Logger.Info?.Print(LogClass.Gpu, $"Created query pool for {type} on TBDR platform, size: {QueryPoolManager.PoolSize}");
+                        Logger.Info?.Print(LogClass.Gpu, 
+                            $"Created query pool for {type} on TBDR platform, size: {QueryPoolManager.PoolSize}, timestamp: {includeTimestamp}");
                     }
                 }
             }
@@ -137,12 +146,33 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 Interlocked.Increment(ref _totalQueriesCreated);
             }
 
-            BufferHolder buffer = gd.BufferManager.Create(gd, sizeof(long), forConditionalRendering: true);
+            // 创建结果缓冲区（像Skyline那样）
+            int bufferSize = sizeof(long);
+            if (_includeTimestamp)
+            {
+                bufferSize += sizeof(ulong); // 额外空间存储时间戳
+            }
 
-            _bufferMap = buffer.Map(0, sizeof(long));
+            BufferHolder buffer = gd.BufferManager.Create(gd, bufferSize, forConditionalRendering: true);
+            _bufferMap = buffer.Map(0, bufferSize);
             _defaultValue = result32Bit ? DefaultValueInt : DefaultValue;
+            
+            // 初始化缓冲区
             Marshal.WriteInt64(_bufferMap, _defaultValue);
+            if (_includeTimestamp)
+            {
+                Marshal.WriteInt64(_bufferMap + sizeof(long), 0); // 时间戳初始为0
+            }
+            
             _buffer = buffer;
+
+            // 如果需要时间戳，创建单独的时间戳缓冲区（像Skyline那样）
+            if (_includeTimestamp)
+            {
+                _timestampBuffer = gd.BufferManager.Create(gd, sizeof(ulong), forConditionalRendering: false);
+                _timestampMap = _timestampBuffer.Map(0, sizeof(ulong));
+                Marshal.WriteInt64(_timestampMap, 0);
+            }
         }
 
         private static bool QueryTypeSupported(VulkanRenderer gd, CounterType type)
@@ -172,6 +202,11 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             return _buffer.GetBuffer();
         }
 
+        public Auto<DisposableBuffer> GetTimestampBuffer()
+        {
+            return _timestampBuffer?.GetBuffer();
+        }
+
         public void Reset()
         {
             End(false);
@@ -199,8 +234,15 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
             if (withResult && _isSupported)
             {
+                // 重置缓冲区值
                 Marshal.WriteInt64(_bufferMap, _defaultValue);
-                _pipeline.CopyQueryResults(this, _queryIndex);
+                if (_includeTimestamp)
+                {
+                    Marshal.WriteInt64(_bufferMap + sizeof(long), 0);
+                }
+                
+                // 请求复制结果（可选时间戳）
+                _pipeline.CopyQueryResults(this, _queryIndex, _includeTimestamp);
                 
                 // 如果支持时间线信号量，分配一个信号量值
                 if (_useTimelineSemaphores)
@@ -211,6 +253,10 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             else
             {
                 Marshal.WriteInt64(_bufferMap, 0);
+                if (_includeTimestamp)
+                {
+                    Marshal.WriteInt64(_bufferMap + sizeof(long), 0);
+                }
             }
         }
 
@@ -220,15 +266,30 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 (!_result32Bit && ((ulong)data & HighMask) == ((ulong)_defaultValue & HighMask));
         }
 
+        public bool TryGetResult(out long result, out ulong timestamp)
+        {
+            result = Marshal.ReadInt64(_bufferMap);
+            if (_includeTimestamp)
+            {
+                timestamp = (ulong)Marshal.ReadInt64(_bufferMap + sizeof(long));
+            }
+            else
+            {
+                timestamp = 0;
+            }
+            return result != _defaultValue;
+        }
+
         public bool TryGetResult(out long result)
         {
             result = Marshal.ReadInt64(_bufferMap);
             return result != _defaultValue;
         }
 
-        public long AwaitResult(AutoResetEvent wakeSignal = null)
+        public (long Result, ulong Timestamp) AwaitResult(AutoResetEvent wakeSignal = null)
         {
             long data = _defaultValue;
+            ulong timestamp = 0;
 
             // 优先使用时间线信号量等待
             if (_useTimelineSemaphores && _timelineSignalValue.HasValue)
@@ -239,7 +300,11 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 if (_gd.WaitTimelineSemaphore(targetValue, 1000000000)) // 1秒超时
                 {
                     data = Marshal.ReadInt64(_bufferMap);
-                    return data != _defaultValue ? data : 0;
+                    if (_includeTimestamp)
+                    {
+                        timestamp = (ulong)Marshal.ReadInt64(_bufferMap + sizeof(long));
+                    }
+                    return (data != _defaultValue ? data : 0, timestamp);
                 }
                 else
                 {
@@ -247,7 +312,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                         $"Timeline semaphore wait timed out for query {_type}. Value: {targetValue}");
                     
                     // 强制返回默认值，避免阻塞
-                    return 0;
+                    return (0, 0);
                 }
             }
 
@@ -257,6 +322,10 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 if (WaitingForValue(data))
                 {
                     data = Marshal.ReadInt64(_bufferMap);
+                    if (_includeTimestamp)
+                    {
+                        timestamp = (ulong)Marshal.ReadInt64(_bufferMap + sizeof(long));
+                    }
                 }
             }
             else
@@ -266,6 +335,11 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 while (WaitingForValue(data) && iterations++ < MaxQueryRetries)
                 {
                     data = Marshal.ReadInt64(_bufferMap);
+                    if (_includeTimestamp)
+                    {
+                        timestamp = (ulong)Marshal.ReadInt64(_bufferMap + sizeof(long));
+                    }
+                    
                     if (WaitingForValue(data))
                     {
                         if (_isTbdrPlatform && iterations < 1000)
@@ -285,17 +359,18 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                         $"Error: Query result {_type} timed out. Attempts: {iterations}");
                     
                     // 强制返回默认值，避免阻塞
-                    return 0;
+                    return (0, 0);
                 }
             }
 
-            return data;
+            return (data, timestamp);
         }
 
-        // 批量复制查询结果
-        public void BatchCopy(CommandBufferScoped cbs, uint queryIndex, ulong batchTimelineValue = 0)
+        // 批量复制查询结果（像Skyline那样支持时间戳）
+        public unsafe void BatchCopy(CommandBufferScoped cbs, uint queryIndex, ulong batchTimelineValue = 0)
         {
-            Buffer buffer = _buffer.GetBuffer(cbs.CommandBuffer, true).Get(cbs, 0, sizeof(long), true).Value;
+            Buffer resultBuffer = _buffer.GetBuffer(cbs.CommandBuffer, true).Get(cbs, 0, 
+                _includeTimestamp ? sizeof(long) + sizeof(ulong) : sizeof(long), true).Value;
 
             QueryResultFlags flags = QueryResultFlags.ResultWaitBit;
 
@@ -304,15 +379,33 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 flags |= QueryResultFlags.Result64Bit;
             }
 
+            // 复制查询结果
             _api.CmdCopyQueryPoolResults(
                 cbs.CommandBuffer,
                 _queryPool,
                 queryIndex,
                 1,
-                buffer,
+                resultBuffer,
                 0,
                 (ulong)(_result32Bit ? sizeof(int) : sizeof(long)),
                 flags);
+            
+            // 如果包含时间戳，复制时间戳（像Skyline那样）
+            if (_includeTimestamp && _timestampBuffer != null)
+            {
+                Buffer timestampBuffer = _timestampBuffer.GetBuffer(cbs.CommandBuffer, true)
+                    .Get(cbs, 0, sizeof(ulong), true).Value;
+                
+                // 将时间戳复制到结果缓冲区的适当位置
+                var bufferCopy = new BufferCopy
+                {
+                    Size = sizeof(ulong),
+                    SrcOffset = 0,
+                    DstOffset = (ulong)sizeof(long)
+                };
+                
+                _api.CmdCopyBuffer(cbs.CommandBuffer, timestampBuffer, resultBuffer, 1, &bufferCopy);
+            }
             
             // 设置批次时间线信号量值
             if (batchTimelineValue > 0 && _useTimelineSemaphores)
@@ -339,6 +432,7 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         public unsafe void Dispose()
         {
             _buffer.Dispose();
+            _timestampBuffer?.Dispose();
             
             // 重置时间线信号量值
             _timelineSignalValue = null;
@@ -376,6 +470,12 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             }
         }
         
+        // 获取查询索引
+        internal uint GetQueryIndex() => _queryIndex;
+        
+        // 获取查询池
+        internal QueryPool GetQueryPool() => _queryPool;
+        
         // 获取统计信息
         public static void LogStatistics()
         {
@@ -388,6 +488,10 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         {
             _timelineSignalValue = null;
             Marshal.WriteInt64(_bufferMap, _defaultValue);
+            if (_includeTimestamp)
+            {
+                Marshal.WriteInt64(_bufferMap + sizeof(long), 0);
+            }
         }
     }
 }
