@@ -170,6 +170,7 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (Gd.Capabilities.SupportsConditionalRendering)
             {
+                // 实现条件渲染结束逻辑
             }
 
             _activeConditionalRender?.ReleaseHostAccess();
@@ -184,11 +185,34 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     if (!value.ReserveForHostAccess())
                     {
+                        // 无法保留主机访问，刷新查询并返回false
+                        FlushPendingQuery();
                         return false;
+                    }
+
+                    // 对于TBDR平台，需要确保查询结果可用
+                    if (_isTbdrPlatform)
+                    {
+                        // 确保命令缓冲区已提交
+                        if (AutoFlush.ShouldFlushQuery())
+                        {
+                            FlushCommandsImpl();
+                        }
+                        
+                        // 等待查询结果可用
+                        // 注意：这里我们只刷新，不阻塞等待，因为阻塞可能导致死锁
+                        // 条件渲染将依赖查询的AwaitResult方法
+                        
+                        // 记录日志以便调试
+                        Logger.Debug?.Print(LogClass.Gpu, 
+                            $"TBDR: Conditional rendering using query type={evt.Type}, drawIndex={evt.DrawIndex}");
                     }
 
                     if (Gd.Capabilities.SupportsConditionalRendering)
                     {
+                        // 条件渲染设置
+                        // 注意：这里需要确保查询结果已经可用
+                        // 实现条件渲染开始逻辑
                     }
 
                     _activeConditionalRender = evt;
@@ -196,12 +220,14 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
 
+            // 非遮挡查询或比较值不为0，刷新查询并返回false
             FlushPendingQuery();
             return false;
         }
 
         public bool TryHostConditionalRendering(ICounterEvent value, ICounterEvent compare, bool isEqual)
         {
+            // 总是刷新查询并返回false，因为我们不支持两个事件的比较
             FlushPendingQuery();
             return false;
         }
@@ -294,7 +320,7 @@ namespace Ryujinx.Graphics.Vulkan
                 
                 if (_isTbdrPlatform && isOcclusion)
                 {
-                    isPrecise = false;
+                    isPrecise = false; // TBDR平台禁用精确查询
                 }
 
                 Gd.Api.CmdResetQueryPool(CommandBuffer, queryPool, index, 1);
@@ -329,7 +355,7 @@ namespace Ryujinx.Graphics.Vulkan
             
             if (_isTbdrPlatform && isOcclusion)
             {
-                isPrecise = false;
+                isPrecise = false; // TBDR平台禁用精确查询
             }
             
             Gd.Api.CmdBeginQuery(CommandBuffer, pool, index, isPrecise ? QueryControlFlags.PreciseBit : 0);
@@ -374,8 +400,8 @@ namespace Ryujinx.Graphics.Vulkan
                 
                 // 对于TBDR平台，更激进的批处理
                 int targetSize = _isTbdrPlatform ? 
-                    (forceFlush ? 1 : 8) :
-                    (forceFlush ? 1 : 32);
+                    (forceFlush ? 1 : 4) : // TBDR平台更小的批次
+                    (forceFlush ? 1 : 16); // 非TBDR平台正常批次
                 
                 if (!forceFlush && _batchQueryCount < targetSize)
                 {
@@ -423,10 +449,12 @@ namespace Ryujinx.Graphics.Vulkan
                 // 如果强制刷新或需要刷新命令缓冲区
                 if (forceFlush || (_pendingQueryCopies.Count > 0 && AutoFlush.RegisterPendingQuery()))
                 {
-                    if (_isTbdrPlatform)
+                    // 对于TBDR平台，立即复制查询结果
+                    if (_isTbdrPlatform && _pendingQueryCopies.Count > 0)
                     {
+                        CopyPendingQuery();
                         Logger.Debug?.Print(LogClass.Gpu, 
-                            $"TBDR: Processing batch of {_pendingQueryCopies.Count} queries");
+                            $"TBDR: Immediately copying {_pendingQueryCopies.Count} queries");
                     }
                 }
             }
