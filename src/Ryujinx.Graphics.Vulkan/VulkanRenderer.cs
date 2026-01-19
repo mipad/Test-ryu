@@ -12,6 +12,7 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
 using Format = Ryujinx.Graphics.GAL.Format;
 using PrimitiveTopology = Ryujinx.Graphics.GAL.PrimitiveTopology;
 using SamplerCreateInfo = Ryujinx.Graphics.GAL.SamplerCreateInfo;
@@ -338,11 +339,11 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             // 添加时间戳查询属性
-            PhysicalDeviceQueueFamilyProperties* queueFamilyProperties = null;
+            QueueFamilyProperties* queueFamilyProperties = null;
             uint queueFamilyCount = 0;
             Api.GetPhysicalDeviceQueueFamilyProperties(_physicalDevice.PhysicalDevice, &queueFamilyCount, null);
             
-            queueFamilyProperties = (PhysicalDeviceQueueFamilyProperties*)NativeMemory.Alloc((nuint)(sizeof(PhysicalDeviceQueueFamilyProperties) * queueFamilyCount));
+            queueFamilyProperties = (QueueFamilyProperties*)NativeMemory.Alloc((nuint)(sizeof(QueueFamilyProperties) * queueFamilyCount));
             
             try
             {
@@ -1080,8 +1081,8 @@ namespace Ryujinx.Graphics.Vulkan
                 supportsSynchronization2: SupportsSynchronization2,
                 supportsDynamicRendering: SupportsDynamicRendering,
                 supportsExtendedDynamicState2: SupportsExtendedDynamicState2,
-                supportsTimestampQueries: SupportsTimestampQueries, // 新增：时间戳查询支持
                 supportsASTCDecodeMode: SupportsASTCDecodeMode,
+                supportsTimestampQueries: SupportsTimestampQueries, // 新增：时间戳查询支持
                 uniformBufferSetIndex: PipelineBase.UniformSetIndex,
                 storageBufferSetIndex: PipelineBase.StorageSetIndex,
                 textureSetIndex: PipelineBase.TextureSetIndex,
