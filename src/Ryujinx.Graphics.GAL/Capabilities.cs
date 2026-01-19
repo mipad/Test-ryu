@@ -58,7 +58,8 @@ namespace Ryujinx.Graphics.GAL
         public readonly bool SupportsSynchronization2;
         public readonly bool SupportsDynamicRendering;
         public readonly bool SupportsExtendedDynamicState2;
-        public readonly bool SupportsASTCDecodeMode; // 新增：ASTC 解码模式支持
+        public readonly bool SupportsASTCDecodeMode;
+        public readonly bool SupportsTimestampQueries; // 新增：时间戳查询支持
 
         public readonly int UniformBufferSetIndex;
         public readonly int StorageBufferSetIndex;
@@ -135,7 +136,8 @@ namespace Ryujinx.Graphics.GAL
             bool supportsSynchronization2,
             bool supportsDynamicRendering,
             bool supportsExtendedDynamicState2,
-            bool supportsASTCDecodeMode, // 新增参数
+            bool supportsASTCDecodeMode,
+            bool supportsTimestampQueries, // 新增参数
             int uniformBufferSetIndex,
             int storageBufferSetIndex,
             int textureSetIndex,
@@ -206,7 +208,8 @@ namespace Ryujinx.Graphics.GAL
             SupportsSynchronization2 = supportsSynchronization2;
             SupportsDynamicRendering = supportsDynamicRendering;
             SupportsExtendedDynamicState2 = supportsExtendedDynamicState2;
-            SupportsASTCDecodeMode = supportsASTCDecodeMode; // 新增赋值
+            SupportsASTCDecodeMode = supportsASTCDecodeMode;
+            SupportsTimestampQueries = supportsTimestampQueries; // 新增赋值
             UniformBufferSetIndex = uniformBufferSetIndex;
             StorageBufferSetIndex = storageBufferSetIndex;
             TextureSetIndex = textureSetIndex;
