@@ -151,7 +151,6 @@ namespace Ryujinx.Graphics.OpenGL
                 needsFragmentOutputSpecialization: false,
                 reduceShaderPrecision: false,
                 supportsAstcCompression: HwCapabilities.SupportsAstcCompression,
-                supportsASTCDecodeMode: false, // 添加缺失的参数
                 supportsBc123Compression: HwCapabilities.SupportsTextureCompressionS3tc,
                 supportsBc45Compression: HwCapabilities.SupportsTextureCompressionRgtc,
                 supportsBc67Compression: true,
@@ -196,6 +195,8 @@ namespace Ryujinx.Graphics.OpenGL
                 supportsSynchronization2: false,
                 supportsDynamicRendering: false,
                 supportsExtendedDynamicState2: false,
+                supportsASTCDecodeMode: false,
+                supportsTimestampQueries: true, // 新增：时间戳查询支持
                 uniformBufferSetIndex: 0,
                 storageBufferSetIndex: 1,
                 textureSetIndex: 2,
