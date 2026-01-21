@@ -12,7 +12,7 @@ namespace Ryujinx.Graphics.Vulkan
         private class SyncHandle
         {
             public ulong ID;
-            public MultiFenceHolder Waitable; // 使用传统的MultiFenceHolder
+            public MultiFenceHolder Waitable;
             public ulong FlushId;
             public bool Signalled;
 
@@ -35,9 +35,6 @@ namespace Ryujinx.Graphics.Vulkan
             _gd = gd;
             _device = device;
             _handles = [];
-            
-            Logger.Info?.PrintMsg(LogClass.Gpu, 
-                $"SyncManager初始化: 使用传统的栅栏同步机制");
         }
 
         public void RegisterFlush()
@@ -48,39 +45,26 @@ namespace Ryujinx.Graphics.Vulkan
         public void Create(ulong id, bool strict)
         {
             ulong flushId = _flushId;
+            MultiFenceHolder waitable = new();
+            if (strict || _gd.InterruptAction == null)
+            {
+                _gd.FlushAllCommands();
+                _gd.CommandBufferPool.AddWaitable(waitable);
+            }
+            else
+            {
+                // Don't flush commands, instead wait for the current command buffer to finish.
+                // If this sync is waited on before the command buffer is submitted, interrupt the gpu thread and flush it manually.
+
+                _gd.CommandBufferPool.AddInUseWaitable(waitable);
+            }
 
             SyncHandle handle = new()
             {
                 ID = id,
-                FlushId = flushId
+                Waitable = waitable,
+                FlushId = flushId,
             };
-
-            Logger.Info?.PrintMsg(LogClass.Gpu, 
-                $"创建同步对象 ID={id}");
-
-            // 所有同步对象都使用MultiFenceHolder
-            handle.Waitable = new MultiFenceHolder();
-            
-            // 严格模式下，立即刷新所有命令并添加等待对象
-            if (strict || _gd.InterruptAction == null)
-            {
-                Logger.Info?.PrintMsg(LogClass.Gpu, 
-                    $"严格模式: 刷新所有命令并添加等待对象");
-                
-                // 严格模式下，立即刷新所有命令
-                _gd.FlushAllCommands();
-                
-                // 添加到命令缓冲区的等待对象
-                _gd.CommandBufferPool.AddWaitable(handle.Waitable);
-            }
-            else
-            {
-                // 非严格模式：添加到使用中的命令缓冲区
-                Logger.Info?.PrintMsg(LogClass.Gpu, 
-                    $"非严格模式: 使用栅栏机制");
-                
-                _gd.CommandBufferPool.AddInUseWaitable(handle.Waitable);
-            }
 
             lock (_handles)
             {
@@ -98,27 +82,19 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     lock (handle)
                     {
-                        if (handle.Signalled)
+                        if (handle.Waitable == null)
                         {
-                            if (handle.ID > lastHandle)
-                            {
-                                lastHandle = handle.ID;
-                            }
                             continue;
                         }
 
-                        bool signaled = false;
-                        
-                        if (handle.Waitable != null)
+                        if (handle.ID > lastHandle)
                         {
-                            // 检查栅栏是否已发出信号
-                            signaled = handle.Waitable.WaitForFences(_gd.Api, _device, 0);
-                        }
-
-                        if (signaled)
-                        {
-                            lastHandle = handle.ID;
-                            handle.Signalled = true;
+                            bool signaled = handle.Signalled || handle.Waitable.WaitForFences(_gd.Api, _device, 0);
+                            if (signaled)
+                            {
+                                lastHandle = handle.ID;
+                                handle.Signalled = true;
+                            }
                         }
                     }
                 }
@@ -135,9 +111,7 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 if ((long)(_firstHandle - id) > 0)
                 {
-                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                        $"同步对象 ID={id} 已发出信号或已删除，无需等待");
-                    return; // 句柄已发出信号或已删除
+                    return; // The handle has already been signalled or deleted.
                 }
 
                 foreach (SyncHandle handle in _handles)
@@ -152,21 +126,19 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (result != null)
             {
-                Logger.Info?.PrintMsg(LogClass.Gpu, 
-                    $"开始等待同步对象 ID={result.ID}");
+                if (result.Waitable == null)
+                {
+                    return;
+                }
 
                 long beforeTicks = Stopwatch.GetTimestamp();
 
                 if (result.NeedsFlush(_flushId))
                 {
-                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                        $"同步对象需要刷新，当前FlushId={_flushId}，对象FlushId={result.FlushId}");
                     _gd.InterruptAction(() =>
                     {
                         if (result.NeedsFlush(_flushId))
                         {
-                            Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                                $"中断GPU线程并刷新所有命令");
                             _gd.FlushAllCommands();
                         }
                     });
@@ -174,27 +146,12 @@ namespace Ryujinx.Graphics.Vulkan
 
                 lock (result)
                 {
-                    if (result.Signalled)
+                    if (result.Waitable == null)
                     {
-                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                            $"同步对象 ID={result.ID} 已发出信号，无需等待");
                         return;
                     }
 
-                    bool signaled = false;
-                    
-                    if (result.Waitable != null)
-                    {
-                        Logger.Info?.PrintMsg(LogClass.Gpu, 
-                            "使用传统栅栏等待机制");
-                        
-                        signaled = result.Waitable.WaitForFences(_gd.Api, _device, 1000000000);
-                    }
-                    else
-                    {
-                        Logger.Warning?.PrintMsg(LogClass.Gpu, "同步对象没有栅栏");
-                        signaled = true;
-                    }
+                    bool signaled = result.Signalled || result.Waitable.WaitForFences(_gd.Api, _device, 1000000000);
 
                     if (!signaled)
                     {
@@ -204,24 +161,15 @@ namespace Ryujinx.Graphics.Vulkan
                     {
                         _waitTicks += Stopwatch.GetTimestamp() - beforeTicks;
                         result.Signalled = true;
-                        Logger.Info?.PrintMsg(LogClass.Gpu, 
-                            $"同步对象 ID={result.ID} 等待成功，耗时={Stopwatch.GetTimestamp() - beforeTicks} ticks");
                     }
                 }
-            }
-            else
-            {
-                Logger.Warning?.PrintMsg(LogClass.Gpu, 
-                    $"等待同步对象 ID={id} 未找到");
             }
         }
 
         public void Cleanup()
         {
-            Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                $"开始清理同步对象，当前句柄数量={_handles.Count}");
-            
-            // 迭代句柄并删除任何已发出信号的句柄
+            // Iterate through handles and remove any that have already been signalled.
+
             while (true)
             {
                 SyncHandle first = null;
@@ -232,60 +180,31 @@ namespace Ryujinx.Graphics.Vulkan
 
                 if (first == null || first.NeedsFlush(_flushId))
                 {
-                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                        $"清理完成或需要刷新，当前FlushId={_flushId}");
                     break;
                 }
 
-                bool signaled = false;
-                
-                if (first.Waitable != null)
-                {
-                    signaled = first.Waitable.WaitForFences(_gd.Api, _device, 0);
-                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                        $"检查同步对象 ID={first.ID}: 使用栅栏检查，已发出信号={signaled}");
-                }
-                else
-                {
-                    signaled = true;
-                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                        $"同步对象 ID={first.ID} 没有同步机制，假设已发出信号");
-                }
-
+                bool signaled = first.Waitable.WaitForFences(_gd.Api, _device, 0);
                 if (signaled)
                 {
-                    // 删除同步对象
+                    // Delete the sync object.
                     lock (_handles)
                     {
                         lock (first)
                         {
                             _firstHandle = first.ID + 1;
                             _handles.RemoveAt(0);
-                            
-                            // 清理MultiFenceHolder资源
-                            if (first.Waitable != null)
-                            {
-                                Array.Clear(first.Waitable.Fences);
-                                MultiFenceHolder.FencePool.Release(first.Waitable.Fences);
-                                first.Waitable = null;
-                            }
-                            
-                            Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                                $"删除同步对象 ID={first.ID}，新的_firstHandle={_firstHandle}");
+                            Array.Clear(first.Waitable.Fences);
+                            MultiFenceHolder.FencePool.Release(first.Waitable.Fences);
+                            first.Waitable = null;
                         }
                     }
                 }
                 else
                 {
-                    // 此同步句柄及后续的尚未到达
-                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                        $"同步对象 ID={first.ID} 尚未发出信号，停止清理");
+                    // This sync handle and any following have not been reached yet.
                     break;
                 }
             }
-            
-            Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                $"清理完成，剩余句柄数量={_handles.Count}");
         }
 
         public long GetAndResetWaitTicks()
@@ -293,9 +212,6 @@ namespace Ryujinx.Graphics.Vulkan
             long result = _waitTicks;
             _waitTicks = 0;
 
-            Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                $"获取并重置等待ticks: {result}");
-            
             return result;
         }
     }
