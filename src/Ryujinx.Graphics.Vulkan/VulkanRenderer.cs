@@ -1398,14 +1398,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         {
             return IsMaliGPU && !SupportsASTCDecodeMode;
         }
-        
-        // 获取当前命令缓冲区索引
-        internal int GetCurrentCommandBufferIndex()
-        {
-            // 如果 CommandBufferPool 有 GetCurrentCommandBufferIndex 方法，则调用它
-            // 否则返回 -1
-            return CommandBufferPool?.GetCurrentCommandBufferIndex() ?? -1;
-        }
 
         // 立即结束并提交命令缓冲区
         internal unsafe void EndAndSubmitCommandBuffer(CommandBufferScoped cbs, ReadOnlySpan<Semaphore> waitSemaphores, ReadOnlySpan<PipelineStageFlags> waitDstStageMask, ReadOnlySpan<Semaphore> signalSemaphores)
