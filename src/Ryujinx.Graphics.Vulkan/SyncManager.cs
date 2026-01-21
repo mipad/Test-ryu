@@ -12,11 +12,9 @@ namespace Ryujinx.Graphics.Vulkan
         private class SyncHandle
         {
             public ulong ID;
-            public ulong TimelineValue; // 时间线信号量值（仅用于严格模式）
-            public MultiFenceHolder Waitable; // 传统的MultiFenceHolder（用于非严格模式）
+            public MultiFenceHolder Waitable; // 使用传统的MultiFenceHolder
             public ulong FlushId;
             public bool Signalled;
-            public bool IsStrictMode; // 标记是否为严格模式
 
             public bool NeedsFlush(ulong currentFlushId)
             {
@@ -25,28 +23,21 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         private ulong _firstHandle;
-        private ulong _nextTimelineValue = 1; // 时间线信号量值从1开始
 
         private readonly VulkanRenderer _gd;
         private readonly Device _device;
         private readonly List<SyncHandle> _handles;
         private ulong _flushId;
         private long _waitTicks;
-        
-        // 用于跟踪最后一次严格模式的提交
-        private ulong _lastStrictFlushId;
-        private ulong _lastStrictTimelineValue;
 
         public SyncManager(VulkanRenderer gd, Device device)
         {
             _gd = gd;
             _device = device;
             _handles = [];
-            _lastStrictFlushId = 0;
-            _lastStrictTimelineValue = 0;
             
             Logger.Info?.PrintMsg(LogClass.Gpu, 
-                $"SyncManager初始化: 时间线信号量支持 = {_gd.SupportsTimelineSemaphores}, TimelineManager可用 = {_gd.TimelineManager != null}");
+                $"SyncManager初始化: 使用传统的栅栏同步机制");
         }
 
         public void RegisterFlush()
@@ -61,101 +52,33 @@ namespace Ryujinx.Graphics.Vulkan
             SyncHandle handle = new()
             {
                 ID = id,
-                FlushId = flushId,
-                IsStrictMode = strict
+                FlushId = flushId
             };
 
             Logger.Info?.PrintMsg(LogClass.Gpu, 
-                $"创建同步对象 ID={id}, Strict={strict}, 时间线信号量支持={_gd.SupportsTimelineSemaphores}, TimelineManager可用={_gd.TimelineManager != null}");
+                $"创建同步对象 ID={id}");
 
+            // 所有同步对象都使用MultiFenceHolder
+            handle.Waitable = new MultiFenceHolder();
+            
+            // 严格模式下，立即刷新所有命令并添加等待对象
             if (strict || _gd.InterruptAction == null)
             {
-                // 严格模式：使用时间线信号量
-                if (_gd.SupportsTimelineSemaphores && _gd.TimelineSemaphore.Handle != 0)
-                {
-                    ulong timelineValue;
-                    
-                    // 使用 TimelineManager 如果可用
-                    if (_gd.TimelineManager != null)
-                    {
-                        timelineValue = _gd.TimelineManager.ScheduleSignal(true, $"SyncManager.Create ID={id}");
-                    }
-                    else
-                    {
-                        timelineValue = _nextTimelineValue++;
-                    }
-                    
-                    handle.TimelineValue = timelineValue;
-
-                    // 检查是否是重复的严格模式提交
-                    if (strict && flushId == _lastStrictFlushId && timelineValue == _lastStrictTimelineValue + 1)
-                    {
-                        Logger.Warning?.PrintMsg(LogClass.Gpu, 
-                            $"检测到可能的重复严格模式提交: FlushId={flushId}, TimelineValue={timelineValue}");
-                    }
-                    
-                    _lastStrictFlushId = flushId;
-                    _lastStrictTimelineValue = timelineValue;
-                    
-                    Logger.Info?.PrintMsg(LogClass.Gpu, 
-                        $"严格模式: 刷新所有命令并提交时间线信号量值={timelineValue}");
-                    
-                    // 严格模式下，立即刷新所有命令
-                    _gd.FlushAllCommands();
-                    
-                    // 使用 TimelineManager 添加立即信号
-                    if (_gd.TimelineManager != null)
-                    {
-                        bool success = _gd.TimelineManager.AddSignalImmediate(timelineValue, false, $"SyncManager严格模式 ID={id}");
-                        if (!success)
-                        {
-                            Logger.Error?.PrintMsg(LogClass.Gpu, 
-                                $"严格模式: 立即添加时间线信号失败，ID={id}, 值={timelineValue}");
-                        }
-                        else
-                        {
-                            Logger.Info?.PrintMsg(LogClass.Gpu, 
-                                $"严格模式: 通过TimelineManager立即提交时间线信号量值={timelineValue}");
-                        }
-                    }
-                    else
-                    {
-                        Logger.Info?.PrintMsg(LogClass.Gpu, 
-                            $"严格模式: TimelineManager不可用，使用回退机制创建立即提交的时间线信号量值={timelineValue}");
-                        
-                        // 回退：创建一个立即提交的命令缓冲区来发出时间线信号
-                        var cbs = _gd.CommandBufferPool.Rent();
-                        
-                        try
-                        {
-                            // 立即结束并提交命令缓冲区
-                            _gd.EndAndSubmitCommandBuffer(cbs, timelineValue);
-                            
-                            Logger.Info?.PrintMsg(LogClass.Gpu, 
-                                $"严格模式: 命令缓冲区已立即提交，时间线信号量值={timelineValue}");
-                        }
-                        finally
-                        {
-                            // 注意：不需要手动Return，因为EndAndSubmitCommandBuffer已经处理了
-                        }
-                    }
-                }
-                else
-                {
-                    Logger.Info?.PrintMsg(LogClass.Gpu, 
-                        $"严格模式: 时间线信号量不支持，使用栅栏回退机制");
-                    // 回退到旧的栅栏机制
-                    handle.Waitable = new MultiFenceHolder();
-                    _gd.CommandBufferPool.AddWaitable(handle.Waitable);
-                }
+                Logger.Info?.PrintMsg(LogClass.Gpu, 
+                    $"严格模式: 刷新所有命令并添加等待对象");
+                
+                // 严格模式下，立即刷新所有命令
+                _gd.FlushAllCommands();
+                
+                // 添加到命令缓冲区的等待对象
+                _gd.CommandBufferPool.AddWaitable(handle.Waitable);
             }
             else
             {
-                // 非严格模式：使用传统的MultiFenceHolder
+                // 非严格模式：添加到使用中的命令缓冲区
                 Logger.Info?.PrintMsg(LogClass.Gpu, 
                     $"非严格模式: 使用栅栏机制");
                 
-                handle.Waitable = new MultiFenceHolder();
                 _gd.CommandBufferPool.AddInUseWaitable(handle.Waitable);
             }
 
@@ -186,31 +109,9 @@ namespace Ryujinx.Graphics.Vulkan
 
                         bool signaled = false;
                         
-                        if (handle.IsStrictMode && _gd.SupportsTimelineSemaphores && _gd.TimelineSemaphore.Handle != 0)
+                        if (handle.Waitable != null)
                         {
-                            // 严格模式：检查时间线信号量值
-                            ulong currentValue;
-                            
-                            // 使用 TimelineManager 如果可用
-                            if (_gd.TimelineManager != null)
-                            {
-                                currentValue = _gd.TimelineManager.GetCurrentValue();
-                            }
-                            else
-                            {
-                                currentValue = _gd.GetTimelineSemaphoreValue();
-                            }
-                            
-                            if (currentValue >= handle.TimelineValue)
-                            {
-                                Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                                    $"同步对象 ID={handle.ID} 已发出信号，时间线值={handle.TimelineValue}，当前值={currentValue}");
-                                signaled = true;
-                            }
-                        }
-                        else if (handle.Waitable != null)
-                        {
-                            // 非严格模式：检查栅栏
+                            // 检查栅栏是否已发出信号
                             signaled = handle.Waitable.WaitForFences(_gd.Api, _device, 0);
                         }
 
@@ -252,7 +153,7 @@ namespace Ryujinx.Graphics.Vulkan
             if (result != null)
             {
                 Logger.Info?.PrintMsg(LogClass.Gpu, 
-                    $"开始等待同步对象 ID={result.ID}, Strict={result.IsStrictMode}, TimelineValue={result.TimelineValue}, TimelineManager可用={_gd.TimelineManager != null}");
+                    $"开始等待同步对象 ID={result.ID}");
 
                 long beforeTicks = Stopwatch.GetTimestamp();
 
@@ -282,57 +183,7 @@ namespace Ryujinx.Graphics.Vulkan
 
                     bool signaled = false;
                     
-                    if (result.IsStrictMode && _gd.SupportsTimelineSemaphores && _gd.TimelineSemaphore.Handle != 0)
-                    {
-                        Logger.Info?.PrintMsg(LogClass.Gpu, 
-                            $"使用时间线信号量等待: 目标值={result.TimelineValue}");
-                        
-                        // 使用 TimelineManager 如果可用
-                        if (_gd.TimelineManager != null)
-                        {
-                            signaled = _gd.TimelineManager.WaitForValue(result.TimelineValue, 1000000000);
-                            Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                                $"TimelineManager等待结果: 成功={signaled}");
-                        }
-                        else
-                        {
-                            // 原有的实现
-                            unsafe
-                            {
-                                var timelineSemaphore = _gd.TimelineSemaphore;
-                                var waitValue = result.TimelineValue;
-                                
-                                // 分配栈上内存
-                                Semaphore* pSemaphore = stackalloc Semaphore[1];
-                                ulong* pValue = stackalloc ulong[1];
-                                *pSemaphore = timelineSemaphore;
-                                *pValue = waitValue;
-                                
-                                var waitInfo = new SemaphoreWaitInfo
-                                {
-                                    SType = StructureType.SemaphoreWaitInfo,
-                                    SemaphoreCount = 1,
-                                    PSemaphores = pSemaphore,
-                                    PValues = pValue
-                                };
-
-                                Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                                    $"调用vkWaitSemaphores，超时=1秒");
-                                
-                                var resultCode = _gd.TimelineSemaphoreApi.WaitSemaphores(
-                                    _device, 
-                                    &waitInfo, 
-                                    1000000000 // 1秒超时
-                                );
-                                
-                                signaled = resultCode == Result.Success;
-                                
-                                Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                                    $"vkWaitSemaphores 结果: {resultCode}, 成功={signaled}");
-                            }
-                        }
-                    }
-                    else if (result.Waitable != null)
+                    if (result.Waitable != null)
                     {
                         Logger.Info?.PrintMsg(LogClass.Gpu, 
                             "使用传统栅栏等待机制");
@@ -341,7 +192,7 @@ namespace Ryujinx.Graphics.Vulkan
                     }
                     else
                     {
-                        Logger.Warning?.PrintMsg(LogClass.Gpu, "同步对象既没有时间线信号量也没有栅栏");
+                        Logger.Warning?.PrintMsg(LogClass.Gpu, "同步对象没有栅栏");
                         signaled = true;
                     }
 
@@ -388,27 +239,7 @@ namespace Ryujinx.Graphics.Vulkan
 
                 bool signaled = false;
                 
-                if (first.IsStrictMode && _gd.SupportsTimelineSemaphores && _gd.TimelineSemaphore.Handle != 0)
-                {
-                    // 检查时间线信号量是否已达到此值
-                    ulong currentValue;
-                    
-                    // 使用 TimelineManager 如果可用
-                    if (_gd.TimelineManager != null)
-                    {
-                        currentValue = _gd.TimelineManager.GetCurrentValue();
-                    }
-                    else
-                    {
-                        currentValue = _gd.GetTimelineSemaphoreValue();
-                    }
-                    
-                    signaled = currentValue >= first.TimelineValue;
-                    
-                    Logger.Debug?.PrintMsg(LogClass.Gpu, 
-                        $"检查同步对象 ID={first.ID}: 当前时间线值={currentValue}, 目标值={first.TimelineValue}, 已发出信号={signaled}");
-                }
-                else if (first.Waitable != null)
+                if (first.Waitable != null)
                 {
                     signaled = first.Waitable.WaitForFences(_gd.Api, _device, 0);
                     Logger.Debug?.PrintMsg(LogClass.Gpu, 
@@ -466,23 +297,6 @@ namespace Ryujinx.Graphics.Vulkan
                 $"获取并重置等待ticks: {result}");
             
             return result;
-        }
-        
-        // 获取下一个时间线值（内部使用）
-        private ulong GetNextTimelineValueInternal()
-        {
-            if (_gd.TimelineManager != null)
-            {
-                return _gd.TimelineManager.GetNextValue();
-            }
-            
-            return _nextTimelineValue++;
-        }
-        
-        // 获取时间线管理器统计信息
-        public (long TotalSignals, long TotalWaits, TimeSpan Uptime)? GetTimelineStatistics()
-        {
-            return _gd.GetTimelineStatistics();
         }
     }
 }
