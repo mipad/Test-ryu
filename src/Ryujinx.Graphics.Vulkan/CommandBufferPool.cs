@@ -1,3 +1,5 @@
+// CommandBufferPool.cs - 移除时间线信号量版本
+using Ryujinx.Common.Logging;
 using Silk.NET.Vulkan;
 using System;
 using System.Collections.Generic;
@@ -21,6 +23,10 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly bool _concurrentFenceWaitUnsupported;
         private readonly CommandPool _pool;
         private readonly Thread _owner;
+        private readonly VulkanRenderer _renderer;
+        
+        // 当前活动的命令缓冲区索引
+        private int _currentCommandBufferIndex = -1;
 
         public bool OwnedByCurrentThread => _owner == Thread.CurrentThread;
 
@@ -67,13 +73,30 @@ namespace Ryujinx.Graphics.Vulkan
             uint queueFamilyIndex,
             bool concurrentFenceWaitUnsupported,
             bool isLight = false)
+            : this(api, device, queue, queueLock, queueFamilyIndex, concurrentFenceWaitUnsupported, null, isLight)
+        {
+        }
+
+        public CommandBufferPool(
+            Vk api,
+            Device device,
+            Queue queue,
+            object queueLock,
+            uint queueFamilyIndex,
+            bool concurrentFenceWaitUnsupported,
+            VulkanRenderer renderer,
+            bool isLight = false)
         {
             _api = api;
             _device = device;
             _queue = queue;
             _queueLock = queueLock;
             _concurrentFenceWaitUnsupported = concurrentFenceWaitUnsupported;
+            _renderer = renderer;
             _owner = Thread.CurrentThread;
+
+            Logger.Info?.PrintMsg(LogClass.Gpu, 
+                $"CommandBufferPool初始化: 轻量模式 = {isLight}");
 
             CommandPoolCreateInfo commandPoolCreateInfo = new()
             {
@@ -100,6 +123,9 @@ namespace Ryujinx.Graphics.Vulkan
                 _commandBuffers[i].Initialize(api, device, _pool);
                 WaitAndDecrementRef(i);
             }
+            
+            Logger.Info?.PrintMsg(LogClass.Gpu, 
+                $"CommandBufferPool初始化完成: 总共命令缓冲区数量 = {_totalCommandBuffers}");
         }
 
         public void AddDependant(int cbIndex, IAuto dependant)
@@ -146,6 +172,8 @@ namespace Ryujinx.Graphics.Vulkan
             if (waitable.AddFence(cbIndex, entry.Fence))
             {
                 entry.Waitables.Add(waitable);
+                Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                    $"添加等待对象到命令缓冲区 {cbIndex}");
             }
         }
 
@@ -245,6 +273,7 @@ namespace Ryujinx.Graphics.Vulkan
                     if (!entry.InUse && !entry.InConsumption)
                     {
                         entry.InUse = true;
+                        _currentCommandBufferIndex = cursor; // 更新当前命令缓冲区索引
 
                         _inUseCount++;
 
@@ -254,6 +283,9 @@ namespace Ryujinx.Graphics.Vulkan
                         };
 
                         _api.BeginCommandBuffer(entry.CommandBuffer, in commandBufferBeginInfo).ThrowOnError();
+
+                        Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                            $"租用命令缓冲区 {cursor}，当前使用中={_inUseCount}，排队中={_queuedCount}");
 
                         return new CommandBufferScoped(this, entry.CommandBuffer, cursor);
                     }
@@ -288,11 +320,21 @@ namespace Ryujinx.Graphics.Vulkan
                 entry.InConsumption = true;
                 entry.SubmissionCount++;
                 _inUseCount--;
+                
+                // 清除当前命令缓冲区索引
+                if (_currentCommandBufferIndex == cbIndex)
+                {
+                    _currentCommandBufferIndex = -1;
+                }
+
+                Logger.Info?.PrintMsg(LogClass.Gpu, 
+                    $"返回命令缓冲区 {cbIndex}，提交次数={entry.SubmissionCount}");
 
                 CommandBuffer commandBuffer = entry.CommandBuffer;
 
                 _api.EndCommandBuffer(commandBuffer).ThrowOnError();
-
+                
+                // 传统提交方式（使用二进制信号量）
                 fixed (Semaphore* pWaitSemaphores = waitSemaphores, pSignalSemaphores = signalSemaphores)
                 {
                     fixed (PipelineStageFlags* pWaitDstStageMask = waitDstStageMask)
@@ -319,6 +361,9 @@ namespace Ryujinx.Graphics.Vulkan
                 int ptr = (_queuedIndexesPtr + _queuedCount) % _totalCommandBuffers;
                 _queuedIndexes[ptr] = cbIndex;
                 _queuedCount++;
+                
+                Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                    $"命令缓冲区 {cbIndex} 已排队，排队数量={_queuedCount}");
             }
         }
 
@@ -326,8 +371,13 @@ namespace Ryujinx.Graphics.Vulkan
         {
             ref ReservedCommandBuffer entry = ref _commandBuffers[cbIndex];
 
+            Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                $"等待并释放命令缓冲区 {cbIndex} 的引用");
+
             if (entry.InConsumption)
             {
+                Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                    $"等待命令缓冲区 {cbIndex} 的栅栏");
                 entry.Fence.Wait();
                 entry.InConsumption = false;
             }
@@ -355,16 +405,31 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 entry.Fence = null;
             }
+            
+            Logger.Debug?.PrintMsg(LogClass.Gpu, 
+                $"命令缓冲区 {cbIndex} 清理完成");
         }
 
         public unsafe void Dispose()
         {
+            Logger.Info?.PrintMsg(LogClass.Gpu, 
+                $"销毁CommandBufferPool");
+            
             for (int i = 0; i < _totalCommandBuffers; i++)
             {
                 WaitAndDecrementRef(i, refreshFence: false);
             }
 
             _api.DestroyCommandPool(_device, _pool, null);
+            
+            Logger.Info?.PrintMsg(LogClass.Gpu, 
+                $"CommandBufferPool销毁完成");
+        }
+        
+        // 获取当前命令缓冲区索引（用于调试）
+        public int GetCurrentCommandBufferIndex()
+        {
+            return _currentCommandBufferIndex;
         }
     }
 }
