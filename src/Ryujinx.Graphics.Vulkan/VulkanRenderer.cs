@@ -33,7 +33,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public uint ProgramCount { get; set; } = 0;
 
-        internal KhrTimelineSemaphore TimelineSemaphoreApi { get; private set; }
         internal KhrSynchronization2 Synchronization2Api { get; private set; }
         internal KhrDynamicRendering DynamicRenderingApi { get; private set; }
         internal ExtExtendedDynamicState2 ExtendedDynamicState2Api { get; private set; }
@@ -53,7 +52,6 @@ namespace Ryujinx.Graphics.Vulkan
         internal bool SupportsFragmentDensityMap { get; private set; }
         internal bool SupportsFragmentDensityMap2 { get; private set; }
         internal bool SupportsMultiview { get; private set; }
-        internal bool SupportsTimelineSemaphores { get; private set; }
         internal bool SupportsSynchronization2 { get; private set; }
         internal bool SupportsDynamicRendering { get; private set; }
         internal bool SupportsExtendedDynamicState2 { get; private set; }
@@ -100,20 +98,10 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Device Device => _device;
         
-        // 时间线信号量
-        internal Semaphore TimelineSemaphore { get; private set; }
-        
-        // 时间线信号量管理器（新增）
-        internal TimelineSemaphoreManager TimelineManager { get; private set; }
-        
         private readonly Func<Instance, Vk, SurfaceKHR> _getSurface;
         private readonly Func<string[]> _getRequiredExtensions;
         private readonly string _preferredGpuId;
         
-        // 时间线信号量计数器（保留用于向后兼容）
-        private ulong _timelineValueCounter = 1;
-        private readonly object _timelineLock = new object();
-
         private int[] _pdReservedBindings;
         private readonly static int[] _pdReservedBindingsNvn = { 3, 18, 21, 36, 30 };
         private readonly static int[] _pdReservedBindingsOgl = { 17, 18, 34, 35, 36 };
@@ -201,19 +189,7 @@ namespace Ryujinx.Graphics.Vulkan
                 ConditionalRenderingApi = conditionalRenderingApi;
             }
 
-            if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrTimelineSemaphore timelineSemaphoreApi))
-            {
-                TimelineSemaphoreApi = timelineSemaphoreApi;
-                SupportsTimelineSemaphores = true;
-                
-                // 创建时间线信号量
-                CreateTimelineSemaphore();
-                
-                // 初始化时间线管理器
-                TimelineManager = new TimelineSemaphoreManager(this);
-                Logger.Info?.PrintMsg(LogClass.Gpu, 
-                    "时间线信号量管理器已初始化");
-            }
+            // 移除时间线信号量相关代码
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrSynchronization2 synchronization2Api))
             {
@@ -411,11 +387,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             }
 
             // Vulkan 1.3+ 特性
-            PhysicalDeviceTimelineSemaphoreFeaturesKHR featuresTimelineSemaphore = new()
-            {
-                SType = StructureType.PhysicalDeviceTimelineSemaphoreFeatures,
-            };
-
             PhysicalDeviceSynchronization2FeaturesKHR featuresSynchronization2 = new()
             {
                 SType = StructureType.PhysicalDeviceSynchronization2Features,
@@ -430,12 +401,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             {
                 SType = StructureType.PhysicalDeviceExtendedDynamicState2FeaturesExt,
             };
-
-            if (_physicalDevice.IsDeviceExtensionPresent("VK_KHR_timeline_semaphore"))
-            {
-                featuresTimelineSemaphore.PNext = features2.PNext;
-                features2.PNext = &featuresTimelineSemaphore;
-            }
 
             if (_physicalDevice.IsDeviceExtensionPresent("VK_KHR_synchronization2"))
             {
@@ -650,7 +615,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 supportsDepthClipControl && featuresDepthClipControl.DepthClipControl,
                 supportsAttachmentFeedbackLoop && featuresAttachmentFeedbackLoop.AttachmentFeedbackLoopLayout,
                 supportsDynamicAttachmentFeedbackLoop && featuresDynamicAttachmentFeedbackLoop.AttachmentFeedbackLoopDynamicState,
-                _physicalDevice.IsDeviceExtensionPresent("VK_KHR_timeline_semaphore") && featuresTimelineSemaphore.TimelineSemaphore,
+                false, // SupportsTimelineSemaphores - 设置为false，因为我们移除了支持
                 _physicalDevice.IsDeviceExtensionPresent("VK_KHR_synchronization2") && featuresSynchronization2.Synchronization2,
                 _physicalDevice.IsDeviceExtensionPresent("VK_KHR_dynamic_rendering") && featuresDynamicRendering.DynamicRendering,
                 supportsAstcDecodeMode,
@@ -668,7 +633,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtExternalMemoryHost hostMemoryApi);
             HostMemoryAllocator = new HostMemoryAllocator(MemoryAllocator, Api, hostMemoryApi, _device);
 
-            CommandBufferPool = new CommandBufferPool(Api, _device, Queue, QueueLock, queueFamilyIndex, IsQualcommProprietary, SupportsTimelineSemaphores, this);
+            CommandBufferPool = new CommandBufferPool(Api, _device, Queue, QueueLock, queueFamilyIndex, IsQualcommProprietary, false);
 
             PipelineLayoutCache = new PipelineLayoutCache();
 
@@ -685,32 +650,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             Barriers = new BarrierBatch(this);
 
             _counters = new Counters(this, _device, _pipeline);
-        }
-
-        private unsafe void CreateTimelineSemaphore()
-        {
-            if (!SupportsTimelineSemaphores || TimelineSemaphore.Handle != 0)
-            {
-                return;
-            }
-
-            var semaphoreTypeCreateInfo = new SemaphoreTypeCreateInfo
-            {
-                SType = StructureType.SemaphoreTypeCreateInfo,
-                SemaphoreType = (SemaphoreType)SemaphoreTypeKHR.Timeline,
-                InitialValue = 0
-            };
-
-            var semaphoreCreateInfo = new SemaphoreCreateInfo
-            {
-                SType = StructureType.SemaphoreCreateInfo,
-                PNext = &semaphoreTypeCreateInfo
-            };
-
-            // 修复：使用局部变量作为out参数
-            Semaphore semaphore;
-            Api.CreateSemaphore(_device, semaphoreCreateInfo, null, out semaphore).ThrowOnError();
-            TimelineSemaphore = semaphore;
         }
 
         private uint FindComputeQueueFamily()
@@ -1056,7 +995,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 supportsFragmentDensityMap: supportsFragmentDensityMap,
                 supportsFragmentDensityMap2: supportsFragmentDensityMap2,
                 supportsMultiview: SupportsMultiview,
-                supportsTimelineSemaphores: SupportsTimelineSemaphores,
+                supportsTimelineSemaphores: false, // 设置为false
                 supportsSynchronization2: SupportsSynchronization2,
                 supportsDynamicRendering: SupportsDynamicRendering,
                 supportsExtendedDynamicState2: SupportsExtendedDynamicState2,
@@ -1175,14 +1114,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             Logger.Notice.Print(LogClass.Gpu, $"{GpuVendor} {GpuRenderer} ({GpuVersion})");
             Logger.Notice.Print(LogClass.Gpu, $"GPU Memory: {GetTotalGPUMemory() / (1024 * 1024)} MiB");
             
-            if (SupportsTimelineSemaphores)
-            {
-                Logger.Notice.Print(LogClass.Gpu, "Supports: Timeline Semaphores");
-                if (TimelineManager != null)
-                {
-                    Logger.Notice.Print(LogClass.Gpu, "Timeline Manager: Active");
-                }
-            }
             if (SupportsSynchronization2)
                 Logger.Notice.Print(LogClass.Gpu, "Supports: Synchronization2");
             if (SupportsDynamicRendering)
@@ -1443,17 +1374,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             foreach (var texture in Textures) texture.Release();
             foreach (var sampler in Samplers) sampler.Dispose();
 
-            // 销毁时间线管理器
-            TimelineManager?.Dispose();
-            TimelineManager = null;
-
-            // 销毁时间线信号量
-            if (TimelineSemaphore.Handle != 0)
-            {
-                Api.DestroySemaphore(_device, TimelineSemaphore, null);
-                TimelineSemaphore = default;
-            }
-
             if (_surface.Handle != 0)
             {
                 SurfaceApi.DestroySurface(_instance.Instance, _surface, null);
@@ -1479,42 +1399,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             return IsMaliGPU && !SupportsASTCDecodeMode;
         }
         
-        // 获取时间线信号量的当前值
-        internal unsafe ulong GetTimelineSemaphoreValue()
-        {
-            if (!SupportsTimelineSemaphores || TimelineSemaphore.Handle == 0)
-            {
-                return 0;
-            }
-            
-            ulong currentValue;
-            var timelineSemaphore = TimelineSemaphore;
-            TimelineSemaphoreApi.GetSemaphoreCounterValue(_device, timelineSemaphore, &currentValue);
-            return currentValue;
-        }
-        
-        // 提交时间线信号量值
-        internal void SignalTimelineSemaphore(ulong value)
-        {
-            if (!SupportsTimelineSemaphores || TimelineSemaphore.Handle == 0)
-            {
-                return;
-            }
-            
-            CommandBufferPool?.AddTimelineSignal(TimelineSemaphore, value);
-        }
-        
-        // 添加等待时间线信号量值
-        internal void AddWaitTimelineSemaphore(ulong value)
-        {
-            if (!SupportsTimelineSemaphores || TimelineSemaphore.Handle == 0)
-            {
-                return;
-            }
-            
-            CommandBufferPool?.AddWaitTimelineSemaphore(TimelineSemaphore, value);
-        }
-        
         // 获取当前命令缓冲区索引
         internal int GetCurrentCommandBufferIndex()
         {
@@ -1523,143 +1407,20 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             return CommandBufferPool?.GetCurrentCommandBufferIndex() ?? -1;
         }
 
-        // 立即结束并提交命令缓冲区，并发出时间线信号量
-        internal unsafe void EndAndSubmitCommandBuffer(CommandBufferScoped cbs, ReadOnlySpan<Semaphore> waitSemaphores, ReadOnlySpan<PipelineStageFlags> waitDstStageMask, ReadOnlySpan<Semaphore> signalSemaphores, ulong timelineSignalValue)
+        // 立即结束并提交命令缓冲区
+        internal unsafe void EndAndSubmitCommandBuffer(CommandBufferScoped cbs, ReadOnlySpan<Semaphore> waitSemaphores, ReadOnlySpan<PipelineStageFlags> waitDstStageMask, ReadOnlySpan<Semaphore> signalSemaphores)
         {
             Logger.Info?.PrintMsg(LogClass.Gpu, 
-                $"EndAndSubmitCommandBuffer: 命令缓冲区 {cbs.CommandBufferIndex}, 时间线信号值={timelineSignalValue}");
-            
-            // 如果需要时间线信号量，添加到命令缓冲区
-            if (SupportsTimelineSemaphores && TimelineSemaphore.Handle != 0 && timelineSignalValue > 0)
-            {
-                // 将时间线信号量添加到指定的命令缓冲区
-                CommandBufferPool.AddTimelineSignalToBuffer(cbs.CommandBufferIndex, TimelineSemaphore, timelineSignalValue);
-            }
+                $"EndAndSubmitCommandBuffer: 命令缓冲区 {cbs.CommandBufferIndex}");
             
             // 提交命令缓冲区
             CommandBufferPool.Return(cbs, waitSemaphores, waitDstStageMask, signalSemaphores);
         }
 
         // 重载版本：不需要额外信号量
-        internal void EndAndSubmitCommandBuffer(CommandBufferScoped cbs, ulong timelineSignalValue)
+        internal void EndAndSubmitCommandBuffer(CommandBufferScoped cbs)
         {
-            EndAndSubmitCommandBuffer(cbs, default, default, default, timelineSignalValue);
-        }
-        
-        // ========== 新增时间线信号量相关方法 ==========
-        
-        // 获取下一个时间线信号量值（使用TimelineManager如果可用）
-        public ulong GetNextTimelineValue()
-        {
-            if (TimelineManager != null)
-            {
-                return TimelineManager.GetNextValue();
-            }
-            
-            lock (_timelineLock)
-            {
-                return _timelineValueCounter++;
-            }
-        }
-        
-        // 等待时间线信号量达到指定值（使用TimelineManager如果可用）
-        public unsafe bool WaitTimelineSemaphore(ulong value, ulong timeout = ulong.MaxValue)
-        {
-            if (TimelineManager != null)
-            {
-                return TimelineManager.WaitForValue(value, timeout);
-            }
-            
-            if (!SupportsTimelineSemaphores || TimelineSemaphore.Handle == 0)
-                return false;
-            
-            var semaphore = TimelineSemaphore;
-            var waitInfo = new SemaphoreWaitInfo
-            {
-                SType = StructureType.SemaphoreWaitInfo,
-                SemaphoreCount = 1,
-                PSemaphores = &semaphore,
-                PValues = &value
-            };
-            
-            var result = TimelineSemaphoreApi.WaitSemaphores(Device, &waitInfo, timeout);
-            return result == Result.Success;
-        }
-        
-        // 获取当前时间线信号量值（公开版本，使用TimelineManager如果可用）
-        public ulong GetCurrentTimelineValue()
-        {
-            if (TimelineManager != null)
-            {
-                return TimelineManager.GetCurrentValue();
-            }
-            
-            return GetTimelineSemaphoreValue();
-        }
-        
-        // 处理待定的时间线操作
-        public void ProcessPendingTimelineOperations(bool flushBeforeSignals = false)
-        {
-            TimelineManager?.ProcessPending(flushBeforeSignals);
-        }
-        
-        // 预定一个时间线信号
-        public ulong ScheduleTimelineSignal(bool isStrict = false, string debugInfo = null)
-        {
-            if (TimelineManager != null)
-            {
-                return TimelineManager.ScheduleSignal(isStrict, debugInfo);
-            }
-            
-            return GetNextTimelineValue();
-        }
-        
-        // 预定一个时间线等待
-        public void ScheduleTimelineWait(ulong value, PipelineStageFlags stage = PipelineStageFlags.AllCommandsBit, string debugInfo = null)
-        {
-            TimelineManager?.ScheduleWait(value, stage, debugInfo);
-        }
-        
-        // 立即添加时间线信号
-        public bool AddTimelineSignalImmediate(ulong value, bool flushCommands = true, string debugInfo = null)
-        {
-            if (TimelineManager != null)
-            {
-                return TimelineManager.AddSignalImmediate(value, flushCommands, debugInfo);
-            }
-            
-            // 回退实现
-            if (!SupportsTimelineSemaphores || TimelineSemaphore.Handle == 0)
-                return false;
-            
-            if (flushCommands)
-                FlushAllCommands();
-            
-            CommandBufferPool?.AddInUseTimelineSignal(TimelineSemaphore, value);
-            return true;
-        }
-        
-        // 获取时间线管理器统计信息
-        public (long TotalSignals, long TotalWaits, TimeSpan Uptime)? GetTimelineStatistics()
-        {
-            return TimelineManager?.GetStatistics();
-        }
-        
-        // 重置时间线管理器统计信息
-        public void ResetTimelineStatistics()
-        {
-            TimelineManager?.ResetStatistics();
-        }
-        
-        // 获取待处理的时间线操作数量
-        public (int PendingSignals, int PendingWaits) GetPendingTimelineOperations()
-        {
-            if (TimelineManager != null)
-            {
-                return TimelineManager.GetPendingCounts();
-            }
-            
-            return (0, 0);
+            EndAndSubmitCommandBuffer(cbs, default, default, default);
         }
     }
 }
