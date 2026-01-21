@@ -70,8 +70,11 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             
             foreach (var queue in _counterQueues)
             {
-                var batches = queue.CollectBatchQueries();
-                allBatches.AddRange(batches);
+                if (queue != null)
+                {
+                    var batches = queue.CollectBatchQueries();
+                    allBatches.AddRange(batches);
+                }
             }
             
             return allBatches;
@@ -81,11 +84,11 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         {
             foreach (var queue in _counterQueues)
             {
-                queue.Dispose();
+                queue?.Dispose();
             }
             
             // 清理批量缓冲区
             BatchQueryManager.DisposeAll();
         }
     }
-}/
+}
