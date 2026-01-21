@@ -434,6 +434,22 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             return true;
         }
         
+        // 性能统计专用方法（尝试获取，不等待，不使用历史回退）
+        public bool TryGetResultForPerformanceStats(out long result)
+        {
+            result = Marshal.ReadInt64(_bufferMap);
+            
+            if (result == _defaultValue)
+            {
+                // 对于性能统计，我们也不尝试使用批量缓冲区
+                return false;
+            }
+            
+            // 成功获取结果，但不更新历史记录
+            result = StabilizeResult(result);
+            return true;
+        }
+        
         // 带历史回退的结果获取方法
         public bool TryGetResultWithFallback(out long result, bool allowHistoricalFallback = true)
         {
