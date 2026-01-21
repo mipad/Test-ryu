@@ -23,7 +23,6 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly bool _concurrentFenceWaitUnsupported;
         private readonly CommandPool _pool;
         private readonly Thread _owner;
-        private readonly VulkanRenderer _renderer;
         
         // 当前活动的命令缓冲区索引
         private int _currentCommandBufferIndex = -1;
@@ -65,18 +64,6 @@ namespace Ryujinx.Graphics.Vulkan
         private int _queuedCount;
         private int _inUseCount;
 
-        public unsafe CommandBufferPool(
-            Vk api,
-            Device device,
-            Queue queue,
-            object queueLock,
-            uint queueFamilyIndex,
-            bool concurrentFenceWaitUnsupported,
-            bool isLight = false)
-            : this(api, device, queue, queueLock, queueFamilyIndex, concurrentFenceWaitUnsupported, null, isLight)
-        {
-        }
-
         public CommandBufferPool(
             Vk api,
             Device device,
@@ -84,7 +71,6 @@ namespace Ryujinx.Graphics.Vulkan
             object queueLock,
             uint queueFamilyIndex,
             bool concurrentFenceWaitUnsupported,
-            VulkanRenderer renderer,
             bool isLight = false)
         {
             _api = api;
@@ -92,7 +78,6 @@ namespace Ryujinx.Graphics.Vulkan
             _queue = queue;
             _queueLock = queueLock;
             _concurrentFenceWaitUnsupported = concurrentFenceWaitUnsupported;
-            _renderer = renderer;
             _owner = Thread.CurrentThread;
 
             Logger.Info?.PrintMsg(LogClass.Gpu, 
@@ -319,7 +304,7 @@ namespace Ryujinx.Graphics.Vulkan
                 entry.InUse = false;
                 entry.InConsumption = true;
                 entry.SubmissionCount++;
-                _inUseCount--;
+                _inUseCount++;
                 
                 // 清除当前命令缓冲区索引
                 if (_currentCommandBufferIndex == cbIndex)
@@ -335,26 +320,25 @@ namespace Ryujinx.Graphics.Vulkan
                 _api.EndCommandBuffer(commandBuffer).ThrowOnError();
                 
                 // 传统提交方式（使用二进制信号量）
-                fixed (Semaphore* pWaitSemaphores = waitSemaphores, pSignalSemaphores = signalSemaphores)
+                fixed (Semaphore* pWaitSemaphores = waitSemaphores)
+                fixed (Semaphore* pSignalSemaphores = signalSemaphores)
+                fixed (PipelineStageFlags* pWaitDstStageMask = waitDstStageMask)
                 {
-                    fixed (PipelineStageFlags* pWaitDstStageMask = waitDstStageMask)
+                    SubmitInfo sInfo = new()
                     {
-                        SubmitInfo sInfo = new()
-                        {
-                            SType = StructureType.SubmitInfo,
-                            WaitSemaphoreCount = !waitSemaphores.IsEmpty ? (uint)waitSemaphores.Length : 0,
-                            PWaitSemaphores = pWaitSemaphores,
-                            PWaitDstStageMask = pWaitDstStageMask,
-                            CommandBufferCount = 1,
-                            PCommandBuffers = &commandBuffer,
-                            SignalSemaphoreCount = !signalSemaphores.IsEmpty ? (uint)signalSemaphores.Length : 0,
-                            PSignalSemaphores = pSignalSemaphores,
-                        };
+                        SType = StructureType.SubmitInfo,
+                        WaitSemaphoreCount = !waitSemaphores.IsEmpty ? (uint)waitSemaphores.Length : 0,
+                        PWaitSemaphores = pWaitSemaphores,
+                        PWaitDstStageMask = pWaitDstStageMask,
+                        CommandBufferCount = 1,
+                        PCommandBuffers = &commandBuffer,
+                        SignalSemaphoreCount = !signalSemaphores.IsEmpty ? (uint)signalSemaphores.Length : 0,
+                        PSignalSemaphores = pSignalSemaphores,
+                    };
 
-                        lock (_queueLock)
-                        {
-                            _api.QueueSubmit(_queue, 1, in sInfo, entry.Fence.GetUnsafe()).ThrowOnError();
-                        }
+                    lock (_queueLock)
+                    {
+                        _api.QueueSubmit(_queue, 1, in sInfo, entry.Fence.GetUnsafe()).ThrowOnError();
                     }
                 }
 
@@ -410,7 +394,7 @@ namespace Ryujinx.Graphics.Vulkan
                 $"命令缓冲区 {cbIndex} 清理完成");
         }
 
-        public unsafe void Dispose()
+        public void Dispose()
         {
             Logger.Info?.PrintMsg(LogClass.Gpu, 
                 $"销毁CommandBufferPool");
