@@ -201,6 +201,26 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         // 简单的结果稳定化
         private long _lastStableResult = 0;
         private const long StabilityThreshold = 32; // 用于稳定结果的阈值
+        
+        // 智能回退策略字段
+        private long _lastSuccessfulResult = 0; // 上次成功获取的结果
+        private int _consecutiveTimeouts = 0; // 连续超时次数
+        private int _historicalResultAge = 0; // 历史结果年龄（帧数）
+        private const int MaxHistoricalAge = 3; // 历史结果最大有效年龄
+        private const int MaxConsecutiveTimeouts = 5; // 最大连续超时次数，超过则强制重置
+        private readonly bool _enableHistoricalFallback = true; // 是否启用历史回退
+        
+        // 查询策略枚举
+        private enum QueryTimeoutStrategy
+        {
+            Strict,      // 严格模式：超时返回0
+            Historical,  // 历史模式：使用上次成功结果
+            Smoothed,    // 平滑模式：应用平滑滤波
+            Adaptive     // 自适应：根据查询类型动态选择
+        }
+        
+        // 当前查询类型的推荐策略
+        private readonly QueryTimeoutStrategy _recommendedStrategy;
 
         private class QueryPoolManager
         {
@@ -218,6 +238,9 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             _type = type;
             _result32Bit = result32Bit;
             _isTbdrPlatform = isTbdrPlatform;
+            
+            // 根据查询类型设置推荐策略
+            _recommendedStrategy = GetRecommendedStrategy(type);
             
             // 初始化批量结果缓冲区
             if (isTbdrPlatform)
@@ -322,6 +345,18 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 _ => QueryType.Occlusion,
             };
         }
+        
+        // 根据查询类型获取推荐策略
+        private static QueryTimeoutStrategy GetRecommendedStrategy(CounterType type)
+        {
+            return type switch
+            {
+                CounterType.SamplesPassed => QueryTimeoutStrategy.Historical,  // 遮挡查询：使用历史值避免闪烁
+                CounterType.PrimitivesGenerated => QueryTimeoutStrategy.Strict,  // 统计信息：需要精确值
+                CounterType.TransformFeedbackPrimitivesWritten => QueryTimeoutStrategy.Historical,  // 变换反馈：保持连续性
+                _ => QueryTimeoutStrategy.Adaptive  // 其他：自适应
+            };
+        }
 
         public Auto<DisposableBuffer> GetBuffer()
         {
@@ -337,6 +372,10 @@ namespace Ryujinx.Graphics.Vulkan.Queries
         {
             End(false);
             Begin(null);
+            
+            // 重置历史记录
+            _consecutiveTimeouts = 0;
+            _historicalResultAge = 0;
         }
 
         public void Begin(int? resetSequence)
@@ -348,6 +387,13 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 _pipeline.BeginQuery(this, _queryPool, _queryIndex, needsReset, isOcclusion, isOcclusion && resetSequence != null);
             }
             _resetSequence = null;
+            
+            // 查询开始前，如果历史结果太旧则重置
+            if (_historicalResultAge > MaxHistoricalAge)
+            {
+                _lastSuccessfulResult = 0;
+                _historicalResultAge = 0;
+            }
         }
 
         public void End(bool withResult)
@@ -380,9 +426,37 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             if (result == _defaultValue)
                 return false;
             
+            // 成功获取结果，更新历史记录
+            UpdateHistoricalRecord(result);
+            
             // 简单的结果稳定化处理
             result = StabilizeResult(result);
             return true;
+        }
+        
+        // 带历史回退的结果获取方法
+        public bool TryGetResultWithFallback(out long result, bool allowHistoricalFallback = true)
+        {
+            // 1. 优先尝试获取实时结果
+            if (TryGetResult(out result))
+            {
+                return true;
+            }
+            
+            // 2. 检查是否有历史结果可用（根据应用场景决定）
+            if (allowHistoricalFallback && 
+                _lastSuccessfulResult != 0 && 
+                _historicalResultAge < MaxHistoricalAge &&
+                _consecutiveTimeouts < MaxConsecutiveTimeouts)
+            {
+                result = _lastSuccessfulResult;
+                _historicalResultAge++;
+                return true;
+            }
+            
+            // 3. 回退失败
+            result = 0;
+            return false;
         }
         
         // 简单的结果稳定化方法
@@ -417,6 +491,14 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             return newStableResult;
         }
         
+        // 更新历史记录
+        private void UpdateHistoricalRecord(long newResult)
+        {
+            _lastSuccessfulResult = newResult;
+            _historicalResultAge = 0;
+            _consecutiveTimeouts = 0;
+        }
+        
         // 获取原始结果（不应用稳定化）
         public bool TryGetRawResult(out long result)
         {
@@ -424,73 +506,170 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             return result != _defaultValue;
         }
 
+        // 增强版的AwaitResult方法，带智能回退策略
         public long AwaitResult(AutoResetEvent wakeSignal = null)
         {
             long data = _defaultValue;
-
-            if (wakeSignal == null)
+            int attempts = 0;
+            const int MaxAttempts = 100;
+            const int BaseSpinCount = 50;
+            
+            while (WaitingForValue(data) && attempts++ < MaxAttempts)
             {
+                data = Marshal.ReadInt64(_bufferMap);
+                
                 if (WaitingForValue(data))
                 {
-                    data = Marshal.ReadInt64(_bufferMap);
-                }
-            }
-            else
-            {
-                int iterations = 0;
-                int spinCount = 0;
-                
-                // TBDR平台优化：更积极的轮询策略
-                while (WaitingForValue(data) && iterations++ < MaxQueryRetries)
-                {
-                    data = Marshal.ReadInt64(_bufferMap);
-                    if (WaitingForValue(data))
+                    // 分层等待策略
+                    if (attempts < BaseSpinCount)
                     {
-                        if (_isTbdrPlatform)
+                        Thread.SpinWait(100);  // 快速自旋
+                    }
+                    else if (attempts < BaseSpinCount * 2)
+                    {
+                        Thread.Sleep(0);  // 出让时间片
+                    }
+                    else
+                    {
+                        // 考虑使用历史结果
+                        if (_enableHistoricalFallback && 
+                            _lastSuccessfulResult != 0 && 
+                            attempts > MaxAttempts * 3 / 4)
                         {
-                            // TBDR平台：使用SpinWait减少上下文切换
-                            if (spinCount < 50)
+                            bool shouldUseHistorical = ShouldUseHistoricalValue();
+                            
+                            if (shouldUseHistorical)
                             {
-                                Thread.SpinWait(100);
-                                spinCount++;
-                            }
-                            else if (spinCount < 100)
-                            {
-                                Thread.Sleep(0);
-                                spinCount++;
-                            }
-                            else
-                            {
-                                wakeSignal.WaitOne(0);
+                                _consecutiveTimeouts++;
+                                _historicalResultAge++;
+                                
+                                // 如果连续超时次数过多，强制重置历史记录
+                                if (_consecutiveTimeouts >= MaxConsecutiveTimeouts)
+                                {
+                                    _lastSuccessfulResult = 0;
+                                    _consecutiveTimeouts = 0;
+                                    return 0;
+                                }
+                                
+                                return _lastSuccessfulResult;
                             }
                         }
-                        else
-                        {
-                            wakeSignal.WaitOne(1);
-                        }
+                        
+                        // 正常等待
+                        wakeSignal?.WaitOne(1);
                     }
-                }
-
-                if (iterations >= MaxQueryRetries)
-                {
-                    if (Logger.Error.HasValue)
-                    {
-                        Logger.Error.Value.Print(LogClass.Gpu, 
-                            $"Error: Query result {_type} timed out. Attempts: {iterations}");
-                    }
-                    
-                    // 强制返回默认值，避免阻塞
-                    return 0;
                 }
             }
             
-            // 应用稳定化处理
             if (data != _defaultValue)
             {
+                // 成功获取结果，更新历史
+                UpdateHistoricalRecord(data);
                 data = StabilizeResult(data);
             }
-
+            else if (attempts >= MaxAttempts)
+            {
+                // 超时处理
+                _consecutiveTimeouts++;
+                
+                if (_enableHistoricalFallback && 
+                    _lastSuccessfulResult != 0 && 
+                    _consecutiveTimeouts < MaxConsecutiveTimeouts)
+                {
+                    bool shouldUseHistorical = ShouldUseHistoricalValue();
+                    
+                    if (shouldUseHistorical)
+                    {
+                        _historicalResultAge++;
+                        data = _lastSuccessfulResult;
+                    }
+                    else
+                    {
+                        data = 0;
+                    }
+                }
+                else
+                {
+                    // 无可用历史值或历史值已过期
+                    data = 0;
+                    
+                    // 如果连续超时次数过多，强制重置历史记录
+                    if (_consecutiveTimeouts >= MaxConsecutiveTimeouts)
+                    {
+                        _lastSuccessfulResult = 0;
+                        _consecutiveTimeouts = 0;
+                    }
+                }
+            }
+            
             return data;
+        }
+        
+        // 判断是否应该使用历史值
+        private bool ShouldUseHistoricalValue()
+        {
+            // 根据查询类型决定策略
+            switch (_recommendedStrategy)
+            {
+                case QueryTimeoutStrategy.Strict:
+                    return false; // 严格模式：不使用历史值
+                    
+                case QueryTimeoutStrategy.Historical:
+                    return true; // 历史模式：总是使用历史值
+                    
+                case QueryTimeoutStrategy.Smoothed:
+                    // 平滑模式：根据历史值年龄决定
+                    return _historicalResultAge < MaxHistoricalAge / 2;
+                    
+                case QueryTimeoutStrategy.Adaptive:
+                    // 自适应模式：根据查询类型和超时次数决定
+                    return _type switch
+                    {
+                        CounterType.SamplesPassed => _consecutiveTimeouts < 3, // 遮挡查询：容忍3次超时
+                        CounterType.TransformFeedbackPrimitivesWritten => _consecutiveTimeouts < 2, // 变换反馈：容忍2次超时
+                        _ => false // 其他类型：不使用历史值
+                    };
+                    
+                default:
+                    return false;
+            }
+        }
+        
+        // 条件渲染专用方法（优先使用历史值避免闪烁）
+        public long GetResultForConditionalRendering()
+        {
+            long result;
+            
+            // 先尝试快速获取结果
+            if (TryGetResult(out result))
+            {
+                return result;
+            }
+            
+            // 快速获取失败，使用历史值避免闪烁
+            if (_lastSuccessfulResult != 0 && _historicalResultAge < MaxHistoricalAge)
+            {
+                _historicalResultAge++;
+                return _lastSuccessfulResult;
+            }
+            
+            // 没有历史值，使用完整等待
+            return AwaitResult();
+        }
+        
+        // 性能统计专用方法（需要精确值）
+        public long GetResultForPerformanceStats()
+        {
+            long result;
+            
+            // 尝试获取结果
+            if (TryGetResult(out result))
+            {
+                return result;
+            }
+            
+            // 对于性能统计，我们不使用历史值
+            return AwaitResult();
         }
         
         // 用于批量处理的方法
@@ -553,17 +732,16 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                     result = StabilizeResult(result);
                     
                     Marshal.WriteInt64(_bufferMap, result);
+                    
+                    // 更新历史记录
+                    UpdateHistoricalRecord(result);
+                    
                     _usingBatchBuffer = false;
                     _batchResultReady = false;
                     return true;
                 }
                 catch (Exception ex)
                 {
-                    if (Logger.Error.HasValue)
-                    {
-                        Logger.Error.Value.Print(LogClass.Gpu, 
-                            $"Error copying batch result for {_type}: {ex.Message}");
-                    }
                     return false;
                 }
             }

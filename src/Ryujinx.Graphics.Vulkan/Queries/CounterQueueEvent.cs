@@ -1,7 +1,6 @@
 using Ryujinx.Graphics.GAL;
 using System;
 using System.Threading;
-using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Vulkan.Queries
 {
@@ -79,7 +78,16 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
                 if (block)
                 {
-                    queryResult = _counter.AwaitResult(wakeSignal);
+                    // 条件渲染需要避免闪烁，使用专用方法
+                    if (Type == CounterType.SamplesPassed)
+                    {
+                        queryResult = _counter.GetResultForConditionalRendering();
+                    }
+                    else
+                    {
+                        // 其他查询类型使用标准方法
+                        queryResult = _counter.AwaitResult(wakeSignal);
+                    }
                     
                     // 如果等待超时，尝试从批量缓冲区复制结果
                     if (queryResult == 0)
@@ -87,20 +95,16 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                         _counter.TryCopyFromBatchResult();
                         if (_counter.TryGetResult(out queryResult))
                         {
-                            if (Logger.Debug.HasValue)
-                            {
-                                Logger.Debug.Value.Print(LogClass.Gpu, 
-                                    $"Query {Type} recovered from batch buffer after timeout");
-                            }
                         }
                     }
                 }
                 else
                 {
-                    // 先尝试从批量缓冲区获取结果
+                    // 非阻塞模式：先尝试从批量缓冲区获取结果
                     _counter.TryCopyFromBatchResult();
                     
-                    if (!_counter.TryGetResult(out queryResult))
+                    // 对于非阻塞尝试，我们使用精确模式
+                    if (!_counter.TryGetResultForPerformanceStats(out queryResult))
                     {
                         return false;
                     }

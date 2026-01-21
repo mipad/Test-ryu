@@ -1,7 +1,6 @@
 using Ryujinx.Graphics.GAL;
 using Silk.NET.Vulkan;
 using System;
-using Ryujinx.Common.Logging;
 using System.Collections.Generic;
 
 namespace Ryujinx.Graphics.Vulkan.Queries
@@ -25,11 +24,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             {
                 CounterType type = (CounterType)index;
                 _counterQueues[index] = new CounterQueue(gd, device, pipeline, type, _isTbdrPlatform);
-            }
-            
-            if (_isTbdrPlatform)
-            {
-                Logger.Info?.Print(LogClass.Gpu, $"Initialized {count} counter queues for TBDR platform");
             }
         }
 
@@ -80,18 +74,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 allBatches.AddRange(batches);
             }
             
-            if (_isTbdrPlatform && allBatches.Count > 0)
-            {
-                int totalQueries = 0;
-                foreach (var batch in allBatches)
-                {
-                    totalQueries += (int)batch.Count;
-                }
-                
-                Logger.Debug?.Print(LogClass.Gpu, 
-                    $"TBDR: Collected {allBatches.Count} batches, {totalQueries} total queries");
-            }
-            
             return allBatches;
         }
 
@@ -106,4 +88,4 @@ namespace Ryujinx.Graphics.Vulkan.Queries
             BatchQueryManager.DisposeAll();
         }
     }
-}
+}/

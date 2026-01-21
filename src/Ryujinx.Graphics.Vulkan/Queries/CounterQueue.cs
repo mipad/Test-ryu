@@ -4,7 +4,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Vulkan.Queries
 {
@@ -59,11 +58,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
             _consumerThread = new Thread(EventConsumer);
             _consumerThread.Start();
-            
-            if (_isTbdrPlatform)
-            {
-                Logger.Debug?.Print(LogClass.Gpu, $"Created counter queue for {type} on TBDR platform");
-            }
         }
 
         public void ResetCounterPool()
@@ -109,12 +103,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                             {
                                 query.PoolReset(cmd, ResetSequence);
                             }
-                            
-                            if (_isTbdrPlatform && groupCount == 16)
-                            {
-                                Logger.Debug?.Print(LogClass.Gpu, 
-                                    $"TBDR: Batch reset {groupCount} future counters for {Type}");
-                            }
                         }
                     }
                 }
@@ -140,7 +128,19 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 }
                 else
                 {
-                    evt.TryConsume(ref _accumulatedCounter, true, _waiterCount == 0 ? _wakeSignal : null);
+                    ulong localCounter = _accumulatedCounter;
+                    if (evt.TryConsume(ref localCounter, true, _waiterCount == 0 ? _wakeSignal : null))
+                    {
+                        _accumulatedCounter = localCounter;
+                    }
+                    else
+                    {
+                        // 如果查询失败，重新放回队列
+                        lock (_lock)
+                        {
+                            _events.Enqueue(evt);
+                        }
+                    }
                 }
 
                 if (_waiterCount > 0)
@@ -219,12 +219,6 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 }
             }
             
-            if (_isTbdrPlatform && batches.Count > 0)
-            {
-                Logger.Debug?.Print(LogClass.Gpu, 
-                    $"TBDR: Collected {batches.Count} query batches for {Type}, total queries: {batches.Count}");
-            }
-            
             return batches;
         }
 
@@ -278,10 +272,14 @@ namespace Ryujinx.Graphics.Vulkan.Queries
                 while (_events.Count > 0)
                 {
                     CounterQueueEvent flush = _events.Peek();
-                    if (!flush.TryConsume(ref _accumulatedCounter, true))
+                    
+                    ulong localCounter = _accumulatedCounter;
+                    if (!flush.TryConsume(ref localCounter, true))
                     {
                         return;
                     }
+                    
+                    _accumulatedCounter = localCounter;
                     _events.Dequeue();
                 }
             }
