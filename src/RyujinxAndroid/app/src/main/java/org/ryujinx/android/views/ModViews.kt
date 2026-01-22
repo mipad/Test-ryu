@@ -121,7 +121,6 @@ class ModViews {
                     
                     // 如果还是加载中，可能是卡住了，尝试重新加载
                     if (viewModel.isLoading && retryCount < maxRetries) {
-                        Log.d("ModViews", "Initial load seems stuck, retrying... (attempt ${retryCount + 1})")
                         retryCount++
                         viewModel.resetLoadedState()
                         delay(1000)
@@ -146,8 +145,7 @@ class ModViews {
                     // 设置超时检查（5秒）
                     delay(5000)
                     if (viewModel.isLoading) {
-                        Log.w("ModViews", "Mod loading is taking too long")
-                        // 可以在这里显示一个提示，但不要自动重试，让用户决定
+                        // 加载时间过长，但不要自动重试，让用户决定
                     }
                 }
             }
@@ -648,19 +646,6 @@ class ModViews {
                 e.printStackTrace()
                 null
             }
-        }
-        
-        // 添加日志函数
-        private fun Log.d(tag: String, message: String) {
-            android.util.Log.d(tag, message)
-        }
-        
-        private fun Log.w(tag: String, message: String) {
-            android.util.Log.w(tag, message)
-        }
-        
-        private fun Log.e(tag: String, message: String) {
-            android.util.Log.e(tag, message)
         }
     }
 }
