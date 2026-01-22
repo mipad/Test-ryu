@@ -4,9 +4,6 @@ package org.ryujinx.android.views
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
-import android.provider.DocumentsContract
-import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -89,61 +86,49 @@ class ModViews {
             var showDeleteDialog by remember { mutableStateOf<ModModel?>(null) }
             var showAddModDialog by remember { mutableStateOf(false) }
             var selectedModPath by remember { mutableStateOf("") }
-            var isAddingMod by remember { mutableStateOf(false) }
             
-            // 添加一个状态来跟踪是否已经显示了mod列表
-            var modsLoaded by remember { mutableStateOf(false) }
+            // 添加一个状态来跟踪是否正在执行操作（添加/删除等）
+            var isPerformingOperation by remember { mutableStateOf(false) }
             
             // 使用OpenDocumentTree来选择文件夹而不是文件
             val folderPickerLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.OpenDocumentTree()
             ) { uri ->
                 uri?.let {
-                    try {
-                        Log.d("ModViews", "Selected URI: $uri")
-                        val folderPath = getFolderPathFromUri(context, it)
-                        Log.d("ModViews", "Extracted folder path: $folderPath")
-                        if (!folderPath.isNullOrEmpty()) {
-                            selectedModPath = folderPath
-                            showAddModDialog = true
-                        } else {
-                            // 如果无法获取路径，显示错误
-                            scope.launch {
-                                snackbarHostState.showSnackbar("无法获取文件夹路径，请确保选择了有效的文件夹")
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.e("ModViews", "Error processing selected folder", e)
+                    // 获取文件夹路径
+                    val folderPath = getFolderPathFromUri(context, it)
+                    if (!folderPath.isNullOrEmpty()) {
+                        selectedModPath = folderPath
+                        showAddModDialog = true
+                    } else {
+                        // 如果无法获取路径，显示错误
                         scope.launch {
-                            snackbarHostState.showSnackbar("处理文件夹时出错: ${e.message}")
+                            snackbarHostState.showSnackbar("无法获取文件夹路径")
                         }
                     }
                 }
             }
 
-            // 加载Mod列表 - 使用延迟加载避免闪烁
+            // 加载Mod列表
             LaunchedEffect(titleId) {
-                // 重置加载状态，确保每次都重新加载
-                viewModel.resetLoadedState()
                 // 延迟一小段时间再加载，避免UI闪烁
-                delay(300)
-                viewModel.loadMods(titleId)
-                modsLoaded = true
+                delay(100)
+                viewModel.loadMods(titleId, forceRefresh = false)
             }
 
             // 显示错误消息
             viewModel.errorMessage?.let { error ->
                 LaunchedEffect(error) {
-                    Log.e("ModViews", "Error from ViewModel: $error")
                     snackbarHostState.showSnackbar(error)
                     viewModel.clearError()
                 }
             }
 
-            // 监控添加mod的状态
-            LaunchedEffect(isAddingMod) {
-                if (isAddingMod) {
-                    Log.d("ModViews", "Adding mod in progress")
+            // 监听操作完成
+            LaunchedEffect(viewModel.isLoading) {
+                if (!viewModel.isLoading && isPerformingOperation) {
+                    // 操作完成，重置状态
+                    isPerformingOperation = false
                 }
             }
 
@@ -168,11 +153,10 @@ class ModViews {
                             IconButton(
                                 onClick = {
                                     scope.launch {
-                                        viewModel.resetLoadedState()
-                                        viewModel.loadMods(titleId)
-                                        snackbarHostState.showSnackbar("刷新完成")
+                                        viewModel.loadMods(titleId, forceRefresh = true)
                                     }
-                                }
+                                },
+                                enabled = !isPerformingOperation
                             ) {
                                 Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                             }
@@ -185,7 +169,7 @@ class ModViews {
                             // 启动文件夹选择器，选择整个文件夹
                             folderPickerLauncher.launch(null)
                         },
-                        enabled = !isAddingMod
+                        enabled = !isPerformingOperation
                     ) {
                         Icon(Icons.Default.Add, contentDescription = "Add Mod")
                     }
@@ -197,7 +181,19 @@ class ModViews {
                         .fillMaxSize()
                         .padding(paddingValues)
                 ) {
-                    if (viewModel.isLoading && !modsLoaded) {
+                    // 显示操作中的遮罩层
+                    if (isPerformingOperation) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                    
+                    if (viewModel.isLoading && !isPerformingOperation) {
                         Column(
                             modifier = Modifier.fillMaxSize(),
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -215,7 +211,7 @@ class ModViews {
                                 .padding(8.dp)
                                 .verticalScroll(rememberScrollState())
                         ) {
-                            // 统计信息和删除所有按钮 - 放在左侧
+                            // 统计信息和删除所有按钮
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -228,7 +224,7 @@ class ModViews {
                                 
                                 OutlinedButton(
                                     onClick = { showDeleteAllDialog = true },
-                                    enabled = viewModel.mods.isNotEmpty() && !isAddingMod
+                                    enabled = viewModel.mods.isNotEmpty() && !isPerformingOperation
                                 ) {
                                     Text("Delete All")
                                 }
@@ -265,11 +261,10 @@ class ModViews {
                                     OutlinedButton(
                                         onClick = {
                                             scope.launch {
-                                                viewModel.resetLoadedState()
-                                                viewModel.loadMods(titleId)
+                                                viewModel.loadMods(titleId, forceRefresh = true)
                                             }
                                         },
-                                        enabled = !isAddingMod
+                                        enabled = !isPerformingOperation
                                     ) {
                                         Icon(Icons.Default.Refresh, contentDescription = "Refresh", modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(6.dp))
@@ -296,10 +291,11 @@ class ModViews {
                                                     }
                                                 },
                                                 onDelete = {
-                                                    if (!isAddingMod) {
+                                                    if (!isPerformingOperation) {
                                                         showDeleteDialog = mod
                                                     }
-                                                }
+                                                },
+                                                enabled = !isPerformingOperation
                                             )
                                         }
                                     }
@@ -316,7 +312,7 @@ class ModViews {
             // 删除单个Mod对话框
             showDeleteDialog?.let { mod ->
                 AlertDialog(
-                    onDismissRequest = { showDeleteDialog = null },
+                    onDismissRequest = { if (!isPerformingOperation) showDeleteDialog = null },
                     title = { Text("Delete Mod") },
                     text = { 
                         Text("Are you sure you want to delete \"${mod.name}\"? This action cannot be undone.") 
@@ -324,18 +320,27 @@ class ModViews {
                     confirmButton = {
                         Button(
                             onClick = {
-                                scope.launch {
-                                    viewModel.deleteMod(titleId, mod)
-                                    showDeleteDialog = null
+                                if (!isPerformingOperation) {
+                                    isPerformingOperation = true
+                                    scope.launch {
+                                        try {
+                                            viewModel.deleteMod(titleId, mod)
+                                            // 不需要手动重新加载，因为deleteMod内部会处理
+                                        } finally {
+                                            showDeleteDialog = null
+                                        }
+                                    }
                                 }
-                            }
+                            },
+                            enabled = !isPerformingOperation
                         ) {
                             Text("Delete")
                         }
                     },
                     dismissButton = {
                         OutlinedButton(
-                            onClick = { showDeleteDialog = null }
+                            onClick = { if (!isPerformingOperation) showDeleteDialog = null },
+                            enabled = !isPerformingOperation
                         ) {
                             Text("Cancel")
                         }
@@ -346,7 +351,7 @@ class ModViews {
             // 删除所有Mod对话框
             if (showDeleteAllDialog) {
                 AlertDialog(
-                    onDismissRequest = { showDeleteAllDialog = false },
+                    onDismissRequest = { if (!isPerformingOperation) showDeleteAllDialog = false },
                     title = { Text("Delete All Mods") },
                     text = { 
                         Text("Are you sure you want to delete all ${viewModel.mods.size} mods? This action cannot be undone.") 
@@ -354,18 +359,27 @@ class ModViews {
                     confirmButton = {
                         Button(
                             onClick = {
-                                scope.launch {
-                                    viewModel.deleteAllMods(titleId)
-                                    showDeleteAllDialog = false
+                                if (!isPerformingOperation) {
+                                    isPerformingOperation = true
+                                    scope.launch {
+                                        try {
+                                            viewModel.deleteAllMods(titleId)
+                                            // 不需要手动重新加载，因为deleteAllMods内部会处理
+                                        } finally {
+                                            showDeleteAllDialog = false
+                                        }
+                                    }
                                 }
-                            }
+                            },
+                            enabled = !isPerformingOperation
                         ) {
                             Text("Delete All")
                         }
                     },
                     dismissButton = {
                         OutlinedButton(
-                            onClick = { showDeleteAllDialog = false }
+                            onClick = { if (!isPerformingOperation) showDeleteAllDialog = false },
+                            enabled = !isPerformingOperation
                         ) {
                             Text("Cancel")
                         }
@@ -378,89 +392,37 @@ class ModViews {
                 AddModDialog(
                     selectedPath = selectedModPath,
                     onConfirm = { modName ->
-                        scope.launch {
-                            try {
-                                isAddingMod = true
-                                
-                                // 检查路径是否是文件夹
-                                val sourceFile = File(selectedModPath)
-                                if (!sourceFile.exists()) {
-                                    snackbarHostState.showSnackbar("错误：文件夹不存在")
-                                    isAddingMod = false
-                                    return@launch
+                        if (!isPerformingOperation) {
+                            isPerformingOperation = true
+                            scope.launch {
+                                try {
+                                    // 检查路径是否是文件夹
+                                    val sourceFile = File(selectedModPath)
+                                    if (!sourceFile.exists() || !sourceFile.isDirectory) {
+                                        snackbarHostState.showSnackbar("请选择一个有效的文件夹")
+                                        return@launch
+                                    }
+                                    
+                                    viewModel.addMod(titleId, selectedModPath, modName)
+                                    // 不需要手动重新加载，因为addMod内部会处理
+                                } catch (e: Exception) {
+                                    snackbarHostState.showSnackbar("添加Mod失败: ${e.message}")
+                                } finally {
+                                    showAddModDialog = false
+                                    selectedModPath = ""
+                                    // 这里不重置isPerformingOperation，让ViewModel的加载状态来控制
                                 }
-                                
-                                if (!sourceFile.isDirectory) {
-                                    snackbarHostState.showSnackbar("错误：请选择文件夹而不是文件")
-                                    isAddingMod = false
-                                    return@launch
-                                }
-                                
-                                // 显示正在添加的消息
-                                val snackbarResult = snackbarHostState.showSnackbar(
-                                    message = "正在添加Mod: $modName...",
-                                    withDismissAction = false
-                                )
-                                
-                                Log.d("ModViews", "开始添加Mod: $modName, 路径: $selectedModPath")
-                                
-                                // 添加mod
-                                viewModel.addMod(titleId, selectedModPath, modName)
-                                
-                                // 等待一小段时间确保操作完成
-                                delay(1000)
-                                
-                                // 重新加载列表
-                                viewModel.resetLoadedState()
-                                viewModel.loadMods(titleId)
-                                
-                                // 等待加载完成
-                                while (viewModel.isLoading) {
-                                    delay(100)
-                                }
-                                
-                                // 显示成功消息
-                                snackbarHostState.showSnackbar("Mod添加成功: $modName")
-                                
-                            } catch (e: Exception) {
-                                Log.e("ModViews", "添加Mod时出错", e)
-                                snackbarHostState.showSnackbar("添加Mod失败: ${e.message}")
-                            } finally {
-                                isAddingMod = false
-                                showAddModDialog = false
-                                selectedModPath = ""
                             }
                         }
                     },
                     onDismiss = {
-                        if (!isAddingMod) {
+                        if (!isPerformingOperation) {
                             showAddModDialog = false
                             selectedModPath = ""
                         }
                     },
-                    isAdding = isAddingMod
+                    enabled = !isPerformingOperation
                 )
-            }
-
-            // 显示添加mod的进度指示器
-            if (isAddingMod) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        CircularProgressIndicator()
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text("正在添加Mod...")
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text("请稍候", style = MaterialTheme.typography.bodySmall)
-                    }
-                }
             }
         }
 
@@ -468,7 +430,8 @@ class ModViews {
         private fun ModListItem(
             mod: ModModel,
             onEnabledChanged: (Boolean) -> Unit,
-            onDelete: () -> Unit
+            onDelete: () -> Unit,
+            enabled: Boolean = true
         ) {
             Card(
                 modifier = Modifier
@@ -487,7 +450,8 @@ class ModViews {
                         // 启用开关 - 使用Switch而不是Checkbox
                         Switch(
                             checked = mod.enabled,
-                            onCheckedChange = onEnabledChanged
+                            onCheckedChange = onEnabledChanged,
+                            enabled = enabled
                         )
                         
                         Spacer(modifier = Modifier.width(8.dp))
@@ -514,7 +478,8 @@ class ModViews {
                         
                         // 删除按钮
                         IconButton(
-                            onClick = onDelete
+                            onClick = onDelete,
+                            enabled = enabled
                         ) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete")
                         }
@@ -549,7 +514,7 @@ class ModViews {
             selectedPath: String,
             onConfirm: (String) -> Unit,
             onDismiss: () -> Unit,
-            isAdding: Boolean = false
+            enabled: Boolean = true
         ) {
             var modName by remember { mutableStateOf("") }
             val folderName = File(selectedPath).name
@@ -560,11 +525,7 @@ class ModViews {
             }
             
             AlertDialog(
-                onDismissRequest = {
-                    if (!isAdding) {
-                        onDismiss()
-                    }
-                },
+                onDismissRequest = onDismiss,
                 title = { Text("Add Mod") },
                 text = {
                     Column {
@@ -576,7 +537,7 @@ class ModViews {
                             onValueChange = { modName = it },
                             modifier = Modifier.fillMaxWidth(),
                             placeholder = { Text("Enter mod name") },
-                            enabled = !isAdding
+                            enabled = enabled
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
@@ -584,20 +545,12 @@ class ModViews {
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        if (isAdding) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Adding mod in progress...",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
                     }
                 },
                 confirmButton = {
                     Button(
                         onClick = { onConfirm(modName) },
-                        enabled = modName.isNotEmpty() && !isAdding
+                        enabled = modName.isNotEmpty() && enabled
                     ) {
                         Text("Add Mod")
                     }
@@ -605,7 +558,7 @@ class ModViews {
                 dismissButton = {
                     OutlinedButton(
                         onClick = onDismiss,
-                        enabled = !isAdding
+                        enabled = enabled
                     ) {
                         Text("Cancel")
                     }
@@ -615,51 +568,25 @@ class ModViews {
 
         private fun getFolderPathFromUri(context: Context, uri: Uri): String? {
             return try {
-                Log.d("ModViews", "getFolderPathFromUri called with URI: $uri")
-                
-                // 获取持久化权限
                 val contentResolver = context.contentResolver
                 val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 contentResolver.takePersistableUriPermission(uri, takeFlags)
                 
-                // 对于 DocumentTree URI，我们需要特殊处理
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    val documentId = DocumentsContract.getTreeDocumentId(uri)
-                    Log.d("ModViews", "Document ID: $documentId")
-                    
-                    // 处理不同的存储类型
+                // 对于 DocumentFile，我们需要使用 DocumentsContract 来获取路径
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                    val documentId = android.provider.DocumentsContract.getTreeDocumentId(uri)
                     if (documentId.startsWith("primary:")) {
-                        // 主存储
                         val path = documentId.substringAfter("primary:")
-                        val fullPath = "/storage/emulated/0/$path"
-                        Log.d("ModViews", "Primary storage path: $fullPath")
-                        
-                        // 验证路径是否存在
-                        val file = File(fullPath)
-                        if (file.exists() && file.isDirectory) {
-                            return fullPath
-                        } else {
-                            Log.w("ModViews", "Path does not exist or is not a directory: $fullPath")
-                        }
-                    } else if (documentId.contains(":")) {
-                        // 可能是SD卡或其他外部存储
-                        // 尝试直接使用URI路径
-                        val uriPath = uri.toString()
-                        Log.d("ModViews", "Non-primary storage URI: $uriPath")
-                        
-                        // 对于外部存储，我们可能无法获取文件系统路径
-                        // 返回一个标识符，让用户知道选择了什么
-                        return "external:$documentId"
+                        "/storage/emulated/0/$path"
+                    } else {
+                        // 处理其他存储设备
+                        uri.path
                     }
+                } else {
+                    uri.path
                 }
-                
-                // 回退方案：使用URI的路径部分
-                val fallbackPath = uri.path
-                Log.d("ModViews", "Using fallback path: $fallbackPath")
-                fallbackPath
-                
             } catch (e: Exception) {
-                Log.e("ModViews", "Error getting folder path from URI", e)
+                e.printStackTrace()
                 null
             }
         }
