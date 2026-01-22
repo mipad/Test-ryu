@@ -59,6 +59,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.ryujinx.android.viewmodels.ModModel
 import org.ryujinx.android.viewmodels.ModType
@@ -86,6 +87,8 @@ class ModViews {
             var showAddModDialog by remember { mutableStateOf(false) }
             var selectedModPath by remember { mutableStateOf("") }
             var isInitialLoad by remember { mutableStateOf(true) }
+            var retryCount by remember { mutableStateOf(0) }
+            val maxRetries = 3
             
             // 使用OpenDocumentTree来选择文件夹
             val folderPickerLauncher = rememberLauncherForActivityResult(
@@ -106,12 +109,25 @@ class ModViews {
                 }
             }
 
-            // 加载Mod列表
-            LaunchedEffect(titleId) {
-                // 只在第一次加载或titleId改变时加载
+            // 加载Mod列表 - 使用更可靠的加载逻辑
+            LaunchedEffect(titleId, retryCount) {
                 if (isInitialLoad) {
+                    // 第一次加载时清除状态并加载
                     viewModel.clearMods()
                     viewModel.loadMods(titleId)
+                    
+                    // 设置一个超时检查
+                    delay(3000) // 等待3秒
+                    
+                    // 如果还是加载中，可能是卡住了，尝试重新加载
+                    if (viewModel.isLoading && retryCount < maxRetries) {
+                        Log.d("ModViews", "Initial load seems stuck, retrying... (attempt ${retryCount + 1})")
+                        retryCount++
+                        viewModel.resetLoadedState()
+                        delay(1000)
+                        viewModel.loadMods(titleId, true)
+                    }
+                    
                     isInitialLoad = false
                 }
             }
@@ -124,12 +140,24 @@ class ModViews {
                 }
             }
 
+            // 监听加载状态变化，如果加载时间过长，提供手动刷新选项
+            LaunchedEffect(viewModel.isLoading) {
+                if (viewModel.isLoading) {
+                    // 设置超时检查（5秒）
+                    delay(5000)
+                    if (viewModel.isLoading) {
+                        Log.w("ModViews", "Mod loading is taking too long")
+                        // 可以在这里显示一个提示，但不要自动重试，让用户决定
+                    }
+                }
+            }
+
             Scaffold(
                 topBar = {
                     TopAppBar(
                         title = { 
                             Text(
-                                text = "Mod Management - $gameName ($titleId)",
+                                text = "Mod管理 - $gameName",
                                 style = MaterialTheme.typography.titleLarge,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -137,10 +165,11 @@ class ModViews {
                         },
                         navigationIcon = {
                             IconButton(onClick = { 
+                                // 清理状态后再返回
                                 viewModel.clearMods()
                                 navController.popBackStack() 
                             }) {
-                                Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                                Icon(Icons.Default.ArrowBack, contentDescription = "返回")
                             }
                         },
                         actions = {
@@ -150,10 +179,11 @@ class ModViews {
                                     scope.launch {
                                         viewModel.resetLoadedState()
                                         viewModel.loadMods(titleId, true)
+                                        snackbarHostState.showSnackbar("正在刷新Mod列表...")
                                     }
                                 }
                             ) {
-                                Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                                Icon(Icons.Default.Refresh, contentDescription = "刷新")
                             }
                         }
                     )
@@ -165,7 +195,7 @@ class ModViews {
                             folderPickerLauncher.launch(null)
                         }
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = "Add Mod")
+                        Icon(Icons.Default.Add, contentDescription = "添加Mod")
                     }
                 },
                 snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
@@ -183,7 +213,30 @@ class ModViews {
                         ) {
                             CircularProgressIndicator()
                             Spacer(modifier = Modifier.height(12.dp))
-                            Text("Loading mods...")
+                            Text("正在加载Mod列表...")
+                            Spacer(modifier = Modifier.height(8.dp))
+                            if (retryCount > 0) {
+                                Text(
+                                    text = "正在重试 ($retryCount/$maxRetries)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+                            // 添加手动刷新按钮
+                            OutlinedButton(
+                                onClick = {
+                                    scope.launch {
+                                        retryCount = 0
+                                        viewModel.resetLoadedState()
+                                        viewModel.loadMods(titleId, true)
+                                    }
+                                }
+                            ) {
+                                Icon(Icons.Default.Refresh, contentDescription = "手动刷新", modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("手动刷新")
+                            }
                         }
                     } else {
                         // 使用可滚动的Column
@@ -193,22 +246,32 @@ class ModViews {
                                 .padding(8.dp)
                                 .verticalScroll(rememberScrollState())
                         ) {
-                            // 统计信息和删除所有按钮
+                            // 统计信息和操作按钮
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Mods: ${viewModel.mods.size} (${viewModel.mods.count { it.enabled }} enabled)",
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
+                                Column {
+                                    Text(
+                                        text = "Mod数量: ${viewModel.mods.size}",
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Text(
+                                        text = "已启用: ${viewModel.mods.count { it.enabled }}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                                 
-                                OutlinedButton(
-                                    onClick = { showDeleteAllDialog = true },
-                                    enabled = viewModel.mods.isNotEmpty()
-                                ) {
-                                    Text("Delete All")
+                                Row {
+                                    OutlinedButton(
+                                        onClick = { showDeleteAllDialog = true },
+                                        enabled = viewModel.mods.isNotEmpty(),
+                                        modifier = Modifier.padding(end = 4.dp)
+                                    ) {
+                                        Text("删除全部")
+                                    }
                                 }
                             }
                             
@@ -229,28 +292,42 @@ class ModViews {
                                     )
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Text(
-                                        text = "No mods found",
+                                        text = "未找到Mod",
                                         style = MaterialTheme.typography.bodyLarge,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Text(
-                                        text = "Click the + button to add a mod",
+                                        text = "点击右下角 + 按钮添加Mod",
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Spacer(modifier = Modifier.height(12.dp))
                                     // 添加手动刷新按钮
-                                    OutlinedButton(
-                                        onClick = {
-                                            scope.launch {
-                                                viewModel.resetLoadedState()
-                                                viewModel.loadMods(titleId, true)
-                                            }
-                                        }
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        Icon(Icons.Default.Refresh, contentDescription = "Refresh", modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Refresh List")
+                                        OutlinedButton(
+                                            onClick = {
+                                                scope.launch {
+                                                    retryCount = 0
+                                                    viewModel.resetLoadedState()
+                                                    viewModel.loadMods(titleId, true)
+                                                    snackbarHostState.showSnackbar("正在刷新列表...")
+                                                }
+                                            }
+                                        ) {
+                                            Icon(Icons.Default.Refresh, contentDescription = "刷新", modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("刷新列表")
+                                        }
+                                        
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        
+                                        Text(
+                                            text = "如果列表加载时间过长，请尝试手动刷新",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
                                     }
                                 }
                             } else {
@@ -291,22 +368,24 @@ class ModViews {
                                             onClick = {
                                                 scope.launch {
                                                     viewModel.enableAllMods(titleId)
+                                                    snackbarHostState.showSnackbar("正在启用所有Mod...")
                                                 }
                                             },
                                             enabled = viewModel.mods.any { !it.enabled }
                                         ) {
-                                            Text("Enable All")
+                                            Text("启用全部")
                                         }
                                         
                                         OutlinedButton(
                                             onClick = {
                                                 scope.launch {
                                                     viewModel.disableAllMods(titleId)
+                                                    snackbarHostState.showSnackbar("正在禁用所有Mod...")
                                                 }
                                             },
                                             enabled = viewModel.mods.any { it.enabled }
                                         ) {
-                                            Text("Disable All")
+                                            Text("禁用全部")
                                         }
                                     }
                                 }
@@ -323,9 +402,9 @@ class ModViews {
             showDeleteDialog?.let { mod ->
                 AlertDialog(
                     onDismissRequest = { showDeleteDialog = null },
-                    title = { Text("Delete Mod") },
+                    title = { Text("删除Mod") },
                     text = { 
-                        Text("Are you sure you want to delete \"${mod.name}\"? This action cannot be undone.") 
+                        Text("确定要删除 \"${mod.name}\" 吗？此操作无法撤销。") 
                     },
                     confirmButton = {
                         Button(
@@ -333,17 +412,18 @@ class ModViews {
                                 scope.launch {
                                     viewModel.deleteMod(titleId, mod)
                                     showDeleteDialog = null
+                                    snackbarHostState.showSnackbar("已删除Mod: ${mod.name}")
                                 }
                             }
                         ) {
-                            Text("Delete")
+                            Text("删除")
                         }
                     },
                     dismissButton = {
                         OutlinedButton(
                             onClick = { showDeleteDialog = null }
                         ) {
-                            Text("Cancel")
+                            Text("取消")
                         }
                     }
                 )
@@ -353,9 +433,9 @@ class ModViews {
             if (showDeleteAllDialog) {
                 AlertDialog(
                     onDismissRequest = { showDeleteAllDialog = false },
-                    title = { Text("Delete All Mods") },
+                    title = { Text("删除所有Mod") },
                     text = { 
-                        Text("Are you sure you want to delete all ${viewModel.mods.size} mods? This action cannot be undone.") 
+                        Text("确定要删除所有 ${viewModel.mods.size} 个Mod吗？此操作无法撤销。") 
                     },
                     confirmButton = {
                         Button(
@@ -363,17 +443,18 @@ class ModViews {
                                 scope.launch {
                                     viewModel.deleteAllMods(titleId)
                                     showDeleteAllDialog = false
+                                    snackbarHostState.showSnackbar("已删除所有Mod")
                                 }
                             }
                         ) {
-                            Text("Delete All")
+                            Text("删除全部")
                         }
                     },
                     dismissButton = {
                         OutlinedButton(
                             onClick = { showDeleteAllDialog = false }
                         ) {
-                            Text("Cancel")
+                            Text("取消")
                         }
                     }
                 )
@@ -392,6 +473,7 @@ class ModViews {
                                 return@launch
                             }
                             
+                            snackbarHostState.showSnackbar("正在添加Mod，请稍候...")
                             viewModel.addMod(titleId, selectedModPath, modName)
                             showAddModDialog = false
                             selectedModPath = ""
@@ -447,7 +529,7 @@ class ModViews {
                             
                             // 类型信息
                             Text(
-                                text = "Type: ${mod.type.name}",
+                                text = "类型: ${mod.type.name}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -457,7 +539,7 @@ class ModViews {
                         IconButton(
                             onClick = onDelete
                         ) {
-                            Icon(Icons.Default.Delete, contentDescription = "Delete")
+                            Icon(Icons.Default.Delete, contentDescription = "删除")
                         }
                     }
                     
@@ -465,7 +547,7 @@ class ModViews {
                     
                     // 存储位置信息
                     Text(
-                        text = if (mod.inExternalStorage) "External Storage" else "Internal Storage",
+                        text = if (mod.inExternalStorage) "外部存储" else "内部存储",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -477,7 +559,7 @@ class ModViews {
                         text = mod.path,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 3,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -501,23 +583,29 @@ class ModViews {
             
             AlertDialog(
                 onDismissRequest = onDismiss,
-                title = { Text("Add Mod") },
+                title = { Text("添加Mod") },
                 text = {
                     Column {
-                        Text("Selected folder: $selectedPath")
+                        Text("选择的文件夹: $selectedPath")
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("Mod name:")
+                        Text("Mod名称:")
                         OutlinedTextField(
                             value = modName,
                             onValueChange = { modName = it },
                             modifier = Modifier.fillMaxWidth(),
-                            placeholder = { Text("Enter mod name") }
+                            placeholder = { Text("输入Mod名称") }
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "This will copy the entire folder contents to the game's mod directory.",
+                            text = "这会将整个文件夹内容复制到游戏的Mod目录中。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "添加后可能需要等待几秒钟才能刷新列表。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
                         )
                     }
                 },
@@ -526,12 +614,12 @@ class ModViews {
                         onClick = { onConfirm(modName) },
                         enabled = modName.isNotEmpty()
                     ) {
-                        Text("Add Mod")
+                        Text("添加Mod")
                     }
                 },
                 dismissButton = {
                     OutlinedButton(onClick = onDismiss) {
-                        Text("Cancel")
+                        Text("取消")
                     }
                 }
             )
@@ -560,6 +648,19 @@ class ModViews {
                 e.printStackTrace()
                 null
             }
+        }
+        
+        // 添加日志函数
+        private fun Log.d(tag: String, message: String) {
+            android.util.Log.d(tag, message)
+        }
+        
+        private fun Log.w(tag: String, message: String) {
+            android.util.Log.w(tag, message)
+        }
+        
+        private fun Log.e(tag: String, message: String) {
+            android.util.Log.e(tag, message)
         }
     }
 }
