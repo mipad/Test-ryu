@@ -59,7 +59,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.ryujinx.android.viewmodels.ModModel
 import org.ryujinx.android.viewmodels.ModType
@@ -86,9 +85,6 @@ class ModViews {
             var showDeleteDialog by remember { mutableStateOf<ModModel?>(null) }
             var showAddModDialog by remember { mutableStateOf(false) }
             var selectedModPath by remember { mutableStateOf("") }
-            var isInitialLoad by remember { mutableStateOf(true) }
-            var retryCount by remember { mutableStateOf(0) }
-            val maxRetries = 3
             
             // 使用OpenDocumentTree来选择文件夹
             val folderPickerLauncher = rememberLauncherForActivityResult(
@@ -109,44 +105,11 @@ class ModViews {
                 }
             }
 
-            // 加载Mod列表 - 使用更可靠的加载逻辑
-            LaunchedEffect(titleId, retryCount) {
-                if (isInitialLoad) {
-                    // 第一次加载时清除状态并加载
-                    viewModel.clearMods()
-                    viewModel.loadMods(titleId)
-                    
-                    // 设置一个超时检查
-                    delay(3000) // 等待3秒
-                    
-                    // 如果还是加载中，可能是卡住了，尝试重新加载
-                    if (viewModel.isLoading && retryCount < maxRetries) {
-                        retryCount++
-                        viewModel.resetLoadedState()
-                        delay(1000)
-                        viewModel.loadMods(titleId, true)
-                    }
-                    
-                    isInitialLoad = false
-                }
-            }
-
             // 显示错误消息
             viewModel.errorMessage?.let { error ->
                 LaunchedEffect(error) {
                     snackbarHostState.showSnackbar(error)
                     viewModel.clearError()
-                }
-            }
-
-            // 监听加载状态变化，如果加载时间过长，提供手动刷新选项
-            LaunchedEffect(viewModel.isLoading) {
-                if (viewModel.isLoading) {
-                    // 设置超时检查（5秒）
-                    delay(5000)
-                    if (viewModel.isLoading) {
-                        // 加载时间过长，但不要自动重试，让用户决定
-                    }
                 }
             }
 
@@ -203,7 +166,7 @@ class ModViews {
                         .fillMaxSize()
                         .padding(paddingValues)
                 ) {
-                    if (viewModel.isLoading && viewModel.mods.isEmpty()) {
+                    if (viewModel.isLoading) {
                         Column(
                             modifier = Modifier.fillMaxSize(),
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -212,29 +175,6 @@ class ModViews {
                             CircularProgressIndicator()
                             Spacer(modifier = Modifier.height(12.dp))
                             Text("正在加载Mod列表...")
-                            Spacer(modifier = Modifier.height(8.dp))
-                            if (retryCount > 0) {
-                                Text(
-                                    text = "正在重试 ($retryCount/$maxRetries)",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(12.dp))
-                            // 添加手动刷新按钮
-                            OutlinedButton(
-                                onClick = {
-                                    scope.launch {
-                                        retryCount = 0
-                                        viewModel.resetLoadedState()
-                                        viewModel.loadMods(titleId, true)
-                                    }
-                                }
-                            ) {
-                                Icon(Icons.Default.Refresh, contentDescription = "手动刷新", modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("手动刷新")
-                            }
                         }
                     } else {
                         // 使用可滚动的Column
@@ -255,11 +195,13 @@ class ModViews {
                                         text = "Mod数量: ${viewModel.mods.size}",
                                         style = MaterialTheme.typography.bodyMedium
                                     )
-                                    Text(
-                                        text = "已启用: ${viewModel.mods.count { it.enabled }}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                    if (viewModel.mods.isNotEmpty()) {
+                                        Text(
+                                            text = "已启用: ${viewModel.mods.count { it.enabled }}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
                                 
                                 Row {
@@ -276,7 +218,34 @@ class ModViews {
                             Spacer(modifier = Modifier.height(12.dp))
                             
                             // Mod列表
-                            if (viewModel.mods.isEmpty()) {
+                            if (viewModel.mods.isEmpty() && !viewModel.hasLoaded) {
+                                // 初始状态，未加载过
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(200.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        text = "📋",
+                                        style = MaterialTheme.typography.displayMedium
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "点击右上角刷新按钮加载Mod列表",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "或点击右下角 + 按钮添加Mod",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            } else if (viewModel.mods.isEmpty() && viewModel.hasLoaded) {
+                                // 已加载过，但没有Mod
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -299,36 +268,9 @@ class ModViews {
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    // 添加手动刷新按钮
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally
-                                    ) {
-                                        OutlinedButton(
-                                            onClick = {
-                                                scope.launch {
-                                                    retryCount = 0
-                                                    viewModel.resetLoadedState()
-                                                    viewModel.loadMods(titleId, true)
-                                                    snackbarHostState.showSnackbar("正在刷新列表...")
-                                                }
-                                            }
-                                        ) {
-                                            Icon(Icons.Default.Refresh, contentDescription = "刷新", modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text("刷新列表")
-                                        }
-                                        
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        
-                                        Text(
-                                            text = "如果列表加载时间过长，请尝试手动刷新",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
                                 }
                             } else {
+                                // 有Mod列表
                                 // 使用类似DLC的列表布局
                                 Surface(
                                     modifier = Modifier.padding(4.dp),
