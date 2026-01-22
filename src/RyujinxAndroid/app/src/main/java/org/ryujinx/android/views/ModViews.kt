@@ -288,7 +288,6 @@ class ModViews {
                                             .fillMaxWidth()
                                     ) {
                                         items(viewModel.mods) { mod ->
-                                            // 修复这里：移除enabled参数，因为原始ModListItem函数没有这个参数
                                             ModListItem(
                                                 mod = mod,
                                                 onEnabledChanged = { enabled ->
