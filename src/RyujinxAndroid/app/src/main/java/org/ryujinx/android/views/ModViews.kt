@@ -130,7 +130,6 @@ class ModViews {
                 topBar = {
                     TopAppBar(
                         title = { 
-                            // 移除Column包装，直接在一行显示标题和游戏信息
                             Text(
                                 text = "Mod Management - $gameName ($titleId)",
                                 style = MaterialTheme.typography.titleLarge,
@@ -186,104 +185,104 @@ class ModViews {
                             Text("Loading mods...")
                         }
                     } else {
-                        // 使用可滚动的Column
-                        Column(
+                        // 主要问题修复：使用单个LazyColumn而不是嵌套的Column和LazyColumn
+                        LazyColumn(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(8.dp) // 减少内边距
-                                .verticalScroll(rememberScrollState()) // 添加垂直滚动
                         ) {
-                            // 统计信息和删除所有按钮 - 放在左侧
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Mods: ${viewModel.mods.size} (${viewModel.mods.count { it.enabled }} enabled)",
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                                
-                                OutlinedButton(
-                                    onClick = { showDeleteAllDialog = true },
-                                    enabled = viewModel.mods.isNotEmpty()
+                            // 统计信息和删除所有按钮作为第一个item
+                            item {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Delete All")
+                                    Text(
+                                        text = "Mods: ${viewModel.mods.size} (${viewModel.mods.count { it.enabled }} enabled)",
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    
+                                    OutlinedButton(
+                                        onClick = { showDeleteAllDialog = true },
+                                        enabled = viewModel.mods.isNotEmpty()
+                                    ) {
+                                        Text("Delete All")
+                                    }
                                 }
+                                
+                                Spacer(modifier = Modifier.height(12.dp)) // 减少间距
                             }
                             
-                            Spacer(modifier = Modifier.height(12.dp)) // 减少间距
-                            
-                            // Mod列表
+                            // 空状态作为单独的item
                             if (viewModel.mods.isEmpty()) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(200.dp), // 减少高度
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.Center
-                                ) {
-                                    Text(
-                                        text = "📁",
-                                        style = MaterialTheme.typography.displayMedium
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp)) // 减少间距
-                                    Text(
-                                        text = "No mods found",
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Text(
-                                        text = "Click the + button to add a mod",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp)) // 减少间距
-                                    // 添加手动刷新按钮
-                                    OutlinedButton(
-                                        onClick = {
-                                            scope.launch {
-                                                viewModel.resetLoadedState()
-                                                viewModel.loadMods(titleId)
-                                            }
-                                        }
+                                item {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(200.dp), // 减少高度
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
                                     ) {
-                                        Icon(Icons.Default.Refresh, contentDescription = "Refresh", modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(6.dp)) // 减少间距
-                                        Text("Refresh List")
+                                        Text(
+                                            text = "📁",
+                                            style = MaterialTheme.typography.displayMedium
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp)) // 减少间距
+                                        Text(
+                                            text = "No mods found",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = "Click the + button to add a mod",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp)) // 减少间距
+                                        // 添加手动刷新按钮
+                                        OutlinedButton(
+                                            onClick = {
+                                                scope.launch {
+                                                    viewModel.resetLoadedState()
+                                                    viewModel.loadMods(titleId)
+                                                }
+                                            }
+                                        ) {
+                                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(6.dp)) // 减少间距
+                                            Text("Refresh List")
+                                        }
                                     }
                                 }
                             } else {
-                                // 使用类似DLC的列表布局，移除固定高度
-                                Surface(
-                                    modifier = Modifier.padding(4.dp), // 减少内边距
-                                    color = MaterialTheme.colorScheme.surfaceVariant,
-                                    shape = MaterialTheme.shapes.medium
-                                ) {
-                                    LazyColumn(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
+                                // Mod列表items - 使用Surface包装每个mod
+                                items(viewModel.mods) { mod ->
+                                    Surface(
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 3.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant,
+                                        shape = MaterialTheme.shapes.medium
                                     ) {
-                                        items(viewModel.mods) { mod ->
-                                            ModListItem(
-                                                mod = mod,
-                                                onEnabledChanged = { enabled ->
-                                                    scope.launch {
-                                                        viewModel.setModEnabled(titleId, mod, enabled)
-                                                        // 不重新加载列表，避免闪烁
-                                                    }
-                                                },
-                                                onDelete = {
-                                                    showDeleteDialog = mod
+                                        ModListItem(
+                                            mod = mod,
+                                            onEnabledChanged = { enabled ->
+                                                scope.launch {
+                                                    viewModel.setModEnabled(titleId, mod, enabled)
+                                                    // 不重新加载列表，避免闪烁
                                                 }
-                                            )
-                                        }
+                                            },
+                                            onDelete = {
+                                                showDeleteDialog = mod
+                                            }
+                                        )
                                     }
                                 }
                             }
                             
                             // 添加底部间距，确保内容不会被FAB遮挡
-                            Spacer(modifier = Modifier.height(60.dp)) // 减少底部间距
+                            item {
+                                Spacer(modifier = Modifier.height(60.dp)) // 减少底部间距
+                            }
                         }
                     }
                 }
