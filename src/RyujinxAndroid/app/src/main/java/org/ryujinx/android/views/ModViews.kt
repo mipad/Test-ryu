@@ -4,6 +4,9 @@ package org.ryujinx.android.views
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.provider.DocumentsContract
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -59,6 +62,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.ryujinx.android.viewmodels.ModModel
 import org.ryujinx.android.viewmodels.ModType
@@ -85,6 +89,7 @@ class ModViews {
             var showDeleteDialog by remember { mutableStateOf<ModModel?>(null) }
             var showAddModDialog by remember { mutableStateOf(false) }
             var selectedModPath by remember { mutableStateOf("") }
+            var isAddingMod by remember { mutableStateOf(false) }
             
             // 添加一个状态来跟踪是否已经显示了mod列表
             var modsLoaded by remember { mutableStateOf(false) }
@@ -94,15 +99,23 @@ class ModViews {
                 ActivityResultContracts.OpenDocumentTree()
             ) { uri ->
                 uri?.let {
-                    // 获取文件夹路径
-                    val folderPath = getFolderPathFromUri(context, it)
-                    if (!folderPath.isNullOrEmpty()) {
-                        selectedModPath = folderPath
-                        showAddModDialog = true
-                    } else {
-                        // 如果无法获取路径，显示错误
+                    try {
+                        Log.d("ModViews", "Selected URI: $uri")
+                        val folderPath = getFolderPathFromUri(context, it)
+                        Log.d("ModViews", "Extracted folder path: $folderPath")
+                        if (!folderPath.isNullOrEmpty()) {
+                            selectedModPath = folderPath
+                            showAddModDialog = true
+                        } else {
+                            // 如果无法获取路径，显示错误
+                            scope.launch {
+                                snackbarHostState.showSnackbar("无法获取文件夹路径，请确保选择了有效的文件夹")
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("ModViews", "Error processing selected folder", e)
                         scope.launch {
-                            snackbarHostState.showSnackbar("无法获取文件夹路径")
+                            snackbarHostState.showSnackbar("处理文件夹时出错: ${e.message}")
                         }
                     }
                 }
@@ -113,7 +126,7 @@ class ModViews {
                 // 重置加载状态，确保每次都重新加载
                 viewModel.resetLoadedState()
                 // 延迟一小段时间再加载，避免UI闪烁
-                kotlinx.coroutines.delay(300)
+                delay(300)
                 viewModel.loadMods(titleId)
                 modsLoaded = true
             }
@@ -121,8 +134,16 @@ class ModViews {
             // 显示错误消息
             viewModel.errorMessage?.let { error ->
                 LaunchedEffect(error) {
+                    Log.e("ModViews", "Error from ViewModel: $error")
                     snackbarHostState.showSnackbar(error)
                     viewModel.clearError()
+                }
+            }
+
+            // 监控添加mod的状态
+            LaunchedEffect(isAddingMod) {
+                if (isAddingMod) {
+                    Log.d("ModViews", "Adding mod in progress")
                 }
             }
 
@@ -130,7 +151,6 @@ class ModViews {
                 topBar = {
                     TopAppBar(
                         title = { 
-                            // 移除Column包装，直接在一行显示标题和游戏信息
                             Text(
                                 text = "Mod Management - $gameName ($titleId)",
                                 style = MaterialTheme.typography.titleLarge,
@@ -150,6 +170,7 @@ class ModViews {
                                     scope.launch {
                                         viewModel.resetLoadedState()
                                         viewModel.loadMods(titleId)
+                                        snackbarHostState.showSnackbar("刷新完成")
                                     }
                                 }
                             ) {
@@ -163,7 +184,8 @@ class ModViews {
                         onClick = {
                             // 启动文件夹选择器，选择整个文件夹
                             folderPickerLauncher.launch(null)
-                        }
+                        },
+                        enabled = !isAddingMod
                     ) {
                         Icon(Icons.Default.Add, contentDescription = "Add Mod")
                     }
@@ -182,7 +204,7 @@ class ModViews {
                             verticalArrangement = Arrangement.Center
                         ) {
                             CircularProgressIndicator()
-                            Spacer(modifier = Modifier.height(12.dp)) // 减少间距
+                            Spacer(modifier = Modifier.height(12.dp))
                             Text("Loading mods...")
                         }
                     } else {
@@ -190,8 +212,8 @@ class ModViews {
                         Column(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(8.dp) // 减少内边距
-                                .verticalScroll(rememberScrollState()) // 添加垂直滚动
+                                .padding(8.dp)
+                                .verticalScroll(rememberScrollState())
                         ) {
                             // 统计信息和删除所有按钮 - 放在左侧
                             Row(
@@ -206,20 +228,20 @@ class ModViews {
                                 
                                 OutlinedButton(
                                     onClick = { showDeleteAllDialog = true },
-                                    enabled = viewModel.mods.isNotEmpty()
+                                    enabled = viewModel.mods.isNotEmpty() && !isAddingMod
                                 ) {
                                     Text("Delete All")
                                 }
                             }
                             
-                            Spacer(modifier = Modifier.height(12.dp)) // 减少间距
+                            Spacer(modifier = Modifier.height(12.dp))
                             
                             // Mod列表
                             if (viewModel.mods.isEmpty()) {
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(200.dp), // 减少高度
+                                        .height(200.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.Center
                                 ) {
@@ -227,7 +249,7 @@ class ModViews {
                                         text = "📁",
                                         style = MaterialTheme.typography.displayMedium
                                     )
-                                    Spacer(modifier = Modifier.height(8.dp)) // 减少间距
+                                    Spacer(modifier = Modifier.height(8.dp))
                                     Text(
                                         text = "No mods found",
                                         style = MaterialTheme.typography.bodyLarge,
@@ -238,7 +260,7 @@ class ModViews {
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                    Spacer(modifier = Modifier.height(8.dp)) // 减少间距
+                                    Spacer(modifier = Modifier.height(8.dp))
                                     // 添加手动刷新按钮
                                     OutlinedButton(
                                         onClick = {
@@ -246,17 +268,18 @@ class ModViews {
                                                 viewModel.resetLoadedState()
                                                 viewModel.loadMods(titleId)
                                             }
-                                        }
+                                        },
+                                        enabled = !isAddingMod
                                     ) {
                                         Icon(Icons.Default.Refresh, contentDescription = "Refresh", modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(6.dp)) // 减少间距
+                                        Spacer(modifier = Modifier.width(6.dp))
                                         Text("Refresh List")
                                     }
                                 }
                             } else {
                                 // 使用类似DLC的列表布局，移除固定高度
                                 Surface(
-                                    modifier = Modifier.padding(4.dp), // 减少内边距
+                                    modifier = Modifier.padding(4.dp),
                                     color = MaterialTheme.colorScheme.surfaceVariant,
                                     shape = MaterialTheme.shapes.medium
                                 ) {
@@ -270,12 +293,14 @@ class ModViews {
                                                 onEnabledChanged = { enabled ->
                                                     scope.launch {
                                                         viewModel.setModEnabled(titleId, mod, enabled)
-                                                        // 不重新加载列表，避免闪烁
                                                     }
                                                 },
                                                 onDelete = {
-                                                    showDeleteDialog = mod
-                                                }
+                                                    if (!isAddingMod) {
+                                                        showDeleteDialog = mod
+                                                    }
+                                                },
+                                                enabled = !isAddingMod
                                             )
                                         }
                                     }
@@ -283,7 +308,7 @@ class ModViews {
                             }
                             
                             // 添加底部间距，确保内容不会被FAB遮挡
-                            Spacer(modifier = Modifier.height(60.dp)) // 减少底部间距
+                            Spacer(modifier = Modifier.height(60.dp))
                         }
                     }
                 }
@@ -303,8 +328,6 @@ class ModViews {
                                 scope.launch {
                                     viewModel.deleteMod(titleId, mod)
                                     showDeleteDialog = null
-                                    // 重新加载列表
-                                    viewModel.loadMods(titleId)
                                 }
                             }
                         ) {
@@ -335,8 +358,6 @@ class ModViews {
                                 scope.launch {
                                     viewModel.deleteAllMods(titleId)
                                     showDeleteAllDialog = false
-                                    // 重新加载列表
-                                    viewModel.loadMods(titleId)
                                 }
                             }
                         ) {
@@ -359,25 +380,88 @@ class ModViews {
                     selectedPath = selectedModPath,
                     onConfirm = { modName ->
                         scope.launch {
-                            // 检查路径是否是文件夹
-                            val sourceFile = File(selectedModPath)
-                            if (!sourceFile.exists() || !sourceFile.isDirectory) {
-                                snackbarHostState.showSnackbar("请选择一个有效的文件夹")
-                                return@launch
+                            try {
+                                isAddingMod = true
+                                
+                                // 检查路径是否是文件夹
+                                val sourceFile = File(selectedModPath)
+                                if (!sourceFile.exists()) {
+                                    snackbarHostState.showSnackbar("错误：文件夹不存在")
+                                    isAddingMod = false
+                                    return@launch
+                                }
+                                
+                                if (!sourceFile.isDirectory) {
+                                    snackbarHostState.showSnackbar("错误：请选择文件夹而不是文件")
+                                    isAddingMod = false
+                                    return@launch
+                                }
+                                
+                                // 显示正在添加的消息
+                                val snackbarResult = snackbarHostState.showSnackbar(
+                                    message = "正在添加Mod: $modName...",
+                                    withDismissAction = false
+                                )
+                                
+                                Log.d("ModViews", "开始添加Mod: $modName, 路径: $selectedModPath")
+                                
+                                // 添加mod
+                                viewModel.addMod(titleId, selectedModPath, modName)
+                                
+                                // 等待一小段时间确保操作完成
+                                delay(1000)
+                                
+                                // 重新加载列表
+                                viewModel.resetLoadedState()
+                                viewModel.loadMods(titleId)
+                                
+                                // 等待加载完成
+                                while (viewModel.isLoading) {
+                                    delay(100)
+                                }
+                                
+                                // 显示成功消息
+                                snackbarHostState.showSnackbar("Mod添加成功: $modName")
+                                
+                            } catch (e: Exception) {
+                                Log.e("ModViews", "添加Mod时出错", e)
+                                snackbarHostState.showSnackbar("添加Mod失败: ${e.message}")
+                            } finally {
+                                isAddingMod = false
+                                showAddModDialog = false
+                                selectedModPath = ""
                             }
-                            
-                            viewModel.addMod(titleId, selectedModPath, modName)
-                            showAddModDialog = false
-                            selectedModPath = ""
-                            // 重新加载列表
-                            viewModel.loadMods(titleId)
                         }
                     },
                     onDismiss = {
-                        showAddModDialog = false
-                        selectedModPath = ""
-                    }
+                        if (!isAddingMod) {
+                            showAddModDialog = false
+                            selectedModPath = ""
+                        }
+                    },
+                    isAdding = isAddingMod
                 )
+            }
+
+            // 显示添加mod的进度指示器
+            if (isAddingMod) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        CircularProgressIndicator()
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("正在添加Mod...")
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("请稍候", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
             }
         }
 
@@ -385,16 +469,17 @@ class ModViews {
         private fun ModListItem(
             mod: ModModel,
             onEnabledChanged: (Boolean) -> Unit,
-            onDelete: () -> Unit
+            onDelete: () -> Unit,
+            enabled: Boolean = true
         ) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 3.dp, horizontal = 6.dp), // 减少内边距
-                shape = RoundedCornerShape(6.dp) // 减少圆角
+                    .padding(vertical = 3.dp, horizontal = 6.dp),
+                shape = RoundedCornerShape(6.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(12.dp) // 减少内边距
+                    modifier = Modifier.padding(12.dp)
                 ) {
                     // 第一行：开关、Mod名称和删除按钮
                     Row(
@@ -404,10 +489,11 @@ class ModViews {
                         // 启用开关 - 使用Switch而不是Checkbox
                         Switch(
                             checked = mod.enabled,
-                            onCheckedChange = onEnabledChanged
+                            onCheckedChange = onEnabledChanged,
+                            enabled = enabled
                         )
                         
-                        Spacer(modifier = Modifier.width(8.dp)) // 减少间距
+                        Spacer(modifier = Modifier.width(8.dp))
                         
                         // Mod名称 - 占用剩余空间
                         Column(
@@ -431,13 +517,14 @@ class ModViews {
                         
                         // 删除按钮
                         IconButton(
-                            onClick = onDelete
+                            onClick = onDelete,
+                            enabled = enabled
                         ) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete")
                         }
                     }
                     
-                    Spacer(modifier = Modifier.height(6.dp)) // 减少间距
+                    Spacer(modifier = Modifier.height(6.dp))
                     
                     // 存储位置信息
                     Text(
@@ -446,14 +533,14 @@ class ModViews {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     
-                    Spacer(modifier = Modifier.height(3.dp)) // 减少间距
+                    Spacer(modifier = Modifier.height(3.dp))
                     
                     // 路径信息 - 允许更多行显示
                     Text(
                         text = mod.path,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 3, // 减少到3行
+                        maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -465,7 +552,8 @@ class ModViews {
         private fun AddModDialog(
             selectedPath: String,
             onConfirm: (String) -> Unit,
-            onDismiss: () -> Unit
+            onDismiss: () -> Unit,
+            isAdding: Boolean = false
         ) {
             var modName by remember { mutableStateOf("") }
             val folderName = File(selectedPath).name
@@ -476,7 +564,11 @@ class ModViews {
             }
             
             AlertDialog(
-                onDismissRequest = onDismiss,
+                onDismissRequest = {
+                    if (!isAdding) {
+                        onDismiss()
+                    }
+                },
                 title = { Text("Add Mod") },
                 text = {
                     Column {
@@ -487,7 +579,8 @@ class ModViews {
                             value = modName,
                             onValueChange = { modName = it },
                             modifier = Modifier.fillMaxWidth(),
-                            placeholder = { Text("Enter mod name") }
+                            placeholder = { Text("Enter mod name") },
+                            enabled = !isAdding
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
@@ -495,18 +588,29 @@ class ModViews {
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        if (isAdding) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Adding mod in progress...",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 },
                 confirmButton = {
                     Button(
                         onClick = { onConfirm(modName) },
-                        enabled = modName.isNotEmpty()
+                        enabled = modName.isNotEmpty() && !isAdding
                     ) {
                         Text("Add Mod")
                     }
                 },
                 dismissButton = {
-                    OutlinedButton(onClick = onDismiss) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        enabled = !isAdding
+                    ) {
                         Text("Cancel")
                     }
                 }
@@ -515,25 +619,51 @@ class ModViews {
 
         private fun getFolderPathFromUri(context: Context, uri: Uri): String? {
             return try {
+                Log.d("ModViews", "getFolderPathFromUri called with URI: $uri")
+                
+                // 获取持久化权限
                 val contentResolver = context.contentResolver
                 val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 contentResolver.takePersistableUriPermission(uri, takeFlags)
                 
-                // 对于 DocumentFile，我们需要使用 DocumentsContract 来获取路径
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                    val documentId = android.provider.DocumentsContract.getTreeDocumentId(uri)
+                // 对于 DocumentTree URI，我们需要特殊处理
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    val documentId = DocumentsContract.getTreeDocumentId(uri)
+                    Log.d("ModViews", "Document ID: $documentId")
+                    
+                    // 处理不同的存储类型
                     if (documentId.startsWith("primary:")) {
+                        // 主存储
                         val path = documentId.substringAfter("primary:")
-                        "/storage/emulated/0/$path"
-                    } else {
-                        // 处理其他存储设备
-                        uri.path
+                        val fullPath = "/storage/emulated/0/$path"
+                        Log.d("ModViews", "Primary storage path: $fullPath")
+                        
+                        // 验证路径是否存在
+                        val file = File(fullPath)
+                        if (file.exists() && file.isDirectory) {
+                            return fullPath
+                        } else {
+                            Log.w("ModViews", "Path does not exist or is not a directory: $fullPath")
+                        }
+                    } else if (documentId.contains(":")) {
+                        // 可能是SD卡或其他外部存储
+                        // 尝试直接使用URI路径
+                        val uriPath = uri.toString()
+                        Log.d("ModViews", "Non-primary storage URI: $uriPath")
+                        
+                        // 对于外部存储，我们可能无法获取文件系统路径
+                        // 返回一个标识符，让用户知道选择了什么
+                        return "external:$documentId"
                     }
-                } else {
-                    uri.path
                 }
+                
+                // 回退方案：使用URI的路径部分
+                val fallbackPath = uri.path
+                Log.d("ModViews", "Using fallback path: $fallbackPath")
+                fallbackPath
+                
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e("ModViews", "Error getting folder path from URI", e)
                 null
             }
         }
