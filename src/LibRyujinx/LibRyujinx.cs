@@ -658,7 +658,7 @@ public static int GetScalingFilterLevel()
             {
                 string[] modsBasePaths = { 
                     Path.Combine(AppDataManager.BaseDirPath, "mods"),
-                    "/storage/emulated/0/Android/data/org.ryujinx.android/files/mods"
+                    "/storage/emulated/0/Android/data/org.karyujinx.android/files/mods"
                 };
 
                 Logger.Info?.Print(LogClass.ModLoader, $"Starting mod scan for titleId: {titleId}");
