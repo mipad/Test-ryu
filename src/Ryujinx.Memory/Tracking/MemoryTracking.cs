@@ -290,29 +290,43 @@ namespace Ryujinx.Memory.Tracking
         /// <returns>True if the event triggered any tracking regions, false otherwise</returns>
         public bool VirtualMemoryEvent(ulong address, ulong size, bool write, bool precise, int? exemptId = null, bool guest = false)
         {
+            // 空指针访问检查 - 这在ARM架构中是合法的，但需要特殊处理
+            if (address == 0)
+            {
+                // 调用无效访问处理器
+                _invalidAccessHandler?.Invoke(address);
+                
+                // 在NCE模式下，我们可能希望返回false而不是抛出异常
+                // 因为某些游戏可能会故意访问空指针来检测内存布局
+                // 返回false表示事件未触发任何跟踪区域
+                return false;
+            }
+
             // Look up the virtual region using the region list.
             // Signal up the chain to relevant handles.
 
             bool shouldThrow = false;
+            VirtualRegion[] overlaps = null;
+            int length = 0;
 
             lock (TrackingLock)
             {
                 NonOverlappingRangeList<VirtualRegion> regions = guest ? _guestVirtualRegions : _virtualRegions;
                 
-                // We use the non-span method here because keeping the lock will cause a deadlock.
+                // 我们使用非span方法，因为保持锁会导致死锁。
                 regions.Lock.EnterReadLock();
-                VirtualRegion[] overlaps = regions.FindOverlapsAsArray(address, size, out int length);
+                overlaps = regions.FindOverlapsAsArray(address, size, out length);
                 regions.Lock.ExitReadLock();
 
                 if (length == 0 && !precise)
                 {
                     if (_memoryManager.IsRangeMapped(address, size))
                     {
-                        // TODO: There is currently the possibility that a page can be protected after its virtual region is removed.
-                        // This code handles that case when it happens, but it would be better to find out how this happens.
+                        // TODO: 目前存在页面在虚拟区域被移除后仍可能被保护的情况。
+                        // 当这种情况发生时，这段代码会处理它，但最好能找出这种情况是如何发生的。
                         _memoryManager.TrackingReprotect(address & ~(ulong)(_pageSize - 1), (ulong)_pageSize, MemoryPermission.ReadAndWrite, guest);
                         
-                        return true; // This memory _should_ be mapped, so we need to try again.
+                        return true; // 这个内存_应该_被映射，所以我们需要重试。
                     }
                     
                     shouldThrow = true;
@@ -321,7 +335,7 @@ namespace Ryujinx.Memory.Tracking
                 {
                     if (guest && _singleByteGuestTracking)
                     {
-                        // Increase the access size to trigger handles with misaligned accesses.
+                        // 增加访问大小以触发具有未对齐访问的句柄。
                         size += (ulong)_pageSize;
                     }
                     
@@ -338,21 +352,28 @@ namespace Ryujinx.Memory.Tracking
                             region.Signal(address, size, write, exemptId);
                         }
                     }
-
-                    if (length != 0)
-                    {
-                        ArrayPool<VirtualRegion>.Shared.Return(overlaps);
-                    }
                 }
             }
 
-            if (shouldThrow)
+            // 确保从数组池借用的数组被正确归还
+            try
             {
-                _invalidAccessHandler?.Invoke(address);
+                if (shouldThrow)
+                {
+                    _invalidAccessHandler?.Invoke(address);
 
-                // We can't continue - it's impossible to remove protection from the page.
-                // Even if the access handler wants us to continue, we wouldn't be able to.
-                throw new InvalidMemoryRegionException();
+                    // 我们不能继续 - 无法从页面移除保护。
+                    // 即使访问处理器希望我们继续，我们也做不到。
+                    throw new InvalidMemoryRegionException($"Attempted to access an invalid memory region at 0x{address:X16}");
+                }
+            }
+            finally
+            {
+                // 始终归还数组，无论是否发生异常
+                if (overlaps != null && length > 0)
+                {
+                    ArrayPool<VirtualRegion>.Shared.Return(overlaps);
+                }
             }
 
             return true;
