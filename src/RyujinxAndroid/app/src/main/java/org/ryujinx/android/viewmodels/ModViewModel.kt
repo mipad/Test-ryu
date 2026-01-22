@@ -40,13 +40,13 @@ class ModViewModel : ViewModel() {
     fun loadMods(titleId: String, forceRefresh: Boolean = false) {
         // 使用原子操作防止并发加载
         if (!_loadingLock.compareAndSet(false, true)) {
-            Log.d("ModViewModel", "Another load operation is in progress, skipping")
+            Log.d("ModViewModel", "另一个加载操作正在进行中，跳过")
             return
         }
         
         // 如果titleId没有变化且已经加载过且不是强制刷新，直接返回
         if (_currentTitleId == titleId && _hasLoaded.value && !forceRefresh && !_parseFailed) {
-            Log.d("ModViewModel", "Mods already loaded for $titleId, skipping")
+            Log.d("ModViewModel", "Mod已经加载过，跳过")
             _loadingLock.set(false)
             return
         }
@@ -59,37 +59,37 @@ class ModViewModel : ViewModel() {
             _errorMessage.value = null
             
             try {
-                Log.d("ModViewModel", "Loading mods for titleId: $titleId")
+                Log.d("ModViewModel", "加载Mod列表: $titleId")
                 
                 // 在IO线程执行Native调用
                 val modsJson = withContext(Dispatchers.IO) {
                     RyujinxNative.getMods(titleId)
                 }
                 
-                Log.d("ModViewModel", "Raw mods JSON received, length: ${modsJson.length}")
+                Log.d("ModViewModel", "收到原始Mod JSON，长度: ${modsJson.length}")
                 
                 if (modsJson.isNotEmpty()) {
                     val success = parseModsJson(modsJson)
                     if (success) {
                         _hasLoaded.value = true
                         _parseFailed = false
-                        Log.d("ModViewModel", "Successfully loaded ${_mods.size} mods for $titleId")
+                        Log.d("ModViewModel", "成功加载 ${_mods.size} 个Mod")
                     } else {
                         // 解析失败，标记为解析失败
                         _parseFailed = true
-                        Log.e("ModViewModel", "Failed to parse mods JSON for $titleId")
-                        _errorMessage.value = "Failed to parse mods data"
+                        Log.e("ModViewModel", "解析Mod JSON失败")
+                        _errorMessage.value = "解析Mod数据失败"
                     }
                 } else {
-                    Log.d("ModViewModel", "Empty mods response for $titleId")
+                    Log.d("ModViewModel", "Mod响应为空")
                     // 在主线程清空列表
                     _mods.clear()
                     _hasLoaded.value = true
                     _parseFailed = false
                 }
             } catch (e: Exception) {
-                Log.e("ModViewModel", "Error loading mods for $titleId", e)
-                _errorMessage.value = "Failed to load mods: ${e.message}"
+                Log.e("ModViewModel", "加载Mod时出错", e)
+                _errorMessage.value = "加载Mod失败: ${e.message}"
                 // 发生异常时标记为解析失败
                 _parseFailed = true
             } finally {
@@ -101,11 +101,11 @@ class ModViewModel : ViewModel() {
 
     private fun parseModsJson(jsonString: String): Boolean {
         return try {
-            Log.d("ModViewModel", "Parsing JSON: ${jsonString.take(200)}...")
+            Log.d("ModViewModel", "解析JSON: ${jsonString.take(200)}...")
             
             val cleanJson = jsonString.trim()
             if (cleanJson.isEmpty() || cleanJson == "[]" || cleanJson == "{}") {
-                Log.w("ModViewModel", "Empty JSON string or empty array")
+                Log.w("ModViewModel", "JSON字符串为空或空数组")
                 // 在主线程清空列表
                 viewModelScope.launch(Dispatchers.Main) {
                     _mods.clear()
@@ -115,7 +115,7 @@ class ModViewModel : ViewModel() {
 
             // 尝试解析JSON数组
             val jsonArray = JSONArray(cleanJson)
-            Log.d("ModViewModel", "JSON array length: ${jsonArray.length()}")
+            Log.d("ModViewModel", "JSON数组长度: ${jsonArray.length()}")
             
             val newMods = mutableListOf<ModModel>()
             
@@ -123,7 +123,7 @@ class ModViewModel : ViewModel() {
                 try {
                     val modJson = jsonArray.getJSONObject(i)
                     val mod = ModModel(
-                        name = modJson.optString("name", "Unknown Mod").takeIf { it.isNotBlank() } ?: "Unknown Mod",
+                        name = modJson.optString("name", "未知Mod").takeIf { it.isNotBlank() } ?: "未知Mod",
                         path = modJson.optString("path", ""),
                         enabled = modJson.optBoolean("enabled", false),
                         inExternalStorage = modJson.optBoolean("inExternalStorage", false),
@@ -136,13 +136,13 @@ class ModViewModel : ViewModel() {
                     
                     // 验证mod数据
                     if (mod.path.isNotBlank()) {
-                        Log.d("ModViewModel", "Parsed mod: ${mod.name} (enabled: ${mod.enabled}, type: ${mod.type})")
+                        Log.d("ModViewModel", "解析Mod: ${mod.name} (启用: ${mod.enabled}, 类型: ${mod.type})")
                         newMods.add(mod)
                     } else {
-                        Log.w("ModViewModel", "Skipping mod with empty path: ${mod.name}")
+                        Log.w("ModViewModel", "跳过路径为空的Mod: ${mod.name}")
                     }
                 } catch (e: Exception) {
-                    Log.e("ModViewModel", "Error parsing mod at index $i", e)
+                    Log.e("ModViewModel", "解析索引 $i 的Mod时出错", e)
                 }
             }
             
@@ -150,73 +150,16 @@ class ModViewModel : ViewModel() {
             viewModelScope.launch(Dispatchers.Main) {
                 _mods.clear()
                 _mods.addAll(newMods)
-                Log.d("ModViewModel", "Final mods count: ${_mods.size}")
+                Log.d("ModViewModel", "最终Mod数量: ${_mods.size}")
             }
             
             true // 解析成功
             
         } catch (e: Exception) {
-            Log.e("ModViewModel", "Failed to parse mods JSON", e)
-            Log.e("ModViewModel", "JSON content: ${jsonString.take(500)}")
+            Log.e("ModViewModel", "解析Mod JSON失败", e)
+            Log.e("ModViewModel", "JSON内容: ${jsonString.take(500)}")
             
-            // 尝试处理可能的JSON格式问题
-            if (jsonString.contains("[")) {
-                try {
-                    // 尝试手动解析简单的JSON数组
-                    val manualMods = mutableListOf<ModModel>()
-                    val lines = jsonString.split("},{")
-                    for (line in lines) {
-                        try {
-                            val cleanedLine = line.replace("[", "").replace("]", "").replace("{", "").replace("}", "").trim()
-                            if (cleanedLine.isNotEmpty()) {
-                                val parts = cleanedLine.split(",")
-                                var name = "Unknown Mod"
-                                var path = ""
-                                var enabled = false
-                                
-                                for (part in parts) {
-                                    val keyValue = part.split(":")
-                                    if (keyValue.size >= 2) {
-                                        val key = keyValue[0].trim().replace("\"", "").lowercase()
-                                        val value = keyValue[1].trim().replace("\"", "")
-                                        
-                                        when (key) {
-                                            "name" -> name = value
-                                            "path" -> path = value
-                                            "enabled" -> enabled = value.lowercase() == "true"
-                                        }
-                                    }
-                                }
-                                
-                                if (path.isNotBlank()) {
-                                    manualMods.add(ModModel(
-                                        name = name,
-                                        path = path,
-                                        enabled = enabled,
-                                        inExternalStorage = path.contains("/storage/emulated/0"),
-                                        type = ModType.RomFs
-                                    ))
-                                }
-                            }
-                        } catch (e: Exception) {
-                            Log.e("ModViewModel", "Error parsing line: $line", e)
-                        }
-                    }
-                    
-                    if (manualMods.isNotEmpty()) {
-                        viewModelScope.launch(Dispatchers.Main) {
-                            _mods.clear()
-                            _mods.addAll(manualMods)
-                        }
-                        Log.d("ModViewModel", "Manually parsed ${manualMods.size} mods")
-                        return true
-                    }
-                } catch (e: Exception) {
-                    Log.e("ModViewModel", "Failed to manually parse JSON", e)
-                }
-            }
-            
-            _errorMessage.value = "Failed to parse mods: ${e.message}"
+            _errorMessage.value = "解析Mod失败: ${e.message}"
             false // 解析失败
         }
     }
@@ -224,7 +167,7 @@ class ModViewModel : ViewModel() {
     fun setModEnabled(titleId: String, mod: ModModel, enabled: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                Log.d("ModViewModel", "Setting mod ${mod.name} enabled: $enabled")
+                Log.d("ModViewModel", "设置Mod ${mod.name} 启用状态: $enabled")
                 val success = RyujinxNative.setModEnabled(titleId, mod.path, enabled)
                 
                 if (success) {
@@ -233,20 +176,20 @@ class ModViewModel : ViewModel() {
                         val index = _mods.indexOfFirst { it.path == mod.path }
                         if (index != -1) {
                             _mods[index] = _mods[index].copy(enabled = enabled)
-                            Log.d("ModViewModel", "Updated mod state in UI for: ${mod.name}")
+                            Log.d("ModViewModel", "在UI中更新Mod状态: ${mod.name}")
                         } else {
-                            Log.w("ModViewModel", "Mod not found in list: ${mod.name}")
+                            Log.w("ModViewModel", "在列表中找不到Mod: ${mod.name}")
                         }
                     }
                 } else {
                     viewModelScope.launch(Dispatchers.Main) {
-                        _errorMessage.value = "Failed to update mod state"
+                        _errorMessage.value = "更新Mod状态失败"
                     }
                 }
             } catch (e: Exception) {
-                Log.e("ModViewModel", "Error setting mod enabled", e)
+                Log.e("ModViewModel", "设置Mod启用状态时出错", e)
                 viewModelScope.launch(Dispatchers.Main) {
-                    _errorMessage.value = "Error: ${e.message}"
+                    _errorMessage.value = "错误: ${e.message}"
                 }
             }
         }
@@ -255,7 +198,7 @@ class ModViewModel : ViewModel() {
     fun deleteMod(titleId: String, mod: ModModel) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                Log.d("ModViewModel", "Deleting mod: ${mod.name} at ${mod.path}")
+                Log.d("ModViewModel", "删除Mod: ${mod.name} 路径: ${mod.path}")
                 val success = RyujinxNative.deleteMod(titleId, mod.path)
                 
                 if (success) {
@@ -264,18 +207,18 @@ class ModViewModel : ViewModel() {
                         val index = _mods.indexOfFirst { it.path == mod.path }
                         if (index != -1) {
                             _mods.removeAt(index)
-                            Log.d("ModViewModel", "Removed mod from UI list: ${mod.name}")
+                            Log.d("ModViewModel", "从UI列表中移除Mod: ${mod.name}")
                         }
                     }
                 } else {
                     viewModelScope.launch(Dispatchers.Main) {
-                        _errorMessage.value = "Failed to delete mod"
+                        _errorMessage.value = "删除Mod失败"
                     }
                 }
             } catch (e: Exception) {
-                Log.e("ModViewModel", "Error deleting mod", e)
+                Log.e("ModViewModel", "删除Mod时出错", e)
                 viewModelScope.launch(Dispatchers.Main) {
-                    _errorMessage.value = "Error: ${e.message}"
+                    _errorMessage.value = "错误: ${e.message}"
                 }
             }
         }
@@ -284,7 +227,7 @@ class ModViewModel : ViewModel() {
     fun deleteAllMods(titleId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                Log.d("ModViewModel", "Deleting all mods for: $titleId")
+                Log.d("ModViewModel", "删除所有Mod: $titleId")
                 val success = RyujinxNative.deleteAllMods(titleId)
                 
                 if (success) {
@@ -292,17 +235,17 @@ class ModViewModel : ViewModel() {
                     viewModelScope.launch(Dispatchers.Main) {
                         _mods.clear()
                         _hasLoaded.value = false
-                        Log.d("ModViewModel", "Cleared all mods from UI list")
+                        Log.d("ModViewModel", "从UI列表中清空所有Mod")
                     }
                 } else {
                     viewModelScope.launch(Dispatchers.Main) {
-                        _errorMessage.value = "Failed to delete all mods"
+                        _errorMessage.value = "删除所有Mod失败"
                     }
                 }
             } catch (e: Exception) {
-                Log.e("ModViewModel", "Error deleting all mods", e)
+                Log.e("ModViewModel", "删除所有Mod时出错", e)
                 viewModelScope.launch(Dispatchers.Main) {
-                    _errorMessage.value = "Error: ${e.message}"
+                    _errorMessage.value = "错误: ${e.message}"
                 }
             }
         }
@@ -311,7 +254,7 @@ class ModViewModel : ViewModel() {
     fun enableAllMods(titleId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                Log.d("ModViewModel", "Enabling all mods for: $titleId")
+                Log.d("ModViewModel", "启用所有Mod: $titleId")
                 val success = RyujinxNative.enableAllMods(titleId)
                 
                 if (success) {
@@ -320,13 +263,13 @@ class ModViewModel : ViewModel() {
                     loadMods(titleId, true)
                 } else {
                     viewModelScope.launch(Dispatchers.Main) {
-                        _errorMessage.value = "Failed to enable all mods"
+                        _errorMessage.value = "启用所有Mod失败"
                     }
                 }
             } catch (e: Exception) {
-                Log.e("ModViewModel", "Error enabling all mods", e)
+                Log.e("ModViewModel", "启用所有Mod时出错", e)
                 viewModelScope.launch(Dispatchers.Main) {
-                    _errorMessage.value = "Error: ${e.message}"
+                    _errorMessage.value = "错误: ${e.message}"
                 }
             }
         }
@@ -335,7 +278,7 @@ class ModViewModel : ViewModel() {
     fun disableAllMods(titleId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                Log.d("ModViewModel", "Disabling all mods for: $titleId")
+                Log.d("ModViewModel", "禁用所有Mod: $titleId")
                 val success = RyujinxNative.disableAllMods(titleId)
                 
                 if (success) {
@@ -344,13 +287,13 @@ class ModViewModel : ViewModel() {
                     loadMods(titleId, true)
                 } else {
                     viewModelScope.launch(Dispatchers.Main) {
-                        _errorMessage.value = "Failed to disable all mods"
+                        _errorMessage.value = "禁用所有Mod失败"
                     }
                 }
             } catch (e: Exception) {
-                Log.e("ModViewModel", "Error disabling all mods", e)
+                Log.e("ModViewModel", "禁用所有Mod时出错", e)
                 viewModelScope.launch(Dispatchers.Main) {
-                    _errorMessage.value = "Error: ${e.message}"
+                    _errorMessage.value = "错误: ${e.message}"
                 }
             }
         }
@@ -359,13 +302,13 @@ class ModViewModel : ViewModel() {
     fun addMod(titleId: String, sourcePath: String, modName: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                Log.d("ModViewModel", "Adding mod: $modName from $sourcePath for $titleId")
+                Log.d("ModViewModel", "添加Mod: $modName 从 $sourcePath 到 $titleId")
                 val success = RyujinxNative.addMod(titleId, sourcePath, modName)
-                Log.d("ModViewModel", "Add mod result: $success")
+                Log.d("ModViewModel", "添加Mod结果: $success")
                 
                 if (success) {
                     // 延迟一段时间后重新加载列表，给系统时间处理文件
-                    delay(1500) // 增加延迟到1.5秒
+                    delay(1500) // 增加到1.5秒
                     
                     // 重置加载状态，强制重新加载
                     _hasLoaded.value = false
@@ -375,13 +318,13 @@ class ModViewModel : ViewModel() {
                     loadMods(titleId, true)
                 } else {
                     viewModelScope.launch(Dispatchers.Main) {
-                        _errorMessage.value = "Failed to add mod"
+                        _errorMessage.value = "添加Mod失败"
                     }
                 }
             } catch (e: Exception) {
-                Log.e("ModViewModel", "Error adding mod", e)
+                Log.e("ModViewModel", "添加Mod时出错", e)
                 viewModelScope.launch(Dispatchers.Main) {
-                    _errorMessage.value = "Error: ${e.message}"
+                    _errorMessage.value = "错误: ${e.message}"
                 }
             }
         }
