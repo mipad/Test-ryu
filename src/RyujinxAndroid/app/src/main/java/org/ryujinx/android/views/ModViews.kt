@@ -294,8 +294,7 @@ class ModViews {
                                                     if (!isPerformingOperation) {
                                                         showDeleteDialog = mod
                                                     }
-                                                },
-                                                enabled = !isPerformingOperation
+                                                }
                                             )
                                         }
                                     }
@@ -420,8 +419,7 @@ class ModViews {
                             showAddModDialog = false
                             selectedModPath = ""
                         }
-                    },
-                    enabled = !isPerformingOperation
+                    }
                 )
             }
         }
@@ -430,8 +428,7 @@ class ModViews {
         private fun ModListItem(
             mod: ModModel,
             onEnabledChanged: (Boolean) -> Unit,
-            onDelete: () -> Unit,
-            enabled: Boolean = true
+            onDelete: () -> Unit
         ) {
             Card(
                 modifier = Modifier
@@ -450,8 +447,7 @@ class ModViews {
                         // 启用开关 - 使用Switch而不是Checkbox
                         Switch(
                             checked = mod.enabled,
-                            onCheckedChange = onEnabledChanged,
-                            enabled = enabled
+                            onCheckedChange = onEnabledChanged
                         )
                         
                         Spacer(modifier = Modifier.width(8.dp))
@@ -478,8 +474,7 @@ class ModViews {
                         
                         // 删除按钮
                         IconButton(
-                            onClick = onDelete,
-                            enabled = enabled
+                            onClick = onDelete
                         ) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete")
                         }
@@ -513,8 +508,7 @@ class ModViews {
         private fun AddModDialog(
             selectedPath: String,
             onConfirm: (String) -> Unit,
-            onDismiss: () -> Unit,
-            enabled: Boolean = true
+            onDismiss: () -> Unit
         ) {
             var modName by remember { mutableStateOf("") }
             val folderName = File(selectedPath).name
@@ -536,8 +530,7 @@ class ModViews {
                             value = modName,
                             onValueChange = { modName = it },
                             modifier = Modifier.fillMaxWidth(),
-                            placeholder = { Text("Enter mod name") },
-                            enabled = enabled
+                            placeholder = { Text("Enter mod name") }
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
@@ -550,16 +543,13 @@ class ModViews {
                 confirmButton = {
                     Button(
                         onClick = { onConfirm(modName) },
-                        enabled = modName.isNotEmpty() && enabled
+                        enabled = modName.isNotEmpty()
                     ) {
                         Text("Add Mod")
                     }
                 },
                 dismissButton = {
-                    OutlinedButton(
-                        onClick = onDismiss,
-                        enabled = enabled
-                    ) {
+                    OutlinedButton(onClick = onDismiss) {
                         Text("Cancel")
                     }
                 }
