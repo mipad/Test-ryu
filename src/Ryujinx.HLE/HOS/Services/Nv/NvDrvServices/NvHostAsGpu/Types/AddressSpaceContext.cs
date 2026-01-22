@@ -122,6 +122,17 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu.Types
         {
             return _reservations.Remove(gpuVa);
         }
+        
+        public void Close()
+        {
+            foreach (var map in _maps.Values)
+            {
+                Gmm.Unmap(map.Start, map.End - map.Start);
+            }
+
+            _maps.Clear();
+            _reservations.Clear();
+        }
 
         private Range BinarySearch(SortedList<ulong, Range> list, ulong address)
         {
