@@ -32,7 +32,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         /// Max failing count until waiting on CPU.
         /// FIXME: This seems enough for most of the cases, reduce if needed.
         /// </summary>
-        private const uint FailingCountMax = 2;
+        private const uint FailingCountMax = 10;
 
         public NvHostEvent(NvHostSyncpt syncpointManager, uint eventId, Horizon system)
         {
