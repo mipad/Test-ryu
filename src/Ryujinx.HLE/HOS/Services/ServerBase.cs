@@ -369,7 +369,19 @@ namespace Ryujinx.HLE.HOS.Services
                     _requestDataReader,
                     _responseDataWriter);
 
+                try
+                {
+                
                 GetSessionObj(serverSessionHandle).CallCmifMethod(context);
+                 
+                 }
+                catch (Ryujinx.HLE.Exceptions.GuestBrokeExecutionException)
+                {
+                    Logger.Warning?.Print(LogClass.Kernel, "Guest broke execution in service call. Thread exiting.");
+
+                _selfThread.Exit();
+                    return false;
+                }
 
                 response.RawData = _responseDataStream.ToArray();
             }
