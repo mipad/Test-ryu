@@ -288,6 +288,7 @@ class ModViews {
                                             .fillMaxWidth()
                                     ) {
                                         items(viewModel.mods) { mod ->
+                                            // 修复这里：移除enabled参数，因为原始ModListItem函数没有这个参数
                                             ModListItem(
                                                 mod = mod,
                                                 onEnabledChanged = { enabled ->
@@ -299,8 +300,7 @@ class ModViews {
                                                     if (!isAddingMod) {
                                                         showDeleteDialog = mod
                                                     }
-                                                },
-                                                enabled = !isAddingMod
+                                                }
                                             )
                                         }
                                     }
@@ -469,8 +469,7 @@ class ModViews {
         private fun ModListItem(
             mod: ModModel,
             onEnabledChanged: (Boolean) -> Unit,
-            onDelete: () -> Unit,
-            enabled: Boolean = true
+            onDelete: () -> Unit
         ) {
             Card(
                 modifier = Modifier
@@ -489,8 +488,7 @@ class ModViews {
                         // 启用开关 - 使用Switch而不是Checkbox
                         Switch(
                             checked = mod.enabled,
-                            onCheckedChange = onEnabledChanged,
-                            enabled = enabled
+                            onCheckedChange = onEnabledChanged
                         )
                         
                         Spacer(modifier = Modifier.width(8.dp))
@@ -517,8 +515,7 @@ class ModViews {
                         
                         // 删除按钮
                         IconButton(
-                            onClick = onDelete,
-                            enabled = enabled
+                            onClick = onDelete
                         ) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete")
                         }
