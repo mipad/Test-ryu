@@ -883,27 +883,34 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             // 修复：创建新的TextureCreateInfo实例而不是修改只读属性
             TextureCreateInfo adjustedInfo = info;
             
-            // Mali优化：对于ASTC纹理，如果硬件不支持解码，使用软件解码
-            if (IsMaliGPU && info.Format.IsAstc() && ShouldUseSoftwareASTCDecode())
+            // 检查是否需要软件解码
+            if (ShouldUseSoftwareTextureDecode(info.Format))
             {
-                Logger.Debug?.PrintMsg(LogClass.Gpu, "Using software ASTC decode for Mali GPU");
+                Logger.Debug?.PrintMsg(LogClass.Gpu, "Using software texture decode");
                 
-                // 创建新的info对象，修改格式为RGBA
+                // 计算新的格式、块宽高和每像素字节数
+                Format newFormat = ConvertToSupportedFormat(info.Format);
+                int newBlockWidth = GetBlockWidthForFormat(newFormat);
+                int newBlockHeight = GetBlockHeightForFormat(newFormat);
+                int newBytesPerPixel = GetBytesPerPixelForFormat(newFormat);
+                
+                // 创建新的info对象，修改格式为支持的格式
                 adjustedInfo = new TextureCreateInfo(
-                    info.Width,
-                    info.Height,
-                    info.Depth,
-                    info.Levels,
-                    info.Samples,
-                    info.BlockWidth,
-                    info.BlockHeight,
-                    ConvertAstcToRgbaFormat(info.Format),
-                    info.DepthStencilMode,
-                    info.Target,
-                    info.SwizzleR,
-                    info.SwizzleG,
-                    info.SwizzleB,
-                    info.SwizzleA);
+                    width: info.Width,
+                    height: info.Height,
+                    depth: info.Depth,
+                    levels: info.Levels,
+                    samples: info.Samples,
+                    blockWidth: newBlockWidth,
+                    blockHeight: newBlockHeight,
+                    bytesPerPixel: newBytesPerPixel,
+                    format: newFormat,
+                    depthStencilMode: info.DepthStencilMode,
+                    target: info.Target,
+                    swizzleR: info.SwizzleR,
+                    swizzleG: info.SwizzleG,
+                    swizzleB: info.SwizzleB,
+                    swizzleA: info.SwizzleA);
             }
             
             var storage = CreateTextureStorage(adjustedInfo);
@@ -920,27 +927,83 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             return new TextureStorage(this, _device, info);
         }
 
-        // 将ASTC格式转换为RGBA格式（用于软件解码）
-        private Format ConvertAstcToRgbaFormat(Format format)
+        // 检查是否需要软件解码
+        private bool ShouldUseSoftwareTextureDecode(Format format)
         {
-            return format switch
+            // 仅当硬件不支持特定格式时才考虑软件解码
+            if (format.IsAstc())
             {
-                Format.Astc4x4Srgb or Format.Astc4x4Unorm => Format.R8G8B8A8Srgb,
-                Format.Astc5x4Srgb or Format.Astc5x4Unorm => Format.R8G8B8A8Srgb,
-                Format.Astc5x5Srgb or Format.Astc5x5Unorm => Format.R8G8B8A8Srgb,
-                Format.Astc6x5Srgb or Format.Astc6x5Unorm => Format.R8G8B8A8Srgb,
-                Format.Astc6x6Srgb or Format.Astc6x6Unorm => Format.R8G8B8A8Srgb,
-                Format.Astc8x5Srgb or Format.Astc8x5Unorm => Format.R8G8B8A8Srgb,
-                Format.Astc8x6Srgb or Format.Astc8x6Unorm => Format.R8G8B8A8Srgb,
-                Format.Astc8x8Srgb or Format.Astc8x8Unorm => Format.R8G8B8A8Srgb,
-                Format.Astc10x5Srgb or Format.Astc10x5Unorm => Format.R8G8B8A8Srgb,
-                Format.Astc10x6Srgb or Format.Astc10x6Unorm => Format.R8G8B8A8Srgb,
-                Format.Astc10x8Srgb or Format.Astc10x8Unorm => Format.R8G8B8A8Srgb,
-                Format.Astc10x10Srgb or Format.Astc10x10Unorm => Format.R8G8B8A8Srgb,
-                Format.Astc12x10Srgb or Format.Astc12x10Unorm => Format.R8G8B8A8Srgb,
-                Format.Astc12x12Srgb or Format.Astc12x12Unorm => Format.R8G8B8A8Srgb,
-                _ => Format.R8G8B8A8Unorm,
-            };
+                // 检查硬件支持
+                if (IsMaliGPU)
+                {
+                    // Mali GPU原生支持ASTC，通常不需要软件解码
+                    // 只有在确认不支持时才使用软件解码
+                    return !SupportsASTCDecodeMode && !CheckMaliAstcSupport();
+                }
+                else
+                {
+                    // 非Mali GPU，根据ASTC解码模式扩展支持判断
+                    return !SupportsASTCDecodeMode;
+                }
+            }
+            
+            return false;
+        }
+
+        private bool CheckMaliAstcSupport()
+        {
+            // 检查Mali GPU的ASTC支持情况
+            // 这里可以添加更详细的硬件检测逻辑
+            // 例如检查具体型号或驱动版本
+            
+            // 默认返回true，因为Mali GPU从Mali-T600系列开始都支持ASTC
+            // 早期型号如Mali-400可能不支持，但那些通常不支持Vulkan
+            return true;
+        }
+
+        // 将格式转换为支持的格式
+        private Format ConvertToSupportedFormat(Format format)
+        {
+            if (format.IsAstc())
+            {
+                // 将ASTC转换为RGBA格式
+                // 注意：这里根据原格式的srgb属性选择相应的目标格式
+                bool isSrgb = format.ToString().EndsWith("Srgb", StringComparison.OrdinalIgnoreCase);
+                return isSrgb ? Format.R8G8B8A8Srgb : Format.R8G8B8A8Unorm;
+            }
+            
+            // 其他格式保持原样
+            return format;
+        }
+
+        private int GetBlockWidthForFormat(Format format)
+        {
+            // 根据格式返回块宽度
+            // 非压缩格式通常为1
+            return format.IsAstc() ? 1 : 1;
+        }
+
+        private int GetBlockHeightForFormat(Format format)
+        {
+            // 根据格式返回块高度
+            // 非压缩格式通常为1
+            return format.IsAstc() ? 1 : 1;
+        }
+
+        private int GetBytesPerPixelForFormat(Format format)
+        {
+            // 根据格式返回每像素字节数
+            switch (format)
+            {
+                case Format.R8G8B8A8Unorm:
+                case Format.R8G8B8A8Srgb:
+                case Format.B8G8R8A8Unorm:
+                case Format.B8G8R8A8Srgb:
+                    return 4;
+                // 可以根据需要添加更多格式
+                default:
+                    return 4; // 默认值
+            }
         }
 
         public void DeleteBuffer(BufferHandle buffer)
@@ -1567,7 +1630,9 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         // 针对Mali GPU的特殊处理
         internal bool ShouldUseSoftwareASTCDecode()
         {
-            return IsMaliGPU && !SupportsASTCDecodeMode;
+            // Mali GPU原生支持ASTC，通常不需要软件解码
+            // 保留此方法用于向后兼容
+            return ShouldUseSoftwareTextureDecode(Format.Astc4x4Unorm);
         }
 
         // 立即结束并提交命令缓冲区
