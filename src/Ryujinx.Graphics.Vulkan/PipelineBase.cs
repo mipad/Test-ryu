@@ -8,6 +8,7 @@ using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.IO; // 添加System.IO命名空间引用
 using BlendOp = Silk.NET.Vulkan.BlendOp;
 using Buffer = Silk.NET.Vulkan.Buffer;
 using CompareOp = Ryujinx.Graphics.GAL.CompareOp;
@@ -122,20 +123,37 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 try
                 {
-                    string cachePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "mali_pipeline_cache.bin");
-                    if (File.Exists(cachePath))
+                    // 获取缓存目录路径
+                    string cacheDir = GetMaliPipelineCacheDirectory();
+                    if (!string.IsNullOrEmpty(cacheDir))
                     {
-                        byte[] cacheData = File.ReadAllBytes(cachePath);
-                        fixed (byte* cacheDataPtr = cacheData)
+                        string cachePath = Path.Combine(cacheDir, "mali_pipeline_cache.bin");
+                        if (File.Exists(cachePath))
                         {
-                            pipelineCacheCreateInfo.InitialDataSize = (nuint)cacheData.Length;
-                            pipelineCacheCreateInfo.PInitialData = cacheDataPtr;
+                            byte[] cacheData = File.ReadAllBytes(cachePath);
+                            fixed (byte* cacheDataPtr = cacheData)
+                            {
+                                pipelineCacheCreateInfo.InitialDataSize = (nuint)cacheData.Length;
+                                pipelineCacheCreateInfo.PInitialData = cacheDataPtr;
+                            }
+                            
+                            if (Gd.IsAndroid)
+                            {
+                                Logger.Debug?.PrintMsg(LogClass.Gpu, $"Loaded Mali pipeline cache from {cachePath} ({cacheData.Length} bytes)");
+                            }
+                        }
+                        else if (Gd.IsAndroid)
+                        {
+                            Logger.Debug?.PrintMsg(LogClass.Gpu, $"Mali pipeline cache file not found: {cachePath}");
                         }
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // 如果加载失败，继续使用空缓存
+                    if (Gd.IsAndroid)
+                    {
+                        Logger.Warning?.PrintMsg(LogClass.Gpu, $"Failed to load Mali pipeline cache: {ex.Message}");
+                    }
                 }
             }
 
@@ -162,6 +180,41 @@ namespace Ryujinx.Graphics.Vulkan
 
             // Mali优化：初始化管道缓存
             _maliPipelineCache = new Dictionary<PipelineUid, Auto<DisposablePipeline>>();
+        }
+
+        // 获取Mali管道缓存目录
+        private string GetMaliPipelineCacheDirectory()
+        {
+            if (!Gd.IsAndroid)
+            {
+                // 非Android平台使用应用目录
+                return AppDomain.CurrentDomain.BaseDirectory;
+            }
+
+            try
+            {
+                // Android平台使用外部存储
+                // 尝试获取Android数据目录
+                string externalStorage = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                if (!string.IsNullOrEmpty(externalStorage) && Directory.Exists(externalStorage))
+                {
+                    // 创建缓存目录
+                    string cacheDir = Path.Combine(externalStorage, "cache", "pipeline");
+                    Directory.CreateDirectory(cacheDir);
+                    return cacheDir;
+                }
+
+                // 备用方案：使用应用基目录
+                return AppDomain.CurrentDomain.BaseDirectory;
+            }
+            catch (Exception ex)
+            {
+                if (Gd.IsAndroid)
+                {
+                    Logger.Warning?.PrintMsg(LogClass.Gpu, $"Failed to get cache directory: {ex.Message}");
+                }
+                return AppDomain.CurrentDomain.BaseDirectory;
+            }
         }
 
         public void Initialize()
@@ -1893,14 +1946,27 @@ namespace Ryujinx.Graphics.Vulkan
                                     Gd.Api.GetPipelineCacheData(Device, PipelineCache, &cacheDataSize, cacheDataPtr).ThrowOnError();
                                 }
                                 
-                                string cachePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "mali_pipeline_cache.bin");
-                                File.WriteAllBytes(cachePath, cacheData);
+                                // 获取缓存目录
+                                string cacheDir = GetMaliPipelineCacheDirectory();
+                                if (!string.IsNullOrEmpty(cacheDir))
+                                {
+                                    string cachePath = Path.Combine(cacheDir, "mali_pipeline_cache.bin");
+                                    File.WriteAllBytes(cachePath, cacheData);
+                                    
+                                    if (Gd.IsAndroid)
+                                    {
+                                        Logger.Debug?.PrintMsg(LogClass.Gpu, $"Saved Mali pipeline cache to {cachePath} ({cacheData.Length} bytes)");
+                                    }
+                                }
                             }
                         }
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        // 忽略保存失败
+                        if (Gd.IsAndroid)
+                        {
+                            Logger.Warning?.PrintMsg(LogClass.Gpu, $"Failed to save Mali pipeline cache: {ex.Message}");
+                        }
                     }
                 }
 
