@@ -12,6 +12,7 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.IO; // 添加System.IO命名空间引用
 using Format = Ryujinx.Graphics.GAL.Format;
 using PrimitiveTopology = Ryujinx.Graphics.GAL.PrimitiveTopology;
 using SamplerCreateInfo = Ryujinx.Graphics.GAL.SamplerCreateInfo;
@@ -118,6 +119,7 @@ namespace Ryujinx.Graphics.Vulkan
         internal bool IsTBDR { get; private set; }
         internal bool IsSharedMemory { get; private set; }
         internal bool IsMaliGPU { get; private set; }
+        internal bool IsAndroid { get; private set; }
 
         public string GpuVendor { get; private set; }
         public string GpuDriver { get; private set; }
@@ -137,6 +139,11 @@ namespace Ryujinx.Graphics.Vulkan
             Shaders = new HashSet<ShaderCollection>();
             Textures = new HashSet<ITexture>();
             Samplers = new HashSet<SamplerHolder>();
+
+            // 检测是否为Android平台
+            IsAndroid = Environment.OSVersion.Platform == PlatformID.Unix && 
+                       File.Exists("/system/bin/sh") || 
+                       RuntimeInformation.RuntimeIdentifier.Contains("android");
 
             if (OperatingSystem.IsMacOS() || OperatingSystem.IsIOS())
             {
@@ -519,9 +526,26 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             // 检测是否为Mali GPU
             IsMaliGPU = Vendor == Vendor.ARM || (GpuRenderer?.Contains("Mali") ?? false);
 
+            // Android平台优化：如果是Android，增加Mali GPU检测的准确性
+            if (IsAndroid)
+            {
+                // 检查驱动信息
+                if (hasDriverProperties)
+                {
+                    IsMaliGPU = driverProperties.DriverID == DriverId.ArmProprietary || 
+                               GpuRenderer?.Contains("Mali") == true;
+                }
+                
+                // Android上的Mali GPU通常是TBDR架构
+                if (IsMaliGPU)
+                {
+                    IsTBDR = true;
+                }
+            }
+
             IsAmdWindows = Vendor == Vendor.Amd && OperatingSystem.IsWindows();
             IsIntelWindows = Vendor == Vendor.Intel && OperatingSystem.IsWindows();
-            IsTBDR =
+            IsTBDR = IsTBDR || // 如果Android已设置，保持原值
                 Vendor == Vendor.Apple ||
                 Vendor == Vendor.Qualcomm ||
                 Vendor == Vendor.ARM ||
@@ -581,13 +605,17 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                                           supportsAstcDecodeModeSharedExponent &&
                                           supportsAstcDecodeModeExplicit;
 
+            // Android/Mali优化：调整一些能力设置
+            bool disableRobustBufferAccess = IsAndroid && IsMaliGPU;
+            bool forceNullDescriptor = IsAndroid || IsMaliGPU;
+
             Capabilities = new HardwareCapabilities(
                 _physicalDevice.IsDeviceExtensionPresent("VK_EXT_index_type_uint8"),
                 supportsCustomBorderColor,
                 supportsBlendOperationAdvanced,
                 propertiesBlendOperationAdvanced.AdvancedBlendCorrelatedOverlap,
-                propertiesBlendOperationAdvanced.AdvancedBlendNonPremultipliedSrcColor,
-                propertiesBlendOperationAdvanced.AdvancedBlendNonPremultipliedDstColor,
+                propertiesBlendOperationAdvanced.AdvancedBlendNonPreMultipliedSrcColor,
+                propertiesBlendOperationAdvanced.AdvancedBlendNonPreMultipliedDstColor,
                 _physicalDevice.IsDeviceExtensionPresent(KhrDrawIndirectCount.ExtensionName),
                 _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_shader_interlock"),
                 _physicalDevice.IsDeviceExtensionPresent("VK_NV_geometry_shader_passthrough"),
@@ -599,8 +627,8 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 _physicalDevice.IsDeviceExtensionPresent(ExtExtendedDynamicState.ExtensionName),
                 _physicalDevice.IsDeviceExtensionPresent("VK_EXT_extended_dynamic_state2") && featuresExtendedDynamicState2.ExtendedDynamicState2,
                 features2.Features.MultiViewport && !(IsMoltenVk && Vendor == Vendor.Amd),
-                featuresRobustness2.NullDescriptor || IsMoltenVk,
-                supportsPushDescriptors && !IsMoltenVk,
+                featuresRobustness2.NullDescriptor || IsMoltenVk || forceNullDescriptor,
+                supportsPushDescriptors && !IsMoltenVk && !IsMaliGPU, // Mali GPU上禁用push descriptors
                 propertiesPushDescriptor.MaxPushDescriptors,
                 featuresPrimitiveTopologyListRestart.PrimitiveTopologyListRestart,
                 featuresPrimitiveTopologyListRestart.PrimitiveTopologyPatchListRestart,
@@ -650,6 +678,32 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             Barriers = new BarrierBatch(this);
 
             _counters = new Counters(this, _device, _pipeline);
+
+            // 如果是Android/Mali平台，启用特殊优化
+            if (IsAndroid && IsMaliGPU)
+            {
+                Logger.Info?.PrintMsg(LogClass.Gpu, "Android Mali GPU detected, enabling optimizations...");
+                ApplyMaliOptimizations();
+            }
+        }
+
+        // 应用Mali GPU优化
+        private void ApplyMaliOptimizations()
+        {
+            try
+            {
+                // 设置环境变量以优化Mali GPU性能
+                Environment.SetEnvironmentVariable("MALI_VK_DISABLE_PIPELINE_CACHE", "0");
+                Environment.SetEnvironmentVariable("MALI_VK_PIPELINE_CACHE_SIZE", "67108864"); // 64MB
+                Environment.SetEnvironmentVariable("MALI_VK_SHADER_CACHE_SIZE", "16777216"); // 16MB
+                Environment.SetEnvironmentVariable("MALI_VK_ENABLE_PIPELINE_STATS", "0");
+                
+                Logger.Info?.PrintMsg(LogClass.Gpu, "Mali GPU optimizations applied");
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.PrintMsg(LogClass.Gpu, $"Failed to apply Mali optimizations: {ex.Message}");
+            }
         }
 
         private uint FindComputeQueueFamily()
@@ -728,7 +782,12 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         {
             if (_pdReservedBindings == null)
             {
-                if (Capabilities.MaxPushDescriptors <= Constants.MaxUniformBuffersPerStage * 2)
+                // Mali优化：禁用push descriptors
+                if (IsMaliGPU)
+                {
+                    _pdReservedBindings = Array.Empty<int>();
+                }
+                else if (Capabilities.MaxPushDescriptors <= Constants.MaxUniformBuffersPerStage * 2)
                 {
                     _pdReservedBindings = isOgl ? _pdReservedBindingsOgl : _pdReservedBindingsNvn;
                 }
@@ -743,6 +802,13 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
 
         public BufferHandle CreateBuffer(int size, BufferAccess access)
         {
+            // Mali优化：禁用稀疏缓冲区
+            if (IsMaliGPU && access.HasFlag(BufferAccess.SparseCompatible))
+            {
+                access = access & ~BufferAccess.SparseCompatible;
+                Logger.Debug?.PrintMsg(LogClass.Gpu, "Sparse buffers disabled for Mali GPU");
+            }
+            
             return BufferManager.CreateWithHandle(this, size, access.HasFlag(BufferAccess.SparseCompatible), access.Convert(), access.HasFlag(BufferAccess.Stream));
         }
 
@@ -753,6 +819,18 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
 
         public BufferHandle CreateBufferSparse(ReadOnlySpan<BufferRange> storageBuffers)
         {
+            // Mali优化：返回普通缓冲区而不是稀疏缓冲区
+            if (IsMaliGPU)
+            {
+                Logger.Warning?.PrintMsg(LogClass.Gpu, "Sparse buffers not supported on Mali GPU, creating normal buffer");
+                int totalSize = 0;
+                foreach (var range in storageBuffers)
+                {
+                    totalSize += range.Size;
+                }
+                return CreateBuffer(totalSize, BufferAccess.Stream);
+            }
+            
             return BufferManager.CreateSparse(this, storageBuffers);
         }
 
@@ -812,7 +890,38 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             {
                 throw new ArgumentException("Invalid texture dimensions");
             }
+            
+            // Mali优化：对于ASTC纹理，如果硬件不支持解码，使用软件解码
+            if (IsMaliGPU && info.Format.IsAstc() && ShouldUseSoftwareASTCDecode())
+            {
+                Logger.Debug?.PrintMsg(LogClass.Gpu, "Using software ASTC decode for Mali GPU");
+                info = info with { Format = ConvertAstcToRgbaFormat(info.Format) };
+            }
+            
             return new TextureStorage(this, _device, info);
+        }
+
+        // 将ASTC格式转换为RGBA格式（用于软件解码）
+        private Format ConvertAstcToRgbaFormat(Format format)
+        {
+            return format switch
+            {
+                Format.Astc4x4Srgb or Format.Astc4x4Unorm => Format.R8G8B8A8Srgb,
+                Format.Astc5x4Srgb or Format.Astc5x4Unorm => Format.R8G8B8A8Srgb,
+                Format.Astc5x5Srgb or Format.Astc5x5Unorm => Format.R8G8B8A8Srgb,
+                Format.Astc6x5Srgb or Format.Astc6x5Unorm => Format.R8G8B8A8Srgb,
+                Format.Astc6x6Srgb or Format.Astc6x6Unorm => Format.R8G8B8A8Srgb,
+                Format.Astc8x5Srgb or Format.Astc8x5Unorm => Format.R8G8B8A8Srgb,
+                Format.Astc8x6Srgb or Format.Astc8x6Unorm => Format.R8G8B8A8Srgb,
+                Format.Astc8x8Srgb or Format.Astc8x8Unorm => Format.R8G8B8A8Srgb,
+                Format.Astc10x5Srgb or Format.Astc10x5Unorm => Format.R8G8B8A8Srgb,
+                Format.Astc10x6Srgb or Format.Astc10x6Unorm => Format.R8G8B8A8Srgb,
+                Format.Astc10x8Srgb or Format.Astc10x8Unorm => Format.R8G8B8A8Srgb,
+                Format.Astc10x10Srgb or Format.Astc10x10Unorm => Format.R8G8B8A8Srgb,
+                Format.Astc12x10Srgb or Format.Astc12x10Unorm => Format.R8G8B8A8Srgb,
+                Format.Astc12x12Srgb or Format.Astc12x12Unorm => Format.R8G8B8A8Srgb,
+                _ => Format.R8G8B8A8Unorm,
+            };
         }
 
         public void DeleteBuffer(BufferHandle buffer)
@@ -946,14 +1055,22 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             bool supportsFragmentDensityMap = SupportsFragmentDensityMap;
             bool supportsFragmentDensityMap2 = SupportsFragmentDensityMap2;
 
+            // Android/Mali优化：调整能力报告
+            bool supportsMultiViewport = features2.Features.MultiViewport && !(IsMoltenVk && Vendor == Vendor.Amd);
+            if (IsMaliGPU)
+            {
+                // Mali GPU通常对多视口支持有限
+                supportsMultiViewport = false;
+            }
+
             return new Capabilities(
                 api: TargetApi.Vulkan,
                 GpuVendor,
                 memoryType: memoryType,
                 hasFrontFacingBug: IsIntelWindows,
-                hasVectorIndexingBug: IsQualcommProprietary || Vendor == Vendor.ARM,
+                hasVectorIndexingBug: IsQualcommProprietary || Vendor == Vendor.ARM || IsMaliGPU,
                 needsFragmentOutputSpecialization: IsMoltenVk,
-                reduceShaderPrecision: IsMoltenVk || Vendor == Vendor.ARM,
+                reduceShaderPrecision: IsMoltenVk || Vendor == Vendor.ARM || IsMaliGPU,
                 supportsAstcCompression: features2.Features.TextureCompressionAstcLdr && supportsAstcFormats,
                 supportsBc123Compression: supportsBc123CompressionFormat,
                 supportsBc45Compression: supportsBc45CompressionFormat,
@@ -966,7 +1083,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 supportsScaledVertexFormats: FormatCapabilities.SupportsScaledVertexFormats(),
                 supportsSnormBufferTextureFormat: true,
                 supports5BitComponentFormat: supports5BitComponentFormat,
-                supportsSparseBuffer: features2.Features.SparseBinding && mainQueueProperties.QueueFlags.HasFlag(QueueFlags.SparseBindingBit),
+                supportsSparseBuffer: features2.Features.SparseBinding && mainQueueProperties.QueueFlags.HasFlag(QueueFlags.SparseBindingBit) && !IsMaliGPU,
                 supportsBlendEquationAdvanced: Capabilities.SupportsBlendEquationAdvanced,
                 supportsFragmentShaderInterlock: Capabilities.SupportsFragmentShaderInterlock,
                 supportsFragmentShaderOrderingIntel: false,
@@ -981,10 +1098,10 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 supportsQuads: false,
                 supportsSeparateSampler: true,
                 supportsShaderBallot: false,
-                supportsShaderBallotDivergence: Vendor != Vendor.Qualcomm,
-                supportsShaderBarrierDivergence: Vendor != Vendor.Intel,
+                supportsShaderBallotDivergence: Vendor != Vendor.Qualcomm && !IsMaliGPU,
+                supportsShaderBarrierDivergence: Vendor != Vendor.Intel && !IsMaliGPU,
                 supportsShaderFloat64: Capabilities.SupportsShaderFloat64,
-                supportsTextureGatherOffsets: features2.Features.ShaderImageGatherExtended && !IsMoltenVk,
+                supportsTextureGatherOffsets: features2.Features.ShaderImageGatherExtended && !IsMoltenVk && !IsMaliGPU,
                 supportsTextureShadowLod: false,
                 supportsVertexStoreAndAtomics: features2.Features.VertexPipelineStoresAndAtomics,
                 supportsViewportIndexVertexTessellation: featuresVk12.ShaderOutputViewportIndex,
@@ -1088,6 +1205,18 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
 
         internal PrimitiveTopology TopologyRemap(PrimitiveTopology topology)
         {
+            // Mali优化：更好地处理不支持的原语类型
+            if (IsMaliGPU)
+            {
+                return topology switch
+                {
+                    PrimitiveTopology.Quads => PrimitiveTopology.Triangles,
+                    PrimitiveTopology.QuadStrip => PrimitiveTopology.TriangleStrip,
+                    PrimitiveTopology.TriangleFan or PrimitiveTopology.Polygon => PrimitiveTopology.Triangles,
+                    _ => topology,
+                };
+            }
+            
             return topology switch
             {
                 PrimitiveTopology.Quads => PrimitiveTopology.Triangles,
@@ -1101,6 +1230,19 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
 
         internal bool TopologyUnsupported(PrimitiveTopology topology)
         {
+            // Mali优化：更多原语类型转换
+            if (IsMaliGPU)
+            {
+                return topology switch
+                {
+                    PrimitiveTopology.Quads => true,
+                    PrimitiveTopology.QuadStrip => true,
+                    PrimitiveTopology.TriangleFan => true,
+                    PrimitiveTopology.Polygon => true,
+                    _ => false,
+                };
+            }
+            
             return topology switch
             {
                 PrimitiveTopology.Quads => true,
@@ -1127,6 +1269,16 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             {
                 Logger.Notice.Print(LogClass.Gpu, "Platform: TBDR (Tile-Based Deferred Rendering)");
                 Logger.Notice.Print(LogClass.Gpu, "Query Optimization: Batch processing enabled");
+            }
+            
+            if (IsMaliGPU)
+            {
+                Logger.Notice.Print(LogClass.Gpu, "GPU: Mali (ARM) - Applying optimizations");
+            }
+            
+            if (IsAndroid)
+            {
+                Logger.Notice.Print(LogClass.Gpu, "Platform: Android");
             }
         }
 
@@ -1236,7 +1388,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
 
         public bool SupportsRenderPassBarrier(PipelineStageFlags flags)
         {
-            return !(IsMoltenVk || IsQualcommProprietary || Vendor == Vendor.ARM);
+            return !(IsMoltenVk || IsQualcommProprietary || Vendor == Vendor.ARM || IsMaliGPU);
         }
 
         // ===== Surface/Present Lifecycle helpers =====

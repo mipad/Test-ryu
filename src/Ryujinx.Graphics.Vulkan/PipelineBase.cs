@@ -17,6 +17,7 @@ using IndexType = Ryujinx.Graphics.GAL.IndexType;
 using PolygonMode = Ryujinx.Graphics.GAL.PolygonMode;
 using PrimitiveTopology = Ryujinx.Graphics.GAL.PrimitiveTopology;
 using Viewport = Ryujinx.Graphics.GAL.Viewport;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Vulkan
 {
