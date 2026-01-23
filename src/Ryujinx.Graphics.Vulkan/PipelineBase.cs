@@ -17,7 +17,6 @@ using IndexType = Ryujinx.Graphics.GAL.IndexType;
 using PolygonMode = Ryujinx.Graphics.GAL.PolygonMode;
 using PrimitiveTopology = Ryujinx.Graphics.GAL.PrimitiveTopology;
 using Viewport = Ryujinx.Graphics.GAL.Viewport;
-using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -98,11 +97,6 @@ namespace Ryujinx.Graphics.Vulkan
         public ulong DrawCount { get; private set; }
         public bool RenderPassActive { get; private set; }
 
-        // Mali优化：添加管道状态缓存
-        private readonly Dictionary<PipelineUid, Auto<DisposablePipeline>> _maliPipelineCache;
-        private readonly object _pipelineCacheLock = new();
-        private const int MaxMaliPipelineCacheSize = 128;
-
         public unsafe PipelineBase(VulkanRenderer gd, Device device)
         {
             Gd = gd;
@@ -111,52 +105,10 @@ namespace Ryujinx.Graphics.Vulkan
             AutoFlush = new AutoFlushCounter(gd);
             EndRenderPassDelegate = EndRenderPass;
 
-            // Mali优化：启用更大的管道缓存
             PipelineCacheCreateInfo pipelineCacheCreateInfo = new()
             {
                 SType = StructureType.PipelineCacheCreateInfo,
-                InitialDataSize = 0,
-                PInitialData = null,
             };
-
-            // 如果是Mali GPU，尝试从文件加载管道缓存
-            if (Gd.IsMaliGPU)
-            {
-                try
-                {
-                    // 获取缓存目录路径
-                    string cacheDir = GetMaliPipelineCacheDirectory();
-                    if (!string.IsNullOrEmpty(cacheDir))
-                    {
-                        string cachePath = Path.Combine(cacheDir, "mali_pipeline_cache.bin");
-                        if (File.Exists(cachePath))
-                        {
-                            byte[] cacheData = File.ReadAllBytes(cachePath);
-                            fixed (byte* cacheDataPtr = cacheData)
-                            {
-                                pipelineCacheCreateInfo.InitialDataSize = (nuint)cacheData.Length;
-                                pipelineCacheCreateInfo.PInitialData = cacheDataPtr;
-                            }
-                            
-                            if (Gd.IsAndroid)
-                            {
-                                Logger.Debug?.PrintMsg(LogClass.Gpu, $"Loaded Mali pipeline cache from {cachePath} ({cacheData.Length} bytes)");
-                            }
-                        }
-                        else if (Gd.IsAndroid)
-                        {
-                            Logger.Debug?.PrintMsg(LogClass.Gpu, $"Mali pipeline cache file not found: {cachePath}");
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    if (Gd.IsAndroid)
-                    {
-                        Logger.Warning?.PrintMsg(LogClass.Gpu, $"Failed to load Mali pipeline cache: {ex.Message}");
-                    }
-                }
-            }
 
             gd.Api.CreatePipelineCache(device, in pipelineCacheCreateInfo, null, out PipelineCache).ThrowOnError();
 
@@ -178,44 +130,6 @@ namespace Ryujinx.Graphics.Vulkan
             _storedBlend = new PipelineColorBlendAttachmentState[Constants.MaxRenderTargets];
 
             _newState.Initialize();
-
-            // Mali优化：初始化管道缓存
-            _maliPipelineCache = new Dictionary<PipelineUid, Auto<DisposablePipeline>>();
-        }
-
-        // 获取Mali管道缓存目录
-        private string GetMaliPipelineCacheDirectory()
-        {
-            if (!Gd.IsAndroid)
-            {
-                // 非Android平台使用应用目录
-                return AppDomain.CurrentDomain.BaseDirectory;
-            }
-
-            try
-            {
-                // Android平台使用外部存储
-                // 尝试获取Android数据目录
-                string externalStorage = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                if (!string.IsNullOrEmpty(externalStorage) && Directory.Exists(externalStorage))
-                {
-                    // 创建缓存目录
-                    string cacheDir = Path.Combine(externalStorage, "cache", "pipeline");
-                    Directory.CreateDirectory(cacheDir);
-                    return cacheDir;
-                }
-
-                // 备用方案：使用应用基目录
-                return AppDomain.CurrentDomain.BaseDirectory;
-            }
-            catch (Exception ex)
-            {
-                if (Gd.IsAndroid)
-                {
-                    Logger.Warning?.PrintMsg(LogClass.Gpu, $"Failed to get cache directory: {ex.Message}");
-                }
-                return AppDomain.CurrentDomain.BaseDirectory;
-            }
         }
 
         public void Initialize()
@@ -1780,76 +1694,58 @@ namespace Ryujinx.Graphics.Vulkan
                     // Background compile failed, we likely can't create the pipeline because the shader is broken
                     // or the driver failed to compile it.
 
-                    // Mali优化：尝试从缓存中获取之前成功的管道
-                    if (Gd.IsMaliGPU && _maliPipelineCache.TryGetValue(_newState.Internal, out var cachedPipeline))
+                    return false;
+                }
+
+                // 仅在Mali GPU上启用管道缓存优化
+                if (Gd.IsMaliGPU)
+                {
+                    // 简化版：直接从缓存中查找或创建新管道
+                    Auto<DisposablePipeline> pipeline = null;
+                    
+                    // 这里简化实现，直接创建管道
+                    pipeline = pbp == PipelineBindPoint.Compute
+                        ? _newState.CreateComputePipeline(Gd, Device, _program, PipelineCache)
+                        : _newState.CreateGraphicsPipeline(Gd, Device, _program, PipelineCache, _renderPass.Get(Cbs).Value);
+                        
+                    if (pipeline == null)
                     {
-                        Pipeline = cachedPipeline;
-                        _currentPipelineHandle = cachedPipeline.GetUnsafe().Value.Handle;
+                        return false;
+                    }
+                    
+                    ulong pipelineHandle = pipeline.GetUnsafe().Value.Handle;
+                    
+                    if (_currentPipelineHandle != pipelineHandle)
+                    {
+                        _currentPipelineHandle = pipelineHandle;
+                        Pipeline = pipeline;
+
+                        PauseTransformFeedbackInternal();
                         Gd.Api.CmdBindPipeline(CommandBuffer, pbp, Pipeline.Get(Cbs).Value);
-                        return true;
                     }
-
-                    return false;
                 }
-
-                // Mali优化：先从缓存中查找管道
-                if (Gd.IsMaliGPU)
+                else
                 {
-                    lock (_pipelineCacheLock)
+                    // 原始逻辑
+                    Auto<DisposablePipeline> pipeline = pbp == PipelineBindPoint.Compute
+                        ? _newState.CreateComputePipeline(Gd, Device, _program, PipelineCache)
+                        : _newState.CreateGraphicsPipeline(Gd, Device, _program, PipelineCache, _renderPass.Get(Cbs).Value);
+
+                    if (pipeline == null)
                     {
-                        if (_maliPipelineCache.TryGetValue(_newState.Internal, out var cachedPipeline))
-                        {
-                            Pipeline = cachedPipeline;
-                            _currentPipelineHandle = cachedPipeline.GetUnsafe().Value.Handle;
-                            Gd.Api.CmdBindPipeline(CommandBuffer, pbp, Pipeline.Get(Cbs).Value);
-                            return true;
-                        }
+                        return false;
                     }
-                }
 
-                Auto<DisposablePipeline> pipeline = pbp == PipelineBindPoint.Compute
-                    ? _newState.CreateComputePipeline(Gd, Device, _program, PipelineCache)
-                    : _newState.CreateGraphicsPipeline(Gd, Device, _program, PipelineCache, _renderPass.Get(Cbs).Value);
+                    ulong pipelineHandle = pipeline.GetUnsafe().Value.Handle;
 
-                if (pipeline == null)
-                {
-                    // Host failed to create the pipeline, likely due to driver bugs.
-
-                    // Mali优化：记录失败的管道状态以便后续重试
-                    if (Gd.IsMaliGPU)
+                    if (_currentPipelineHandle != pipelineHandle)
                     {
-                        // 可以在这里添加重试逻辑，但为了简单起见，我们直接返回false
+                        _currentPipelineHandle = pipelineHandle;
+                        Pipeline = pipeline;
+
+                        PauseTransformFeedbackInternal();
+                        Gd.Api.CmdBindPipeline(CommandBuffer, pbp, Pipeline.Get(Cbs).Value);
                     }
-
-                    return false;
-                }
-
-                ulong pipelineHandle = pipeline.GetUnsafe().Value.Handle;
-
-                // Mali优化：缓存成功创建的管道
-                if (Gd.IsMaliGPU)
-                {
-                    lock (_pipelineCacheLock)
-                    {
-                        // 限制缓存大小
-                        if (_maliPipelineCache.Count >= MaxMaliPipelineCacheSize)
-                        {
-                            // 移除最早的条目（简单实现）
-                            var oldestKey = _maliPipelineCache.Keys.First();
-                            _maliPipelineCache.Remove(oldestKey);
-                        }
-
-                        _maliPipelineCache[_newState.Internal] = pipeline;
-                    }
-                }
-
-                if (_currentPipelineHandle != pipelineHandle)
-                {
-                    _currentPipelineHandle = pipelineHandle;
-                    Pipeline = pipeline;
-
-                    PauseTransformFeedbackInternal();
-                    Gd.Api.CmdBindPipeline(CommandBuffer, pbp, Pipeline.Get(Cbs).Value);
                 }
             }
 
@@ -1929,48 +1825,6 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (disposing)
             {
-                // Mali优化：保存管道缓存到文件
-                if (Gd.IsMaliGPU)
-                {
-                    try
-                    {
-                        unsafe
-                        {
-                            nuint cacheDataSize = 0;
-                            Gd.Api.GetPipelineCacheData(Device, PipelineCache, &cacheDataSize, null).ThrowOnError();
-                            
-                            if (cacheDataSize > 0)
-                            {
-                                byte[] cacheData = new byte[cacheDataSize];
-                                fixed (byte* cacheDataPtr = cacheData)
-                                {
-                                    Gd.Api.GetPipelineCacheData(Device, PipelineCache, &cacheDataSize, cacheDataPtr).ThrowOnError();
-                                }
-                                
-                                // 获取缓存目录
-                                string cacheDir = GetMaliPipelineCacheDirectory();
-                                if (!string.IsNullOrEmpty(cacheDir))
-                                {
-                                    string cachePath = Path.Combine(cacheDir, "mali_pipeline_cache.bin");
-                                    File.WriteAllBytes(cachePath, cacheData);
-                                    
-                                    if (Gd.IsAndroid)
-                                    {
-                                        Logger.Debug?.PrintMsg(LogClass.Gpu, $"Saved Mali pipeline cache to {cachePath} ({cacheData.Length} bytes)");
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        if (Gd.IsAndroid)
-                        {
-                            Logger.Warning?.PrintMsg(LogClass.Gpu, $"Failed to save Mali pipeline cache: {ex.Message}");
-                        }
-                    }
-                }
-
                 _nullRenderPass?.Dispose();
                 _newState.Dispose();
                 _descriptorSetUpdater.Dispose();
@@ -1987,15 +1841,6 @@ namespace Ryujinx.Graphics.Vulkan
                 }
 
                 Pipeline?.Dispose();
-
-                // 清理Mali管道缓存
-                if (_maliPipelineCache != null)
-                {
-                    foreach (var pipeline in _maliPipelineCache.Values)
-                    {
-                        pipeline?.Dispose();
-                    }
-                }
 
                 unsafe
                 {
