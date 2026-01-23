@@ -614,8 +614,8 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 supportsCustomBorderColor,
                 supportsBlendOperationAdvanced,
                 propertiesBlendOperationAdvanced.AdvancedBlendCorrelatedOverlap,
-                propertiesBlendOperationAdvanced.AdvancedBlendNonPreMultipliedSrcColor,
-                propertiesBlendOperationAdvanced.AdvancedBlendNonPreMultipliedDstColor,
+                propertiesBlendOperationAdvanced.AdvancedBlendNonPremultipliedSrcColor,
+                propertiesBlendOperationAdvanced.AdvancedBlendNonPremultipliedDstColor,
                 _physicalDevice.IsDeviceExtensionPresent(KhrDrawIndirectCount.ExtensionName),
                 _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_shader_interlock"),
                 _physicalDevice.IsDeviceExtensionPresent("VK_NV_geometry_shader_passthrough"),
@@ -880,8 +880,34 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
 
         internal TextureView CreateTextureView(TextureCreateInfo info)
         {
-            var storage = CreateTextureStorage(info);
-            return storage.CreateView(info, 0, 0);
+            // 修复：创建新的TextureCreateInfo实例而不是修改只读属性
+            TextureCreateInfo adjustedInfo = info;
+            
+            // Mali优化：对于ASTC纹理，如果硬件不支持解码，使用软件解码
+            if (IsMaliGPU && info.Format.IsAstc() && ShouldUseSoftwareASTCDecode())
+            {
+                Logger.Debug?.PrintMsg(LogClass.Gpu, "Using software ASTC decode for Mali GPU");
+                
+                // 创建新的info对象，修改格式为RGBA
+                adjustedInfo = new TextureCreateInfo(
+                    info.Width,
+                    info.Height,
+                    info.Depth,
+                    info.Levels,
+                    info.Samples,
+                    info.BlockWidth,
+                    info.BlockHeight,
+                    ConvertAstcToRgbaFormat(info.Format),
+                    info.DepthStencilMode,
+                    info.Target,
+                    info.SwizzleR,
+                    info.SwizzleG,
+                    info.SwizzleB,
+                    info.SwizzleA);
+            }
+            
+            var storage = CreateTextureStorage(adjustedInfo);
+            return storage.CreateView(adjustedInfo, 0, 0);
         }
 
         internal TextureStorage CreateTextureStorage(TextureCreateInfo info)
@@ -889,13 +915,6 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             if (info.Width == 0 || info.Height == 0 || info.Depth == 0)
             {
                 throw new ArgumentException("Invalid texture dimensions");
-            }
-            
-            // Mali优化：对于ASTC纹理，如果硬件不支持解码，使用软件解码
-            if (IsMaliGPU && info.Format.IsAstc() && ShouldUseSoftwareASTCDecode())
-            {
-                Logger.Debug?.PrintMsg(LogClass.Gpu, "Using software ASTC decode for Mali GPU");
-                info = info with { Format = ConvertAstcToRgbaFormat(info.Format) };
             }
             
             return new TextureStorage(this, _device, info);
