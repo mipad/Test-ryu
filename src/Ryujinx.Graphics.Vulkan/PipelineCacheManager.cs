@@ -169,17 +169,16 @@ namespace Ryujinx.Graphics.Vulkan
                     pipelineCacheCreateInfo.InitialDataSize = (nuint)cacheData.Length;
                 }
 
-                fixed (PipelineCacheCreateInfo* pPipelineCacheCreateInfo = &pipelineCacheCreateInfo)
+                // 修复：使用指针而不是fixed语句
+                PipelineCacheCreateInfo* pPipelineCacheCreateInfo = &pipelineCacheCreateInfo;
+                var result = _gd.Api.CreatePipelineCache(_device, pPipelineCacheCreateInfo, null, out _pipelineCache);
+                
+                if (pipelineCacheCreateInfo.PInitialData != null)
                 {
-                    var result = _gd.Api.CreatePipelineCache(_device, pPipelineCacheCreateInfo, null, out _pipelineCache);
-                    
-                    if (pipelineCacheCreateInfo.PInitialData != null)
-                    {
-                        Marshal.FreeHGlobal((IntPtr)pipelineCacheCreateInfo.PInitialData);
-                    }
-                    
-                    result.ThrowOnError();
+                    Marshal.FreeHGlobal((IntPtr)pipelineCacheCreateInfo.PInitialData);
                 }
+                
+                result.ThrowOnError();
                 
                 _cacheLoaded = cacheData != null;
 
@@ -276,16 +275,10 @@ namespace Ryujinx.Graphics.Vulkan
                     byte[] cacheData = new byte[dataSize];
                     
                     // 修复：使用局部指针变量，避免fixed表达式问题
-                    byte* pCacheData = null;
-                    
-                    // 使用固定语句获取指针，但确保不在不安全上下文中嵌套
-                    fixed (byte* pCacheDataPtr = &cacheData[0])
+                    fixed (byte* pCacheData = cacheData)
                     {
-                        pCacheData = pCacheDataPtr;
+                        _gd.Api.GetPipelineCacheData(_device, _pipelineCache, &dataSize, pCacheData);
                     }
-                    
-                    // 现在使用指针获取缓存数据
-                    _gd.Api.GetPipelineCacheData(_device, _pipelineCache, &dataSize, pCacheData);
 
                     // 添加自定义头信息
                     byte[] finalData = AddCacheHeader(cacheData);
