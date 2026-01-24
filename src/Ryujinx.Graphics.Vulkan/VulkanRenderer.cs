@@ -84,6 +84,7 @@ namespace Ryujinx.Graphics.Vulkan
         private Counters _counters;
 
         private PipelineFull _pipeline;
+        private PipelineCacheManager _pipelineCacheManager;
 
         internal HelperShader HelperShader { get; private set; }
         internal PipelineFull PipelineInternal => _pipeline;
@@ -118,6 +119,10 @@ namespace Ryujinx.Graphics.Vulkan
         internal bool IsTBDR { get; private set; }
         internal bool IsSharedMemory { get; private set; }
         internal bool IsMaliGPU { get; private set; }
+
+        // 新增：当前游戏ID管理
+        private string _currentGameId;
+        private string _currentGameTitle;
 
         public string GpuVendor { get; private set; }
         public string GpuDriver { get; private set; }
@@ -642,10 +647,17 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             BufferManager = new BufferManager(this, _device);
 
             SyncManager = new SyncManager(this, _device);
-            _pipeline = new PipelineFull(this, _device);
+            
+            // 初始化PipelineCacheManager
+            _pipelineCacheManager = new PipelineCacheManager(this, _device);
+            
+            // 使用PipelineCacheManager获取PipelineCache
+            PipelineCache pipelineCache = _pipelineCacheManager.GetOrCreatePipelineCache();
+            
+            _pipeline = new PipelineFull(this, _device, pipelineCache);
             _pipeline.Initialize();
 
-            HelperShader = new HelperShader(this, _device);
+            HelperShader = new HelperShader(this, _device, pipelineCache);
 
             Barriers = new BarrierBatch(this);
 
@@ -1350,6 +1362,105 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             }
         }
 
+        // ===== 新增：PipelineCache管理方法 =====
+        
+        /// <summary>
+        /// 设置当前游戏ID，切换游戏缓存
+        /// </summary>
+        public void SetCurrentGame(string gameId, string gameTitle = null)
+        {
+            if (_pipelineCacheManager != null)
+            {
+                _currentGameId = gameId;
+                _currentGameTitle = gameTitle;
+                _pipelineCacheManager.SetCurrentGame(gameId, gameTitle);
+                
+                // 重新初始化Pipeline
+                _pipeline?.Dispose();
+                PipelineCache pipelineCache = _pipelineCacheManager.GetOrCreatePipelineCache();
+                _pipeline = new PipelineFull(this, _device, pipelineCache);
+                _pipeline.Initialize();
+                
+                Logger.Info?.Print(LogClass.Gpu, 
+                    $"Pipeline cache switched to game: {gameTitle ?? gameId}");
+            }
+        }
+        
+        /// <summary>
+        /// 获取当前游戏ID
+        /// </summary>
+        public string GetCurrentGameId()
+        {
+            return _currentGameId;
+        }
+        
+        /// <summary>
+        /// 保存PipelineCache到磁盘
+        /// </summary>
+        public void SavePipelineCache(bool force = false)
+        {
+            _pipelineCacheManager?.SavePipelineCache(force);
+        }
+        
+        /// <summary>
+        /// 清理当前游戏的缓存
+        /// </summary>
+        public void ClearCurrentGameCache()
+        {
+            if (!string.IsNullOrEmpty(_currentGameId))
+            {
+                _pipelineCacheManager?.ClearGameCache(_currentGameId);
+            }
+        }
+
+        /// <summary>
+        /// 清理所有游戏缓存
+        /// </summary>
+        public void ClearAllGameCaches()
+        {
+            _pipelineCacheManager?.ClearAllGameCaches();
+        }
+
+        /// <summary>
+        /// 获取缓存统计信息
+        /// </summary>
+        public string GetCacheStatistics()
+        {
+            return _pipelineCacheManager?.GetStatistics() ?? "Cache manager not initialized";
+        }
+        
+        /// <summary>
+        /// 记录缓存命中
+        /// </summary>
+        internal void RecordCacheHit()
+        {
+            _pipelineCacheManager?.RecordCacheHit();
+        }
+        
+        /// <summary>
+        /// 记录缓存未命中
+        /// </summary>
+        internal void RecordCacheMiss()
+        {
+            _pipelineCacheManager?.RecordCacheMiss();
+        }
+        
+        /// <summary>
+        /// 帧结束处理，定期保存缓存
+        /// </summary>
+        public void FrameEnd()
+        {
+            static int frameCount = 0;
+            frameCount++;
+            
+            // 每100帧保存一次缓存
+            if (frameCount % 100 == 0)
+            {
+                SavePipelineCache();
+                frameCount = 0;
+            }
+        }
+
         public unsafe void Dispose()
         {
             if (!_initialized)
@@ -1357,6 +1468,9 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 return;
             }
 
+            // 保存PipelineCache
+            SavePipelineCache(true);
+            
             CommandBufferPool?.Dispose();
             _computeCommandPool?.Dispose();
             BackgroundResources?.Dispose();
@@ -1369,6 +1483,10 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             Barriers?.Dispose();
 
             MemoryAllocator?.Dispose();
+
+            // 清理PipelineCacheManager
+            _pipelineCacheManager?.Dispose();
+            _pipelineCacheManager = null;
 
             foreach (var shader in Shaders) shader.Dispose();
             foreach (var texture in Textures) texture.Release();

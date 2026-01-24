@@ -31,7 +31,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         private readonly List<BufferHolder> _backingSwaps;
 
-        public PipelineFull(VulkanRenderer gd, Device device) : base(gd, device)
+        // 修改构造函数，将PipelineCache参数传递给基类
+        public PipelineFull(VulkanRenderer gd, Device device, PipelineCache pipelineCache) : base(gd, device, pipelineCache)
         {
             _activeQueries = [];
             _pendingQueryCopies = [];

@@ -96,20 +96,22 @@ namespace Ryujinx.Graphics.Vulkan
         public ulong DrawCount { get; private set; }
         public bool RenderPassActive { get; private set; }
 
-        public unsafe PipelineBase(VulkanRenderer gd, Device device)
+        // 修改构造函数，移除PipelineCache的创建，改为从外部传入
+        public unsafe PipelineBase(VulkanRenderer gd, Device device, PipelineCache pipelineCache)
         {
             Gd = gd;
             Device = device;
+            PipelineCache = pipelineCache; // 使用传入的PipelineCache
 
             AutoFlush = new AutoFlushCounter(gd);
             EndRenderPassDelegate = EndRenderPass;
 
-            PipelineCacheCreateInfo pipelineCacheCreateInfo = new()
-            {
-                SType = StructureType.PipelineCacheCreateInfo,
-            };
-
-            gd.Api.CreatePipelineCache(device, in pipelineCacheCreateInfo, null, out PipelineCache).ThrowOnError();
+            // 移除PipelineCache的创建代码
+            // PipelineCacheCreateInfo pipelineCacheCreateInfo = new()
+            // {
+            //     SType = StructureType.PipelineCacheCreateInfo,
+            // };
+            // gd.Api.CreatePipelineCache(device, in pipelineCacheCreateInfo, null, out PipelineCache).ThrowOnError();
 
             _descriptorSetUpdater = new DescriptorSetUpdater(gd, device);
             _vertexBufferUpdater = new VertexBufferUpdater(gd);
@@ -1812,10 +1814,11 @@ namespace Ryujinx.Graphics.Vulkan
 
                 Pipeline?.Dispose();
 
-                unsafe
-                {
-                    Gd.Api.DestroyPipelineCache(Device, PipelineCache, null);
-                }
+                // 移除PipelineCache的销毁，由PipelineCacheManager管理
+                // unsafe
+                // {
+                //     Gd.Api.DestroyPipelineCache(Device, PipelineCache, null);
+                // }
             }
         }
 

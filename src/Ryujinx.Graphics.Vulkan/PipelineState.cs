@@ -334,6 +334,8 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (program.TryGetComputePipeline(ref SpecializationData, out var pipeline))
             {
+                // 记录缓存命中
+                gd.RecordCacheHit();
                 return pipeline;
             }
 
@@ -373,6 +375,9 @@ namespace Ryujinx.Graphics.Vulkan
             pipeline = new Auto<DisposablePipeline>(new DisposablePipeline(gd.Api, device, pipelineHandle));
 
             program.AddComputePipeline(ref SpecializationData, pipeline);
+            
+            // 记录缓存未命中
+            gd.RecordCacheMiss();
 
             return pipeline;
         }
@@ -387,6 +392,8 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (program.TryGetGraphicsPipeline(ref Internal, out var pipeline))
             {
+                // 记录缓存命中
+                gd.RecordCacheHit();
                 return pipeline;
             }
 
@@ -661,6 +668,9 @@ namespace Ryujinx.Graphics.Vulkan
             pipeline = new Auto<DisposablePipeline>(new DisposablePipeline(gd.Api, device, pipelineHandle));
 
             program.AddGraphicsPipeline(ref Internal, pipeline);
+            
+            // 记录缓存未命中
+            gd.RecordCacheMiss();
 
             return pipeline;
         }
