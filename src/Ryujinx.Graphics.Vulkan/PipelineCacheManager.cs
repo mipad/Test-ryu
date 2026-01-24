@@ -1,5 +1,6 @@
 using Ryujinx.Common;
 using Ryujinx.Common.Logging;
+using Ryujinx.Common.Configuration;
 using Silk.NET.Vulkan;
 using System;
 using System.Collections.Concurrent;
@@ -41,7 +42,7 @@ namespace Ryujinx.Graphics.Vulkan
             _gd = gd;
             _device = device;
             
-            // 基础缓存目录 - 使用Utilities的正确路径
+            // 基础缓存目录
             string basePath = GetBaseCachePath();
             _globalCacheDir = Path.Combine(basePath, "vulkan", "global");
             _gameSpecificCacheDir = Path.Combine(basePath, "vulkan", "games");
@@ -55,8 +56,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         private string GetBaseCachePath()
         {
-            // 使用Utilities获取基础路径
-            string basePath = Ryujinx.Common.Utilities.GetBasePath();
+            // 使用ConfigurationManager获取基础路径
+            string basePath = ConfigurationManager.GetBasePath();
             return Path.Combine(basePath, "cache");
         }
 
@@ -164,19 +165,16 @@ namespace Ryujinx.Graphics.Vulkan
 
                 if (cacheData != null && cacheData.Length > 0)
                 {
-                    unsafe
+                    fixed (byte* pCacheData = cacheData)
                     {
-                        fixed (byte* pCacheData = cacheData)
-                        {
-                            pipelineCacheCreateInfo.PInitialData = pCacheData;
-                            pipelineCacheCreateInfo.InitialDataSize = (nuint)cacheData.Length;
-                        }
+                        pipelineCacheCreateInfo.PInitialData = pCacheData;
+                        pipelineCacheCreateInfo.InitialDataSize = (nuint)cacheData.Length;
                     }
                 }
 
-                unsafe
+                fixed (PipelineCacheCreateInfo* pPipelineCacheCreateInfo = &pipelineCacheCreateInfo)
                 {
-                    _gd.Api.CreatePipelineCache(_device, &pipelineCacheCreateInfo, null, out _pipelineCache).ThrowOnError();
+                    _gd.Api.CreatePipelineCache(_device, pPipelineCacheCreateInfo, null, out _pipelineCache).ThrowOnError();
                 }
                 
                 _cacheLoaded = cacheData != null;
@@ -244,12 +242,24 @@ namespace Ryujinx.Graphics.Vulkan
                     SType = StructureType.PhysicalDeviceProperties2,
                 };
                 
-                _gd.Api.GetPhysicalDeviceProperties2(_gd.GetPhysicalDevice().PhysicalDevice, ref properties2);
+                PhysicalDevicePipelineCacheCreateInfo pipelineCacheInfo = new()
+                {
+                    SType = StructureType.PhysicalDevicePipelineCacheCreateInfo,
+                };
                 
-                // 检查UUID
+                properties2.PNext = &pipelineCacheInfo;
+                
+                fixed (PhysicalDeviceProperties2* pProperties2 = &properties2)
+                {
+                    _gd.Api.GetPhysicalDeviceProperties2(_gd.GetPhysicalDevice().PhysicalDevice, pProperties2);
+                }
+                
+                // 检查UUID - 现在从PipelineCacheInfo中获取
                 byte* pUuid = pData + 8;
                 for (int i = 0; i < 16; i++)
                 {
+                    // 注意：PipelineCacheUUID在PhysicalDeviceProperties中，不是在PipelineCacheInfo中
+                    // 我们需要直接访问properties2.Properties.PipelineCacheUUID
                     if (pUuid[i] != properties2.Properties.PipelineCacheUUID[i])
                         return false;
                 }
@@ -332,7 +342,10 @@ namespace Ryujinx.Graphics.Vulkan
                 SType = StructureType.PhysicalDeviceProperties2,
             };
             
-            _gd.Api.GetPhysicalDeviceProperties2(_gd.GetPhysicalDevice().PhysicalDevice, ref properties2);
+            fixed (PhysicalDeviceProperties2* pProperties2 = &properties2)
+            {
+                _gd.Api.GetPhysicalDeviceProperties2(_gd.GetPhysicalDevice().PhysicalDevice, pProperties2);
+            }
             
             // 版本4头结构：
             // [0-3]   魔法数字 (0x4B4E5552 = "RGNX")
