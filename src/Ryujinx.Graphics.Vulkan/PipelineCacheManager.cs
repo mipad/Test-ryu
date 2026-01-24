@@ -1,3 +1,4 @@
+using Ryujinx.Common;
 using Ryujinx.Common.Logging;
 using Silk.NET.Vulkan;
 using System;
@@ -40,7 +41,7 @@ namespace Ryujinx.Graphics.Vulkan
             _gd = gd;
             _device = device;
             
-            // 基础缓存目录
+            // 基础缓存目录 - 使用正确的Utilities方法
             string basePath = GetBaseCachePath();
             _globalCacheDir = Path.Combine(basePath, "vulkan", "global");
             _gameSpecificCacheDir = Path.Combine(basePath, "vulkan", "games");
@@ -54,8 +55,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         private string GetBaseCachePath()
         {
-            // Ryujinx的缓存目录
-            string basePath = Ryujinx.Common.Utilities.GetBasePath();
+            // 使用正确的Utilities类获取用户数据目录
+            string basePath = Ryujinx.Common.Utilities.GetRyujinxDataPath();
             return Path.Combine(basePath, "cache");
         }
 
@@ -165,7 +166,7 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     fixed (byte* pCacheData = cacheData)
                     {
-                        pipelineCacheCreateInfo.InitialData = pCacheData;
+                        pipelineCacheCreateInfo.PInitialData = pCacheData;
                         pipelineCacheCreateInfo.InitialDataSize = (nuint)cacheData.Length;
                     }
                 }
@@ -231,7 +232,7 @@ namespace Ryujinx.Graphics.Vulkan
                     return false;
 
                 // 获取设备属性进行验证
-                _gd.Api.GetPhysicalDeviceProperties(_gd.GetPhysicalDevice(), out var properties);
+                _gd.Api.GetPhysicalDeviceProperties(_gd._physicalDevice.PhysicalDevice, out var properties);
                 
                 // 检查UUID
                 byte* pUuid = pData + 8;
@@ -313,7 +314,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         private unsafe byte[] AddCacheHeader(byte[] vulkanCacheData)
         {
-            _gd.Api.GetPhysicalDeviceProperties(_gd.GetPhysicalDevice(), out var properties);
+            _gd.Api.GetPhysicalDeviceProperties(_gd._physicalDevice.PhysicalDevice, out var properties);
             
             // 版本4头结构：
             // [0-3]   魔法数字 (0x4B4E5552 = "RGNX")
