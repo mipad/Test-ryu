@@ -7,6 +7,8 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Globalization;
+using System.Reflection;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -20,6 +22,7 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly string _globalCacheDir;
         private readonly string _gameSpecificCacheDir;
         private readonly object _cacheLock = new();
+        private bool _enableDiskCache = true;
         
         private PipelineCache _pipelineCache;
         private string _currentGameId;
@@ -41,23 +44,173 @@ namespace Ryujinx.Graphics.Vulkan
             _gd = gd;
             _device = device;
             
-            // 基础缓存目录 - 使用简单的方法
-            string basePath = GetBaseCachePath();
-            _globalCacheDir = Path.Combine(basePath, "vulkan", "global");
-            _gameSpecificCacheDir = Path.Combine(basePath, "vulkan", "games");
-            
-            // 创建目录
-            Directory.CreateDirectory(_globalCacheDir);
-            Directory.CreateDirectory(_gameSpecificCacheDir);
+            try
+            {
+                // 基础缓存目录
+                string basePath = GetBaseCachePath();
+                
+                Logger.Info?.Print(LogClass.Gpu, $"Pipeline cache base path: {basePath}");
+                
+                if (string.IsNullOrEmpty(basePath))
+                {
+                    throw new InvalidOperationException("Failed to determine cache base path");
+                }
+                
+                // 确保目录存在
+                Directory.CreateDirectory(basePath);
+                
+                // 设置具体目录
+                _globalCacheDir = Path.Combine(basePath, "vulkan", "global");
+                _gameSpecificCacheDir = Path.Combine(basePath, "vulkan", "games");
+                
+                // 创建子目录
+                Directory.CreateDirectory(_globalCacheDir);
+                Directory.CreateDirectory(_gameSpecificCacheDir);
+                
+                Logger.Info?.Print(LogClass.Gpu, $"Pipeline cache directories created successfully");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Failed to initialize pipeline cache directories: {ex.Message}");
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Cache will be memory-only, performance may be affected");
+                
+                // 设置为空，使用内存缓存
+                _globalCacheDir = null;
+                _gameSpecificCacheDir = null;
+                
+                // 标记为无磁盘缓存
+                _enableDiskCache = false;
+            }
             
             _stats = new CacheStatistics();
         }
 
         private string GetBaseCachePath()
         {
-            // 使用简单的路径，避免复杂的依赖
-            string appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            return Path.Combine(appDataPath, "Ryujinx", "cache");
+            // Android上使用应用私有目录
+            if (OperatingSystem.IsAndroid())
+            {
+                Logger.Info?.Print(LogClass.Gpu, "Detected Android platform, using Android-specific cache paths");
+                
+                // 尝试多个可能的缓存目录（优先级从高到低）
+                string[] possiblePaths = new string[]
+                {
+                    // 1. 主应用数据目录（如果AppDataManager可用）
+                    TryGetAppDataPath(),
+                    // 2. Ryujinx的Android特定目录（参考mods路径）
+                    "/storage/emulated/0/Android/data/org.karyujinx.android/files/cache",
+                    "/storage/emulated/0/Android/data/com.ryujinx.android/files/cache",
+                    // 3. Android标准应用数据目录
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    Environment.GetFolderPath(Environment.SpecialFolder.Personal),
+                    // 4. 外部存储的通用目录
+                    "/storage/emulated/0/Android/data/org.ryujinx/cache",
+                    "/data/data/com.ryujinx.ryujinx/files/cache",
+                    "/data/user/0/com.ryujinx.ryujinx/files/cache",
+                    // 5. 当前工作目录
+                    Environment.CurrentDirectory
+                };
+                
+                foreach (var path in possiblePaths)
+                {
+                    if (!string.IsNullOrEmpty(path))
+                    {
+                        Logger.Info?.Print(LogClass.Gpu, $"Trying cache path: {path}");
+                        
+                        try
+                        {
+                            // 检查路径是否存在或可以创建
+                            string parentDir = Path.GetDirectoryName(path);
+                            if (parentDir != null && CanCreateDirectory(parentDir))
+                            {
+                                Directory.CreateDirectory(path);
+                                Logger.Info?.Print(LogClass.Gpu, $"Using cache directory: {path}");
+                                return path;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Warning?.Print(LogClass.Gpu, $"Failed to use cache path {path}: {ex.Message}");
+                            continue;
+                        }
+                    }
+                }
+                
+                // 如果所有路径都失败，返回一个临时目录
+                string fallback = Path.Combine(Environment.CurrentDirectory, "cache");
+                Logger.Warning?.Print(LogClass.Gpu, $"All cache paths failed, using fallback: {fallback}");
+                return fallback;
+            }
+            
+            // 其他平台使用原来的逻辑
+            try
+            {
+                string appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                string ryujinxPath = Path.Combine(appDataPath, "Ryujinx");
+                
+                if (!Directory.Exists(ryujinxPath))
+                {
+                    Directory.CreateDirectory(ryujinxPath);
+                }
+                
+                return Path.Combine(ryujinxPath, "cache");
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, $"Failed to get standard cache path: {ex.Message}");
+                return Path.Combine(Environment.CurrentDirectory, "cache");
+            }
+        }
+
+        // 尝试从AppDataManager获取路径
+        private string TryGetAppDataPath()
+        {
+            try
+            {
+                // 使用反射尝试获取AppDataManager.BaseDirPath
+                var appDataManagerType = Type.GetType("Ryujinx.Common.Configuration.AppDataManager, Ryujinx.Common");
+                if (appDataManagerType != null)
+                {
+                    var baseDirPathProperty = appDataManagerType.GetProperty("BaseDirPath", 
+                        BindingFlags.Public | BindingFlags.Static);
+                    if (baseDirPathProperty != null)
+                    {
+                        string baseDir = baseDirPathProperty.GetValue(null) as string;
+                        if (!string.IsNullOrEmpty(baseDir))
+                        {
+                            Logger.Info?.Print(LogClass.Gpu, $"Found AppDataManager.BaseDirPath: {baseDir}");
+                            return Path.Combine(baseDir, "cache");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, $"Failed to get AppDataManager path: {ex.Message}");
+            }
+            
+            return null;
+        }
+
+        // 检查是否可以创建目录
+        private bool CanCreateDirectory(string path)
+        {
+            try
+            {
+                if (Directory.Exists(path))
+                    return true;
+                    
+                // 尝试创建目录（包括父目录）
+                Directory.CreateDirectory(path);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         /// <summary>
@@ -98,15 +251,22 @@ namespace Ryujinx.Graphics.Vulkan
         /// </summary>
         private string GetGameCacheFilePath(string gameId)
         {
-            if (string.IsNullOrEmpty(gameId))
-                return Path.Combine(_globalCacheDir, "global_pipeline_cache.bin");
+            if (string.IsNullOrEmpty(gameId) || string.IsNullOrEmpty(_gameSpecificCacheDir))
+                return null;
             
-            // 使用游戏ID的MD5哈希作为文件名，避免特殊字符问题
-            using var md5 = MD5.Create();
-            var hash = md5.ComputeHash(Encoding.UTF8.GetBytes(gameId));
-            var hashString = BitConverter.ToString(hash).Replace("-", "").ToLower();
-            
-            return Path.Combine(_gameSpecificCacheDir, $"pipeline_cache_{hashString}.bin");
+            try
+            {
+                // 使用游戏ID的MD5哈希作为文件名，避免特殊字符问题
+                using var md5 = MD5.Create();
+                var hash = md5.ComputeHash(Encoding.UTF8.GetBytes(gameId));
+                var hashString = BitConverter.ToString(hash).Replace("-", "").ToLower();
+                
+                return Path.Combine(_gameSpecificCacheDir, $"pipeline_cache_{hashString}.bin");
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         /// <summary>
@@ -114,6 +274,9 @@ namespace Ryujinx.Graphics.Vulkan
         /// </summary>
         private string GetGlobalCacheFilePath()
         {
+            if (string.IsNullOrEmpty(_globalCacheDir))
+                return null;
+            
             return Path.Combine(_globalCacheDir, "global_pipeline_cache.bin");
         }
 
@@ -141,19 +304,25 @@ namespace Ryujinx.Graphics.Vulkan
                 if (!string.IsNullOrEmpty(_currentGameId))
                 {
                     cachePath = GetGameCacheFilePath(_currentGameId);
-                    cacheData = TryLoadCacheData(cachePath);
+                    if (cachePath != null)
+                    {
+                        cacheData = TryLoadCacheData(cachePath);
+                    }
                 }
 
                 // 如果没有游戏缓存，尝试加载全局缓存
                 if (cacheData == null)
                 {
                     cachePath = GetGlobalCacheFilePath();
-                    cacheData = TryLoadCacheData(cachePath);
-                    
-                    if (cacheData != null)
+                    if (cachePath != null)
                     {
-                        Logger.Info?.Print(LogClass.Gpu, 
-                            "Using global pipeline cache (no game-specific cache found)");
+                        cacheData = TryLoadCacheData(cachePath);
+                        
+                        if (cacheData != null)
+                        {
+                            Logger.Info?.Print(LogClass.Gpu, 
+                                "Using global pipeline cache (no game-specific cache found)");
+                        }
                     }
                 }
 
@@ -182,7 +351,7 @@ namespace Ryujinx.Graphics.Vulkan
                 
                 _cacheLoaded = cacheData != null;
 
-                if (_cacheLoaded)
+                if (_cacheLoaded && cachePath != null)
                 {
                     Logger.Info?.Print(LogClass.Gpu, 
                         $"Loaded pipeline cache ({cacheData.Length / 1024} KB) from {Path.GetFileName(cachePath)}");
@@ -199,10 +368,20 @@ namespace Ryujinx.Graphics.Vulkan
 
         private byte[] TryLoadCacheData(string cachePath)
         {
+            // 如果禁用了磁盘缓存或者路径为空，直接返回null
+            if (!_enableDiskCache || string.IsNullOrEmpty(cachePath))
+            {
+                Logger.Debug?.Print(LogClass.Gpu, "Disk cache disabled or path invalid, skipping load");
+                return null;
+            }
+
             try
             {
                 if (!File.Exists(cachePath))
+                {
+                    Logger.Debug?.Print(LogClass.Gpu, $"Cache file does not exist: {cachePath}");
                     return null;
+                }
 
                 byte[] cacheData = File.ReadAllBytes(cachePath);
                 
@@ -213,6 +392,7 @@ namespace Ryujinx.Graphics.Vulkan
                     return null;
                 }
 
+                Logger.Info?.Print(LogClass.Gpu, $"Successfully loaded cache from {cachePath} ({cacheData.Length} bytes)");
                 return cacheData;
             }
             catch (Exception ex)
@@ -245,7 +425,11 @@ namespace Ryujinx.Graphics.Vulkan
             uint cachedDeviceId = BitConverter.ToUInt32(cacheData, 28);
             
             if (cachedVendorId != properties.VendorID || cachedDeviceId != properties.DeviceID)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Cache device mismatch: cached ({cachedVendorId:X}:{cachedDeviceId:X}) != current ({properties.VendorID:X}:{properties.DeviceID:X})");
                 return false;
+            }
 
             return true;
         }
@@ -255,6 +439,13 @@ namespace Ryujinx.Graphics.Vulkan
         /// </summary>
         public unsafe void SavePipelineCache(bool force = false)
         {
+            // 如果禁用了磁盘缓存，直接返回
+            if (!_enableDiskCache)
+            {
+                Logger.Debug?.Print(LogClass.Gpu, "Disk cache disabled, skipping save");
+                return;
+            }
+
             if (_pipelineCache.Handle == 0)
                 return;
 
@@ -288,12 +479,19 @@ namespace Ryujinx.Graphics.Vulkan
                     if (string.IsNullOrEmpty(_currentGameId))
                     {
                         cachePath = GetGlobalCacheFilePath();
+                        if (cachePath == null)
+                            return;
                     }
                     else
                     {
                         cachePath = GetGameCacheFilePath(_currentGameId);
+                        if (cachePath == null)
+                            return;
                     }
 
+                    // 确保目录存在
+                    Directory.CreateDirectory(Path.GetDirectoryName(cachePath));
+                    
                     // 保存文件
                     File.WriteAllBytes(cachePath, finalData);
                     
@@ -301,7 +499,7 @@ namespace Ryujinx.Graphics.Vulkan
                     _stats.CacheSizeBytes = finalData.Length;
                     _stats.LastSaveTime = DateTime.Now;
                     
-                    Logger.Debug?.Print(LogClass.Gpu, 
+                    Logger.Info?.Print(LogClass.Gpu, 
                         $"Saved pipeline cache ({finalData.Length / 1024} KB) to {Path.GetFileName(cachePath)}");
                 }
                 catch (Exception ex)
@@ -379,7 +577,8 @@ namespace Ryujinx.Graphics.Vulkan
         {
             return $"Cache hits: {_stats.CacheHits}, misses: {_stats.CacheMisses}, " +
                    $"size: {_stats.CacheSizeBytes / 1024} KB, " +
-                   $"last saved: {_stats.LastSaveTime:yyyy-MM-dd HH:mm:ss}";
+                   $"last saved: {_stats.LastSaveTime:yyyy-MM-dd HH:mm:ss}, " +
+                   $"disk cache enabled: {_enableDiskCache}";
         }
 
         /// <summary>
@@ -403,14 +602,21 @@ namespace Ryujinx.Graphics.Vulkan
         /// </summary>
         public void ClearGameCache(string gameId)
         {
-            if (string.IsNullOrEmpty(gameId))
+            if (string.IsNullOrEmpty(gameId) || !_enableDiskCache)
                 return;
             
             string cachePath = GetGameCacheFilePath(gameId);
-            if (File.Exists(cachePath))
+            if (cachePath != null && File.Exists(cachePath))
             {
-                File.Delete(cachePath);
-                Logger.Info?.Print(LogClass.Gpu, $"Cleared cache for game: {gameId}");
+                try
+                {
+                    File.Delete(cachePath);
+                    Logger.Info?.Print(LogClass.Gpu, $"Cleared cache for game: {gameId}");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, $"Failed to clear cache for game {gameId}: {ex.Message}");
+                }
             }
         }
 
@@ -419,6 +625,9 @@ namespace Ryujinx.Graphics.Vulkan
         /// </summary>
         public void ClearAllGameCaches()
         {
+            if (!_enableDiskCache || string.IsNullOrEmpty(_gameSpecificCacheDir))
+                return;
+            
             try
             {
                 foreach (var file in Directory.GetFiles(_gameSpecificCacheDir, "pipeline_cache_*.bin"))
@@ -439,6 +648,9 @@ namespace Ryujinx.Graphics.Vulkan
         /// </summary>
         public (string GameId, long Size, DateTime Modified)[] GetGameCacheInfos()
         {
+            if (!_enableDiskCache || string.IsNullOrEmpty(_gameSpecificCacheDir) || !Directory.Exists(_gameSpecificCacheDir))
+                return Array.Empty<(string, long, DateTime)>();
+            
             var files = Directory.GetFiles(_gameSpecificCacheDir, "pipeline_cache_*.bin");
             var result = new (string, long, DateTime)[files.Length];
             
