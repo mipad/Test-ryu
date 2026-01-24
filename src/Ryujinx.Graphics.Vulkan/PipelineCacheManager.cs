@@ -275,17 +275,17 @@ namespace Ryujinx.Graphics.Vulkan
 
                     byte[] cacheData = new byte[dataSize];
                     
-                    // 修复：使用 GCHandle 来固定数组，而不是 fixed 语句
-                    GCHandle handle = GCHandle.Alloc(cacheData, GCHandleType.Pinned);
-                    try
+                    // 修复：使用局部指针变量，避免fixed表达式问题
+                    byte* pCacheData = null;
+                    
+                    // 使用固定语句获取指针，但确保不在不安全上下文中嵌套
+                    fixed (byte* pCacheDataPtr = &cacheData[0])
                     {
-                        byte* pCacheData = (byte*)handle.AddrOfPinnedObject();
-                        _gd.Api.GetPipelineCacheData(_device, _pipelineCache, &dataSize, pCacheData);
+                        pCacheData = pCacheDataPtr;
                     }
-                    finally
-                    {
-                        handle.Free();
-                    }
+                    
+                    // 现在使用指针获取缓存数据
+                    _gd.Api.GetPipelineCacheData(_device, _pipelineCache, &dataSize, pCacheData);
 
                     // 添加自定义头信息
                     byte[] finalData = AddCacheHeader(cacheData);
