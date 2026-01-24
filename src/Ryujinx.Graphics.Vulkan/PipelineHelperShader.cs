@@ -3,9 +3,9 @@ using VkFormat = Silk.NET.Vulkan.Format;
 
 namespace Ryujinx.Graphics.Vulkan
 {
-    class PipelineHelperShader : PipelineBase
+    unsafe class PipelineHelperShader : PipelineBase
     {
-        // 修改构造函数，接受PipelineCache参数
+        // 修改构造函数，使用新的静态方法创建PipelineCache
         public PipelineHelperShader(VulkanRenderer gd, Device device) : base(gd, device, CreateTemporaryPipelineCache(gd, device))
         {
         }
@@ -18,7 +18,7 @@ namespace Ryujinx.Graphics.Vulkan
                 SType = StructureType.PipelineCacheCreateInfo,
             };
 
-            gd.Api.CreatePipelineCache(device, in pipelineCacheCreateInfo, null, out var pipelineCache).ThrowOnError();
+            gd.Api.CreatePipelineCache(device, &pipelineCacheCreateInfo, null, out var pipelineCache).ThrowOnError();
             return pipelineCache;
         }
 
