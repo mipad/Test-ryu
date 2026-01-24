@@ -10,7 +10,7 @@ using System.Text;
 
 namespace Ryujinx.Graphics.Vulkan
 {
-    class PipelineCacheManager : IDisposable
+    unsafe class PipelineCacheManager : IDisposable
     {
         private const uint CacheMagic = 0x4B4E5552; // "RGNX" (Ryujinx)
         private const uint CacheVersion = 4; // 版本升级
@@ -41,7 +41,7 @@ namespace Ryujinx.Graphics.Vulkan
             _gd = gd;
             _device = device;
             
-            // 基础缓存目录
+            // 基础缓存目录 - 使用简单的方法
             string basePath = GetBaseCachePath();
             _globalCacheDir = Path.Combine(basePath, "vulkan", "global");
             _gameSpecificCacheDir = Path.Combine(basePath, "vulkan", "games");
@@ -55,8 +55,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         private string GetBaseCachePath()
         {
-            // 使用AppDataManager获取缓存目录
-            return Path.Combine(AppDataManager.GamesDirPath, "cache", "vulkan");
+            // 使用简单的路径，避免复杂的依赖
+            string appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            return Path.Combine(appDataPath, "Ryujinx", "cache");
         }
 
         /// <summary>
@@ -168,14 +169,17 @@ namespace Ryujinx.Graphics.Vulkan
                     pipelineCacheCreateInfo.InitialDataSize = (nuint)cacheData.Length;
                 }
 
-                var result = _gd.Api.CreatePipelineCache(_device, &pipelineCacheCreateInfo, null, out _pipelineCache);
-                
-                if (pipelineCacheCreateInfo.PInitialData != null)
+                fixed (PipelineCacheCreateInfo* pPipelineCacheCreateInfo = &pipelineCacheCreateInfo)
                 {
-                    Marshal.FreeHGlobal((IntPtr)pipelineCacheCreateInfo.PInitialData);
+                    var result = _gd.Api.CreatePipelineCache(_device, pPipelineCacheCreateInfo, null, out _pipelineCache);
+                    
+                    if (pipelineCacheCreateInfo.PInitialData != null)
+                    {
+                        Marshal.FreeHGlobal((IntPtr)pipelineCacheCreateInfo.PInitialData);
+                    }
+                    
+                    result.ThrowOnError();
                 }
-                
-                result.ThrowOnError();
                 
                 _cacheLoaded = cacheData != null;
 
@@ -220,7 +224,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        private unsafe bool ValidateCacheData(byte[] cacheData)
+        private bool ValidateCacheData(byte[] cacheData)
         {
             if (cacheData.Length < 32)
                 return false;
@@ -307,7 +311,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        private unsafe byte[] AddCacheHeader(byte[] vulkanCacheData)
+        private byte[] AddCacheHeader(byte[] vulkanCacheData)
         {
             // 获取设备属性
             _gd.Api.GetPhysicalDeviceProperties(_gd.GetPhysicalDevice().PhysicalDevice, out var properties);
