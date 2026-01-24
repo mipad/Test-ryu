@@ -85,7 +85,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         private PipelineFull _pipeline;
         private PipelineCacheManager _pipelineCacheManager;
-
+        private int _frameCount;
+        
         internal HelperShader HelperShader { get; private set; }
         internal PipelineFull PipelineInternal => _pipeline;
 
@@ -1450,7 +1451,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         /// </summary>
         public void FrameEnd()
         {
-            static int frameCount = 0;
+            
             frameCount++;
             
             // 每100帧保存一次缓存
