@@ -279,18 +279,4 @@ namespace Ryujinx.HLE.Generators
             context.RegisterForSyntaxNotifications(() => new ServiceSyntaxReceiver());
         }
     }
-    
-    // 添加缺少的 ServiceSyntaxReceiver 类
-    internal class ServiceSyntaxReceiver : ISyntaxReceiver
-    {
-        public List<ClassDeclarationSyntax> Types { get; } = new List<ClassDeclarationSyntax>();
-
-        public void OnVisitSyntaxNode(SyntaxNode syntaxNode)
-        {
-            if (syntaxNode is ClassDeclarationSyntax classDeclaration)
-            {
-                Types.Add(classDeclaration);
-            }
-        }
-    }
 }
