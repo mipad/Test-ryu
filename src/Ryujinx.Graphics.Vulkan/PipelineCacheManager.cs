@@ -1,6 +1,5 @@
 using Ryujinx.Common;
 using Ryujinx.Common.Logging;
-using Ryujinx.Common.Configuration;
 using Silk.NET.Vulkan;
 using System;
 using System.Collections.Concurrent;
@@ -11,7 +10,7 @@ using System.Text;
 
 namespace Ryujinx.Graphics.Vulkan
 {
-    unsafe class PipelineCacheManager : IDisposable
+    class PipelineCacheManager : IDisposable
     {
         private const uint CacheMagic = 0x4B4E5552; // "RGNX" (Ryujinx)
         private const uint CacheVersion = 4; // 版本升级
@@ -56,9 +55,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         private string GetBaseCachePath()
         {
-            // 使用ConfigurationManager获取基础路径
-            string basePath = ConfigurationManager.GetBasePath();
-            return Path.Combine(basePath, "cache");
+            // 使用AppDataManager获取缓存目录
+            return Path.Combine(AppDataManager.GamesDirPath, "cache", "vulkan");
         }
 
         /// <summary>
@@ -121,7 +119,7 @@ namespace Ryujinx.Graphics.Vulkan
         /// <summary>
         /// 获取或创建PipelineCache
         /// </summary>
-        public PipelineCache GetOrCreatePipelineCache()
+        public unsafe PipelineCache GetOrCreatePipelineCache()
         {
             if (_pipelineCache.Handle != 0)
             {
@@ -158,24 +156,26 @@ namespace Ryujinx.Graphics.Vulkan
                     }
                 }
 
-                PipelineCacheCreateInfo pipelineCacheCreateInfo = new()
+                var pipelineCacheCreateInfo = new PipelineCacheCreateInfo
                 {
                     SType = StructureType.PipelineCacheCreateInfo,
                 };
 
                 if (cacheData != null && cacheData.Length > 0)
                 {
-                    fixed (byte* pCacheData = cacheData)
-                    {
-                        pipelineCacheCreateInfo.PInitialData = pCacheData;
-                        pipelineCacheCreateInfo.InitialDataSize = (nuint)cacheData.Length;
-                    }
+                    pipelineCacheCreateInfo.PInitialData = (void*)Marshal.AllocHGlobal(cacheData.Length);
+                    Marshal.Copy(cacheData, 0, (IntPtr)pipelineCacheCreateInfo.PInitialData, cacheData.Length);
+                    pipelineCacheCreateInfo.InitialDataSize = (nuint)cacheData.Length;
                 }
 
-                fixed (PipelineCacheCreateInfo* pPipelineCacheCreateInfo = &pipelineCacheCreateInfo)
+                var result = _gd.Api.CreatePipelineCache(_device, &pipelineCacheCreateInfo, null, out _pipelineCache);
+                
+                if (pipelineCacheCreateInfo.PInitialData != null)
                 {
-                    _gd.Api.CreatePipelineCache(_device, pPipelineCacheCreateInfo, null, out _pipelineCache).ThrowOnError();
+                    Marshal.FreeHGlobal((IntPtr)pipelineCacheCreateInfo.PInitialData);
                 }
+                
+                result.ThrowOnError();
                 
                 _cacheLoaded = cacheData != null;
 
@@ -225,53 +225,26 @@ namespace Ryujinx.Graphics.Vulkan
             if (cacheData.Length < 32)
                 return false;
 
-            fixed (byte* pData = cacheData)
-            {
-                // 检查魔法数字和版本
-                uint* pUint = (uint*)pData;
-                if (pUint[0] != CacheMagic)
-                    return false;
-                
-                uint version = pUint[1];
-                if (version < 3 || version > CacheVersion) // 只接受版本3-4
-                    return false;
+            // 检查魔法数字和版本
+            uint magic = BitConverter.ToUInt32(cacheData, 0);
+            if (magic != CacheMagic)
+                return false;
+            
+            uint version = BitConverter.ToUInt32(cacheData, 4);
+            if (version < 3 || version > CacheVersion) // 只接受版本3-4
+                return false;
 
-                // 获取设备属性进行验证
-                PhysicalDeviceProperties2 properties2 = new()
-                {
-                    SType = StructureType.PhysicalDeviceProperties2,
-                };
-                
-                PhysicalDevicePipelineCacheCreateInfo pipelineCacheInfo = new()
-                {
-                    SType = StructureType.PhysicalDevicePipelineCacheCreateInfo,
-                };
-                
-                properties2.PNext = &pipelineCacheInfo;
-                
-                fixed (PhysicalDeviceProperties2* pProperties2 = &properties2)
-                {
-                    _gd.Api.GetPhysicalDeviceProperties2(_gd.GetPhysicalDevice().PhysicalDevice, pProperties2);
-                }
-                
-                // 检查UUID - 现在从PipelineCacheInfo中获取
-                byte* pUuid = pData + 8;
-                for (int i = 0; i < 16; i++)
-                {
-                    // 注意：PipelineCacheUUID在PhysicalDeviceProperties中，不是在PipelineCacheInfo中
-                    // 我们需要直接访问properties2.Properties.PipelineCacheUUID
-                    if (pUuid[i] != properties2.Properties.PipelineCacheUUID[i])
-                        return false;
-                }
+            // 获取当前设备的VendorID和DeviceID
+            _gd.Api.GetPhysicalDeviceProperties(_gd.GetPhysicalDevice().PhysicalDevice, out var properties);
+            
+            // 检查VendorID和DeviceID
+            uint cachedVendorId = BitConverter.ToUInt32(cacheData, 24);
+            uint cachedDeviceId = BitConverter.ToUInt32(cacheData, 28);
+            
+            if (cachedVendorId != properties.VendorID || cachedDeviceId != properties.DeviceID)
+                return false;
 
-                // 版本4新增：检查驱动程序构建时间戳
-                if (version >= 4)
-                {
-                    // 可选：可以在这里添加更严格的验证
-                }
-
-                return true;
-            }
+            return true;
         }
 
         /// <summary>
@@ -337,20 +310,12 @@ namespace Ryujinx.Graphics.Vulkan
         private unsafe byte[] AddCacheHeader(byte[] vulkanCacheData)
         {
             // 获取设备属性
-            PhysicalDeviceProperties2 properties2 = new()
-            {
-                SType = StructureType.PhysicalDeviceProperties2,
-            };
-            
-            fixed (PhysicalDeviceProperties2* pProperties2 = &properties2)
-            {
-                _gd.Api.GetPhysicalDeviceProperties2(_gd.GetPhysicalDevice().PhysicalDevice, pProperties2);
-            }
+            _gd.Api.GetPhysicalDeviceProperties(_gd.GetPhysicalDevice().PhysicalDevice, out var properties);
             
             // 版本4头结构：
             // [0-3]   魔法数字 (0x4B4E5552 = "RGNX")
             // [4-7]   版本号 (4)
-            // [8-23]  PipelineCache UUID (16字节)
+            // [8-23]  预留（原PipelineCache UUID位置，现在不验证）
             // [24-27] VendorID
             // [28-31] DeviceID
             // [32-39] DriverVersion
@@ -361,40 +326,33 @@ namespace Ryujinx.Graphics.Vulkan
             int headerSize = 56;
             byte[] finalData = new byte[headerSize + vulkanCacheData.Length];
             
-            fixed (byte* pFinalData = finalData)
+            // 魔法数字和版本
+            BitConverter.GetBytes(CacheMagic).CopyTo(finalData, 0);
+            BitConverter.GetBytes(CacheVersion).CopyTo(finalData, 4);
+            
+            // 预留8-23字节为0（原UUID位置）
+            for (int i = 8; i < 24; i++)
             {
-                // 魔法数字和版本
-                uint* pMagic = (uint*)pFinalData;
-                pMagic[0] = CacheMagic;
-                pMagic[1] = CacheVersion;
-                
-                // UUID
-                byte* pUuid = pFinalData + 8;
-                for (int i = 0; i < 16; i++)
-                {
-                    pUuid[i] = properties2.Properties.PipelineCacheUUID[i];
-                }
-                
-                // VendorID和DeviceID
-                uint* pIds = (uint*)(pFinalData + 24);
-                pIds[0] = properties2.Properties.VendorID;
-                pIds[1] = properties2.Properties.DeviceID;
-                
-                // DriverVersion
-                ulong* pDriverVersion = (ulong*)(pFinalData + 32);
-                *pDriverVersion = properties2.Properties.DriverVersion;
-                
-                // 时间戳
-                long* pTimestamp = (long*)(pFinalData + 40);
-                *pTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                
-                // 游戏ID哈希
-                ulong* pGameHash = (ulong*)(pFinalData + 48);
-                *pGameHash = GetGameIdHash(_currentGameId);
-                
-                // 复制Vulkan缓存数据
-                Marshal.Copy(vulkanCacheData, 0, (IntPtr)(pFinalData + headerSize), vulkanCacheData.Length);
+                finalData[i] = 0;
             }
+            
+            // VendorID和DeviceID
+            BitConverter.GetBytes(properties.VendorID).CopyTo(finalData, 24);
+            BitConverter.GetBytes(properties.DeviceID).CopyTo(finalData, 28);
+            
+            // DriverVersion
+            BitConverter.GetBytes(properties.DriverVersion).CopyTo(finalData, 32);
+            
+            // 时间戳
+            long timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            BitConverter.GetBytes(timestamp).CopyTo(finalData, 40);
+            
+            // 游戏ID哈希
+            ulong gameHash = GetGameIdHash(_currentGameId);
+            BitConverter.GetBytes(gameHash).CopyTo(finalData, 48);
+            
+            // 复制Vulkan缓存数据
+            vulkanCacheData.CopyTo(finalData, headerSize);
             
             return finalData;
         }
