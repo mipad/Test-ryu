@@ -41,7 +41,7 @@ namespace Ryujinx.Graphics.Vulkan
             _gd = gd;
             _device = device;
             
-            // 基础缓存目录 - 使用正确的Utilities方法
+            // 基础缓存目录
             string basePath = GetBaseCachePath();
             _globalCacheDir = Path.Combine(basePath, "vulkan", "global");
             _gameSpecificCacheDir = Path.Combine(basePath, "vulkan", "games");
@@ -55,8 +55,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         private string GetBaseCachePath()
         {
-            // 使用正确的Utilities类获取用户数据目录
-            string basePath = Ryujinx.Common.Utilities.GetRyujinxDataPath();
+            // 使用AppDataManager获取基础路径
+            string basePath = AppDataManager.BaseDirectoryPath;
             return Path.Combine(basePath, "cache");
         }
 
@@ -189,7 +189,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        private unsafe byte[] TryLoadCacheData(string cachePath)
+        private byte[] TryLoadCacheData(string cachePath)
         {
             try
             {

@@ -5,13 +5,8 @@ namespace Ryujinx.Graphics.Vulkan
 {
     class PipelineHelperShader : PipelineBase
     {
-        // 添加两个参数的构造函数，内部创建PipelineCache
+        // 修改构造函数，不传递PipelineCache，由基类内部创建
         public PipelineHelperShader(VulkanRenderer gd, Device device) : base(gd, device)
-        {
-        }
-
-        // 修改构造函数，将PipelineCache参数传递给基类
-        public PipelineHelperShader(VulkanRenderer gd, Device device, PipelineCache pipelineCache) : base(gd, device, pipelineCache)
         {
         }
 

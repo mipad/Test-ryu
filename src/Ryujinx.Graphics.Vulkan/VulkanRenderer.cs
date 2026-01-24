@@ -27,6 +27,7 @@ namespace Ryujinx.Graphics.Vulkan
         private WindowBase _window;
         private CommandBufferPool _computeCommandPool;
         private bool _initialized;
+        private int _frameCount; // 添加：帧计数器
 
         // JNI/Lifecycle-Flag
         internal volatile bool PresentAllowed = true;
@@ -85,8 +86,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         private PipelineFull _pipeline;
         private PipelineCacheManager _pipelineCacheManager;
-        private int _frameCount;
-        
+
         internal HelperShader HelperShader { get; private set; }
         internal PipelineFull PipelineInternal => _pipeline;
 
@@ -658,7 +658,8 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             _pipeline = new PipelineFull(this, _device, pipelineCache);
             _pipeline.Initialize();
 
-            HelperShader = new HelperShader(this, _device, pipelineCache);
+            // 修改：HelperShader只需要两个参数
+            HelperShader = new HelperShader(this, _device);
 
             Barriers = new BarrierBatch(this);
 
@@ -1451,14 +1452,13 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         /// </summary>
         public void FrameEnd()
         {
-            
-            frameCount++;
+            _frameCount++;
             
             // 每100帧保存一次缓存
-            if (frameCount % 100 == 0)
+            if (_frameCount % 100 == 0)
             {
                 SavePipelineCache();
-                frameCount = 0;
+                _frameCount = 0;
             }
         }
 
