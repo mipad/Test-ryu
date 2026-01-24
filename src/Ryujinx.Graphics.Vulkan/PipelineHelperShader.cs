@@ -5,9 +5,21 @@ namespace Ryujinx.Graphics.Vulkan
 {
     class PipelineHelperShader : PipelineBase
     {
-        // 修改构造函数，不传递PipelineCache，由基类内部创建
-        public PipelineHelperShader(VulkanRenderer gd, Device device) : base(gd, device)
+        // 修改构造函数，接受PipelineCache参数
+        public PipelineHelperShader(VulkanRenderer gd, Device device) : base(gd, device, CreateTemporaryPipelineCache(gd, device))
         {
+        }
+
+        // 创建一个临时PipelineCache的辅助方法
+        private static PipelineCache CreateTemporaryPipelineCache(VulkanRenderer gd, Device device)
+        {
+            var pipelineCacheCreateInfo = new PipelineCacheCreateInfo
+            {
+                SType = StructureType.PipelineCacheCreateInfo,
+            };
+
+            gd.Api.CreatePipelineCache(device, in pipelineCacheCreateInfo, null, out var pipelineCache).ThrowOnError();
+            return pipelineCache;
         }
 
         public void SetRenderTarget(TextureView view, uint width, uint height)
@@ -50,6 +62,21 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 gd.PipelineInternal.Restore();
             }
+        }
+
+        // 确保在销毁时清理临时PipelineCache
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                // 清理临时PipelineCache
+                if (PipelineCache.Handle != 0)
+                {
+                    Gd.Api.DestroyPipelineCache(Device, PipelineCache, null);
+                }
+            }
+            
+            base.Dispose(disposing);
         }
     }
 }

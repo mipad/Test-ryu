@@ -1517,6 +1517,11 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
         {
             return IsMaliGPU && !SupportsASTCDecodeMode;
         }
+        
+        internal VulkanPhysicalDevice GetPhysicalDevice()
+{
+    return _physicalDevice;
+}
 
         // 立即结束并提交命令缓冲区
         internal unsafe void EndAndSubmitCommandBuffer(CommandBufferScoped cbs, ReadOnlySpan<Semaphore> waitSemaphores, ReadOnlySpan<PipelineStageFlags> waitDstStageMask, ReadOnlySpan<Semaphore> signalSemaphores)

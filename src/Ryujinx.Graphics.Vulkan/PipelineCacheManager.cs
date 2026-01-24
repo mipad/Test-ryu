@@ -41,7 +41,7 @@ namespace Ryujinx.Graphics.Vulkan
             _gd = gd;
             _device = device;
             
-            // 基础缓存目录
+            // 基础缓存目录 - 使用AppDataManager的正确路径
             string basePath = GetBaseCachePath();
             _globalCacheDir = Path.Combine(basePath, "vulkan", "global");
             _gameSpecificCacheDir = Path.Combine(basePath, "vulkan", "games");
@@ -55,8 +55,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         private string GetBaseCachePath()
         {
-            // 使用AppDataManager获取基础路径
-            string basePath = AppDataManager.BaseDirectoryPath;
+            // 使用AppDataManager的正确API获取缓存目录
+            string basePath = AppDataManager.GetBasePath();
             return Path.Combine(basePath, "cache");
         }
 
@@ -232,7 +232,7 @@ namespace Ryujinx.Graphics.Vulkan
                     return false;
 
                 // 获取设备属性进行验证
-                _gd.Api.GetPhysicalDeviceProperties(_gd._physicalDevice.PhysicalDevice, out var properties);
+                _gd.Api.GetPhysicalDeviceProperties(_gd.GetPhysicalDevice().PhysicalDevice, out var properties);
                 
                 // 检查UUID
                 byte* pUuid = pData + 8;
@@ -314,7 +314,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         private unsafe byte[] AddCacheHeader(byte[] vulkanCacheData)
         {
-            _gd.Api.GetPhysicalDeviceProperties(_gd._physicalDevice.PhysicalDevice, out var properties);
+            _gd.Api.GetPhysicalDeviceProperties(_gd.GetPhysicalDevice().PhysicalDevice, out var properties);
             
             // 版本4头结构：
             // [0-3]   魔法数字 (0x4B4E5552 = "RGNX")
