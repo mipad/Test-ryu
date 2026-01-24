@@ -11,8 +11,8 @@ namespace Ryujinx.HLE.Generators
     {
         private class ServiceInfo
         {
-            public string FullTypeName { get; set; }
-            public string ServiceName { get; set; }
+            public string? FullTypeName { get; set; }  // 修复: 标记为可空
+            public string? ServiceName { get; set; }   // 修复: 标记为可空
             public List<ConstructorInfo> Constructors { get; set; } = new List<ConstructorInfo>();
             public List<ConstructorInfo> ServiceCtxConstructors { get; set; } = new List<ConstructorInfo>();
         }
@@ -24,15 +24,21 @@ namespace Ryujinx.HLE.Generators
 
         private class ParameterInfo
         {
-            public string TypeName { get; set; }
-            public string FullTypeName { get; set; }
-            public string Name { get; set; }
+            public string? TypeName { get; set; }      // 修复: 标记为可空
+            public string? FullTypeName { get; set; }  // 修复: 标记为可空
+            public string? Name { get; set; }          // 修复: 标记为可空
         }
 
         public void Execute(GeneratorExecutionContext context)
         {
-            var syntaxReceiver = (ServiceSyntaxReceiver)context.SyntaxReceiver;
+            var syntaxReceiver = (ServiceSyntaxReceiver?)context.SyntaxReceiver;
             
+            // 检查语法接收器是否为空
+            if (syntaxReceiver == null || syntaxReceiver.Types == null)
+            {
+                return;
+            }
+
             // 收集所有服务类的信息
             var serviceInfos = new List<ServiceInfo>();
             
@@ -49,8 +55,8 @@ namespace Ryujinx.HLE.Generators
                 var serviceAttributes = classDeclaration.AttributeLists
                     .SelectMany(x => x.Attributes)
                     .Where(y => 
-                        y.Name.ToString() == "Service" || 
-                        y.Name.ToString() == "ServiceAttribute")
+                        y.Name?.ToString() == "Service" || 
+                        y.Name?.ToString() == "ServiceAttribute")
                     .ToList();
                     
                 if (serviceAttributes.Count == 0)
@@ -60,6 +66,10 @@ namespace Ryujinx.HLE.Generators
 
                 // 获取完整类型名
                 var fullTypeName = GetFullName(classDeclaration, context);
+                if (string.IsNullOrEmpty(fullTypeName))
+                {
+                    continue;
+                }
 
                 // 获取所有构造函数信息
                 var constructors = classDeclaration.ChildNodes()
@@ -75,11 +85,11 @@ namespace Ryujinx.HLE.Generators
                     
                     foreach (var parameter in constructor.ParameterList.Parameters)
                     {
-                        var paramTypeSymbol = semanticModel.GetSymbolInfo(parameter.Type).Symbol as INamedTypeSymbol;
+                        var paramTypeSymbol = semanticModel.GetSymbolInfo(parameter.Type!).Symbol as INamedTypeSymbol;  // 修复: 添加 ! 断言不为null
                         var paramInfo = new ParameterInfo
                         {
-                            TypeName = parameter.Type.ToString(),
-                            FullTypeName = paramTypeSymbol?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ?? parameter.Type.ToString(),
+                            TypeName = parameter.Type?.ToString() ?? string.Empty,
+                            FullTypeName = paramTypeSymbol?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ?? parameter.Type?.ToString() ?? string.Empty,
                             Name = parameter.Identifier.Text
                         };
                         
@@ -88,6 +98,7 @@ namespace Ryujinx.HLE.Generators
                     
                     // 检查是否有ServiceCtx作为第一个参数
                     if (ctorInfo.Parameters.Count > 0 && 
+                        ctorInfo.Parameters[0].FullTypeName != null &&
                         (ctorInfo.Parameters[0].FullTypeName.Contains("ServiceCtx") || 
                          ctorInfo.Parameters[0].TypeName == "ServiceCtx"))
                     {
@@ -145,6 +156,9 @@ namespace Ryujinx.HLE.Generators
             
             foreach (var serviceInfo in serviceInfos)
             {
+                if (serviceInfo.FullTypeName == null || serviceInfo.ServiceName == null)
+                    continue;
+                    
                 generator.AppendLine($"{{ \"{serviceInfo.ServiceName}\", typeof({serviceInfo.FullTypeName}) }},");
             }
             
@@ -152,15 +166,19 @@ namespace Ryujinx.HLE.Generators
             generator.LeaveScope();
             
             // 生成GetServiceInstance方法
-            generator.EnterScope($"private IpcService GetServiceInstance(Type type, ServiceCtx context, object parameter)");
+            generator.EnterScope($"private IpcService? GetServiceInstance(Type type, ServiceCtx context, object? parameter)");  // 修复: 返回类型和参数可空
             
             // 按类型分组，避免重复生成相同的创建代码
             var groupedByType = serviceInfos.GroupBy(s => s.FullTypeName);
 
             foreach (var group in groupedByType)
             {
+                var fullTypeName = group.Key;
+                if (string.IsNullOrEmpty(fullTypeName))
+                    continue;
+                    
                 var serviceInfo = group.First();
-                generator.EnterScope($"if (type == typeof({serviceInfo.FullTypeName}))");
+                generator.EnterScope($"if (type == typeof({fullTypeName}))");
                 
                 // 检查是否有以ServiceCtx作为第一个参数的构造函数
                 if (serviceInfo.ServiceCtxConstructors.Any())
@@ -169,7 +187,7 @@ namespace Ryujinx.HLE.Generators
                     var singleParamCtor = serviceInfo.ServiceCtxConstructors.FirstOrDefault(c => c.Parameters.Count == 1);
                     if (singleParamCtor != null)
                     {
-                        generator.AppendLine($"return new {serviceInfo.FullTypeName}(context);");
+                        generator.AppendLine($"return new {fullTypeName}(context);");
                     }
                     else
                     {
@@ -179,18 +197,26 @@ namespace Ryujinx.HLE.Generators
                         {
                             // 处理第一个条件
                             var firstCtor = twoParamCtors.First();
-                            generator.EnterScope($"if (parameter is {firstCtor.Parameters[1].FullTypeName})");
-                            generator.AppendLine($"return new {serviceInfo.FullTypeName}(context, ({firstCtor.Parameters[1].FullTypeName})parameter);");
-                            generator.LeaveScope();
+                            string? paramType = firstCtor.Parameters[1].FullTypeName;
+                            if (!string.IsNullOrEmpty(paramType))
+                            {
+                                generator.EnterScope($"if (parameter is {paramType})");
+                                generator.AppendLine($"return new {fullTypeName}(context, ({paramType})parameter!);");
+                                generator.LeaveScope();
+                            }
                             
                             // 处理其余条件
                             for (int i = 1; i < twoParamCtors.Count; i++)
                             {
                                 var ctor = twoParamCtors[i];
-                                generator.AppendLine($"else if (parameter is {ctor.Parameters[1].FullTypeName})");
-                                generator.EnterScope();
-                                generator.AppendLine($"return new {serviceInfo.FullTypeName}(context, ({ctor.Parameters[1].FullTypeName})parameter);");
-                                generator.LeaveScope();
+                                paramType = ctor.Parameters[1].FullTypeName;
+                                if (!string.IsNullOrEmpty(paramType))
+                                {
+                                    generator.AppendLine($"else if (parameter is {paramType})");
+                                    generator.EnterScope();
+                                    generator.AppendLine($"return new {fullTypeName}(context, ({paramType})parameter!);");
+                                    generator.LeaveScope();
+                                }
                             }
                             
                             // 如果没有匹配的参数类型，尝试使用默认值或返回null
@@ -200,7 +226,7 @@ namespace Ryujinx.HLE.Generators
                             // 尝试使用单参数构造函数（如果有的话）
                             if (singleParamCtor != null)
                             {
-                                generator.AppendLine($"return new {serviceInfo.FullTypeName}(context);");
+                                generator.AppendLine($"return new {fullTypeName}(context);");
                             }
                             else
                             {
@@ -238,15 +264,33 @@ namespace Ryujinx.HLE.Generators
             context.AddSource($"IUserInterface.g.cs", generator.ToString());
         }
 
-        private string GetFullName(ClassDeclarationSyntax syntaxNode, GeneratorExecutionContext context)
+        private string? GetFullName(ClassDeclarationSyntax syntaxNode, GeneratorExecutionContext context)  // 修复: 返回类型可空
         {
-            var typeSymbol = context.Compilation.GetSemanticModel(syntaxNode.SyntaxTree).GetDeclaredSymbol(syntaxNode);
+            var semanticModel = context.Compilation.GetSemanticModel(syntaxNode.SyntaxTree);
+            var typeSymbol = semanticModel.GetDeclaredSymbol(syntaxNode);
+            if (typeSymbol == null)
+                return null;
+                
             return typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat).Replace("global::", "");
         }
 
         public void Initialize(GeneratorInitializationContext context)
         {
             context.RegisterForSyntaxNotifications(() => new ServiceSyntaxReceiver());
+        }
+    }
+    
+    // 添加缺少的 ServiceSyntaxReceiver 类
+    internal class ServiceSyntaxReceiver : ISyntaxReceiver
+    {
+        public List<ClassDeclarationSyntax> Types { get; } = new List<ClassDeclarationSyntax>();
+
+        public void OnVisitSyntaxNode(SyntaxNode syntaxNode)
+        {
+            if (syntaxNode is ClassDeclarationSyntax classDeclaration)
+            {
+                Types.Add(classDeclaration);
+            }
         }
     }
 }

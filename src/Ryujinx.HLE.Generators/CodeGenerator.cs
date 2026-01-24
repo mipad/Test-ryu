@@ -14,7 +14,7 @@ namespace Ryujinx.HLE.Generators
             _sb = new StringBuilder();
         }
 
-        public void EnterScope(string header = null)
+        public void EnterScope(string? header = null)  // 修复: 添加 ? 表示可空参数
         {
             if (header != null)
             {

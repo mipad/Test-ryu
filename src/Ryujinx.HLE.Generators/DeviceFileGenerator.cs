@@ -12,9 +12,9 @@ namespace Ryujinx.HLE.Generators
     {
         private class DeviceFileInfo
         {
-            public string FullTypeName { get; set; }
-            public string TypeName { get; set; }
-            public string Namespace { get; set; }
+            public string? FullTypeName { get; set; }  // 修复: 标记为可空
+            public string? TypeName { get; set; }      // 修复: 标记为可空
+            public string? Namespace { get; set; }     // 修复: 标记为可空
             public bool HasValidConstructor { get; set; }
             public List<string> ConstructorParameters { get; set; } = new List<string>();
         }
@@ -84,7 +84,7 @@ namespace Ryujinx.HLE.Generators
                             var paramTypes = new List<string>();
                             foreach (var parameter in parameters)
                             {
-                                var paramTypeSymbol = semanticModel.GetTypeInfo(parameter.Type).Type;
+                                var paramTypeSymbol = semanticModel.GetTypeInfo(parameter.Type!).Type;  // 修复: 添加 ! 断言不为null
                                 if (paramTypeSymbol != null)
                                 {
                                     paramTypes.Add(paramTypeSymbol.ToDisplayString());
@@ -143,17 +143,17 @@ namespace Ryujinx.HLE.Generators
                 generator.AppendLine("/// <param name=\"owner\">The owner process ID.</param>");
                 generator.AppendLine("/// <returns>The created device file or null if not found.</returns>");
                 
-                generator.EnterScope("public static NvDeviceFile CreateDeviceFile(string path, ServiceCtx context, IVirtualMemoryManager memory, ulong owner)");
+                generator.EnterScope("public static NvDeviceFile? CreateDeviceFile(string path, ServiceCtx context, IVirtualMemoryManager memory, ulong owner)");  // 修复: 返回类型可空
                 
                 generator.EnterScope("switch (path)");
                 
                 foreach (var deviceFile in deviceFileInfos)
                 {
-                    if (!deviceFile.HasValidConstructor)
+                    if (!deviceFile.HasValidConstructor || string.IsNullOrEmpty(deviceFile.FullTypeName))
                         continue;
                     
                     // 根据类型名生成设备路径
-                    string devicePath = GetDevicePathFromTypeName(deviceFile.TypeName);
+                    string? devicePath = GetDevicePathFromTypeName(deviceFile.TypeName!);
                     
                     if (!string.IsNullOrEmpty(devicePath))
                     {
@@ -202,8 +202,11 @@ namespace Ryujinx.HLE.Generators
             }
         }
 
-        private string GetDevicePathFromTypeName(string typeName)
+        private string? GetDevicePathFromTypeName(string typeName)  // 修复: 返回类型标记为可空
         {
+            if (string.IsNullOrEmpty(typeName))
+                return null;
+
             // 根据已知的设备文件类型名生成路径
             var pathMappings = new Dictionary<string, string>
             {
@@ -217,7 +220,7 @@ namespace Ryujinx.HLE.Generators
                 { "NvHostProfGpuDeviceFile", "/dev/nvhost-prof-gpu" },
             };
             
-            if (pathMappings.TryGetValue(typeName, out string path))
+            if (pathMappings.TryGetValue(typeName, out string? path))
             {
                 return path;
             }
