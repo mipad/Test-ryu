@@ -21,23 +21,7 @@ namespace Ryujinx.Cpu.Nce
         {
             if (_assemblerPool.TryPop(out var assembler))
             {
-                // 清空Assembler内部指令列表
-                var field = typeof(Assembler).GetField("_code", 
-                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (field != null && field.FieldType == typeof(System.Collections.Generic.List<uint>))
-                {
-                    var list = (System.Collections.Generic.List<uint>)field.GetValue(assembler);
-                    list?.Clear();
-                }
-                
-                // 清空标签列表
-                var labelsField = typeof(Assembler).GetField("_labels",
-                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (labelsField != null && labelsField.FieldType == typeof(System.Collections.Generic.List<Assembler.LabelState>))
-                {
-                    var labels = (System.Collections.Generic.List<Assembler.LabelState>)labelsField.GetValue(assembler);
-                    labels?.Clear();
-                }
+                assembler.Clear(); // 使用新增的Clear方法
                 return assembler;
             }
             return new Assembler();
@@ -327,7 +311,7 @@ namespace Ryujinx.Cpu.Nce
             return asm.GetCode();
         }
 
-        // ========== 原有辅助方法（保持不变） ==========
+        // ========== 原有辅助方法 ==========
         private static void WriteLoadContext(Assembler asm, Operand tmp0, Operand tmp1, Operand tmp2)
         {
             asm.Mov(tmp0, (ulong)NceThreadTable.EntriesPointer);
@@ -483,7 +467,7 @@ namespace Ryujinx.Cpu.Nce
             return codeCopy;
         }
 
-        // ========== 原有线程启动和异常处理代码 ==========
+        // ========== 原有线程启动和异常处理代码（也使用对象池） ==========
         internal static uint[] GenerateThreadStartCode()
         {
             var asm = RentAssembler();
