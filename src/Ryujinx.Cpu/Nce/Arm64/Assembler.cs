@@ -13,7 +13,8 @@ namespace Ryujinx.Cpu.Nce.Arm64
         public const int ZrRegister = 31;
 
         private readonly List<uint> _code;
-
+        public int CodeWords => _code.Count;
+        
         private class LabelState
         {
             public int BranchIndex;
