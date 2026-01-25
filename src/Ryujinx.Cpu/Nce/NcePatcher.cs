@@ -33,9 +33,9 @@ namespace Ryujinx.Cpu.Nce
                 // 清空标签列表
                 var labelsField = typeof(Assembler).GetField("_labels",
                     System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (labelsField != null && labelsField.FieldType == typeof(System.Collections.Generic.List<object>))
+                if (labelsField != null && labelsField.FieldType == typeof(System.Collections.Generic.List<Assembler.LabelState>))
                 {
-                    var labels = (System.Collections.Generic.List<object>)labelsField.GetValue(assembler);
+                    var labels = (System.Collections.Generic.List<Assembler.LabelState>)labelsField.GetValue(assembler);
                     labels?.Clear();
                 }
                 return assembler;
@@ -251,7 +251,7 @@ namespace Ryujinx.Cpu.Nce
                 }
             }, 0xff);
 
-            asm.WriteUInt32(0x14000000); // B指令占位符
+            asm.B(0); // B指令占位符
             return asm.GetCode();
         }
 
@@ -285,7 +285,7 @@ namespace Ryujinx.Cpu.Nce
                 asm.LdrRiUn(Gpr((int)rd), ctx, NceNativeContext.GetTempStorageOffset());
             }, 1u << (int)rd);
 
-            asm.WriteUInt32(0x14000000); // B指令占位符
+            asm.B(0); // B指令占位符
             return asm.GetCode();
         }
 
@@ -303,7 +303,7 @@ namespace Ryujinx.Cpu.Nce
 
             rsr.WriteEpilogue(asm);
 
-            asm.WriteUInt32(0x14000000); // B指令占位符
+            asm.B(0); // B指令占位符
             return asm.GetCode();
         }
 
@@ -323,7 +323,7 @@ namespace Ryujinx.Cpu.Nce
 
             asm.LdrRiUn(Gpr((int)rd), Gpr((int)rd), 0);
 
-            asm.WriteUInt32(0x14000000); // B指令占位符
+            asm.B(0); // B指令占位符
             return asm.GetCode();
         }
 
@@ -483,7 +483,7 @@ namespace Ryujinx.Cpu.Nce
             return codeCopy;
         }
 
-        // ========== 需要添加的方法 ==========
+        // ========== 原有线程启动和异常处理代码 ==========
         internal static uint[] GenerateThreadStartCode()
         {
             var asm = RentAssembler();
