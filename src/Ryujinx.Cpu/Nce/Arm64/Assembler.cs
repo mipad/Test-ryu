@@ -14,8 +14,6 @@ namespace Ryujinx.Cpu.Nce.Arm64
 
         private readonly List<uint> _code;
 
-        public int CodeWords => _code.Count;
-
         private class LabelState
         {
             public int BranchIndex;
@@ -31,6 +29,22 @@ namespace Ryujinx.Cpu.Nce.Arm64
             _code = new List<uint>();
             _labels = new List<LabelState>();
         }
+
+        // ========== 新增：Clear方法用于重置状态 ==========
+        public void Clear()
+        {
+            _code.Clear();
+            _labels.Clear();
+        }
+
+        // ========== 新增：Emit方法用于直接写入指令 ==========
+        public void Emit(uint instruction)
+        {
+            _code.Add(instruction);
+        }
+
+        // ========== 新增：检查是否为空 ==========
+        public bool IsEmpty => _code.Count == 0;
 
         public Operand CreateLabel()
         {
