@@ -644,14 +644,29 @@ namespace Ryujinx.Graphics.Vulkan
 
                 Result result = gd.Api.CreateGraphicsPipelines(device, cache, 1, &pipelineCreateInfo, null, &pipelineHandle);
 
-                if (throwOnError)
+                // 处理Adreno 5xx和Mali驱动的bug：这些驱动在图形管道创建失败时可能错误地返回VK_INCOMPLETE
+                // Adreno 5xx drivers do not properly return error when a graphics pipeline fails to be created
+                // Some (unknown) Mali drivers also do not properly return
+                if (result == Result.Incomplete)
+                {
+                    // 即使返回VK_INCOMPLETE，也尝试使用创建的管道
+                    // 这可能是驱动bug，但管道实际上可能已经创建成功
+                    if (pipelineHandle.Handle == 0)
+                    {
+                        // 管道句柄无效，返回null
+                        program.AddGraphicsPipeline(ref Internal, null);
+                        return null;
+                    }
+                    // 管道句柄有效，继续创建Auto<DisposablePipeline>
+                    // 注意：这里不调用ThrowOnError，因为驱动错误地返回了Incomplete
+                }
+                else if (throwOnError)
                 {
                     result.ThrowOnError();
                 }
                 else if (result.IsError())
                 {
                     program.AddGraphicsPipeline(ref Internal, null);
-
                     return null;
                 }
 
