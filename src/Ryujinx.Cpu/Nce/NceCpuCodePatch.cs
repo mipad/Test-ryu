@@ -12,18 +12,23 @@ namespace Ryujinx.Cpu.Nce
     public class NceCpuCodePatch
     {
         private readonly List<uint> _code;
+        
+        // 新增：占位符位置记录
+        private readonly List<int> _placeholderIndices;
 
         private readonly struct PatchTarget
         {
             public readonly int TextIndex;
             public readonly int PatchStartIndex;
             public readonly int PatchBranchIndex;
+            public readonly bool HasPlaceholder; // 新增：标记是否需要修复跳转
 
-            public PatchTarget(int textIndex, int patchStartIndex, int patchBranchIndex)
+            public PatchTarget(int textIndex, int patchStartIndex, int patchBranchIndex, bool hasPlaceholder = false)
             {
                 TextIndex = textIndex;
                 PatchStartIndex = patchStartIndex;
                 PatchBranchIndex = patchBranchIndex;
+                HasPlaceholder = hasPlaceholder;
             }
         }
 
@@ -35,33 +40,66 @@ namespace Ryujinx.Cpu.Nce
         public NceCpuCodePatch()
         {
             _code = new();
+            _placeholderIndices = new();
             _patchTargets = new();
         }
 
-        internal void AddCode(int textIndex, IEnumerable<uint> code)
+        // 新增：支持占位符的AddCode重载
+        internal void AddCode(int textIndex, IEnumerable<uint> code, bool hasPlaceholder = false)
         {
             int patchStartIndex = _code.Count;
             _code.AddRange(code);
-            _patchTargets.Add(new PatchTarget(textIndex, patchStartIndex, _code.Count - 1));
+            
+            int patchBranchIndex = _code.Count - 1;
+            
+            // 如果有占位符，记录其位置
+            if (hasPlaceholder)
+            {
+                _placeholderIndices.Add(patchBranchIndex);
+            }
+            
+            _patchTargets.Add(new PatchTarget(textIndex, patchStartIndex, patchBranchIndex, hasPlaceholder));
+        }
+
+        // 保持原有API兼容性
+        internal void AddCode(int textIndex, IEnumerable<uint> code)
+        {
+            AddCode(textIndex, code, false);
         }
 
         /// <inheritdoc/>
         public void Write(IVirtualMemoryManager memoryManager, ulong patchAddress, ulong textAddress)
         {
             uint[] code = _code.ToArray();
+            int placeholderIdx = 0;
 
-            foreach (var patchTarget in _patchTargets)
+            for (int i = 0; i < _patchTargets.Count; i++)
             {
+                var patchTarget = _patchTargets[i];
                 ulong instPatchStartAddress = patchAddress + (ulong)patchTarget.PatchStartIndex * sizeof(uint);
                 ulong instPatchBranchAddress = patchAddress + (ulong)patchTarget.PatchBranchIndex * sizeof(uint);
                 ulong instTextAddress = textAddress + (ulong)patchTarget.TextIndex * sizeof(uint);
 
-                uint prevInst = memoryManager.Read<uint>(instTextAddress);
+                // 修复占位符跳转
+                if (patchTarget.HasPlaceholder && placeholderIdx < _placeholderIndices.Count)
+                {
+                    int placeholderIndex = _placeholderIndices[placeholderIdx];
+                    if (placeholderIndex == patchTarget.PatchBranchIndex)
+                    {
+                        // 计算从补丁返回到原程序的偏移
+                        ulong returnAddress = instTextAddress + sizeof(uint);
+                        int returnOffset = checked((int)((long)returnAddress - (long)instPatchBranchAddress));
+                        
+                        code[placeholderIndex] = 0x14000000u | EncodeSImm26_2(returnOffset);
+                        placeholderIdx++;
+                    }
+                }
 
-                code[patchTarget.PatchBranchIndex] |= EncodeSImm26_2(checked((int)((long)instTextAddress - (long)instPatchBranchAddress + sizeof(uint))));
-                memoryManager.Write(instTextAddress, 0x14000000u | EncodeSImm26_2(checked((int)((long)instPatchStartAddress - (long)instTextAddress))));
-
-                uint newInst = memoryManager.Read<uint>(instTextAddress);
+                // 计算从原程序跳转到补丁的偏移
+                int branchOffset = checked((int)((long)instPatchStartAddress - (long)instTextAddress));
+                
+                // 修改原指令，跳转到补丁
+                memoryManager.Write(instTextAddress, 0x14000000u | EncodeSImm26_2(branchOffset));
             }
 
             if (Size != 0)
