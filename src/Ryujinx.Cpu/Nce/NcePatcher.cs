@@ -343,7 +343,7 @@ namespace Ryujinx.Cpu.Nce
             
             // 计算结束地址：tmp0 + (线程数 * 16)
             // 每个Entry 16字节，所以乘以16（左移4位）
-            asm.Lsl(tmp2, tmp2, 4); // tmp2 = 线程数 * 16
+            asm.Lsl(tmp2, tmp2, Const(4)); // 修复：将整数4改为Const(4)
             asm.Add(tmp2, tmp0, tmp2); // tmp2 = 结束地址
             
             Operand lblFound = asm.CreateLabel();
@@ -397,7 +397,7 @@ namespace Ryujinx.Cpu.Nce
             asm.Cbz(tmp3, lblFail);
             
             // 计算结束地址：tmp0 + (线程数 * 16)
-            asm.Lsl(tmp3, tmp3, 4); // tmp3 = 线程数 * 16
+            asm.Lsl(tmp3, tmp3, Const(4)); // 修复：将整数4改为Const(4)
             asm.Add(tmp3, tmp0, tmp3); // tmp3 = 结束地址
             
             // 读取当前线程ID
