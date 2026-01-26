@@ -314,8 +314,17 @@ namespace Ryujinx.Cpu.Nce
         // ========== 原有辅助方法 ==========
         private static void WriteLoadContext(Assembler asm, Operand tmp0, Operand tmp1, Operand tmp2)
         {
-            asm.Mov(tmp0, (ulong)NceThreadTable.EntriesPointer);
+            // 使用 NEON 优化的版本
+            WriteLoadContextNeon(asm, tmp0, tmp1, tmp2);
+        }
 
+        // ========== 新增：NEON 优化的查找方法 ==========
+        private static void WriteLoadContextNeon(Assembler asm, Operand tmp0, Operand tmp1, Operand tmp2)
+        {
+            // tmp0 = NceThreadTable.EntriesPointer
+            asm.Mov(tmp0, (ulong)NceThreadTable.EntriesPointer);
+            
+            // 读取当前线程ID到 tmp1
             if (OperatingSystem.IsMacOS())
             {
                 asm.MrsTpidrroEl0(tmp1);
@@ -324,28 +333,62 @@ namespace Ryujinx.Cpu.Nce
             {
                 asm.MrsTpidrEl0(tmp1);
             }
-
+            
+            // 将线程ID广播到 NEON 寄存器 v0 (64位)
+            // v0 = [threadId, threadId]
+            asm.DupVectorScalar(Vec(0), tmp1, 8); // 8 表示 64-bit 元素
+            
             Operand lblFound = asm.CreateLabel();
             Operand lblLoop = asm.CreateLabel();
-
+            Operand lblCheckSecond = asm.CreateLabel();
+            
             asm.MarkLabel(lblLoop);
-
-            asm.LdrRiPost(tmp2, tmp0, 16);
-            asm.Cmp(tmp1, tmp2);
-            asm.B(lblFound, ArmCondition.Eq);
+            
+            // 一次性加载两个 ThreadId 到 NEON 寄存器 v1
+            // 内存布局: [entry[i].ThreadId (8字节), entry[i].NativeContextPtr (8字节), 
+            //           entry[i+1].ThreadId (8字节), entry[i+1].NativeContextPtr (8字节)]
+            asm.LdrVector128(Vec(1), tmp0);
+            
+            // 比较 v1 和 v0，结果存入 v2
+            // v1 = [threadId1, threadId2]
+            // v2 = [threadId1 == target ? 全1 : 全0, threadId2 == target ? 全1 : 全0]
+            asm.CmeqVector(Vec(2), Vec(1), Vec(0));
+            
+            // 提取第一个比较结果到 tmp2
+            asm.UmovScalar(tmp2, Vec(2), 0, 3); // 取第一个64位元素 (index=0, size=3 表示64位)
+            asm.Cbnz(tmp2, lblFound); // 第一个匹配
+            
+            // 提取第二个比较结果到 tmp2
+            asm.UmovScalar(tmp2, Vec(2), 1, 3); // 取第二个64位元素 (index=1, size=3 表示64位)
+            asm.Cbnz(tmp2, lblCheckSecond); // 第二个匹配
+            
+            // 没有匹配，跳转到下一个双元素 (16字节 * 2 = 32字节)
+            asm.Add(tmp0, tmp0, Const(32)); // 每个Entry 16字节，一次处理两个，所以前进32字节
             asm.B(lblLoop);
-
+            
+            asm.MarkLabel(lblCheckSecond);
+            // 第二个元素匹配，需要调整指针到第二个Entry
+            asm.Add(tmp0, tmp0, Const(16)); // 指向第二个元素
+            asm.B(lblFound);
+            
             asm.MarkLabel(lblFound);
-
-            asm.Ldur(tmp0, tmp0, -8);
+            
+            // 加载 NativeContextPtr (ThreadId 后8字节)
+            asm.Ldur(tmp0, tmp0, 8); // 前进8字节到NativeContextPtr
         }
 
         private static void WriteLoadContextSafe(Assembler asm, Operand lblFail, Operand tmp0, Operand tmp1, Operand tmp2, Operand tmp3)
         {
-            asm.Mov(tmp0, (ulong)NceThreadTable.EntriesPointer);
-            asm.Ldur(tmp3, tmp0, -8);
-            asm.Add(tmp3, tmp0, tmp3, ArmShiftType.Lsl, 4);
+            // 使用 NEON 优化的安全版本
+            WriteLoadContextSafeNeon(asm, lblFail, tmp0, tmp1, tmp2, tmp3);
+        }
 
+        private static void WriteLoadContextSafeNeon(Assembler asm, Operand lblFail, Operand tmp0, Operand tmp1, Operand tmp2, Operand tmp3)
+        {
+            asm.Mov(tmp0, (ulong)NceThreadTable.EntriesPointer);
+            asm.Ldur(tmp3, tmp0, -8); // 获取线程数量
+            asm.Add(tmp3, tmp0, tmp3, ArmShiftType.Lsl, 4); // 计算结束地址
+            
             if (OperatingSystem.IsMacOS())
             {
                 asm.MrsTpidrroEl0(tmp1);
@@ -354,22 +397,40 @@ namespace Ryujinx.Cpu.Nce
             {
                 asm.MrsTpidrEl0(tmp1);
             }
-
+            
+            // 广播线程ID到 NEON 寄存器 v0
+            asm.DupVectorScalar(Vec(0), tmp1, 8);
+            
             Operand lblFound = asm.CreateLabel();
             Operand lblLoop = asm.CreateLabel();
-
+            Operand lblCheckSecond = asm.CreateLabel();
+            
             asm.MarkLabel(lblLoop);
-
+            
+            // 检查边界
             asm.Cmp(tmp0, tmp3);
             asm.B(lblFail, ArmCondition.GeUn);
-            asm.LdrRiPost(tmp2, tmp0, 16);
-            asm.Cmp(tmp1, tmp2);
-            asm.B(lblFound, ArmCondition.Eq);
+            
+            // 批量比较
+            asm.LdrVector128(Vec(1), tmp0);
+            asm.CmeqVector(Vec(2), Vec(1), Vec(0));
+            
+            asm.UmovScalar(tmp2, Vec(2), 0, 3);
+            asm.Cbnz(tmp2, lblFound);
+            
+            asm.UmovScalar(tmp2, Vec(2), 1, 3);
+            asm.Cbnz(tmp2, lblCheckSecond);
+            
+            // 没有找到，继续循环
+            asm.Add(tmp0, tmp0, Const(32));
             asm.B(lblLoop);
-
+            
+            asm.MarkLabel(lblCheckSecond);
+            asm.Add(tmp0, tmp0, Const(16));
+            asm.B(lblFound);
+            
             asm.MarkLabel(lblFound);
-
-            asm.Ldur(tmp0, tmp0, -8);
+            asm.Ldur(tmp0, tmp0, 8); // 前进8字节到NativeContextPtr
         }
 
         private static void WriteManagedCall(Assembler asm, Action<Assembler, Operand, Operand, Operand> writeCall, uint blacklistedRegMask)
