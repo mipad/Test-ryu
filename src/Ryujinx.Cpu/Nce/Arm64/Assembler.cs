@@ -382,6 +382,53 @@ namespace Ryujinx.Cpu.Nce.Arm64
             WriteInstruction(instruction, rt, rn);
         }
 
+        // ========== 新增：NEON 指令 ==========
+        public void LdrVector128(Operand vt, Operand rn)
+        {
+            // LD1 {vt.16b}, [rn]
+            // 编码: 0x4C407000 | (Rt << 5) | Rn
+            uint instruction = 0x4C407000u | (EncodeReg(vt) << 5) | EncodeReg(rn);
+            WriteUInt32(instruction);
+        }
+
+        public void DupVectorScalar(Operand vd, Operand rn, int size)
+        {
+            // DUP Vd.D[0], Xn 或 DUP Vd.S[0], Wn
+            // size: 8 表示 64-bit (D), 4 表示 32-bit (S)
+            Debug.Assert(size == 4 || size == 8, "Size must be 4 (32-bit) or 8 (64-bit)");
+            
+            uint instruction;
+            if (size == 8)
+            {
+                // DUP Vd.D[0], Xn
+                instruction = 0x4E080C00u | (EncodeReg(vd) << 5) | EncodeReg(rn);
+            }
+            else
+            {
+                // DUP Vd.S[0], Wn
+                instruction = 0x4E040C00u | (EncodeReg(vd) << 5) | EncodeReg(rn);
+            }
+            WriteUInt32(instruction);
+        }
+
+        public void CmeqVector(Operand vd, Operand vn, Operand vm)
+        {
+            // CMEQ Vd.16b, Vn.16b, Vm.16b
+            // 编码: 0x4E208C00 | (Vd << 5) | (Vn << 16) | Vm
+            uint instruction = 0x4E208C00u | (EncodeReg(vd) << 5) | (EncodeReg(vn) << 16) | EncodeReg(vm);
+            WriteUInt32(instruction);
+        }
+
+        public void UmovScalar(Operand rd, Operand vn, int index, int size)
+        {
+            // UMOV Rd, Vn.B[index] (size=0) 到 Vn.D[index] (size=3)
+            // 编码: 0x0E003C00 | (imm5 << 16) | (Vn << 5) | Rd
+            uint q = size == 3 ? 1u << 30 : 0u;
+            WriteInstruction(0x0E003C00u | (EncodeIndexSizeImm5(index, size) << 16) | q, rd, vn);
+        }
+
+        // ========== 结束：NEON 指令 ==========
+
         public void Lsl(Operand rd, Operand rn, Operand rm)
         {
             if (rm.Kind == OperandKind.Constant)
