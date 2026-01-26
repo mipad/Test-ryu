@@ -311,11 +311,17 @@ namespace Ryujinx.Cpu.Nce
             return asm.GetCode();
         }
 
-        // ========== 原有辅助方法 ==========
+        // ========== 第2级优化：优化后的WriteLoadContext ==========
         private static void WriteLoadContext(Assembler asm, Operand tmp0, Operand tmp1, Operand tmp2)
         {
+            // tmp0: 用于存储EntriesPointer和最终结果
+            // tmp1: 用于存储当前线程ID
+            // tmp2: 用于临时计算和比较
+            
+            // 获取EntriesPointer
             asm.Mov(tmp0, (ulong)NceThreadTable.EntriesPointer);
-
+            
+            // 读取当前线程ID
             if (OperatingSystem.IsMacOS())
             {
                 asm.MrsTpidrroEl0(tmp1);
@@ -324,28 +330,77 @@ namespace Ryujinx.Cpu.Nce
             {
                 asm.MrsTpidrEl0(tmp1);
             }
-
+            
+            // ========== 关键优化：只遍历已注册的线程 ==========
+            // 读取当前线程数（存储在EntriesPointer前8字节）
+            // 注意：NceThreadTable.EntriesPointer = _block.Pointer + 8
+            // 线程数存储在_block.Pointer处，即EntriesPointer - 8
+            asm.Ldur(tmp2, tmp0, -8); // 从tmp0-8处读取线程数到tmp2
+            
+            // 如果线程数为0，直接跳到结束（没有线程）
+            Operand lblNotFound = asm.CreateLabel();
+            asm.Cbz(tmp2, lblNotFound);
+            
+            // 计算结束地址：tmp0 + (线程数 * 16)
+            // 每个Entry 16字节，所以乘以16（左移4位）
+            asm.Lsl(tmp2, tmp2, 4); // tmp2 = 线程数 * 16
+            asm.Add(tmp2, tmp0, tmp2); // tmp2 = 结束地址
+            
             Operand lblFound = asm.CreateLabel();
             Operand lblLoop = asm.CreateLabel();
-
+            
             asm.MarkLabel(lblLoop);
-
-            asm.LdrRiPost(tmp2, tmp0, 16);
+            
+            // 检查是否到达结束地址
+            asm.Cmp(tmp0, tmp2);
+            asm.B(lblNotFound, ArmCondition.Ge); // 如果 >= 结束地址，未找到
+            
+            // 读取当前Entry的ThreadId
+            asm.LdrRiPost(tmp2, tmp0, 16); // 读取ThreadId到tmp2，tmp0+=16
             asm.Cmp(tmp1, tmp2);
             asm.B(lblFound, ArmCondition.Eq);
-            asm.B(lblLoop);
-
+            asm.B(lblLoop); // 继续循环
+            
             asm.MarkLabel(lblFound);
-
-            asm.Ldur(tmp0, tmp0, -8);
+            
+            // 找到匹配项，读取NativeContextPtr（在ThreadId后8字节）
+            // 当前tmp0指向下一个Entry的起始，所以需要-8回到当前Entry的NativeContextPtr
+            asm.Ldur(tmp0, tmp0, -8); // 从tmp0-8处读取NativeContextPtr到tmp0
+            
+            // 成功找到上下文，返回
+            return;
+            
+            asm.MarkLabel(lblNotFound);
+            
+            // 未找到线程上下文，这里应该永远不会发生
+            // 可以插入调试断点或跳转到错误处理
+            asm.Brk(); // 断点指令，便于调试
         }
 
+        // ========== 第2级优化：WriteLoadContext的安全版本 ==========
         private static void WriteLoadContextSafe(Assembler asm, Operand lblFail, Operand tmp0, Operand tmp1, Operand tmp2, Operand tmp3)
         {
+            // tmp0: 用于存储EntriesPointer和最终结果
+            // tmp1: 用于存储当前线程ID
+            // tmp2: 用于临时计算和比较
+            // tmp3: 用于存储结束地址
+            // lblFail: 失败时跳转的标签
+            
+            // 获取EntriesPointer
             asm.Mov(tmp0, (ulong)NceThreadTable.EntriesPointer);
-            asm.Ldur(tmp3, tmp0, -8);
-            asm.Add(tmp3, tmp0, tmp3, ArmShiftType.Lsl, 4);
-
+            
+            // ========== 关键优化：只遍历已注册的线程 ==========
+            // 读取当前线程数（存储在EntriesPointer前8字节）
+            asm.Ldur(tmp3, tmp0, -8); // 从tmp0-8处读取线程数到tmp3
+            
+            // 如果线程数为0，直接跳到失败处理
+            asm.Cbz(tmp3, lblFail);
+            
+            // 计算结束地址：tmp0 + (线程数 * 16)
+            asm.Lsl(tmp3, tmp3, 4); // tmp3 = 线程数 * 16
+            asm.Add(tmp3, tmp0, tmp3); // tmp3 = 结束地址
+            
+            // 读取当前线程ID
             if (OperatingSystem.IsMacOS())
             {
                 asm.MrsTpidrroEl0(tmp1);
@@ -354,22 +409,26 @@ namespace Ryujinx.Cpu.Nce
             {
                 asm.MrsTpidrEl0(tmp1);
             }
-
+            
             Operand lblFound = asm.CreateLabel();
             Operand lblLoop = asm.CreateLabel();
-
+            
             asm.MarkLabel(lblLoop);
-
+            
+            // 检查是否到达结束地址
             asm.Cmp(tmp0, tmp3);
-            asm.B(lblFail, ArmCondition.GeUn);
-            asm.LdrRiPost(tmp2, tmp0, 16);
+            asm.B(lblFail, ArmCondition.Ge); // 如果 >= 结束地址，未找到
+            
+            // 读取当前Entry的ThreadId
+            asm.LdrRiPost(tmp2, tmp0, 16); // 读取ThreadId到tmp2，tmp0+=16
             asm.Cmp(tmp1, tmp2);
             asm.B(lblFound, ArmCondition.Eq);
-            asm.B(lblLoop);
-
+            asm.B(lblLoop); // 继续循环
+            
             asm.MarkLabel(lblFound);
-
-            asm.Ldur(tmp0, tmp0, -8);
+            
+            // 找到匹配项，读取NativeContextPtr
+            asm.Ldur(tmp0, tmp0, -8); // 从tmp0-8处读取NativeContextPtr到tmp0
         }
 
         private static void WriteManagedCall(Assembler asm, Action<Assembler, Operand, Operand, Operand> writeCall, uint blacklistedRegMask)
