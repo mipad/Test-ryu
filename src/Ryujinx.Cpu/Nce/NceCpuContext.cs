@@ -3,6 +3,7 @@ using Ryujinx.Common;
 using Ryujinx.Memory;
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace Ryujinx.Cpu.Nce
@@ -62,6 +63,10 @@ namespace Ryujinx.Cpu.Nce
         private static MemoryBlock _codeBlock;
         private static ThreadStart _threadStart;
         private static GetTpidrEl0 _getTpidrEl0;
+        
+        // ========== 新增：线程上下文缓存 ==========
+        private static readonly ConditionalWeakTable<IntPtr, IntPtr> _threadContextCache = new();
+        private static readonly object _cacheLock = new object();
 
         private readonly ITickSource _tickSource;
         private readonly ICpuMemoryManager _memoryManager;
@@ -111,13 +116,28 @@ namespace Ryujinx.Cpu.Nce
         {
             NceExecutionContext nec = (NceExecutionContext)context;
             NceNativeInterface.RegisterThread(nec, _tickSource);
-            int tableIndex = NceThreadTable.Register(_getTpidrEl0(), nec.NativeContextPtr);
+            
+            IntPtr threadId = _getTpidrEl0();
+            
+            // ========== 新增：缓存线程上下文 ==========
+            lock (_cacheLock)
+            {
+                _threadContextCache.AddOrUpdate(threadId, nec.NativeContextPtr);
+            }
+            
+            int tableIndex = NceThreadTable.Register(threadId, nec.NativeContextPtr);
 
             nec.SetStartAddress(address);
             _threadStart(nec.NativeContextPtr);
             nec.Exit();
 
             NceThreadTable.Unregister(tableIndex);
+            
+            // ========== 新增：清理缓存 ==========
+            lock (_cacheLock)
+            {
+                _threadContextCache.Remove(threadId);
+            }
         }
 
         /// <inheritdoc/>
@@ -138,6 +158,19 @@ namespace Ryujinx.Cpu.Nce
 
         public void Dispose()
         {
+        }
+        
+        // ========== 新增：供汇编代码使用的缓存访问函数 ==========
+        public static IntPtr TryGetCachedContext(IntPtr threadId)
+        {
+            lock (_cacheLock)
+            {
+                if (_threadContextCache.TryGetValue(threadId, out IntPtr contextPtr))
+                {
+                    return contextPtr;
+                }
+                return IntPtr.Zero;
+            }
         }
     }
 }
