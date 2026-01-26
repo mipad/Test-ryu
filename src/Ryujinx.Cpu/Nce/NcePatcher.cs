@@ -314,17 +314,15 @@ namespace Ryujinx.Cpu.Nce
         // ========== 原有辅助方法 ==========
         private static void WriteLoadContext(Assembler asm, Operand tmp0, Operand tmp1, Operand tmp2)
         {
-            // 使用更简单可靠的优化方法
+            // 使用优化版本的查找循环
             WriteLoadContextOptimized(asm, tmp0, tmp1, tmp2);
         }
 
-        // ========== 修正：使用 LDP 进行批量加载的优化版本 ==========
+        // ========== 第一步优化：仅优化查找循环 ==========
         private static void WriteLoadContextOptimized(Assembler asm, Operand tmp0, Operand tmp1, Operand tmp2)
         {
-            // tmp0 = NceThreadTable.EntriesPointer
             asm.Mov(tmp0, (ulong)NceThreadTable.EntriesPointer);
-            
-            // 读取当前线程ID到 tmp1
+
             if (OperatingSystem.IsMacOS())
             {
                 asm.MrsTpidrroEl0(tmp1);
@@ -333,48 +331,59 @@ namespace Ryujinx.Cpu.Nce
             {
                 asm.MrsTpidrEl0(tmp1);
             }
-            
+
             Operand lblFound = asm.CreateLabel();
             Operand lblLoop = asm.CreateLabel();
-            Operand lblCheckSecond = asm.CreateLabel();
-            
+
             asm.MarkLabel(lblLoop);
+
+            // 使用LDP指令一次加载两个ThreadId进行比较
+            // 这比原来的LdrRiPost + Cmp + B组合更高效
+            // LDP Xtmp2, Xtmp2_next, [Xtmp0], #32
+            asm.LdpRiPost(tmp2, Gpr(tmp2.GetRegister().Index + 1), tmp0, 32);
             
-            // 使用 LDP 一次加载两个 ThreadId 到 tmp2 和另一个临时寄存器
-            // 我们需要分配一个额外的临时寄存器
-            asm.LdpNeonOptimized(tmp2, Gpr(tmp2.GetRegister().Index + 1), tmp0);
-            
-            // 比较第一个 ThreadId
-            asm.Cmp(tmp2, tmp1);
+            // 比较第一个ThreadId
+            asm.Cmp(tmp1, tmp2);
             asm.B(lblFound, ArmCondition.Eq);
             
-            // 比较第二个 ThreadId
-            asm.Cmp(Gpr(tmp2.GetRegister().Index + 1), tmp1);
-            asm.B(lblCheckSecond, ArmCondition.Eq);
+            // 比较第二个ThreadId
+            asm.Cmp(tmp1, Gpr(tmp2.GetRegister().Index + 1));
+            asm.B(lblFound, ArmCondition.Eq);
             
-            // 没有匹配，跳转到下一个双元素 (16字节 * 2 = 32字节)
-            asm.Add(tmp0, tmp0, Const(32)); // 每个Entry 16字节，一次处理两个，所以前进32字节
+            // 继续循环
             asm.B(lblLoop);
-            
-            asm.MarkLabel(lblCheckSecond);
-            // 第二个元素匹配，需要调整指针到第二个Entry
-            asm.Add(tmp0, tmp0, Const(16)); // 指向第二个元素
-            asm.B(lblFound);
-            
+
             asm.MarkLabel(lblFound);
+
+            // 回退指针到匹配的Entry
+            // 如果匹配的是第一个ThreadId，需要回退16字节
+            // 如果匹配的是第二个ThreadId，已经指向正确位置
+            // 使用条件指令避免分支
+            Operand lblAdjust = asm.CreateLabel();
+            Operand lblDone = asm.CreateLabel();
             
-            // 加载 NativeContextPtr (ThreadId 后8字节)
-            // 因为指针已经指向匹配的Entry，前进8字节获取NativeContextPtr
-            asm.Ldur(tmp0, tmp0, 8);
+            asm.Cmp(tmp1, tmp2);
+            asm.B(lblDone, ArmCondition.Eq); // 第一个匹配，已经指向正确位置
+            
+            // 第二个匹配，需要回退16字节
+            asm.Sub(tmp0, tmp0, Const(16));
+            asm.B(lblDone);
+            
+            asm.MarkLabel(lblAdjust);
+            asm.MarkLabel(lblDone);
+            
+            // 加载NativeContextPtr（ThreadId后8字节）
+            asm.Ldur(tmp0, tmp0, -8);
         }
 
         private static void WriteLoadContextSafe(Assembler asm, Operand lblFail, Operand tmp0, Operand tmp1, Operand tmp2, Operand tmp3)
         {
-            // 使用更简单可靠的优化方法
-            WriteLoadContextSafeOptimized(asm, lblFail, tmp0, tmp1, tmp2, tmp3);
+            // 暂时使用原始版本，确保稳定性
+            WriteLoadContextSafeOriginal(asm, lblFail, tmp0, tmp1, tmp2, tmp3);
         }
 
-        private static void WriteLoadContextSafeOptimized(Assembler asm, Operand lblFail, Operand tmp0, Operand tmp1, Operand tmp2, Operand tmp3)
+        // ========== 原始安全版本（保持不变） ==========
+        private static void WriteLoadContextSafeOriginal(Assembler asm, Operand lblFail, Operand tmp0, Operand tmp1, Operand tmp2, Operand tmp3)
         {
             asm.Mov(tmp0, (ulong)NceThreadTable.EntriesPointer);
             asm.Ldur(tmp3, tmp0, -8); // 获取线程数量
@@ -388,83 +397,6 @@ namespace Ryujinx.Cpu.Nce
             {
                 asm.MrsTpidrEl0(tmp1);
             }
-            
-            Operand lblFound = asm.CreateLabel();
-            Operand lblLoop = asm.CreateLabel();
-            Operand lblCheckSecond = asm.CreateLabel();
-            
-            asm.MarkLabel(lblLoop);
-            
-            // 检查边界
-            asm.Cmp(tmp0, tmp3);
-            asm.B(lblFail, ArmCondition.GeUn);
-            
-            // 使用 LDP 一次加载两个 ThreadId
-            asm.LdpNeonOptimized(tmp2, Gpr(tmp2.GetRegister().Index + 1), tmp0);
-            
-            // 比较第一个 ThreadId
-            asm.Cmp(tmp2, tmp1);
-            asm.B(lblFound, ArmCondition.Eq);
-            
-            // 比较第二个 ThreadId
-            asm.Cmp(Gpr(tmp2.GetRegister().Index + 1), tmp1);
-            asm.B(lblCheckSecond, ArmCondition.Eq);
-            
-            // 没有找到，继续循环
-            asm.Add(tmp0, tmp0, Const(32));
-            asm.B(lblLoop);
-            
-            asm.MarkLabel(lblCheckSecond);
-            asm.Add(tmp0, tmp0, Const(16));
-            asm.B(lblFound);
-            
-            asm.MarkLabel(lblFound);
-            asm.Ldur(tmp0, tmp0, 8); // 前进8字节到NativeContextPtr
-        }
-
-        // ========== 新增：备用方案 - 原始实现（如果优化版本有问题） ==========
-        private static void WriteLoadContextOriginal(Assembler asm, Operand tmp0, Operand tmp1, Operand tmp2)
-        {
-            asm.Mov(tmp0, (ulong)NceThreadTable.EntriesPointer);
-
-            if (OperatingSystem.IsMacOS())
-            {
-                asm.MrsTpidrroEl0(tmp1);
-            }
-            else
-            {
-                asm.MrsTpidrEl0(tmp1);
-            }
-
-            Operand lblFound = asm.CreateLabel();
-            Operand lblLoop = asm.CreateLabel();
-
-            asm.MarkLabel(lblLoop);
-
-            asm.LdrRiPost(tmp2, tmp0, 16);
-            asm.Cmp(tmp1, tmp2);
-            asm.B(lblFound, ArmCondition.Eq);
-            asm.B(lblLoop);
-
-            asm.MarkLabel(lblFound);
-
-            asm.Ldur(tmp0, tmp0, -8);
-        }
-
-        private static void WriteLoadContextSafeOriginal(Assembler asm, Operand lblFail, Operand tmp0, Operand tmp1, Operand tmp2, Operand tmp3)
-        {
-            asm.Mov(tmp0, (ulong)NceThreadTable.EntriesPointer);
-            asm.Ldur(tmp3, tmp0, -8);
-            asm.Add(tmp3, tmp0, tmp3, ArmShiftType.Lsl, 4);
-
-            if (OperatingSystem.IsMacOS())
-            {
-                asm.MrsTpidrroEl0(tmp1);
-            }
-            else
-            {
-                asm.MrsTpidrEl0(tmp1);
-            }
 
             Operand lblFound = asm.CreateLabel();
             Operand lblLoop = asm.CreateLabel();
@@ -479,7 +411,6 @@ namespace Ryujinx.Cpu.Nce
             asm.B(lblLoop);
 
             asm.MarkLabel(lblFound);
-
             asm.Ldur(tmp0, tmp0, -8);
         }
 
@@ -495,8 +426,7 @@ namespace Ryujinx.Cpu.Nce
 
             rsr.WritePrologue(asm);
 
-            // 使用原始实现以确保稳定性
-            WriteLoadContextOriginal(asm, Gpr(scratchRegs[0]), Gpr(scratchRegs[1]), Gpr(scratchRegs[2]));
+            WriteLoadContext(asm, Gpr(scratchRegs[0]), Gpr(scratchRegs[1]), Gpr(scratchRegs[2]));
 
             asm.MovSp(Gpr(scratchRegs[1]), Gpr(Assembler.SpRegister));
             asm.StrRiUn(Gpr(scratchRegs[1]), Gpr(scratchRegs[0]), NceNativeContext.GetGuestSPOffset());
@@ -631,8 +561,7 @@ namespace Ryujinx.Cpu.Nce
                 Operand lblAgain = asm.CreateLabel();
                 Operand lblFail = asm.CreateLabel();
 
-                // 使用原始安全版本以确保稳定性
-                WriteLoadContextSafeOriginal(asm, lblFail, Gpr(scratchRegs[0]), Gpr(scratchRegs[1]), Gpr(scratchRegs[2]), Gpr(scratchRegs[3]));
+                WriteLoadContextSafe(asm, lblFail, Gpr(scratchRegs[0]), Gpr(scratchRegs[1]), Gpr(scratchRegs[2]), Gpr(scratchRegs[3]));
 
                 asm.LdrRiUn(Gpr(scratchRegs[1]), Gpr(scratchRegs[0]), NceNativeContext.GetHostSPOffset());
                 asm.MovSp(Gpr(scratchRegs[2]), Gpr(Assembler.SpRegister));
@@ -687,8 +616,7 @@ namespace Ryujinx.Cpu.Nce
 
                 Operand lblFail = asm.CreateLabel();
 
-                // 使用原始安全版本以确保稳定性
-                WriteLoadContextSafeOriginal(asm, lblFail, Gpr(scratchRegs[0]), Gpr(scratchRegs[1]), Gpr(scratchRegs[2]), Gpr(scratchRegs[3]));
+                WriteLoadContextSafe(asm, lblFail, Gpr(scratchRegs[0]), Gpr(scratchRegs[1]), Gpr(scratchRegs[2]), Gpr(scratchRegs[3]));
 
                 asm.LdrRiUn(Gpr(scratchRegs[1]), Gpr(scratchRegs[0]), NceNativeContext.GetHostSPOffset());
                 asm.MovSp(Gpr(scratchRegs[2]), Gpr(Assembler.SpRegister));
