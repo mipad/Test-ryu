@@ -9,11 +9,6 @@ namespace Ryujinx.Cpu.Nce
     public static class NcePatcher
     {
         private const int ScratchBaseReg = 19;
-        
-        // ========== 新增：缓存相关常量 ==========
-        private const int ContextCacheReg = 28;   // X28 用作上下文缓存寄存器
-        private const int ThreadIdCacheReg = 27;  // X27 用作线程ID缓存寄存器
-        private const ulong CacheInvalidFlag = 0xFFFFFFFFFFFFFFFF;
 
         private const uint IntCalleeSavedRegsMask = 0x1ff80000; // X19 to X28
         private const uint FpCalleeSavedRegsMask = 0xff00; // D8 to D15
@@ -287,7 +282,7 @@ namespace Ryujinx.Cpu.Nce
 
             rsr.WritePrologue(asm);
 
-            WriteLoadContextOptimized(asm, Gpr(scratchRegs[0]), Gpr(scratchRegs[1]), Gpr(scratchRegs[2]));
+            WriteLoadContext(asm, Gpr(scratchRegs[0]), Gpr(scratchRegs[1]), Gpr(scratchRegs[2]));
             asm.StrRiUn(Gpr((int)rd), Gpr(scratchRegs[0]), NceNativeContext.GetTpidrEl0Offset());
 
             rsr.WriteEpilogue(asm);
@@ -305,7 +300,7 @@ namespace Ryujinx.Cpu.Nce
 
             rsr.WritePrologue(asm);
 
-            WriteLoadContextOptimized(asm, Gpr(scratchRegs[0]), Gpr(scratchRegs[1]), Gpr(scratchRegs[2]));
+            WriteLoadContext(asm, Gpr(scratchRegs[0]), Gpr(scratchRegs[1]), Gpr(scratchRegs[2]));
             asm.Add(Gpr((int)rd), Gpr(scratchRegs[0]), Const((ulong)contextOffset));
 
             rsr.WriteEpilogue(asm);
@@ -316,54 +311,8 @@ namespace Ryujinx.Cpu.Nce
             return asm.GetCode();
         }
 
-        // ========== 新增：优化的线程上下文加载函数 ==========
-        private static void WriteLoadContextOptimized(Assembler asm, Operand tmp0, Operand tmp1, Operand tmp2)
-        {
-            // 1. 首先检查缓存寄存器是否有效
-            Operand cachedThreadId = Gpr(ThreadIdCacheReg);
-            Operand cachedContext = Gpr(ContextCacheReg);
-            
-            Operand lblCacheHit = asm.CreateLabel();
-            Operand lblCacheMiss = asm.CreateLabel();
-            Operand lblExit = asm.CreateLabel();
-            
-            // 获取当前线程ID
-            if (OperatingSystem.IsMacOS())
-            {
-                asm.MrsTpidrroEl0(tmp1);
-            }
-            else
-            {
-                asm.MrsTpidrEl0(tmp1);
-            }
-            
-            // 检查缓存是否有效（缓存值不为无效标志）
-            asm.Mov(tmp2, CacheInvalidFlag);
-            asm.Cmp(cachedThreadId, tmp2);
-            asm.B(lblCacheMiss, ArmCondition.Eq);
-            
-            // 检查缓存是否匹配当前线程
-            asm.Cmp(cachedThreadId, tmp1);
-            asm.B(lblCacheHit, ArmCondition.Eq);
-            
-            // 缓存未命中
-            asm.MarkLabel(lblCacheMiss);
-            WriteLoadContextOriginal(asm, tmp0, tmp1, tmp2);
-            
-            // 更新缓存
-            asm.Mov(cachedThreadId, tmp1);
-            asm.Mov(cachedContext, tmp0);
-            asm.B(lblExit);
-            
-            // 缓存命中
-            asm.MarkLabel(lblCacheHit);
-            asm.Mov(tmp0, cachedContext);
-            
-            asm.MarkLabel(lblExit);
-        }
-        
-        // ========== 原有函数重命名为 WriteLoadContextOriginal ==========
-        private static void WriteLoadContextOriginal(Assembler asm, Operand tmp0, Operand tmp1, Operand tmp2)
+        // ========== 原有辅助方法 ==========
+        private static void WriteLoadContext(Assembler asm, Operand tmp0, Operand tmp1, Operand tmp2)
         {
             asm.Mov(tmp0, (ulong)NceThreadTable.EntriesPointer);
 
@@ -429,22 +378,13 @@ namespace Ryujinx.Cpu.Nce
             int vecMask = unchecked((int)0xffffffff);
 
             Span<int> scratchRegs = stackalloc int[3];
-            
-            // ========== 新增：排除缓存寄存器 ==========
-            uint updatedBlacklist = blacklistedRegMask | (1u << ContextCacheReg) | (1u << ThreadIdCacheReg);
-            PickScratchRegs(scratchRegs, updatedBlacklist);
+            PickScratchRegs(scratchRegs, blacklistedRegMask);
 
-            // ========== 新增：保存缓存寄存器到栈 ==========
-            int cachedRegsMask = (1 << ContextCacheReg) | (1 << ThreadIdCacheReg);
-            RegisterSaveRestore rsr = new(intMask | cachedRegsMask, vecMask, OperandType.V128);
+            RegisterSaveRestore rsr = new(intMask, vecMask, OperandType.V128);
 
             rsr.WritePrologue(asm);
 
-            // ========== 新增：初始化缓存寄存器 ==========
-            asm.Mov(Gpr(ContextCacheReg), CacheInvalidFlag);
-            asm.Mov(Gpr(ThreadIdCacheReg), CacheInvalidFlag);
-
-            WriteLoadContextOptimized(asm, Gpr(scratchRegs[0]), Gpr(scratchRegs[1]), Gpr(scratchRegs[2]));
+            WriteLoadContext(asm, Gpr(scratchRegs[0]), Gpr(scratchRegs[1]), Gpr(scratchRegs[2]));
 
             asm.MovSp(Gpr(scratchRegs[1]), Gpr(Assembler.SpRegister));
             asm.StrRiUn(Gpr(scratchRegs[1]), Gpr(scratchRegs[0]), NceNativeContext.GetGuestSPOffset());
@@ -533,10 +473,6 @@ namespace Ryujinx.Cpu.Nce
             var asm = RentAssembler();
             try
             {
-                // ========== 新增：初始化缓存寄存器 ==========
-                asm.Mov(Gpr(ContextCacheReg), CacheInvalidFlag);
-                asm.Mov(Gpr(ThreadIdCacheReg), CacheInvalidFlag);
-                
                 CreateRegisterSaveRestoreForManaged().WritePrologue(asm);
 
                 asm.MovSp(Gpr(1), Gpr(Assembler.SpRegister));
@@ -576,15 +512,9 @@ namespace Ryujinx.Cpu.Nce
                 Span<int> scratchRegs = stackalloc int[4];
                 PickScratchRegs(scratchRegs, 0u);
 
-                // ========== 新增：包含缓存寄存器的保存 ==========
-                int cachedRegsMask = (1 << ContextCacheReg) | (1 << ThreadIdCacheReg);
-                RegisterSaveRestore rsr = new((1 << scratchRegs[0]) | (1 << scratchRegs[1]) | (1 << scratchRegs[2]) | (1 << scratchRegs[3]) | cachedRegsMask, hasCall: true);
+                RegisterSaveRestore rsr = new((1 << scratchRegs[0]) | (1 << scratchRegs[1]) | (1 << scratchRegs[2]) | (1 << scratchRegs[3]), hasCall: true);
 
                 rsr.WritePrologue(asm);
-
-                // ========== 新增：初始化缓存寄存器 ==========
-                asm.Mov(Gpr(ContextCacheReg), CacheInvalidFlag);
-                asm.Mov(Gpr(ThreadIdCacheReg), CacheInvalidFlag);
 
                 Operand lblAgain = asm.CreateLabel();
                 Operand lblFail = asm.CreateLabel();
@@ -638,15 +568,9 @@ namespace Ryujinx.Cpu.Nce
                 Span<int> scratchRegs = stackalloc int[4];
                 PickScratchRegs(scratchRegs, 0u);
 
-                // ========== 新增：包含缓存寄存器的保存 ==========
-                int cachedRegsMask = (1 << ContextCacheReg) | (1 << ThreadIdCacheReg);
-                RegisterSaveRestore rsr = new((1 << scratchRegs[0]) | (1 << scratchRegs[1]) | (1 << scratchRegs[2]) | (1 << scratchRegs[3]) | cachedRegsMask, hasCall: true);
+                RegisterSaveRestore rsr = new((1 << scratchRegs[0]) | (1 << scratchRegs[1]) | (1 << scratchRegs[2]) | (1 << scratchRegs[3]), hasCall: true);
 
                 rsr.WritePrologue(asm);
-
-                // ========== 新增：初始化缓存寄存器 ==========
-                asm.Mov(Gpr(ContextCacheReg), CacheInvalidFlag);
-                asm.Mov(Gpr(ThreadIdCacheReg), CacheInvalidFlag);
 
                 Operand lblFail = asm.CreateLabel();
 
@@ -790,9 +714,7 @@ namespace Ryujinx.Cpu.Nce
 
         private static RegisterSaveRestore CreateRegisterSaveRestoreForManaged()
         {
-            // ========== 新增：包含缓存寄存器的保存 ==========
-            int cachedRegsMask = (1 << ContextCacheReg) | (1 << ThreadIdCacheReg);
-            return new RegisterSaveRestore((int)IntCalleeSavedRegsMask | cachedRegsMask, unchecked((int)FpCalleeSavedRegsMask), OperandType.FP64, hasCall: true);
+            return new RegisterSaveRestore((int)IntCalleeSavedRegsMask, unchecked((int)FpCalleeSavedRegsMask), OperandType.FP64, hasCall: true);
         }
     }
 }
