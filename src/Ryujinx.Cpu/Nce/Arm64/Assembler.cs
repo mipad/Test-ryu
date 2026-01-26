@@ -75,7 +75,7 @@ namespace Ryujinx.Cpu.Nce.Arm64
                 }
                 else
                 {
-                    _code[state.BranchIndex] = code | (EncodeSImm19_2(imm) << 5);
+                    _code[state.BranchIndex] = code | (EncodeSImm19_2(imm) << 5));
                 }
             }
         }
@@ -382,12 +382,13 @@ namespace Ryujinx.Cpu.Nce.Arm64
             WriteInstruction(instruction, rt, rn);
         }
 
-        // ========== 新增：NEON 指令 ==========
+        // ========== 修正：NEON 指令 ==========
         public void LdrVector128(Operand vt, Operand rn)
         {
-            // LD1 {vt.16b}, [rn]
-            // 编码: 0x4C407000 | (Rt << 5) | Rn
-            uint instruction = 0x4C407000u | (EncodeReg(vt) << 5) | EncodeReg(rn);
+            // LD1 {vt.16b}, [rn] - 正确的指令编码
+            // 编码: 1101 0101 00xx xxxx xxxx xxxx xx00 0000
+            // 实际: 0x4C40 0000 + (vt.Index << 5) + rn.Index
+            uint instruction = 0x4C400000u | (EncodeReg(vt) << 5) | EncodeReg(rn);
             WriteUInt32(instruction);
         }
 
@@ -400,13 +401,13 @@ namespace Ryujinx.Cpu.Nce.Arm64
             uint instruction;
             if (size == 8)
             {
-                // DUP Vd.D[0], Xn
-                instruction = 0x4E080C00u | (EncodeReg(vd) << 5) | EncodeReg(rn);
+                // DUP Vd.8B, Xn
+                instruction = 0x0E080C00u | (EncodeReg(vd) << 5) | EncodeReg(rn);
             }
             else
             {
-                // DUP Vd.S[0], Wn
-                instruction = 0x4E040C00u | (EncodeReg(vd) << 5) | EncodeReg(rn);
+                // DUP Vd.4H, Wn (使用4H而不是S，因为我们只需要低32位)
+                instruction = 0x0E040C00u | (EncodeReg(vd) << 5) | EncodeReg(rn);
             }
             WriteUInt32(instruction);
         }
@@ -423,8 +424,16 @@ namespace Ryujinx.Cpu.Nce.Arm64
         {
             // UMOV Rd, Vn.B[index] (size=0) 到 Vn.D[index] (size=3)
             // 编码: 0x0E003C00 | (imm5 << 16) | (Vn << 5) | Rd
-            uint q = size == 3 ? 1u << 30 : 0u;
-            WriteInstruction(0x0E003C00u | (EncodeIndexSizeImm5(index, size) << 16) | q, rd, vn);
+            uint instruction = 0x0E003C00u | (EncodeIndexSizeImm5(index, size) << 16) | (EncodeReg(vn) << 5) | EncodeReg(rd);
+            WriteUInt32(instruction);
+        }
+
+        // ========== 新增：使用 LDP 进行批量加载的简化版本 ==========
+        public void LdpNeonOptimized(Operand rt1, Operand rt2, Operand rn)
+        {
+            // 使用 LDP 加载两个 ThreadId 到两个通用寄存器
+            // 这是更简单、更可靠的优化方法
+            WriteInstruction(0xA9400000u | (EncodeReg(rt1) << 5) | (EncodeReg(rn) << 5) | (EncodeReg(rt2) << 10), rt1, rn, rt2);
         }
 
         // ========== 结束：NEON 指令 ==========
