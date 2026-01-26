@@ -75,7 +75,7 @@ namespace Ryujinx.Cpu.Nce.Arm64
                 }
                 else
                 {
-                    _code[state.BranchIndex] = code | (EncodeSImm19_2(imm) << 5));
+                    _code[state.BranchIndex] = code | (EncodeSImm19_2(imm) << 5);
                 }
             }
         }
