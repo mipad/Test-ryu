@@ -1,9 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
-#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER || NET5_0_OR_GREATER
-using System.Runtime.InteropServices;
-#endif
+using System.Threading;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -14,7 +11,6 @@ namespace Ryujinx.Graphics.Vulkan
 
     struct I8ToI16CacheKey : ICacheKey
     {
-        // Used to notify the pipeline that bindings have invalidated on dispose.
         private readonly VulkanRenderer _gd;
         private Auto<DisposableBuffer> _buffer;
 
@@ -24,19 +20,16 @@ namespace Ryujinx.Graphics.Vulkan
             _buffer = null;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public readonly bool KeyEqual(ICacheKey other)
         {
             return other is I8ToI16CacheKey;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void SetBuffer(Auto<DisposableBuffer> buffer)
         {
             _buffer = buffer;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public readonly void Dispose()
         {
             _gd.PipelineInternal.DirtyIndexBuffer(_buffer);
@@ -47,8 +40,6 @@ namespace Ryujinx.Graphics.Vulkan
     {
         private readonly int _stride;
         private readonly int _alignment;
-
-        // Used to notify the pipeline that bindings have invalidated on dispose.
         private readonly VulkanRenderer _gd;
         private Auto<DisposableBuffer> _buffer;
 
@@ -60,7 +51,6 @@ namespace Ryujinx.Graphics.Vulkan
             _buffer = null;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public readonly bool KeyEqual(ICacheKey other)
         {
             return other is AlignedVertexBufferCacheKey entry &&
@@ -68,13 +58,11 @@ namespace Ryujinx.Graphics.Vulkan
                 entry._alignment == _alignment;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void SetBuffer(Auto<DisposableBuffer> buffer)
         {
             _buffer = buffer;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public readonly void Dispose()
         {
             _gd.PipelineInternal.DirtyVertexBuffer(_buffer);
@@ -85,8 +73,6 @@ namespace Ryujinx.Graphics.Vulkan
     {
         private readonly IndexBufferPattern _pattern;
         private readonly int _indexSize;
-
-        // Used to notify the pipeline that bindings have invalidated on dispose.
         private readonly VulkanRenderer _gd;
         private Auto<DisposableBuffer> _buffer;
 
@@ -98,7 +84,6 @@ namespace Ryujinx.Graphics.Vulkan
             _buffer = null;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public readonly bool KeyEqual(ICacheKey other)
         {
             return other is TopologyConversionCacheKey entry &&
@@ -106,13 +91,11 @@ namespace Ryujinx.Graphics.Vulkan
                 entry._indexSize == _indexSize;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void SetBuffer(Auto<DisposableBuffer> buffer)
         {
             _buffer = buffer;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public readonly void Dispose()
         {
             _gd.PipelineInternal.DirtyIndexBuffer(_buffer);
@@ -140,7 +123,6 @@ namespace Ryujinx.Graphics.Vulkan
             _indirectDataSize = indirectDataSize;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool KeyEqual(ICacheKey other)
         {
             return other is TopologyConversionIndirectCacheKey entry &&
@@ -150,13 +132,11 @@ namespace Ryujinx.Graphics.Vulkan
                 entry._indirectDataSize == _indirectDataSize;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void SetBuffer(Auto<DisposableBuffer> buffer)
         {
             _baseKey.SetBuffer(buffer);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Dispose()
         {
             _baseKey.Dispose();
@@ -172,13 +152,11 @@ namespace Ryujinx.Graphics.Vulkan
             _pattern = pattern;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool KeyEqual(ICacheKey other)
         {
             return other is IndirectDataCacheKey entry && entry._pattern == _pattern;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Dispose()
         {
         }
@@ -186,13 +164,11 @@ namespace Ryujinx.Graphics.Vulkan
 
     struct DrawCountCacheKey : ICacheKey
     {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public readonly bool KeyEqual(ICacheKey other)
         {
             return other is DrawCountCacheKey;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public readonly void Dispose()
         {
         }
@@ -213,7 +189,6 @@ namespace Ryujinx.Graphics.Vulkan
             _key = key;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void RemoveFromOwner()
         {
             _buffer.RemoveCachedConvertedBuffer(_offset, _size, _key);
@@ -228,7 +203,6 @@ namespace Ryujinx.Graphics.Vulkan
             public T Value;
             public List<Dependency> DependencyList;
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public Entry(ICacheKey key, T value)
             {
                 Key = key;
@@ -236,12 +210,10 @@ namespace Ryujinx.Graphics.Vulkan
                 DependencyList = null;
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public readonly void InvalidateDependencies()
             {
                 if (DependencyList != null)
                 {
-                    // 使用foreach保持原有逻辑，但内联方法
                     foreach (Dependency dependency in DependencyList)
                     {
                         dependency.RemoveFromOwner();
@@ -253,139 +225,148 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         private Dictionary<ulong, List<Entry>> _ranges;
+        private readonly object _syncRoot = new object();  // 添加同步锁
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Add(int offset, int size, ICacheKey key, T value)
         {
-            List<Entry> entries = GetEntries(offset, size);
-
-            entries.Add(new Entry(key, value));
+            lock (_syncRoot)  // 加锁保证线程安全
+            {
+                List<Entry> entries = GetEntries(offset, size);
+                entries.Add(new Entry(key, value));
+            }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void AddDependency(int offset, int size, ICacheKey key, Dependency dependency)
         {
-            List<Entry> entries = GetEntries(offset, size);
-
-            // 使用Span提高遍历性能（如果支持）
-            var entriesSpan = AsSpan(entries);
-            for (int i = 0; i < entriesSpan.Length; i++)
+            lock (_syncRoot)  // 加锁保证线程安全
             {
-                ref Entry entry = ref entriesSpan[i];
+                List<Entry> entries = GetEntries(offset, size);
 
-                if (entry.Key.KeyEqual(key))
+                for (int i = 0; i < entries.Count; i++)
                 {
-                    entry.DependencyList ??= new List<Dependency>();
-                    entry.DependencyList.Add(dependency);
+                    Entry entry = entries[i];
 
-                    // 由于我们使用了ref，需要手动写回（如果是值类型）
-                    entries[i] = entry;
-                    break;
+                    if (entry.Key.KeyEqual(key))
+                    {
+                        if (entry.DependencyList == null)
+                        {
+                            entry.DependencyList = new List<Dependency>();
+                            entries[i] = entry;
+                        }
+
+                        entry.DependencyList.Add(dependency);
+
+                        break;
+                    }
                 }
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Remove(int offset, int size, ICacheKey key)
         {
-            List<Entry> entries = GetEntries(offset, size);
-
-            for (int i = 0; i < entries.Count; i++)
+            lock (_syncRoot)  // 加锁保证线程安全
             {
-                Entry entry = entries[i];
+                List<Entry> entries = GetEntries(offset, size);
 
-                if (entry.Key.KeyEqual(key))
+                for (int i = 0; i < entries.Count; i++)
                 {
-                    entries.RemoveAt(i--);
+                    Entry entry = entries[i];
 
-                    DestroyEntry(entry);
-                }
-            }
-
-            if (entries.Count == 0)
-            {
-                _ranges.Remove(PackRange(offset, size));
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool TryGetValue(int offset, int size, ICacheKey key, out T value)
-        {
-            List<Entry> entries = GetEntries(offset, size);
-
-            // 使用Span提高遍历性能（如果支持）
-            var entriesSpan = AsSpan(entries);
-            for (int i = 0; i < entriesSpan.Length; i++)
-            {
-                ref readonly Entry entry = ref entriesSpan[i];
-                if (entry.Key.KeyEqual(key))
-                {
-                    value = entry.Value;
-                    return true;
-                }
-            }
-
-            value = default;
-            return false;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Clear()
-        {
-            if (_ranges != null)
-            {
-                foreach (List<Entry> entries in _ranges.Values)
-                {
-                    foreach (Entry entry in entries)
+                    if (entry.Key.KeyEqual(key))
                     {
+                        entries.RemoveAt(i--);
+
                         DestroyEntry(entry);
                     }
                 }
 
-                _ranges.Clear();
-                _ranges = null;
+                if (entries.Count == 0)
+                {
+                    _ranges.Remove(PackRange(offset, size));
+                }
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public readonly void ClearRange(int offset, int size)
+        public bool TryGetValue(int offset, int size, ICacheKey key, out T value)
         {
-            if (_ranges != null && _ranges.Count > 0)
+            lock (_syncRoot)  // 加锁保证线程安全
             {
-                int end = offset + size;
+                List<Entry> entries = GetEntries(offset, size);
 
-                List<ulong> toRemove = null;
-
-                foreach (KeyValuePair<ulong, List<Entry>> range in _ranges)
+                foreach (Entry entry in entries)
                 {
-                    (int rOffset, int rSize) = UnpackRange(range.Key);
-
-                    int rEnd = rOffset + rSize;
-
-                    if (rEnd > offset && rOffset < end)
+                    if (entry.Key.KeyEqual(key))
                     {
-                        List<Entry> entries = range.Value;
+                        value = entry.Value;
+                        return true;
+                    }
+                }
 
+                value = default;
+                return false;
+            }
+        }
+
+        public void Clear()
+        {
+            lock (_syncRoot)  // 加锁保证线程安全
+            {
+                if (_ranges != null)
+                {
+                    foreach (List<Entry> entries in _ranges.Values)
+                    {
                         foreach (Entry entry in entries)
                         {
                             DestroyEntry(entry);
                         }
-
-                        (toRemove ??= new List<ulong>()).Add(range.Key);
                     }
-                }
 
-                if (toRemove != null)
+                    _ranges.Clear();
+                    _ranges = null;
+                }
+            }
+        }
+
+        public readonly void ClearRange(int offset, int size)
+        {
+            lock (_syncRoot)  // 加锁保证线程安全
+            {
+                if (_ranges != null && _ranges.Count > 0)
                 {
-                    foreach (ulong range in toRemove)
+                    int end = offset + size;
+
+                    List<ulong> toRemove = null;
+
+                    foreach (KeyValuePair<ulong, List<Entry>> range in _ranges)
                     {
-                        _ranges.Remove(range);
+                        (int rOffset, int rSize) = UnpackRange(range.Key);
+
+                        int rEnd = rOffset + rSize;
+
+                        if (rEnd > offset && rOffset < end)
+                        {
+                            List<Entry> entries = range.Value;
+
+                            foreach (Entry entry in entries)
+                            {
+                                DestroyEntry(entry);
+                            }
+
+                            (toRemove ??= new List<ulong>()).Add(range.Key);
+                        }
+                    }
+
+                    if (toRemove != null)
+                    {
+                        foreach (ulong range in toRemove)
+                        {
+                            _ranges.Remove(range);
+                        }
                     }
                 }
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private List<Entry> GetEntries(int offset, int size)
         {
             _ranges ??= new Dictionary<ulong, List<Entry>>();
@@ -401,7 +382,6 @@ namespace Ryujinx.Graphics.Vulkan
             return value;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void DestroyEntry(Entry entry)
         {
             entry.Key.Dispose();
@@ -409,35 +389,19 @@ namespace Ryujinx.Graphics.Vulkan
             entry.InvalidateDependencies();
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong PackRange(int offset, int size)
         {
             return (uint)offset | ((ulong)size << 32);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static (int offset, int size) UnpackRange(ulong range)
         {
             return ((int)range, (int)(range >> 32));
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Dispose()
         {
             Clear();
         }
-
-        #region Span辅助方法
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static Span<Entry> AsSpan(List<Entry> list)
-        {
-#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER || NET5_0_OR_GREATER
-            return CollectionsMarshal.AsSpan(list);
-#else
-            // 回退方案：转换为数组（性能较差，但保持兼容性）
-            return list.ToArray().AsSpan();
-#endif
-        }
-        #endregion
     }
 }
