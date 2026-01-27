@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Threading;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -225,7 +224,14 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         private Dictionary<ulong, List<Entry>> _ranges;
-        private readonly object _syncRoot = new object();  // 添加同步锁
+        private object _syncRoot;  // 移除了字段初始值设定项
+
+        // 显式声明的构造函数
+        public CacheByRange()
+        {
+            _ranges = null;
+            _syncRoot = new object();  // 在构造函数中初始化
+        }
 
         public void Add(int offset, int size, ICacheKey key, T value)
         {
