@@ -314,12 +314,57 @@ namespace Ryujinx.Cpu.Nce
         // ========== 原有辅助方法 ==========
         private static void WriteLoadContext(Assembler asm, Operand tmp0, Operand tmp1, Operand tmp2)
         {
-            // 使用优化版本的查找循环
-            WriteLoadContextOptimized(asm, tmp0, tmp1, tmp2);
+            // 使用最简单的LDP优化版本
+            WriteLoadContextSimpleLdp(asm, tmp0, tmp1, tmp2);
         }
 
-        // ========== 第一步优化：仅优化查找循环 ==========
-        private static void WriteLoadContextOptimized(Assembler asm, Operand tmp0, Operand tmp1, Operand tmp2)
+        // ========== 最简单安全的LDP优化版本 ==========
+        private static void WriteLoadContextSimpleLdp(Assembler asm, Operand tmp0, Operand tmp1, Operand tmp2)
+        {
+            asm.Mov(tmp0, (ulong)NceThreadTable.EntriesPointer);
+
+            if (OperatingSystem.IsMacOS())
+            {
+                asm.MrsTpidrroEl0(tmp1);
+            }
+            else
+            {
+                asm.MrsTpidrEl0(tmp1);
+            }
+
+            Operand lblFound = asm.CreateLabel();
+            Operand lblLoop = asm.CreateLabel();
+            Operand lblCheckSecond = asm.CreateLabel();
+
+            asm.MarkLabel(lblLoop);
+
+            // 1. 先用普通LDR加载第一个ThreadId
+            asm.LdrRiUn(tmp2, tmp0, 0); // 加载第一个ThreadId
+            asm.Cmp(tmp1, tmp2);
+            asm.B(lblFound, ArmCondition.Eq);
+            
+            // 2. 再用LDR加载第二个ThreadId（前进16字节）
+            asm.LdrRiUn(tmp2, tmp0, 16); // 加载第二个ThreadId
+            asm.Cmp(tmp1, tmp2);
+            asm.B(lblCheckSecond, ArmCondition.Eq);
+            
+            // 3. 没有找到，前进32字节（两个Entry）
+            asm.Add(tmp0, tmp0, Const(32));
+            asm.B(lblLoop);
+            
+            asm.MarkLabel(lblCheckSecond);
+            // 第二个匹配，前进16字节以指向第二个Entry的起始位置
+            asm.Add(tmp0, tmp0, Const(16));
+            asm.B(lblFound);
+            
+            asm.MarkLabel(lblFound);
+            
+            // 加载NativeContextPtr（ThreadId后8字节）
+            asm.Ldur(tmp0, tmp0, -8);
+        }
+
+        // ========== 原始版本（用于比较） ==========
+        private static void WriteLoadContextOriginal(Assembler asm, Operand tmp0, Operand tmp1, Operand tmp2)
         {
             asm.Mov(tmp0, (ulong)NceThreadTable.EntriesPointer);
 
@@ -337,52 +382,22 @@ namespace Ryujinx.Cpu.Nce
 
             asm.MarkLabel(lblLoop);
 
-            // 使用LDP指令一次加载两个ThreadId进行比较
-            // 这比原来的LdrRiPost + Cmp + B组合更高效
-            // LDP Xtmp2, Xtmp2_next, [Xtmp0], #32
-            asm.LdpRiPost(tmp2, Gpr(tmp2.GetRegister().Index + 1), tmp0, 32);
-            
-            // 比较第一个ThreadId
+            asm.LdrRiPost(tmp2, tmp0, 16);
             asm.Cmp(tmp1, tmp2);
             asm.B(lblFound, ArmCondition.Eq);
-            
-            // 比较第二个ThreadId
-            asm.Cmp(tmp1, Gpr(tmp2.GetRegister().Index + 1));
-            asm.B(lblFound, ArmCondition.Eq);
-            
-            // 继续循环
             asm.B(lblLoop);
 
             asm.MarkLabel(lblFound);
 
-            // 回退指针到匹配的Entry
-            // 如果匹配的是第一个ThreadId，需要回退16字节
-            // 如果匹配的是第二个ThreadId，已经指向正确位置
-            // 使用条件指令避免分支
-            Operand lblAdjust = asm.CreateLabel();
-            Operand lblDone = asm.CreateLabel();
-            
-            asm.Cmp(tmp1, tmp2);
-            asm.B(lblDone, ArmCondition.Eq); // 第一个匹配，已经指向正确位置
-            
-            // 第二个匹配，需要回退16字节
-            asm.Sub(tmp0, tmp0, Const(16));
-            asm.B(lblDone);
-            
-            asm.MarkLabel(lblAdjust);
-            asm.MarkLabel(lblDone);
-            
-            // 加载NativeContextPtr（ThreadId后8字节）
             asm.Ldur(tmp0, tmp0, -8);
         }
 
         private static void WriteLoadContextSafe(Assembler asm, Operand lblFail, Operand tmp0, Operand tmp1, Operand tmp2, Operand tmp3)
         {
-            // 暂时使用原始版本，确保稳定性
+            // 安全版本暂时使用原始实现
             WriteLoadContextSafeOriginal(asm, lblFail, tmp0, tmp1, tmp2, tmp3);
         }
 
-        // ========== 原始安全版本（保持不变） ==========
         private static void WriteLoadContextSafeOriginal(Assembler asm, Operand lblFail, Operand tmp0, Operand tmp1, Operand tmp2, Operand tmp3)
         {
             asm.Mov(tmp0, (ulong)NceThreadTable.EntriesPointer);
