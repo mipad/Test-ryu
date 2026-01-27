@@ -314,12 +314,12 @@ namespace Ryujinx.Cpu.Nce
         // ========== 原有辅助方法 ==========
         private static void WriteLoadContext(Assembler asm, Operand tmp0, Operand tmp1, Operand tmp2)
         {
-            // 使用最简单的LDP优化版本
-            WriteLoadContextSimpleLdp(asm, tmp0, tmp1, tmp2);
+            // 使用最保守的优化版本 - 保持原始前进逻辑
+            WriteLoadContextConservative(asm, tmp0, tmp1, tmp2);
         }
 
-        // ========== 最简单安全的LDP优化版本 ==========
-        private static void WriteLoadContextSimpleLdp(Assembler asm, Operand tmp0, Operand tmp1, Operand tmp2)
+        // ========== 最保守的优化版本 - 保持原始前进逻辑 ==========
+        private static void WriteLoadContextConservative(Assembler asm, Operand tmp0, Operand tmp1, Operand tmp2)
         {
             asm.Mov(tmp0, (ulong)NceThreadTable.EntriesPointer);
 
@@ -338,32 +338,92 @@ namespace Ryujinx.Cpu.Nce
 
             asm.MarkLabel(lblLoop);
 
-            // 1. 先用普通LDR加载第一个ThreadId
-            asm.LdrRiUn(tmp2, tmp0, 0); // 加载第一个ThreadId
+            // 方法1：保持原始的前进16字节逻辑，但使用更高效的内存访问
+            // 使用LDR指令同时检查当前Entry和下一个Entry
+            
+            // 1. 检查当前Entry（tmp0指向的Entry）
+            asm.LdrRiUn(tmp2, tmp0, 0); // 加载ThreadId
             asm.Cmp(tmp1, tmp2);
             asm.B(lblFound, ArmCondition.Eq);
             
-            // 2. 再用LDR加载第二个ThreadId（前进16字节）
-            asm.LdrRiUn(tmp2, tmp0, 16); // 加载第二个ThreadId
+            // 2. 检查下一个Entry（tmp0+16指向的Entry）
+            // 但注意：我们不改变tmp0，使用带偏移的加载
+            asm.LdrRiUn(tmp2, tmp0, 16); // 加载下一个ThreadId
             asm.Cmp(tmp1, tmp2);
             asm.B(lblCheckSecond, ArmCondition.Eq);
             
-            // 3. 没有找到，前进32字节（两个Entry）
+            // 3. 都没有找到，前进到下一个双Entry的起始点
+            // 原始版本前进16字节，我们前进32字节（跳过两个Entry）
             asm.Add(tmp0, tmp0, Const(32));
             asm.B(lblLoop);
             
             asm.MarkLabel(lblCheckSecond);
-            // 第二个匹配，前进16字节以指向第二个Entry的起始位置
+            // 第二个Entry匹配，需要调整指针
+            // 因为tmp0仍然指向第一个Entry，我们需要让它指向第二个Entry
             asm.Add(tmp0, tmp0, Const(16));
-            asm.B(lblFound);
             
             asm.MarkLabel(lblFound);
             
-            // 加载NativeContextPtr（ThreadId后8字节）
-            asm.Ldur(tmp0, tmp0, -8);
+            // 重要：现在tmp0指向匹配的Entry
+            // 我们需要加载NativeContextPtr，它位于Entry+8的位置
+            // 原始代码使用Ldur(tmp0, tmp0, -8)，但这假设tmp0指向下一个Entry
+            // 我们需要直接加载NativeContextPtr
+            
+            // 直接加载NativeContextPtr（Entry + 8）
+            asm.Ldur(tmp0, tmp0, 8);
         }
 
-        // ========== 原始版本（用于比较） ==========
+        // ========== 更简单的版本：仅优化内存访问模式 ==========
+        private static void WriteLoadContextSimpleOptimized(Assembler asm, Operand tmp0, Operand tmp1, Operand tmp2)
+        {
+            asm.Mov(tmp0, (ulong)NceThreadTable.EntriesPointer);
+
+            if (OperatingSystem.IsMacOS())
+            {
+                asm.MrsTpidrroEl0(tmp1);
+            }
+            else
+            {
+                asm.MrsTpidrEl0(tmp1);
+            }
+
+            Operand lblFound = asm.CreateLabel();
+            Operand lblLoop = asm.CreateLabel();
+            Operand lblNext = asm.CreateLabel();
+
+            asm.MarkLabel(lblLoop);
+
+            // 使用更高效的加载方式：预取下一个Entry
+            // 1. 加载当前Entry的ThreadId
+            asm.LdrRiUn(tmp2, tmp0, 0);
+            asm.Cmp(tmp1, tmp2);
+            asm.B(lblFound, ArmCondition.Eq);
+            
+            // 2. 前进到下一个Entry
+            asm.Add(tmp0, tmp0, Const(16));
+            
+            // 3. 立即检查下一个Entry（不分支）
+            asm.B(lblNext);
+            
+            asm.MarkLabel(lblNext);
+            
+            // 4. 加载下一个Entry的ThreadId
+            asm.LdrRiUn(tmp2, tmp0, 0);
+            asm.Cmp(tmp1, tmp2);
+            asm.B(lblFound, ArmCondition.Eq);
+            
+            // 5. 前进到再下一个Entry，继续循环
+            asm.Add(tmp0, tmp0, Const(16));
+            asm.B(lblLoop);
+
+            asm.MarkLabel(lblFound);
+            
+            // 现在tmp0指向匹配的Entry
+            // 加载NativeContextPtr（Entry + 8）
+            asm.Ldur(tmp0, tmp0, 8);
+        }
+
+        // ========== 原始版本（用于回退） ==========
         private static void WriteLoadContextOriginal(Assembler asm, Operand tmp0, Operand tmp1, Operand tmp2)
         {
             asm.Mov(tmp0, (ulong)NceThreadTable.EntriesPointer);
@@ -429,6 +489,27 @@ namespace Ryujinx.Cpu.Nce
             asm.Ldur(tmp0, tmp0, -8);
         }
 
+        // ========== 添加一个调试版本，可以切换不同实现 ==========
+        private static void WriteLoadContextDebug(Assembler asm, Operand tmp0, Operand tmp1, Operand tmp2)
+        {
+            // 尝试三种不同的实现，看哪种能工作
+            // 1 = 原始版本, 2 = 保守优化, 3 = 简单优化
+            int version = 1; // 从原始版本开始
+            
+            if (version == 1)
+            {
+                WriteLoadContextOriginal(asm, tmp0, tmp1, tmp2);
+            }
+            else if (version == 2)
+            {
+                WriteLoadContextConservative(asm, tmp0, tmp1, tmp2);
+            }
+            else
+            {
+                WriteLoadContextSimpleOptimized(asm, tmp0, tmp1, tmp2);
+            }
+        }
+
         private static void WriteManagedCall(Assembler asm, Action<Assembler, Operand, Operand, Operand> writeCall, uint blacklistedRegMask)
         {
             int intMask = 0x7fffffff & (int)~blacklistedRegMask;
@@ -441,7 +522,8 @@ namespace Ryujinx.Cpu.Nce
 
             rsr.WritePrologue(asm);
 
-            WriteLoadContext(asm, Gpr(scratchRegs[0]), Gpr(scratchRegs[1]), Gpr(scratchRegs[2]));
+            // 使用调试版本，可以切换不同实现
+            WriteLoadContextDebug(asm, Gpr(scratchRegs[0]), Gpr(scratchRegs[1]), Gpr(scratchRegs[2]));
 
             asm.MovSp(Gpr(scratchRegs[1]), Gpr(Assembler.SpRegister));
             asm.StrRiUn(Gpr(scratchRegs[1]), Gpr(scratchRegs[0]), NceNativeContext.GetGuestSPOffset());
