@@ -218,7 +218,6 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 if (DependencyList != null)
                 {
-                    // 优化：预先获取列表大小，避免重复属性访问
                     int count = DependencyList.Count;
                     var dependencies = DependencyList;
                     
@@ -240,11 +239,28 @@ namespace Ryujinx.Graphics.Vulkan
             entries.Add(new Entry(key, value));
         }
 
+        public void AddMultiple(int offset, int size, params (ICacheKey key, T value)[] items)
+        {
+            if (items == null || items.Length == 0)
+                return;
+
+            List<Entry> entries = GetEntries(offset, size);
+            
+            if (entries.Capacity < entries.Count + items.Length)
+            {
+                entries.Capacity = entries.Count + items.Length;
+            }
+
+            foreach (var item in items)
+            {
+                entries.Add(new Entry(item.key, item.value));
+            }
+        }
+
         public void AddDependency(int offset, int size, ICacheKey key, Dependency dependency)
         {
             List<Entry> entries = GetEntries(offset, size);
 
-            // 优化：使用局部变量避免重复的属性访问
             int count = entries.Count;
             for (int i = 0; i < count; i++)
             {
@@ -268,7 +284,6 @@ namespace Ryujinx.Graphics.Vulkan
         {
             List<Entry> entries = GetEntries(offset, size);
 
-            // 优化：从后向前遍历，避免RemoveAt导致的元素移动
             for (int i = entries.Count - 1; i >= 0; i--)
             {
                 Entry entry = entries[i];
@@ -290,7 +305,6 @@ namespace Ryujinx.Graphics.Vulkan
         {
             List<Entry> entries = GetEntries(offset, size);
 
-            // 优化：使用for循环代替foreach，避免枚举器分配
             int count = entries.Count;
             for (int i = 0; i < count; i++)
             {
@@ -306,129 +320,6 @@ namespace Ryujinx.Graphics.Vulkan
             return false;
         }
 
-        public void Clear()
-        {
-            if (_ranges != null)
-            {
-                // 优化：直接遍历字典值，不需要KeyValuePair
-                foreach (var entries in _ranges.Values)
-                {
-                    int count = entries.Count;
-                    for (int i = 0; i < count; i++)
-                    {
-                        DestroyEntry(entries[i]);
-                    }
-                }
-
-                _ranges.Clear();
-                _ranges = null;
-            }
-        }
-
-        public readonly void ClearRange(int offset, int size)
-        {
-            if (_ranges != null && _ranges.Count > 0)
-            {
-                int end = offset + size;
-
-                // 优化：使用List<ulong>的初始容量估计
-                List<ulong> toRemove = null;
-
-                foreach (var kvp in _ranges)
-                {
-                    (int rOffset, int rSize) = UnpackRange(kvp.Key);
-
-                    int rEnd = rOffset + rSize;
-
-                    if (rEnd > offset && rOffset < end)
-                    {
-                        var entries = kvp.Value;
-                        int count = entries.Count;
-                        
-                        for (int i = 0; i < count; i++)
-                        {
-                            DestroyEntry(entries[i]);
-                        }
-
-                        (toRemove ??= new List<ulong>(_ranges.Count / 4)).Add(kvp.Key);
-                    }
-                }
-
-                if (toRemove != null)
-                {
-                    // 优化：批量移除
-                    foreach (ulong range in toRemove)
-                    {
-                        _ranges.Remove(range);
-                    }
-                }
-            }
-        }
-
-        private List<Entry> GetEntries(int offset, int size)
-        {
-            _ranges ??= new Dictionary<ulong, List<Entry>>();
-
-            ulong key = PackRange(offset, size);
-
-            // 优化：使用TryGetValue模式避免二次查找
-            if (!_ranges.TryGetValue(key, out List<Entry> value))
-            {
-                value = new List<Entry>();
-                _ranges.Add(key, value);
-            }
-
-            return value;
-        }
-
-        private static void DestroyEntry(Entry entry)
-        {
-            entry.Key.Dispose();
-            entry.Value?.Dispose();
-            entry.InvalidateDependencies();
-        }
-
-        // 优化：标记为内联的私有方法（编译器提示）
-        private static ulong PackRange(int offset, int size)
-        {
-            // 优化：避免显式转换，让编译器优化
-            return (uint)offset | ((ulong)size << 32);
-        }
-
-        private static (int offset, int size) UnpackRange(ulong range)
-        {
-            // 优化：使用元组语法，简洁明了
-            return ((int)range, (int)(range >> 32));
-        }
-
-        public void Dispose()
-        {
-            Clear();
-        }
-
-        #region 新增的安全优化方法
-
-        // 新增：批量添加方法，减少重复范围计算
-        public void AddMultiple(int offset, int size, params (ICacheKey key, T value)[] items)
-        {
-            if (items == null || items.Length == 0)
-                return;
-
-            List<Entry> entries = GetEntries(offset, size);
-            
-            // 预分配容量避免多次扩容
-            if (entries.Capacity < entries.Count + items.Length)
-            {
-                entries.Capacity = entries.Count + items.Length;
-            }
-
-            foreach (var item in items)
-            {
-                entries.Add(new Entry(item.key, item.value));
-            }
-        }
-
-        // 新增：检查是否存在某个键（不获取值）
         public bool ContainsKey(int offset, int size, ICacheKey key)
         {
             if (_ranges == null)
@@ -448,47 +339,95 @@ namespace Ryujinx.Graphics.Vulkan
             return false;
         }
 
-        // 新增：获取所有键的枚举（用于调试）
-        public IEnumerable<ICacheKey> GetAllKeys(int offset, int size)
+        public void Clear()
         {
-            if (_ranges == null)
-                yield break;
-
-            ulong rangeKey = PackRange(offset, size);
-            if (!_ranges.TryGetValue(rangeKey, out var entries))
-                yield break;
-
-            int count = entries.Count;
-            for (int i = 0; i < count; i++)
+            if (_ranges != null)
             {
-                yield return entries[i].Key;
+                foreach (var entries in _ranges.Values)
+                {
+                    int count = entries.Count;
+                    for (int i = 0; i < count; i++)
+                    {
+                        DestroyEntry(entries[i]);
+                    }
+                }
+
+                _ranges.Clear();
+                _ranges = null;
             }
         }
 
-        // 新增：获取缓存条目数量（用于监控）
-        public int GetEntryCount(int offset, int size)
+        public readonly void ClearRange(int offset, int size)
         {
-            if (_ranges == null)
-                return 0;
-
-            ulong rangeKey = PackRange(offset, size);
-            return _ranges.TryGetValue(rangeKey, out var entries) ? entries.Count : 0;
-        }
-
-        // 新增：获取总条目数量（用于监控）
-        public int GetTotalEntryCount()
-        {
-            if (_ranges == null)
-                return 0;
-
-            int total = 0;
-            foreach (var entries in _ranges.Values)
+            if (_ranges != null && _ranges.Count > 0)
             {
-                total += entries.Count;
+                int end = offset + size;
+                List<ulong> toRemove = null;
+
+                foreach (var kvp in _ranges)
+                {
+                    (int rOffset, int rSize) = UnpackRange(kvp.Key);
+                    int rEnd = rOffset + rSize;
+
+                    if (rEnd > offset && rOffset < end)
+                    {
+                        var entries = kvp.Value;
+                        int count = entries.Count;
+                        
+                        for (int i = 0; i < count; i++)
+                        {
+                            DestroyEntry(entries[i]);
+                        }
+
+                        (toRemove ??= new List<ulong>(_ranges.Count / 4)).Add(kvp.Key);
+                    }
+                }
+
+                if (toRemove != null)
+                {
+                    foreach (ulong range in toRemove)
+                    {
+                        _ranges.Remove(range);
+                    }
+                }
             }
-            return total;
         }
 
-        #endregion
+        private List<Entry> GetEntries(int offset, int size)
+        {
+            _ranges ??= new Dictionary<ulong, List<Entry>>();
+
+            ulong key = PackRange(offset, size);
+
+            if (!_ranges.TryGetValue(key, out List<Entry> value))
+            {
+                value = new List<Entry>();
+                _ranges.Add(key, value);
+            }
+
+            return value;
+        }
+
+        private static void DestroyEntry(Entry entry)
+        {
+            entry.Key.Dispose();
+            entry.Value?.Dispose();
+            entry.InvalidateDependencies();
+        }
+
+        private static ulong PackRange(int offset, int size)
+        {
+            return (uint)offset | ((ulong)size << 32);
+        }
+
+        private static (int offset, int size) UnpackRange(ulong range)
+        {
+            return ((int)range, (int)(range >> 32));
+        }
+
+        public void Dispose()
+        {
+            Clear();
+        }
     }
 }
