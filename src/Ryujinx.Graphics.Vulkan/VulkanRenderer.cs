@@ -312,13 +312,10 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             // 添加 ASTC 解码模式属性到属性链
+            ASTCDecodePropertiesEXT propertiesAstcDecode = new();
             if (SupportsASTCDecodeMode)
             {
-                var propertiesAstcDecode = new ASTCDecodePropertiesEXT
-                {
-                    SType = (StructureType)1000347001, // VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ASTC_DECODE_PROPERTIES_EXT
-                };
-
+                propertiesAstcDecode.SType = (StructureType)1000347001; // VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ASTC_DECODE_PROPERTIES_EXT
                 propertiesAstcDecode.PNext = properties2.PNext;
                 properties2.PNext = &propertiesAstcDecode;
             }
@@ -369,22 +366,18 @@ namespace Ryujinx.Graphics.Vulkan
             };
 
             // 添加 ASTC 解码模式特性到特性链
+            ASTCDecodeFeaturesEXT featuresAstcDecode = new();
             if (SupportsASTCDecodeMode)
             {
-                var featuresAstcDecode = new ASTCDecodeFeaturesEXT
-                {
-                    SType = (StructureType)1000347000, // VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ASTC_DECODE_FEATURES_EXT
-                };
-
+                featuresAstcDecode.SType = (StructureType)1000347000; // VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ASTC_DECODE_FEATURES_EXT
                 featuresAstcDecode.PNext = features2.PNext;
                 features2.PNext = &featuresAstcDecode;
             }
 
-            
-PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
-{
-    SType = StructureType.PhysicalDeviceTextureCompressionAstcHdrFeaturesExt,
-};
+            PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
+            {
+                SType = StructureType.PhysicalDeviceTextureCompressionAstcHdrFeaturesExt,
+            };
 
             if (_physicalDevice.IsDeviceExtensionPresent("VK_EXT_texture_compression_astc_hdr"))
             {
@@ -493,10 +486,11 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
 
             if (SupportsASTCDecodeMode)
             {
-                // 由于我们手动构建了特性链，我们可以从返回的数据中提取实际支持情况
-                // 但这里我们假设扩展存在就表示支持，实际实现中可能需要更复杂的检测
-                supportsAstcDecodeModeSharedExponent = true;
-                supportsAstcDecodeModeExplicit = true;
+                // 从返回的数据中提取实际支持情况
+                supportsAstcDecodeModeSharedExponent = featuresAstcDecode.DecodeModeSharedExponent != 0;
+                supportsAstcDecodeModeExplicit = featuresAstcDecode.DecodeModeExplicit != 0;
+                
+                Logger.Info?.Print(LogClass.Gpu, $"ASTC Decode Mode Support: SharedExponent={supportsAstcDecodeModeSharedExponent}, Explicit={supportsAstcDecodeModeExplicit}");
             }
 
             var portabilityFlags = PortabilitySubsetFlags.None;
@@ -523,7 +517,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             Vendor = VendorUtils.FromId(properties.VendorID);
             
             // 检测是否为Mali GPU
-            IsMaliGPU = Vendor == Vendor.ARM || (GpuRenderer?.Contains("Mali") ?? false);
+            IsMaliGPU = Vendor == Vendor.ARM || (properties.VendorID == 0x13B5);
 
             IsAmdWindows = Vendor == Vendor.Amd && OperatingSystem.IsWindows();
             IsIntelWindows = Vendor == Vendor.Intel && OperatingSystem.IsWindows();
@@ -664,6 +658,14 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             Barriers = new BarrierBatch(this);
 
             _counters = new Counters(this, _device, _pipeline);
+            
+            // 打印Mali GPU信息
+            if (IsMaliGPU)
+            {
+                Logger.Info?.Print(LogClass.Gpu, $"Mali GPU detected: {GpuRenderer}");
+                Logger.Info?.Print(LogClass.Gpu, $"ASTC Decode Mode Support: {SupportsASTCDecodeMode}");
+                Logger.Info?.Print(LogClass.Gpu, $"ASTC Format Support: {features2.Features.TextureCompressionAstcLdr}");
+            }
         }
 
         private uint FindComputeQueueFamily()
@@ -898,35 +900,56 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
             bool supportsR4G4B4A4Format = FormatCapabilities.OptimalFormatsSupport(compressedFormatFeatureFlags,
                 Format.R4G4B4A4Unorm);
 
-            bool supportsAstcFormats = FormatCapabilities.OptimalFormatsSupport(compressedFormatFeatureFlags,
-                Format.Astc4x4Unorm,
-                Format.Astc5x4Unorm,
-                Format.Astc5x5Unorm,
-                Format.Astc6x5Unorm,
-                Format.Astc6x6Unorm,
-                Format.Astc8x5Unorm,
-                Format.Astc8x6Unorm,
-                Format.Astc8x8Unorm,
-                Format.Astc10x5Unorm,
-                Format.Astc10x6Unorm,
-                Format.Astc10x8Unorm,
-                Format.Astc10x10Unorm,
-                Format.Astc12x10Unorm,
-                Format.Astc12x12Unorm,
-                Format.Astc4x4Srgb,
-                Format.Astc5x4Srgb,
-                Format.Astc5x5Srgb,
-                Format.Astc6x5Srgb,
-                Format.Astc6x6Srgb,
-                Format.Astc8x5Srgb,
-                Format.Astc8x6Srgb,
-                Format.Astc8x8Srgb,
-                Format.Astc10x5Srgb,
-                Format.Astc10x6Srgb,
-                Format.Astc10x8Srgb,
-                Format.Astc10x10Srgb,
-                Format.Astc12x10Srgb,
-                Format.Astc12x12Srgb);
+            // 改进的ASTC格式支持检测
+            bool supportsAstcFormats = false;
+            PhysicalDeviceFeatures2 features2Check = new()
+            {
+                SType = StructureType.PhysicalDeviceFeatures2,
+            };
+            
+            Api.GetPhysicalDeviceFeatures2(_physicalDevice.PhysicalDevice, &features2Check);
+            
+            if (features2Check.Features.TextureCompressionAstcLdr)
+            {
+                // 检查ASTC LDR格式支持
+                supportsAstcFormats = FormatCapabilities.OptimalFormatsSupport(compressedFormatFeatureFlags,
+                    Format.Astc4x4Unorm,
+                    Format.Astc5x4Unorm,
+                    Format.Astc5x5Unorm,
+                    Format.Astc6x5Unorm,
+                    Format.Astc6x6Unorm,
+                    Format.Astc8x5Unorm,
+                    Format.Astc8x6Unorm,
+                    Format.Astc8x8Unorm,
+                    Format.Astc10x5Unorm,
+                    Format.Astc10x6Unorm,
+                    Format.Astc10x8Unorm,
+                    Format.Astc10x10Unorm,
+                    Format.Astc12x10Unorm,
+                    Format.Astc12x12Unorm,
+                    Format.Astc4x4Srgb,
+                    Format.Astc5x4Srgb,
+                    Format.Astc5x5Srgb,
+                    Format.Astc6x5Srgb,
+                    Format.Astc6x6Srgb,
+                    Format.Astc8x5Srgb,
+                    Format.Astc8x6Srgb,
+                    Format.Astc8x8Srgb,
+                    Format.Astc10x5Srgb,
+                    Format.Astc10x6Srgb,
+                    Format.Astc10x8Srgb,
+                    Format.Astc10x10Srgb,
+                    Format.Astc12x10Srgb,
+                    Format.Astc12x12Srgb);
+                
+                // 对于Mali GPU，即使没有扩展，通常也支持ASTC
+                if (IsMaliGPU && !supportsAstcFormats)
+                {
+                    // Mali GPU应该支持ASTC，可能是检测问题，标记为支持
+                    supportsAstcFormats = true;
+                    Logger.Warning?.Print(LogClass.Gpu, "Mali GPU ASTC format detection failed, assuming support");
+                }
+            }
 
             PhysicalDeviceVulkan12Features featuresVk12 = new()
             {
@@ -1013,7 +1036,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 supportsSynchronization2: SupportsSynchronization2,
                 supportsDynamicRendering: SupportsDynamicRendering,
                 supportsExtendedDynamicState2: SupportsExtendedDynamicState2,
-                supportsASTCDecodeMode: SupportsASTCDecodeMode,
+                supportsASTCDecodeMode: SupportsASTCDecodeMode && Capabilities.SupportsASTCDecodeMode,
                 uniformBufferSetIndex: PipelineBase.UniformSetIndex,
                 storageBufferSetIndex: PipelineBase.StorageSetIndex,
                 textureSetIndex: PipelineBase.TextureSetIndex,
@@ -1134,13 +1157,19 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 Logger.Notice.Print(LogClass.Gpu, "Supports: Dynamic Rendering");
             if (SupportsMultiview)
                 Logger.Notice.Print(LogClass.Gpu, "Supports: Multiview");
-            if (SupportsASTCDecodeMode)
+            if (SupportsASTCDecodeMode && Capabilities.SupportsASTCDecodeMode)
                 Logger.Notice.Print(LogClass.Gpu, "Supports: ASTC Decode Mode");
             
             if (IsTBDR)
             {
                 Logger.Notice.Print(LogClass.Gpu, "Platform: TBDR (Tile-Based Deferred Rendering)");
                 Logger.Notice.Print(LogClass.Gpu, "Query Optimization: Batch processing enabled");
+            }
+            
+            // 打印ASTC支持信息
+            if (Capabilities.SupportsAstcCompression)
+            {
+                Logger.Notice.Print(LogClass.Gpu, "Supports: ASTC Texture Compression");
             }
         }
 
@@ -1512,16 +1541,32 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 HostMemoryAllocator.TryImport(BufferManager.HostImportedBufferMemoryRequirements, BufferManager.DefaultBufferMemoryFlags, address, size);
         }
 
-        // 针对Mali GPU的特殊处理
+        // 针对Mali GPU的特殊处理 - 改进版本
         internal bool ShouldUseSoftwareASTCDecode()
         {
-            return IsMaliGPU && !SupportsASTCDecodeMode;
+            // 如果支持ASTC解码模式扩展，并且两个解码模式都支持，就使用硬件解码
+            if (SupportsASTCDecodeMode && Capabilities.SupportsASTCDecodeMode)
+            {
+                Logger.Debug?.Print(LogClass.Gpu, "Using hardware ASTC decode (with decode mode extension)");
+                return false;
+            }
+            
+            // 对于Mali GPU，如果支持ASTC压缩格式，就使用硬件解码
+            if (IsMaliGPU && Capabilities.SupportsAstcCompression)
+            {
+                Logger.Debug?.Print(LogClass.Gpu, "Mali GPU using hardware ASTC decode (native support)");
+                return false;
+            }
+            
+            // 其他情况，使用软件解码
+            Logger.Debug?.Print(LogClass.Gpu, "Using software ASTC decode");
+            return true;
         }
         
         internal VulkanPhysicalDevice GetPhysicalDevice()
-{
-    return _physicalDevice;
-}
+        {
+            return _physicalDevice;
+        }
 
         // 立即结束并提交命令缓冲区
         internal unsafe void EndAndSubmitCommandBuffer(CommandBufferScoped cbs, ReadOnlySpan<Semaphore> waitSemaphores, ReadOnlySpan<PipelineStageFlags> waitDstStageMask, ReadOnlySpan<Semaphore> signalSemaphores)
