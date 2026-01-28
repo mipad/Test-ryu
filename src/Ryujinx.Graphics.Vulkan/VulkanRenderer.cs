@@ -965,9 +965,9 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
                 GpuVendor,
                 memoryType: memoryType,
                 hasFrontFacingBug: IsIntelWindows,
-                hasVectorIndexingBug: IsQualcommProprietary || Vendor == Vendor.ARM,
+                hasVectorIndexingBug: IsQualcommProprietary,
                 needsFragmentOutputSpecialization: IsMoltenVk,
-                reduceShaderPrecision: IsMoltenVk || Vendor == Vendor.ARM,
+                reduceShaderPrecision: IsMoltenVk,
                 supportsAstcCompression: features2.Features.TextureCompressionAstcLdr && supportsAstcFormats,
                 supportsBc123Compression: supportsBc123CompressionFormat,
                 supportsBc45Compression: supportsBc45CompressionFormat,
@@ -1250,7 +1250,7 @@ PhysicalDeviceTextureCompressionASTCHDRFeaturesEXT featuresAstcHdr = new()
 
         public bool SupportsRenderPassBarrier(PipelineStageFlags flags)
         {
-            return !(IsMoltenVk || IsQualcommProprietary || Vendor == Vendor.ARM);
+            return !(IsMoltenVk || IsQualcommProprietary);
         }
 
         // ===== Surface/Present Lifecycle helpers =====
