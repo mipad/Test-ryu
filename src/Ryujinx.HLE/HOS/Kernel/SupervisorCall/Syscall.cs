@@ -1885,31 +1885,18 @@ public Result SetMemoryAttribute(
         }
 
         [Svc(0x26)]
-        public void Break(ulong reason)
-        {
-            KThread currentThread = KernelStatic.GetCurrentThread();
-
-            if ((reason & (1UL << 31)) == 0)
-            {
-                currentThread.PrintGuestStackTrace();
-                currentThread.PrintGuestRegisterPrintout();
-
-                // As the process is exiting, this is probably caused by emulation termination.
-                if (currentThread.Owner.State == ProcessState.Exiting)
-                {
-                    return;
-                }
-
-                // TODO: Debug events.
-                currentThread.Owner.TerminateCurrentProcess();
-
-                throw new GuestBrokeExecutionException();
-            }
-            else
-            {
-                Logger.Debug?.Print(LogClass.KernelSvc, "Debugger triggered.");
-            }
-        }
+public void Break(ulong reason)
+{
+    // 完全跳过Break处理，防止模拟器崩溃
+    KThread currentThread = KernelStatic.GetCurrentThread();
+    string titleId = currentThread?.Owner?.TitleId ?? "Unknown";
+    
+    // 记录警告，但不抛出异常
+    Logger.Warning?.Print(LogClass.KernelSvc, 
+        $"跳过游戏的Break调用: 游戏ID={titleId}, 原因=0x{reason:X}");
+    
+    return;
+}
 
         [Svc(0x27)]
         public void OutputDebugString([PointerSized] ulong strPtr, [PointerSized] ulong size)
