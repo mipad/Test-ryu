@@ -581,6 +581,9 @@ namespace Ryujinx.Graphics.Vulkan
                                           supportsAstcDecodeModeSharedExponent &&
                                           supportsAstcDecodeModeExplicit;
 
+            // 获取ASTC压缩格式支持
+            bool supportsAstcCompression = features2.Features.TextureCompressionAstcLdr;
+
             Capabilities = new HardwareCapabilities(
                 _physicalDevice.IsDeviceExtensionPresent("VK_EXT_index_type_uint8"),
                 supportsCustomBorderColor,
@@ -618,7 +621,8 @@ namespace Ryujinx.Graphics.Vulkan
                 false, // SupportsTimelineSemaphores - 设置为false，因为我们移除了支持
                 _physicalDevice.IsDeviceExtensionPresent("VK_KHR_synchronization2") && featuresSynchronization2.Synchronization2,
                 _physicalDevice.IsDeviceExtensionPresent("VK_KHR_dynamic_rendering") && featuresDynamicRendering.DynamicRendering,
-                supportsAstcDecodeMode,
+                supportsAstcDecodeMode, // ASTC解码模式支持
+                supportsAstcCompression, // ASTC压缩格式支持
                 propertiesSubgroup.SubgroupSize,
                 supportedSampleCounts,
                 portabilityFlags,
