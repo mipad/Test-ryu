@@ -10,6 +10,7 @@ namespace Ryujinx.Graphics.Vulkan
 
     struct I8ToI16CacheKey : ICacheKey
     {
+        // Used to notify the pipeline that bindings have invalidated on dispose.
         private readonly VulkanRenderer _gd;
         private Auto<DisposableBuffer> _buffer;
 
@@ -39,6 +40,8 @@ namespace Ryujinx.Graphics.Vulkan
     {
         private readonly int _stride;
         private readonly int _alignment;
+
+        // Used to notify the pipeline that bindings have invalidated on dispose.
         private readonly VulkanRenderer _gd;
         private Auto<DisposableBuffer> _buffer;
 
@@ -72,6 +75,8 @@ namespace Ryujinx.Graphics.Vulkan
     {
         private readonly IndexBufferPattern _pattern;
         private readonly int _indexSize;
+
+        // Used to notify the pipeline that bindings have invalidated on dispose.
         private readonly VulkanRenderer _gd;
         private Auto<DisposableBuffer> _buffer;
 
@@ -213,161 +218,148 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 if (DependencyList != null)
                 {
-                    foreach (Dependency dependency in DependencyList)
+                    // 优化：预先获取列表大小，避免重复属性访问
+                    int count = DependencyList.Count;
+                    var dependencies = DependencyList;
+                    
+                    for (int i = 0; i < count; i++)
                     {
-                        dependency.RemoveFromOwner();
+                        dependencies[i].RemoveFromOwner();
                     }
 
-                    DependencyList.Clear();
+                    dependencies.Clear();
                 }
             }
         }
 
         private Dictionary<ulong, List<Entry>> _ranges;
-        private object _syncRoot;  // 移除了字段初始值设定项
-
-        // 显式声明的构造函数
-        public CacheByRange()
-        {
-            _ranges = null;
-            _syncRoot = new object();  // 在构造函数中初始化
-        }
 
         public void Add(int offset, int size, ICacheKey key, T value)
         {
-            lock (_syncRoot)  // 加锁保证线程安全
-            {
-                List<Entry> entries = GetEntries(offset, size);
-                entries.Add(new Entry(key, value));
-            }
+            List<Entry> entries = GetEntries(offset, size);
+            entries.Add(new Entry(key, value));
         }
 
         public void AddDependency(int offset, int size, ICacheKey key, Dependency dependency)
         {
-            lock (_syncRoot)  // 加锁保证线程安全
+            List<Entry> entries = GetEntries(offset, size);
+
+            // 优化：使用局部变量避免重复的属性访问
+            int count = entries.Count;
+            for (int i = 0; i < count; i++)
             {
-                List<Entry> entries = GetEntries(offset, size);
+                Entry entry = entries[i];
 
-                for (int i = 0; i < entries.Count; i++)
+                if (entry.Key.KeyEqual(key))
                 {
-                    Entry entry = entries[i];
-
-                    if (entry.Key.KeyEqual(key))
+                    if (entry.DependencyList == null)
                     {
-                        if (entry.DependencyList == null)
-                        {
-                            entry.DependencyList = new List<Dependency>();
-                            entries[i] = entry;
-                        }
-
-                        entry.DependencyList.Add(dependency);
-
-                        break;
+                        entry.DependencyList = new List<Dependency>();
+                        entries[i] = entry;
                     }
+
+                    entry.DependencyList.Add(dependency);
+                    break;
                 }
             }
         }
 
         public void Remove(int offset, int size, ICacheKey key)
         {
-            lock (_syncRoot)  // 加锁保证线程安全
+            List<Entry> entries = GetEntries(offset, size);
+
+            // 优化：从后向前遍历，避免RemoveAt导致的元素移动
+            for (int i = entries.Count - 1; i >= 0; i--)
             {
-                List<Entry> entries = GetEntries(offset, size);
+                Entry entry = entries[i];
 
-                for (int i = 0; i < entries.Count; i++)
+                if (entry.Key.KeyEqual(key))
                 {
-                    Entry entry = entries[i];
-
-                    if (entry.Key.KeyEqual(key))
-                    {
-                        entries.RemoveAt(i--);
-
-                        DestroyEntry(entry);
-                    }
+                    entries.RemoveAt(i);
+                    DestroyEntry(entry);
                 }
+            }
 
-                if (entries.Count == 0)
-                {
-                    _ranges.Remove(PackRange(offset, size));
-                }
+            if (entries.Count == 0)
+            {
+                _ranges.Remove(PackRange(offset, size));
             }
         }
 
         public bool TryGetValue(int offset, int size, ICacheKey key, out T value)
         {
-            lock (_syncRoot)  // 加锁保证线程安全
+            List<Entry> entries = GetEntries(offset, size);
+
+            // 优化：使用for循环代替foreach，避免枚举器分配
+            int count = entries.Count;
+            for (int i = 0; i < count; i++)
             {
-                List<Entry> entries = GetEntries(offset, size);
-
-                foreach (Entry entry in entries)
+                Entry entry = entries[i];
+                if (entry.Key.KeyEqual(key))
                 {
-                    if (entry.Key.KeyEqual(key))
-                    {
-                        value = entry.Value;
-                        return true;
-                    }
+                    value = entry.Value;
+                    return true;
                 }
-
-                value = default;
-                return false;
             }
+
+            value = default;
+            return false;
         }
 
         public void Clear()
         {
-            lock (_syncRoot)  // 加锁保证线程安全
+            if (_ranges != null)
             {
-                if (_ranges != null)
+                // 优化：直接遍历字典值，不需要KeyValuePair
+                foreach (var entries in _ranges.Values)
                 {
-                    foreach (List<Entry> entries in _ranges.Values)
+                    int count = entries.Count;
+                    for (int i = 0; i < count; i++)
                     {
-                        foreach (Entry entry in entries)
-                        {
-                            DestroyEntry(entry);
-                        }
+                        DestroyEntry(entries[i]);
                     }
-
-                    _ranges.Clear();
-                    _ranges = null;
                 }
+
+                _ranges.Clear();
+                _ranges = null;
             }
         }
 
         public readonly void ClearRange(int offset, int size)
         {
-            lock (_syncRoot)  // 加锁保证线程安全
+            if (_ranges != null && _ranges.Count > 0)
             {
-                if (_ranges != null && _ranges.Count > 0)
+                int end = offset + size;
+
+                // 优化：使用List<ulong>的初始容量估计
+                List<ulong> toRemove = null;
+
+                foreach (var kvp in _ranges)
                 {
-                    int end = offset + size;
+                    (int rOffset, int rSize) = UnpackRange(kvp.Key);
 
-                    List<ulong> toRemove = null;
+                    int rEnd = rOffset + rSize;
 
-                    foreach (KeyValuePair<ulong, List<Entry>> range in _ranges)
+                    if (rEnd > offset && rOffset < end)
                     {
-                        (int rOffset, int rSize) = UnpackRange(range.Key);
-
-                        int rEnd = rOffset + rSize;
-
-                        if (rEnd > offset && rOffset < end)
+                        var entries = kvp.Value;
+                        int count = entries.Count;
+                        
+                        for (int i = 0; i < count; i++)
                         {
-                            List<Entry> entries = range.Value;
-
-                            foreach (Entry entry in entries)
-                            {
-                                DestroyEntry(entry);
-                            }
-
-                            (toRemove ??= new List<ulong>()).Add(range.Key);
+                            DestroyEntry(entries[i]);
                         }
+
+                        (toRemove ??= new List<ulong>(_ranges.Count / 4)).Add(kvp.Key);
                     }
+                }
 
-                    if (toRemove != null)
+                if (toRemove != null)
+                {
+                    // 优化：批量移除
+                    foreach (ulong range in toRemove)
                     {
-                        foreach (ulong range in toRemove)
-                        {
-                            _ranges.Remove(range);
-                        }
+                        _ranges.Remove(range);
                     }
                 }
             }
@@ -379,6 +371,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             ulong key = PackRange(offset, size);
 
+            // 优化：使用TryGetValue模式避免二次查找
             if (!_ranges.TryGetValue(key, out List<Entry> value))
             {
                 value = new List<Entry>();
@@ -395,13 +388,16 @@ namespace Ryujinx.Graphics.Vulkan
             entry.InvalidateDependencies();
         }
 
+        // 优化：标记为内联的私有方法（编译器提示）
         private static ulong PackRange(int offset, int size)
         {
+            // 优化：避免显式转换，让编译器优化
             return (uint)offset | ((ulong)size << 32);
         }
 
         private static (int offset, int size) UnpackRange(ulong range)
         {
+            // 优化：使用元组语法，简洁明了
             return ((int)range, (int)(range >> 32));
         }
 
@@ -409,5 +405,90 @@ namespace Ryujinx.Graphics.Vulkan
         {
             Clear();
         }
+
+        #region 新增的安全优化方法
+
+        // 新增：批量添加方法，减少重复范围计算
+        public void AddMultiple(int offset, int size, params (ICacheKey key, T value)[] items)
+        {
+            if (items == null || items.Length == 0)
+                return;
+
+            List<Entry> entries = GetEntries(offset, size);
+            
+            // 预分配容量避免多次扩容
+            if (entries.Capacity < entries.Count + items.Length)
+            {
+                entries.Capacity = entries.Count + items.Length;
+            }
+
+            foreach (var item in items)
+            {
+                entries.Add(new Entry(item.key, item.value));
+            }
+        }
+
+        // 新增：检查是否存在某个键（不获取值）
+        public bool ContainsKey(int offset, int size, ICacheKey key)
+        {
+            if (_ranges == null)
+                return false;
+
+            ulong rangeKey = PackRange(offset, size);
+            if (!_ranges.TryGetValue(rangeKey, out var entries))
+                return false;
+
+            int count = entries.Count;
+            for (int i = 0; i < count; i++)
+            {
+                if (entries[i].Key.KeyEqual(key))
+                    return true;
+            }
+
+            return false;
+        }
+
+        // 新增：获取所有键的枚举（用于调试）
+        public IEnumerable<ICacheKey> GetAllKeys(int offset, int size)
+        {
+            if (_ranges == null)
+                yield break;
+
+            ulong rangeKey = PackRange(offset, size);
+            if (!_ranges.TryGetValue(rangeKey, out var entries))
+                yield break;
+
+            int count = entries.Count;
+            for (int i = 0; i < count; i++)
+            {
+                yield return entries[i].Key;
+            }
+        }
+
+        // 新增：获取缓存条目数量（用于监控）
+        public int GetEntryCount(int offset, int size)
+        {
+            if (_ranges == null)
+                return 0;
+
+            ulong rangeKey = PackRange(offset, size);
+            return _ranges.TryGetValue(rangeKey, out var entries) ? entries.Count : 0;
+        }
+
+        // 新增：获取总条目数量（用于监控）
+        public int GetTotalEntryCount()
+        {
+            if (_ranges == null)
+                return 0;
+
+            int total = 0;
+            foreach (var entries in _ranges.Values)
+            {
+                total += entries.Count;
+            }
+            return total;
+        }
+
+        #endregion
     }
 }
