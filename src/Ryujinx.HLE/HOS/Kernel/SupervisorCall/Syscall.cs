@@ -1887,14 +1887,9 @@ public Result SetMemoryAttribute(
         [Svc(0x26)]
 public void Break(ulong reason)
 {
-    KThread currentThread = KernelStatic.GetCurrentThread();
-    
-    // 获取游戏标题ID
-    string titleId = currentThread?.Owner?.TitleId?.ToString("X16") ?? "Unknown";
-    
-    // 记录警告但不崩溃
+    // 记录Break调用但不抛出异常
     Logger.Warning?.Print(LogClass.KernelSvc, 
-        $"游戏调用Break已被跳过: TitleId={titleId}, Reason=0x{reason:X}");
+        $"游戏调用了Break系统调用，原因: 0x{reason:X}，已跳过处理");
     
     // 直接返回，不抛出异常，防止模拟器崩溃
     return;
