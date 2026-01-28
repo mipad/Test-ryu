@@ -218,15 +218,12 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 if (DependencyList != null)
                 {
-                    int count = DependencyList.Count;
-                    var dependencies = DependencyList;
-                    
-                    for (int i = 0; i < count; i++)
+                    foreach (Dependency dependency in DependencyList)
                     {
-                        dependencies[i].RemoveFromOwner();
+                        dependency.RemoveFromOwner();
                     }
 
-                    dependencies.Clear();
+                    DependencyList.Clear();
                 }
             }
         }
@@ -236,33 +233,15 @@ namespace Ryujinx.Graphics.Vulkan
         public void Add(int offset, int size, ICacheKey key, T value)
         {
             List<Entry> entries = GetEntries(offset, size);
+
             entries.Add(new Entry(key, value));
-        }
-
-        public void AddMultiple(int offset, int size, params (ICacheKey key, T value)[] items)
-        {
-            if (items == null || items.Length == 0)
-                return;
-
-            List<Entry> entries = GetEntries(offset, size);
-            
-            if (entries.Capacity < entries.Count + items.Length)
-            {
-                entries.Capacity = entries.Count + items.Length;
-            }
-
-            foreach (var item in items)
-            {
-                entries.Add(new Entry(item.key, item.value));
-            }
         }
 
         public void AddDependency(int offset, int size, ICacheKey key, Dependency dependency)
         {
             List<Entry> entries = GetEntries(offset, size);
 
-            int count = entries.Count;
-            for (int i = 0; i < count; i++)
+            for (int i = 0; i < entries.Count; i++)
             {
                 Entry entry = entries[i];
 
@@ -275,6 +254,7 @@ namespace Ryujinx.Graphics.Vulkan
                     }
 
                     entry.DependencyList.Add(dependency);
+
                     break;
                 }
             }
@@ -284,13 +264,14 @@ namespace Ryujinx.Graphics.Vulkan
         {
             List<Entry> entries = GetEntries(offset, size);
 
-            for (int i = entries.Count - 1; i >= 0; i--)
+            for (int i = 0; i < entries.Count; i++)
             {
                 Entry entry = entries[i];
 
                 if (entry.Key.KeyEqual(key))
                 {
-                    entries.RemoveAt(i);
+                    entries.RemoveAt(i--);
+
                     DestroyEntry(entry);
                 }
             }
@@ -305,13 +286,12 @@ namespace Ryujinx.Graphics.Vulkan
         {
             List<Entry> entries = GetEntries(offset, size);
 
-            int count = entries.Count;
-            for (int i = 0; i < count; i++)
+            foreach (Entry entry in entries)
             {
-                Entry entry = entries[i];
                 if (entry.Key.KeyEqual(key))
                 {
                     value = entry.Value;
+
                     return true;
                 }
             }
@@ -320,35 +300,15 @@ namespace Ryujinx.Graphics.Vulkan
             return false;
         }
 
-        public bool ContainsKey(int offset, int size, ICacheKey key)
-        {
-            if (_ranges == null)
-                return false;
-
-            ulong rangeKey = PackRange(offset, size);
-            if (!_ranges.TryGetValue(rangeKey, out var entries))
-                return false;
-
-            int count = entries.Count;
-            for (int i = 0; i < count; i++)
-            {
-                if (entries[i].Key.KeyEqual(key))
-                    return true;
-            }
-
-            return false;
-        }
-
         public void Clear()
         {
             if (_ranges != null)
             {
-                foreach (var entries in _ranges.Values)
+                foreach (List<Entry> entries in _ranges.Values)
                 {
-                    int count = entries.Count;
-                    for (int i = 0; i < count; i++)
+                    foreach (Entry entry in entries)
                     {
-                        DestroyEntry(entries[i]);
+                        DestroyEntry(entry);
                     }
                 }
 
@@ -362,24 +322,25 @@ namespace Ryujinx.Graphics.Vulkan
             if (_ranges != null && _ranges.Count > 0)
             {
                 int end = offset + size;
+
                 List<ulong> toRemove = null;
 
-                foreach (var kvp in _ranges)
+                foreach (KeyValuePair<ulong, List<Entry>> range in _ranges)
                 {
-                    (int rOffset, int rSize) = UnpackRange(kvp.Key);
+                    (int rOffset, int rSize) = UnpackRange(range.Key);
+
                     int rEnd = rOffset + rSize;
 
                     if (rEnd > offset && rOffset < end)
                     {
-                        var entries = kvp.Value;
-                        int count = entries.Count;
-                        
-                        for (int i = 0; i < count; i++)
+                        List<Entry> entries = range.Value;
+
+                        foreach (Entry entry in entries)
                         {
-                            DestroyEntry(entries[i]);
+                            DestroyEntry(entry);
                         }
 
-                        (toRemove ??= new List<ulong>(_ranges.Count / 4)).Add(kvp.Key);
+                        (toRemove ??= new List<ulong>()).Add(range.Key);
                     }
                 }
 
